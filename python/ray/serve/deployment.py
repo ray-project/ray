@@ -7,6 +7,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     RequestRouterConfig,
     handle_num_replicas_auto,
+    handle_num_replicas_per_node,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
@@ -276,6 +277,10 @@ class Deployment:
             )
 
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+        elif num_replicas == "per_node":
+            max_replicas_per_node = handle_num_replicas_per_node(
+                autoscaling_config, gang_scheduling_config, max_replicas_per_node
+            )
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -310,8 +315,13 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
-            new_deployment_config.num_replicas = num_replicas
+        if num_replicas == "per_node":
+            new_deployment_config.num_replicas_per_node = True
+        elif num_replicas not in [DEFAULT.VALUE, None]:
+            # An explicit int or "auto" clears per-node mode.
+            new_deployment_config.num_replicas_per_node = False
+            if num_replicas != "auto":
+                new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config

@@ -1818,6 +1818,13 @@ def override_deployment_info(
 
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
+        elif options.get("num_replicas") == "per_node":
+            # One replica per node: the controller tracks the schedulable node
+            # count. Pin max_replicas_per_node to 1 to enforce the spread.
+            options["num_replicas"] = None
+            options["num_replicas_per_node"] = True
+            options["max_replicas_per_node"] = 1
+
         # What to pass to info.update
         override_options = {}
 

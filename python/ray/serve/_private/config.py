@@ -126,6 +126,9 @@ class DeploymentConfig(BaseModel):
     Args:
         num_replicas: The number of processes to start up that
             handles requests to this deployment. Defaults to 1.
+        num_replicas_per_node: When True, the controller keeps the target
+            replica count equal to the number of schedulable nodes, running
+            one replica per node. Set by num_replicas="per_node".
         max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 5.
@@ -161,6 +164,9 @@ class DeploymentConfig(BaseModel):
 
     num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
+    )
+    num_replicas_per_node: bool = Field(
+        default=False, update_type=DeploymentOptionUpdateType.LightWeight
     )
     max_ongoing_requests: PositiveInt = Field(
         default=DEFAULT_MAX_ONGOING_REQUESTS,
@@ -636,6 +642,37 @@ def handle_num_replicas_auto(
         autoscaling_config = AutoscalingConfig(**default_config)
 
     return max_ongoing_requests, autoscaling_config
+
+
+def handle_num_replicas_per_node(
+    autoscaling_config,
+    gang_scheduling_config,
+    max_replicas_per_node,
+):
+    """Validate options for num_replicas="per_node" and return the pinned
+    max_replicas_per_node.
+
+    One replica per node is enforced by pinning max_replicas_per_node to 1.
+    The mode does not autoscale and does not support gang scheduling, so it is
+    rejected when combined with either.
+    """
+    if autoscaling_config not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            'num_replicas="per_node" is not allowed when autoscaling_config '
+            "is provided."
+        )
+    if gang_scheduling_config not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            'num_replicas="per_node" is not supported with gang_scheduling_config.'
+        )
+    if max_replicas_per_node in [DEFAULT.VALUE, None]:
+        return 1
+    if max_replicas_per_node != 1:
+        raise ValueError(
+            'num_replicas="per_node" runs one replica per node, so '
+            f"max_replicas_per_node must be unset or 1, got {max_replicas_per_node}."
+        )
+    return max_replicas_per_node
 
 
 class ReplicaConfig:

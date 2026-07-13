@@ -249,6 +249,11 @@ message DeploymentConfig {
   // rolling upgrade) is distinguishable from an explicit value. When unset,
   // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
   optional double rolling_update_percentage = 23;
+
+  // When true (num_replicas="per_node"), the controller keeps the target
+  // replica count equal to the number of schedulable nodes, running one
+  // replica per node. Mutually exclusive with autoscaling_config.
+  bool num_replicas_per_node = 24;
 }
 
 // Deployment language.

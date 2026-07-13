@@ -205,6 +205,43 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError):
             b.num_replicas = -1
 
+    def test_num_replicas_per_node(self):
+        """num_replicas="per_node" sets the flag and pins one replica per node."""
+        # Default is off, and it survives a proto round-trip.
+        assert DeploymentConfig().num_replicas_per_node is False
+        dc = DeploymentConfig(num_replicas_per_node=True)
+        roundtripped = DeploymentConfig.from_proto_bytes(dc.to_proto_bytes())
+        assert roundtripped.num_replicas_per_node is True
+
+        # The decorator translates the string and pins max_replicas_per_node=1.
+        @serve.deployment(num_replicas="per_node")
+        class D:
+            pass
+
+        assert D._deployment_config.num_replicas_per_node is True
+        assert D._replica_config.max_replicas_per_node == 1
+
+        # .options() can switch back to a fixed replica count.
+        fixed = D.options(num_replicas=2)
+        assert fixed._deployment_config.num_replicas_per_node is False
+        assert fixed._deployment_config.num_replicas == 2
+
+    def test_num_replicas_per_node_invalid_combinations(self):
+        with pytest.raises(ValueError, match="autoscaling_config"):
+
+            @serve.deployment(
+                num_replicas="per_node",
+                autoscaling_config={"min_replicas": 1, "max_replicas": 2},
+            )
+            class A:
+                pass
+
+        with pytest.raises(ValueError, match="max_replicas_per_node"):
+
+            @serve.deployment(num_replicas="per_node", max_replicas_per_node=2)
+            class B:
+                pass
+
     def test_from_default(self):
         """Check from_default() method behavior."""
 
