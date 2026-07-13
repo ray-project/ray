@@ -158,6 +158,30 @@ class TestDeploymentAutoscalingStatePrometheus:
         state._prometheus_cache_timestamp = time.time() - 9999
         assert state._get_cached_prometheus_metrics() is None
 
+    def test_register_clears_cache(self):
+        # A config change must not keep serving metrics from the old source.
+        state = _make_state(
+            prometheus_queries=["up"], prometheus_address="http://old:9090"
+        )
+        state.record_prometheus_metrics({"up": 5.0}, timestamp=time.time())
+        assert state._get_cached_prometheus_metrics() == {"up": 5.0}
+
+        new_config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=5,
+            prometheus_queries=["up"],
+            prometheus_address="http://new:9090",
+        )
+        info = types.SimpleNamespace(
+            deployment_config=types.SimpleNamespace(
+                autoscaling_config=new_config, gang_scheduling_config=None
+            ),
+            target_capacity=None,
+            target_capacity_direction=None,
+        )
+        state.register(info, curr_target_num_replicas=1)
+        assert state._get_cached_prometheus_metrics() is None
+
 
 # ---------------------------------------------------------------------------
 # AutoscalingStateManager record + query extraction tests

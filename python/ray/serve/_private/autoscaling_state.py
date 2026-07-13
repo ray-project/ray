@@ -172,6 +172,10 @@ class DeploymentAutoscalingState:
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
+        # Drop cached Prometheus metrics so a config change does not keep
+        # serving values fetched from a previous prometheus_address.
+        self._cached_prometheus_metrics = None
+        self._prometheus_cache_timestamp = 0.0
 
         # Log when custom autoscaling policy is used for deployment
         if not self._config.policy.is_default_policy_function():
@@ -914,9 +918,9 @@ class ApplicationAutoscalingState:
     ) -> int:
         """Register a single deployment under this application."""
         if deployment_id not in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[
-                deployment_id
-            ] = DeploymentAutoscalingState(deployment_id)
+            self._deployment_autoscaling_states[deployment_id] = (
+                DeploymentAutoscalingState(deployment_id)
+            )
 
         if info.deployment_config.autoscaling_config is None:
             raise ValueError(
@@ -984,9 +988,11 @@ class ApplicationAutoscalingState:
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
-                    self._policy_state.get(deployment_id, {})
-                    if self._policy_state
-                    else {},
+                    (
+                        self._policy_state.get(deployment_id, {})
+                        if self._policy_state
+                        else {}
+                    ),
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
