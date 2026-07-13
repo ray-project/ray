@@ -14,14 +14,16 @@ from ray.core.generated.events_driver_job_definition_event_pb2 import (
 )
 
 
-def _make_event(entity_id="job-1"):
+def _make_event(name="job-1"):
     nested = DriverJobDefinitionEvent()
     return RayEvent(
         source_type=RayEventProto.SourceType.JOBS,
         event_type=RayEventProto.EventType.DRIVER_JOB_DEFINITION_EVENT,
         severity=RayEventProto.Severity.INFO,
-        entity_id=entity_id,
-        message="",
+        entity_id=name,
+        # entity_id is not part of the serialized proto; use message to
+        # identify events in the posted payload.
+        message=name,
         session_name="test-session",
         serialized_data=nested.SerializeToString(),
         nested_event_field_number=(
@@ -62,9 +64,9 @@ def _make_publisher(session):
     )
 
 
-def _sent_entity_ids(request):
+def _sent_event_names(request):
     _, data = request
-    return [e["entity_id"] for e in json.loads(data)]
+    return [e["message"] for e in json.loads(data)]
 
 
 def test_publish_success_clears_buffer():
@@ -74,7 +76,7 @@ def test_publish_success_clears_buffer():
     publisher.publish(_make_event("b"))
     assert len(session.requests) == 2
     # Second request must not resend the already-published event.
-    assert _sent_entity_ids(session.requests[1]) == ["b"]
+    assert _sent_event_names(session.requests[1]) == ["b"]
 
 
 def test_connection_error_buffers_and_retries():
@@ -83,7 +85,7 @@ def test_connection_error_buffers_and_retries():
     # Does not raise; the event stays buffered.
     publisher.publish(_make_event("a"))
     publisher.publish(_make_event("b"))
-    assert _sent_entity_ids(session.requests[1]) == ["a", "b"]
+    assert _sent_event_names(session.requests[1]) == ["a", "b"]
 
 
 def test_server_error_buffers_and_retries():
@@ -91,7 +93,7 @@ def test_server_error_buffers_and_retries():
     publisher = _make_publisher(session)
     publisher.publish(_make_event("a"))
     publisher.publish(_make_event("b"))
-    assert _sent_entity_ids(session.requests[1]) == ["a", "b"]
+    assert _sent_event_names(session.requests[1]) == ["a", "b"]
 
 
 def test_client_error_drops_batch_and_raises():
@@ -101,7 +103,7 @@ def test_client_error_drops_batch_and_raises():
         publisher.publish(_make_event("a"))
     # Rejected batch is dropped, not retried.
     publisher.publish(_make_event("b"))
-    assert _sent_entity_ids(session.requests[1]) == ["b"]
+    assert _sent_event_names(session.requests[1]) == ["b"]
 
 
 def test_event_id_stable_across_retries():
