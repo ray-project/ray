@@ -775,10 +775,8 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # When True, route key-based ``Repartition`` through the external
-    # (file-transport) hash-shuffle variant instead of the in-memory one.
-    # Bulk data goes to per-node files served over sockets; the object
-    # store carries only small handles.
+    # Whether to use the task-based on-disk hash-shuffle path for repartition;
+    # when False, fall back to v2 (in-memory) hash-shuffle implementation.
     use_external_hash_shuffle: bool = False
 
     # Whether to use the task-based hash-shuffle v2 path for join. When
