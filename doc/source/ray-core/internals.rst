@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core internals for advanced users: task lifecycle, streaming generators, autoscaler v2, RPC fault tolerance, object spilling, and metrics.
+
 .. _ray-core-internals:
 
 Internals

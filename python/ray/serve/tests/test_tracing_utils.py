@@ -25,7 +25,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    get_application_url,
+    wait_for_haproxy_routing_to_replica,
+)
 from ray.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     TRACE_STACK,
@@ -374,6 +377,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(BasicModel.bind())
+        wait_for_haproxy_routing_to_replica()
 
         setup_tracing(
             component_name="upstream_app",
@@ -396,6 +400,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(StreamingModel.bind())
+        wait_for_haproxy_routing_to_replica()
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
@@ -462,14 +467,13 @@ def test_tracing_e2e(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -662,14 +666,13 @@ def test_tracing_e2e_with_errors(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3  # proxy, replica, and upstream spans
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:

@@ -2,24 +2,18 @@
 # How to write tests
 
 :::{note}
-**Disclaimer**: There are no hard rules in software engineering. Use your judgment when 
-applying these.
+**Disclaimer**: There are no hard rules in software engineering. Use your judgment when applying these.
 :::
 
-Flaky or brittle tests (the kind that break when assumptions shift) slow development. 
-Nobody likes getting stuck on a PR because a test failed for reasons unrelated to their
-change.
+Flaky or brittle tests (the kind that break when assumptions shift) slow development. Nobody likes getting stuck on a PR because a test failed for reasons unrelated to their change.
 
-This guide is a collection of practices to help you write tests that support the Ray 
-Data project, not slow it down.
+This guide is a collection of practices to help you write tests that support the Ray Data project, not slow it down.
 
 ## General good practices
 
 ### Prefer unit tests over integration tests
 
-Unit tests give faster feedback and make it easier to pinpoint failures. They run in 
-milliseconds, not seconds, and don’t depend on Ray clusters, external systems, or 
-timing. This keeps the test suite fast, reliable, and easy to maintain.
+Unit tests give faster feedback and make it easier to pinpoint failures. They run in milliseconds, not seconds, and don’t depend on Ray clusters, external systems, or timing. This keeps the test suite fast, reliable, and easy to maintain.
 
 :::{note}
 Put unit tests in `python/ray/data/tests/unit`.
@@ -27,8 +21,7 @@ Put unit tests in `python/ray/data/tests/unit`.
 
 ### Use fixtures, skip try-finally
 
-Fixtures make tests cleaner, more reusable, and better isolated. They’re the right tool 
-for setup and teardown, especially for things like `monkeypatch`.
+Fixtures make tests cleaner, more reusable, and better isolated. They’re the right tool for setup and teardown, especially for things like `monkeypatch`.
 
 `try-finally` works, but fixtures make intent clearer and avoid boilerplate.
 
@@ -57,9 +50,7 @@ def test_dynamic_block_split(ray_start_regular_shared, restore_data_context):
 
 ### Don't assume Datasets produce outputs in a specific order
 
-Unless you set `preserve_order=True` in the `DataContext`, Ray Data doesn’t guarantee 
-an output order. If your test relies on order without explicitly asking for it, you’re 
-setting yourself up for brittle failures.
+Unless you set `preserve_order=True` in the `DataContext`, Ray Data doesn’t guarantee an output order. If your test relies on order without explicitly asking for it, you’re setting yourself up for brittle failures.
 
 **Original code**
 ```python
@@ -83,24 +74,19 @@ assert rows_same(actual_data, expected_data)
 ```
 
 :::{tip}
-Use the `ray.data._internal.util.rows_same` utility function to compare pandas 
-DataFrames for equality while ignoring indices and order.
+Use the `ray.data._internal.util.rows_same` utility function to compare pandas DataFrames for equality while ignoring indices and order.
 :::
 
 ### Prefer shared cluster fixtures
 
-Prefer shared cluster fixtures like `ray_start_regular_shared` over isolated cluster
-fixtures like `shutdown_only` and `ray_start_regular`.
+Prefer shared cluster fixtures like `ray_start_regular_shared` over isolated cluster fixtures like `shutdown_only` and `ray_start_regular`.
 
-`shutdown_only` and `ray_start_regular` restart the Ray cluster after each test
-finishes. Starting and stopping Ray can take over a second — which sounds small, but 
-across thousands of tests (plus parameterizations) it adds up fast.
+`shutdown_only` and `ray_start_regular` restart the Ray cluster after each test finishes. Starting and stopping Ray can take over a second — which sounds small, but across thousands of tests (plus parameterizations) it adds up fast.
 
 Only use isolated clusters when your test truly needs a fresh cluster.
 
 :::{note}
-There's an inherent tradeoff between isolation and speed here. For this specific case, 
-choose to prioritize speed.
+There's an inherent tradeoff between isolation and speed here. For this specific case, choose to prioritize speed.
 :::
 
 **Original code**
@@ -123,9 +109,7 @@ def test_invalid_concurrency_raises(ray_start_regular_shared, concurrency):
 
 ### Avoid testing against repr outputs to validate specific data
 
-`repr` output isn’t part of any interface contract — it can change at any time.
-Besides, tests that assert against repr often hide the real intent: are you trying to
-check the data, or just how it happens to print? Be explicit about what you care about.
+`repr` output isn’t part of any interface contract — it can change at any time. Besides, tests that assert against repr often hide the real intent: are you trying to check the data, or just how it happens to print? Be explicit about what you care about.
 
 
 
@@ -142,9 +126,7 @@ assert ds.count() == 6
 
 ### Avoid assumptions about the number or size of blocks
 
-Unless you’re testing an API like `repartition`, don’t lock your test to a specific 
-number or size of blocks. Both can change depending on the implementation or the cluster 
-config — and that’s usually fine.
+Unless you’re testing an API like `repartition`, don’t lock your test to a specific number or size of blocks. Both can change depending on the implementation or the cluster config — and that’s usually fine.
 
 **Original code**
 
@@ -178,9 +160,7 @@ assert sum(len(bundle.blocks) for bundle in ds.iter_internal_ref_bundles()) == 5
 
 ### Avoid testing that the DAG looks a particular way
 
-The operators in the execution plan can shift over time as the implementation evolves. 
-Unless you’re specifically testing optimization rules or working at the operator level,
-tests shouldn’t expect a particular DAG structure.
+The operators in the execution plan can shift over time as the implementation evolves. Unless you’re specifically testing optimization rules or working at the operator level, tests shouldn’t expect a particular DAG structure.
 
 **Original code**
 ```python

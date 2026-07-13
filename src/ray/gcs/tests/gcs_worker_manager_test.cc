@@ -21,7 +21,9 @@
 
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/util/compat.h"
@@ -70,6 +72,14 @@ class GcsWorkerManagerTest : public Test {
   }
 
   std::shared_ptr<gcs::GcsWorkerManager> GetWorkerManager() { return worker_manager_; }
+
+  gcs::GcsInitData LoadInitData() {
+    gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+    std::promise<void> promise;
+    gcs_init_data.AsyncLoad({[&promise] { promise.set_value(); }, io_service_});
+    promise.get_future().get();
+    return gcs_init_data;
+  }
 
  private:
   std::unique_ptr<std::thread> thread_io_service_;
@@ -302,4 +312,77 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
   }
+}
+
+TEST_F(GcsWorkerManagerTest, TestRestoreDeadWorkerIdsQueue) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"maximum_gcs_dead_worker_cached_count": 3
+}
+)");
+
+  auto worker_manager = GetWorkerManager();
+
+  auto add_dead_worker = [&](const WorkerID &worker_id, uint64_t end_time_ms) {
+    rpc::WorkerTableData worker_data;
+    worker_data.mutable_worker_address()->set_worker_id(worker_id.Binary());
+    worker_data.set_is_alive(false);
+    worker_data.set_end_time_ms(end_time_ms);
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker_data);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  };
+
+  auto get_all_worker_ids = [&]() {
+    rpc::GetAllWorkerInfoRequest request;
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+    std::vector<std::string> ids;
+    for (const auto &data : reply.worker_table_data()) {
+      ids.push_back(data.worker_address().worker_id());
+    }
+    return ids;
+  };
+
+  auto contains = [](const std::vector<std::string> &ids, const WorkerID &id) {
+    for (const auto &worker_id : ids) {
+      if (worker_id == id.Binary()) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Seed 5 dead workers (cap is 3) with ascending death times: worker_ids[0] is oldest
+  std::vector<WorkerID> worker_ids;
+  for (int i = 0; i < 5; i++) {
+    worker_ids.push_back(WorkerID::FromRandom());
+    add_dead_worker(worker_ids.back(), /*end_time_ms=*/(i + 1) * 10);
+  }
+  ASSERT_EQ(get_all_worker_ids().size(), 5);
+
+  // Rebuild the queue from the startup snapshot (as GCS does before serving); it
+  // bulk-trims the table to the cap, keeping the newest by death time
+  gcs::GcsInitData gcs_init_data = LoadInitData();
+  worker_manager->RestoreDeadWorkerIdsQueue(gcs_init_data);
+
+  auto remaining = get_all_worker_ids();
+  ASSERT_EQ(remaining.size(), 3);
+  EXPECT_FALSE(contains(remaining, worker_ids[0]));
+  EXPECT_FALSE(contains(remaining, worker_ids[1]));
+  EXPECT_TRUE(contains(remaining, worker_ids[2]));
+  EXPECT_TRUE(contains(remaining, worker_ids[3]));
+  EXPECT_TRUE(contains(remaining, worker_ids[4]));
 }
