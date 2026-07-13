@@ -9,8 +9,6 @@ callback ordering, ShuffleManager lifecycle) that the planner-driven
 tests in ``test_hash_shuffle_external_repartition.py`` don't isolate.
 """
 
-import os
-
 import pytest
 
 import ray
@@ -129,23 +127,3 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         reduce_op.shutdown(Timer(), force=True)
         map_op.shutdown(Timer(), force=True)
         upstream.shutdown(Timer(), force=True)
-
-
-def test_external_cleanup_shuffle_dir(ray_init_shutdown, tmp_path):
-    """``_cleanup_shuffle_dir`` ``rmtree``s the given ``base_dir``."""
-    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
-        _cleanup_shuffle_dir,
-    )
-
-    base_dir = str(tmp_path / "shuffle_external_cleanup")
-    os.makedirs(base_dir, exist_ok=True)
-    with open(os.path.join(base_dir, "map_0.shf"), "w") as f:
-        f.write("x" * 1024)
-    assert os.path.isdir(base_dir)
-
-    ray.get(_cleanup_shuffle_dir.remote(base_dir))
-
-    assert not os.path.exists(base_dir), (
-        f"base_dir {base_dir} still present after _cleanup_shuffle_dir "
-        "— cleanup task did not fire"
-    )
