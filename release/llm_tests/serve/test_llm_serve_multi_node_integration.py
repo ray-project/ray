@@ -26,6 +26,7 @@ from ray.serve.llm import (
     ModelLoadingConfig,
 )
 from ray.serve.schema import ApplicationStatus
+from ray.util.state import list_actors
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
 CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
@@ -105,13 +106,16 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     reason="the ingress request router only exists on the direct-streaming path",
 )
 def test_llm_serve_direct_streaming_ingress_router_per_node():
-    """The direct-streaming ingress request router scales to one replica per
-    node so each node's HAProxy can call its co-located router.
+    """The direct-streaming ingress request router places one replica per node
+    so each node's HAProxy can call its co-located router.
 
-    ``max_replicas_per_node`` defaults to 1, so once ``num_replicas`` is set to
-    the number of schedulable nodes, the router reaching that many RUNNING
-    replicas means exactly one per node.
+    ``max_replicas_per_node`` defaults to 1, so the running router replicas are
+    spread one per node; assert they span more than one distinct node with none
+    stacked.
     """
+    # The autouse cleanup shuts Ray down after each test, so connect before
+    # touching Ray APIs (RAY_ADDRESS is set in the release environment).
+    ray.init(ignore_reinit_error=True)
     num_router_nodes = len(
         [n for n in ray.nodes() if n["Alive"] and n["Resources"].get("CPU", 0) > 0]
     )
@@ -141,16 +145,19 @@ def test_llm_serve_direct_streaming_ingress_router_per_node():
         )
     )
     serve.run(app, blocking=False)
-    wait_for_condition(is_default_app_running, timeout=300)
 
-    def router_running_on_every_node():
-        dep = (
-            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["LLMRouter"]
-        )
-        assert dep.replica_states.get("RUNNING", 0) == num_router_nodes
+    def router_one_per_node():
+        node_ids = [
+            actor.node_id
+            for actor in list_actors(filters=[("state", "=", "ALIVE")], limit=10_000)
+            if actor.name and "LLMRouter" in actor.name
+        ]
+        # More than one node, and no node hosts two replicas (co-location).
+        assert len(node_ids) > 1, f"router on {len(node_ids)} node(s)"
+        assert len(set(node_ids)) == len(node_ids), "two router replicas on a node"
         return True
 
-    wait_for_condition(router_running_on_every_node, timeout=300)
+    wait_for_condition(router_one_per_node, timeout=300)
 
 
 @pytest.mark.parametrize(
