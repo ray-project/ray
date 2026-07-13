@@ -473,5 +473,32 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert float_value in df["v"].dropna().tolist()
 
 
+def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
+    """`to_pandas()` on an empty dataset must keep the schema's columns.
+
+    Regression test for #59946: an empty Arrow table with columns was converted
+    to a column-less pandas DataFrame because `to_pandas()` builds only from the
+    (zero) batches of an empty dataset and ignored the known schema.
+    """
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([], pa.int32())], ["apples"]))]
+    )
+    df = ds.to_pandas()
+    assert list(df.columns) == ["apples"]
+    assert len(df) == 0
+
+    # Multiple columns are preserved too.
+    ds2 = ray.data.from_arrow_refs(
+        [
+            ray.put(
+                pa.table(
+                    [pa.array([], pa.int32()), pa.array([], pa.string())], ["a", "b"]
+                )
+            )
+        ]
+    )
+    assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
