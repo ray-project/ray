@@ -770,7 +770,7 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
-def run_on_slice(
+def dispatch(
     fn: Any,
     *args: Any,
     topology: Optional[str] = None,
@@ -807,7 +807,7 @@ def run_on_slice(
             ignored otherwise.
         tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
             onto. When provided, the slice is used directly and
-            ``run_on_slice`` does **not** create, modify, or tear down
+            ``dispatch`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
@@ -829,6 +829,8 @@ def run_on_slice(
             Pass the list to ``ray.get`` to retrieve results.
 
     Raises:
+        TypeError: If ``fn`` is not a ``@ray.remote``-decorated function
+            (i.e. it has no ``.options()`` method).
         ValueError: If ``tpu_slice`` is ``None`` and either ``topology`` or
             ``accelerator_version`` is not provided.
         TimeoutError: If the placement group does not become ready within
@@ -842,7 +844,7 @@ def run_on_slice(
         :skipif: True
 
         import ray
-        from ray.util.tpu import run_on_slice, slice_placement_group
+        from ray.util.tpu import dispatch, slice_placement_group
 
         @ray.remote
         def my_tpu_task():
@@ -852,18 +854,24 @@ def run_on_slice(
         # One-shot: reserve a v6e 4x4 slice, run on every host, then
         # release automatically when the driver exits.
         results = ray.get(
-            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
+            dispatch(my_tpu_task, topology="4x4", accelerator_version="v6e")
         )
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
         ray.get(slice_handle.placement_group.ready())
 
-        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    if not hasattr(fn, "options"):
+        raise TypeError(
+            f"fn must be a @ray.remote-decorated function, but got "
+            f"{type(fn).__name__!r} which has no .options() method."
+        )
 
     _owns_slice = tpu_slice is None
     slice_handle = tpu_slice
