@@ -16,6 +16,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
+    handle_num_replicas_per_node,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -662,24 +663,9 @@ def deployment(
 
         ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
     elif num_replicas_per_node:
-        if autoscaling_config not in [DEFAULT.VALUE, None]:
-            raise ValueError(
-                'num_replicas="per_node" is not allowed when autoscaling_config '
-                "is provided."
-            )
-        if gang_scheduling_config not in [DEFAULT.VALUE, None]:
-            raise ValueError(
-                'num_replicas="per_node" is not supported with gang_scheduling_config.'
-            )
-        # One replica per node is enforced by pinning max_replicas_per_node to 1.
-        if max_replicas_per_node in [DEFAULT.VALUE, None]:
-            max_replicas_per_node = 1
-        elif max_replicas_per_node != 1:
-            raise ValueError(
-                'num_replicas="per_node" runs one replica per node, so '
-                "max_replicas_per_node must be unset or 1, got "
-                f"{max_replicas_per_node}."
-            )
+        max_replicas_per_node = handle_num_replicas_per_node(
+            autoscaling_config, gang_scheduling_config, max_replicas_per_node
+        )
         num_replicas = None
 
     # NOTE: The user_configured_option_names should be the first thing that's
