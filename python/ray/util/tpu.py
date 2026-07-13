@@ -1597,8 +1597,6 @@ class SubslicePlacementGroup:
 
 def _try_select_subslice(
     known_slices: List[Tuple[str, Dict[str, Dict[str, str]]]],
-    subslice_index: Optional[int],
-    label_key: str,
     subslice_topology: str,
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
@@ -1608,18 +1606,10 @@ def _try_select_subslice(
     Optional[str],
     Optional[Dict[str, Dict[str, str]]],
 ]:
-    """Search *known_slices* for a subslice that satisfies the request.
-
-    For an explicit ``subslice_index``, returns the first slice that has
-    workers carrying that label (no availability check — the PG will wait).
-    For auto-select (``subslice_index is None``), returns the first idle
-    subslice found using *avail* and *slice_worker_to_node*.
+    """Search *known_slices* for an idle subslice of *subslice_topology*.
 
     Args:
         known_slices: Ordered list of ``(slice_name, worker_labels)`` pairs.
-        subslice_index: Specific subslice index to target, or ``None`` for
-            auto-select.
-        label_key: Full label key for the requested subslice topology.
         subslice_topology: Requested subslice topology string.
         avail: Per-node available resources from
             ``available_resources_per_node()``.
@@ -1628,30 +1618,15 @@ def _try_select_subslice(
 
     Returns:
         ``(target_worker_ids, selected_index, slice_name, worker_labels)``
-        on success, or ``(None, None, None, None)`` if no suitable subslice
+        on success, or ``(None, None, None, None)`` if no idle subslice
         is found.
     """
     for s_name, s_labels in known_slices:
-        if subslice_index is not None:
-            # Specific index: use the first slice that carries workers with
-            # that label. Availability is not checked — the PG will wait for
-            # those workers, consistent with SlicePlacementGroup semantics.
-            candidates = sorted(
-                (
-                    wid
-                    for wid, lbs in s_labels.items()
-                    if lbs.get(label_key) == str(subslice_index)
-                ),
-                key=int,
-            )
-            if candidates:
-                return candidates, subslice_index, s_name, s_labels
-        else:
-            wids, idx = _find_available_subslice(
-                s_name, subslice_topology, s_labels, avail, slice_worker_to_node
-            )
-            if wids is not None:
-                return wids, idx, s_name, s_labels
+        wids, idx = _find_available_subslice(
+            s_name, subslice_topology, s_labels, avail, slice_worker_to_node
+        )
+        if wids is not None:
+            return wids, idx, s_name, s_labels
     return None, None, None, None
 
 
@@ -1850,93 +1825,58 @@ def subslice_placement_group(
             bundle_label_selectors=full_slice.bundle_label_selector,
         )
 
-    # Collect all discovered slices for this parent topology and search for
-    # an available (or specifically-indexed) subslice.
-    label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
+    # Search all discovered slices for an idle subslice.
     known_slices = _collect_known_slice_labels(parent_topology, nodes)
 
-    # For auto-select, pre-build availability snapshots once to avoid redundant
-    # GCS round-trips when iterating multiple known slices. The specific-index
-    # path never checks availability so we skip these calls entirely there.
-    if subslice_index is None:
-        from ray._private.state import available_resources_per_node
+    from ray._private.state import available_resources_per_node
 
-        avail: Dict[str, Dict[str, float]] = available_resources_per_node()
-        slice_worker_to_node: Dict[Tuple[str, str], Any] = {
-            (
-                _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY),
-                _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
-            ): _n
-            for _n in nodes
-            for _nl in [_n.get("Labels", {})]
-            if _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
-            and _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
-        }
-    else:
-        avail = {}
-        slice_worker_to_node = {}
+    avail: Dict[str, Dict[str, float]] = available_resources_per_node()
+    slice_worker_to_node: Dict[Tuple[str, str], Any] = {
+        (
+            _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY),
+            _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
+        ): _n
+        for _n in nodes
+        for _nl in [_n.get("Labels", {})]
+        if _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+        and _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+    }
 
     # First pass: try all currently known slices.
-    target_worker_ids, selected_idx, slice_name, worker_labels = _try_select_subslice(
+    target_worker_ids, subslice_index, slice_name, worker_labels = _try_select_subslice(
         known_slices,
-        subslice_index,
-        label_key,
         subslice_topology,
         avail,
         slice_worker_to_node,
     )
-    if target_worker_ids is not None:
-        subslice_index = selected_idx
-    else:
-        # No known slice satisfied the request. Run coordinated libtpu
+    if target_worker_ids is None:
+        # No known slice had an idle subslice. Run coordinated libtpu
         # discovery on a newly reserved slice.
-        disc_name, disc_labels = _discover_and_persist_subslices(
+        _discover_and_persist_subslices(
             parent_topology, version, chips_per_vm, head_reservation_timeout_s
         )
 
-        # Refresh the availability snapshot — discovery may have blocked while
-        # existing subslice PGs ran to completion — then re-scan ALL known
-        # slices (now including the newly discovered one). A previously
-        # occupied slice may have freed subslices during the wait, and we
-        # should prefer it if it is idle.
-        if subslice_index is None:
-            avail = available_resources_per_node()
+        # Refresh avail and re-scan ALL known slices (now including the newly
+        # discovered one). A previously occupied slice may have freed subslices
+        # while discovery was blocking on the full-slice PG.
+        avail = available_resources_per_node()
         refreshed_slices = _collect_known_slice_labels(parent_topology, nodes)
-        target_worker_ids, selected_idx, slice_name, worker_labels = (
-            _try_select_subslice(
-                refreshed_slices,
-                subslice_index,
-                label_key,
-                subslice_topology,
-                avail,
-                slice_worker_to_node,
-            )
+        (
+            target_worker_ids,
+            subslice_index,
+            slice_name,
+            worker_labels,
+        ) = _try_select_subslice(
+            refreshed_slices,
+            subslice_topology,
+            avail,
+            slice_worker_to_node,
         )
-        if target_worker_ids is not None:
-            subslice_index = selected_idx
-        else:
-            # For explicit-index, report the valid range using the newly
-            # discovered slice as a reference. For auto-select, all slices
-            # are genuinely occupied after the refresh.
-            if subslice_index is not None:
-                max_idx = max(
-                    (
-                        int(lbs.get(label_key, "-1"))
-                        for lbs in disc_labels.values()
-                        if label_key in lbs
-                    ),
-                    default=-1,
-                )
-                raise ValueError(
-                    f"Subslice index {subslice_index} is not valid for "
-                    f"subslice '{subslice_topology}' in slice '{disc_name}'. "
-                    f"Valid indices: 0..{max_idx}."
-                )
-            else:
-                raise RuntimeError(
-                    f"No available subslice of topology '{subslice_topology}' "
-                    f"found in any slice of topology '{parent_topology}'."
-                )
+        if target_worker_ids is None:
+            raise RuntimeError(
+                f"No available subslice of topology '{subslice_topology}' "
+                f"found in any slice of topology '{parent_topology}'."
+            )
 
     # Verify the resolved worker list has the right size. This guards against
     # incomplete discovery data reaching the placement-group creation step.

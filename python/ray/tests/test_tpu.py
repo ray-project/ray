@@ -1551,6 +1551,8 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
     slice_name = "test-slice-basic"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
+    all_free = {f"node_{i}": {"TPU": 4} for i in range(4)}
+
     with (
         patch(
             "ray.util.tpu.reserve_tpu_slice",
@@ -1559,6 +1561,10 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=all_free,
+        ),
     ):
         mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
 
@@ -1566,7 +1572,6 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
             subslice_topology="2x4",
             accelerator_version="v6e",
             chips_per_vm=4,
-            subslice_index=0,
         )
 
         assert sg.parent_topology == "4x4"
@@ -1589,77 +1594,49 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
         sg.shutdown()
 
 
-def test_subslice_placement_group_subslice_index_1(mock_4x4_pgs):
-    """Test requesting subslice index 1 in a 4x4 slice."""
+def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
+    """Auto-select skips a fully-occupied subslice and picks the next idle one.
+
+    Workers 0 and 1 form subslice 0; workers 2 and 3 form subslice 1.
+    With subslice 0 fully busy, auto-select should pick subslice 1.
+    """
     mock_head_pg, mock_worker_pg = mock_4x4_pgs
-    slice_name = "test-slice-sg1"
+    slice_name = "test-slice-skip-busy"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
+    # Pre-populate cache so no discovery is needed.
+    ray.util.tpu._tpu_subslice_cache[slice_name] = {
+        "0": {"ray.io/tpu-subslice-2x4": "0"},
+        "1": {"ray.io/tpu-subslice-2x4": "0"},
+        "2": {"ray.io/tpu-subslice-2x4": "1"},
+        "3": {"ray.io/tpu-subslice-2x4": "1"},
+    }
+
+    # Workers 0 and 1 (subslice 0) fully occupied; workers 2 and 3 idle.
+    avail = {
+        "node_0": {"TPU": 0},
+        "node_1": {"TPU": 0},
+        "node_2": {"TPU": 4},
+        "node_3": {"TPU": 4},
+    }
+
     with (
-        patch(
-            "ray.util.tpu.reserve_tpu_slice",
-            return_value=(slice_name, mock_head_pg),
-        ),
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
         patch("ray.nodes", return_value=dummy_nodes),
-        patch("ray.get") as mock_ray_get,
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
     ):
-        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
-
         sg = ray.util.tpu.subslice_placement_group(
             subslice_topology="2x4",
             accelerator_version="v6e",
             chips_per_vm=4,
-            subslice_index=1,
         )
 
-        # Subslice 1 of 2x4 in 4x4 = workers 2 and 3.
-        assert sg.subslice_index == 1
-        assert sg.num_hosts == 2
-
-        sg.shutdown()
-
-
-def test_subslice_invalid_subslice_index():
-    """Test that an out-of-bounds subslice_index raises a clear error.
-
-    Uses a 2x2 subslice of a 2x4 parent (2 workers, valid indices: 0 and 1).
-    """
-    ray.util.tpu._tpu_subslice_cache.clear()
-
-    # The first two workers of _4X4_MOCK_COORDS have chips consistent with a
-    # 2x4 parent (block_y=2, block_x=2), so we reuse them directly.
-    discovery_results_2w = _4X4_DISCOVERY_RESULTS[:2]
-    dummy_nodes = _make_dummy_nodes("test-slice-invalid-idx", "2x4", 2)
-
-    from ray.util.placement_group import PlacementGroup
-
-    mock_head_pg = MagicMock(spec=PlacementGroup)
-    mock_worker_pg = MagicMock(spec=PlacementGroup)
-    mock_id = MagicMock()
-    mock_id.is_nil.return_value = False
-    mock_worker_pg.id = mock_id
-    mock_worker_pg.bundle_count = 2
-    mock_worker_pg.ready.return_value = "ready_ref"
-
-    with (
-        patch(
-            "ray.util.tpu.reserve_tpu_slice",
-            return_value=("test-slice-invalid-idx", mock_head_pg),
-        ),
-        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
-        patch("ray.nodes", return_value=dummy_nodes),
-        patch("ray.get") as mock_ray_get,
-    ):
-        mock_ray_get.side_effect = [None, discovery_results_2w]
-
-        with pytest.raises(ValueError, match="Subslice index 5 is not valid"):
-            ray.util.tpu.subslice_placement_group(
-                subslice_topology="2x2",
-                accelerator_version="v6e",
-                chips_per_vm=4,
-                subslice_index=5,
-            )
+    assert sg.subslice_index == 1
+    assert sg.num_hosts == 2
+    sg.shutdown()
 
 
 def test_subslice_release_head_pgs_and_shutdown():
@@ -1701,6 +1678,8 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
     slice_name = "test-slice-cache"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
+    all_free = {f"node_{i}": {"TPU": 4} for i in range(4)}
+
     with (
         patch(
             "ray.util.tpu.reserve_tpu_slice",
@@ -1709,6 +1688,10 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=all_free,
+        ),
     ):
         mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
 
@@ -1717,7 +1700,6 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
             subslice_topology="2x4",
             accelerator_version="v6e",
             chips_per_vm=4,
-            subslice_index=0,
         )
         assert mock_reserve.call_count == 1
         sg1.shutdown()
@@ -1729,7 +1711,6 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
             subslice_topology="2x4",
             accelerator_version="v6e",
             chips_per_vm=4,
-            subslice_index=0,
         )
         assert mock_reserve.call_count == 0  # Cache hit — no discovery.
         sg2.shutdown()
