@@ -63,33 +63,6 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
 
 }  // namespace
 
-absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
-  absl::flat_hash_set<ObjectID> result;
-  for (int64_t index = 0; index <= max_index_seen_; index++) {
-    const auto &object_id = GetObjectRefAtIndex(index);
-    if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
-      continue;
-    }
-
-    if (index >= next_index_) {
-      result.emplace(object_id);
-    }
-  }
-
-  if (end_of_stream_index_ != -1) {
-    // End of stream index is never consumed by a caller
-    // so we should add it here.
-    const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
-    result.emplace(object_id);
-  }
-
-  // Temporarily owned refs are not consumed.
-  for (const auto &object_id : temporarily_owned_refs_) {
-    result.emplace(object_id);
-  }
-  return result;
-}
-
 std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
   // Get all unconsumed refs.
   std::vector<ObjectID> unconsumed_ids;
