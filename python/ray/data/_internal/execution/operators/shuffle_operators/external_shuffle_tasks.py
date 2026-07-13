@@ -196,32 +196,33 @@ def _external_shuffle_map_task(
     compression: Optional[str] = None,
     fsync_on_close: bool = True,
 ) -> ShuffleHandle:
-    """Streaming write with a shared, byte-accounted staging pool, sealed
-    via atomic ``rename``.
+    """Map stage: partition input blocks, write them to a single file on the
+    local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
+    byte index + manager endpoint + auth token). Shuffle bytes never enter the
+    Ray object store.
 
-    ``pool_budget_bytes`` bounds both ends of the map:
+    Bounded memory via ``pool_budget_bytes``: post-hash buckets share one
+    staging pool of that size; on overflow the LARGEST bucket is spilled, so
+    peak staging stays independent of partition count M. Input is fed in
+    row-batches so ``partition_fn`` doesn't materialize all M shards at once.
 
-    - **Output**: all post-hash partition buckets share one pool of that
-      size. On overflow the LARGEST bucket is spilled — total staging is
-      bounded independent of the partition count M.
-    - **Input**: ``PartitionFn(Table → Dict[pid, Table])`` materializes all
-      M shards at once (~2× copy of its input), so we feed it in row-batches
-      sized ``pool_budget_bytes / avg_row_bytes`` to keep the transient spike
-      ~pool-bounded. If the whole block already fits the pool, we skip
-      batching.
+    The output file is sealed via atomic ``rename``: writes land in
+    ``map_{i}.shf.tmp``, then flush + optional ``fsync`` + size sanity check
+    against the index, then ``os.rename`` to the published path. Readers see
+    either no file or a complete, size-validated one.
 
-    Net: **map peak ≈ input block + O(pool_budget_bytes)**. Blocking
-    ``f.write`` gives natural OS backpressure on slow disks.
-
-    Sealed via atomic ``rename``: writes go to ``map_{i}.shf.tmp``; after a
-    final ``f.flush()`` + optional ``os.fsync`` + size sanity check against
-    the index, we ``os.rename`` to the published path. Readers therefore
-    see either no file or a complete, size-validated one — catches
-    truncated files earlier than Arrow IPC's per-shard magic would.
-
-    ``fsync_on_close=True`` gives durability against node crash. Readers go
-    through the manager's page-cache-backed sendfile serve, so this sync
-    only matters if node-reboot recovery is later added to the FT model.
+    Args:
+        blocks: Input blocks to partition.
+        partition_fn: Hash partitioner returning ``Dict[pid, Table]``.
+        num_partitions: Total downstream partitions M.
+        out_dir: Directory to write ``map_{i}.shf`` into.
+        map_id: This map task's index.
+        shuffle_id: Unique per-shuffle id; part of the manager's actor name.
+        token: Per-shuffle auth token stamped into the handle.
+        map_op_name: Operator name for telemetry / logs.
+        pool_budget_bytes: Staging pool budget; also bounds row-batch size.
+        compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
+        fsync_on_close: If True, ``fsync`` before rename for durability.
     """
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the manager actor exists (get_if_exists=True → reuse across
@@ -349,23 +350,31 @@ def _external_shuffle_reduce_task(
     map_transformer: Optional[Any] = None,
     map_task_context: Optional[Any] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Fetch one partition's shards and stream ``reduce_fn`` output as
-    ``(block, pickled metadata)`` pairs. Shuffle bytes stay out of the
-    Ray object store — they flow directly from the socket into the
-    reducer's user-space accumulator.
+    """Reduce stage: fetch this partition's shards from every mapper via TCP,
+    run ``reduce_fn`` on the accumulated tables, and yield ``(block, pickled
+    metadata)`` pairs. Shuffle bytes flow directly from the socket into the
+    reducer's user-space accumulator, never entering the Ray object store.
 
     Fetch + decode are pipelined: one thread per ShuffleManager pwrites
     response frames into a shared ``prefetch.bin`` at pre-assigned offsets,
     and this generator mmap-decodes each region as its future completes.
 
-    The reducer always runs in blocking mode — accumulate the partition,
-    reduce once, then finalize. Repartition needs "one partition = one
-    block", so incremental flushing would be dead code. Output is reshaped
-    to ``target_max_block_size`` via ``BlockOutputBuffer`` (a no-op
-    passthrough when ``target_max_block_size`` is None).
+    Always blocking-mode: accumulate the whole partition, reduce once, then
+    finalize. Repartition semantics ("one partition = one block") make
+    incremental flushing dead code. Output is reshaped to
+    ``target_max_block_size`` via ``BlockOutputBuffer`` (no-op when None).
 
-    ``map_transformer`` runs a fused downstream map (typically Write)
-    inline on each emitted block before yielding.
+    Args:
+        handles: One ``ShuffleHandle`` per mapper (single upstream input).
+        partition_id: Partition this reducer owns.
+        reduce_fn: User-supplied reduce callable.
+        prefetch_dir: Directory for the ``prefetch.bin`` sink (None → temp).
+        max_bytes_per_fetch: Per-FETCH-frame payload cap.
+        fetch_threads: Concurrent per-manager fetch threads.
+        target_max_block_size: Output block size cap. None emits as-is.
+        map_transformer: Fused downstream map (typically Write) applied to
+            each output block before yielding, or None.
+        map_task_context: TaskContext for the fused map, or None.
     """
     start_time_s = time.perf_counter()
 
