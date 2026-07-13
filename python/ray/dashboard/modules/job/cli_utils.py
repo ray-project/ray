@@ -14,6 +14,11 @@ _EXCEPTION_SUMMARY_RE = re.compile(
     r"^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*): (.+)$", re.MULTILINE
 )
 
+# Strips an embedded traceback header and everything after it from an exception
+# message, leaving just the human-readable prefix (e.g. "Request failed with
+# status code 400").
+_TRACEBACK_TRAILER_RE = re.compile(r":\s*Traceback \(most recent call last\).*", re.DOTALL)
+
 
 def extract_concise_error_message(message: str) -> str:
     """Extract the innermost exception summary from a chain of nested tracebacks.
@@ -23,12 +28,24 @@ def extract_concise_error_message(message: str) -> str:
     job agent -> job manager forwarding chain, so the real, actionable error is
     the last "ExceptionType: message" line, buried under internal plumbing
     frames. Returns the original message unchanged if no such line is found.
+
+    When the chain has multiple hops, also preserves the context from the
+    immediately enclosing exception (e.g. "Request failed with status code 400")
+    so the output shows both the HTTP status and the root cause in one line.
     """
     matches = _EXCEPTION_SUMMARY_RE.findall(message)
     if not matches:
         return message
     exc_type, exc_message = matches[-1]
-    return f"{exc_type}: {exc_message}"
+    innermost = f"{exc_type}: {exc_message}"
+    if len(matches) < 2:
+        return innermost
+    _, outer_msg = matches[-2]
+    # Strip the embedded traceback so only the human-readable prefix remains.
+    outer_msg = _TRACEBACK_TRAILER_RE.sub("", outer_msg).strip()
+    if not outer_msg:
+        return innermost
+    return f"{outer_msg}: {innermost}"
 
 
 def bool_cast(string: str) -> Union[bool, str]:
