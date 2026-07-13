@@ -2057,7 +2057,7 @@ def test_stats_actor_iter_metrics():
     "split_index_arg, expected_split_label",
     [
         ("3", "split_3"),
-        (None, ""),
+        (None, "no_split"),
     ],
 )
 def test_update_iteration_metrics_exports_new_iter_metrics(
