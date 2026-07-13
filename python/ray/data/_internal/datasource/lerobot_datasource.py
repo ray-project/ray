@@ -27,10 +27,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 import ray
-from ray.data._internal.datasource._lerobot_compat import (
-    decode_frames,
-    new_decoder_cache,
-)
+from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
@@ -619,6 +616,10 @@ class _LeRobotReadTask(ReadTask):
         across batches instead of being reopened. Returns
         ``{video_key: list[np.ndarray HWC uint8]}``.
         """
+        # Imported here, not at module top, so ``import ray.data`` stays
+        # lerobot-free until video is actually decoded on a worker.
+        from lerobot.datasets.video_utils import decode_video_frames_torchcodec
+
         assert root.video_path is not None
         n = batch.num_rows
         ep_idx_col = batch.column("episode_index").to_pylist()
@@ -639,9 +640,9 @@ class _LeRobotReadTask(ReadTask):
                 )
                 row_indices = [r for r, _ in rows_and_ts]
                 timestamps = [t for _, t in rows_and_ts]
-                # decode_frames returns a torch.Tensor (N, C, H, W); lerobot
-                # normalizes to float32 in [0, 1], so we rescale to uint8 below.
-                frames = decode_frames(
+                # lerobot returns a torch.Tensor (N, C, H, W) normalized to
+                # float32 in [0, 1], so we rescale to uint8 below.
+                frames = decode_video_frames_torchcodec(
                     vpath, timestamps, tolerance_s, decoder_cache=cache
                 )
                 # .cpu() before the numpy conversion (a CUDA tensor can't

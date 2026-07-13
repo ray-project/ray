@@ -18,10 +18,7 @@ NOTE(Artur): Once lerobot threads ``storage_options`` natively, remove this.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-if TYPE_CHECKING:
-    import torch
+from typing import Any, Dict, Optional
 
 
 def _creds_cache_cls():
@@ -73,16 +70,3 @@ def new_decoder_cache(storage_options: Optional[Dict[str, Any]] = None):
     from lerobot.datasets.video_utils import VideoDecoderCache
 
     return VideoDecoderCache()
-
-
-def decode_frames(
-    video_path: str,
-    timestamps: List[float],
-    tolerance_s: float,
-    decoder_cache: Any,
-) -> torch.Tensor:
-    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
-
-    return decode_video_frames_torchcodec(
-        video_path, timestamps, tolerance_s, decoder_cache=decoder_cache
-    )

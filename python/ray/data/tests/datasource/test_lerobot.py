@@ -905,16 +905,18 @@ def test_read_lerobot_per_task_row_limit_bounds_decode(
 ):
     """per_task_row_limit caps emitted rows AND stops the read early -- the task
     decodes only ~one batch past the limit, not the whole segment."""
+    from lerobot.datasets import video_utils
+
     from ray.data._internal.datasource import lerobot_datasource as mod
 
     decoded = [0]
-    real = mod.decode_frames
+    real = video_utils.decode_video_frames_torchcodec
 
     def counting_decode(video_path, timestamps, *args, **kwargs):
         decoded[0] += len(timestamps)
         return real(video_path, timestamps, *args, **kwargs)
 
-    monkeypatch.setattr(mod, "decode_frames", counting_decode)
+    monkeypatch.setattr(video_utils, "decode_video_frames_torchcodec", counting_decode)
 
     source = mod.LeRobotDatasource(lerobot_dataset)
     # Force ~2 rows per batch so the early stop is observable.
@@ -1039,18 +1041,17 @@ def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
     decodes through fsspec and closes every file handle it opened on clear() --
     lerobot's base cache leaks a file descriptor per video file. Exercised on a
     local mp4; no S3 needed."""
-    from ray.data._internal.datasource._lerobot_compat import (
-        decode_frames,
-        new_decoder_cache,
-    )
+    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
+
+    from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
 
     video = str(tmp_path / "videos" / "v.mp4")
     _create_video(video, num_frames=5)
 
     # Non-empty storage_options selects the credentialed (handle-closing) cache.
     cache = new_decoder_cache({"anon": True})
-    frames = decode_frames(
-        video, [0.0, 1.0 / FPS], tolerance_s=1.0 / FPS, decoder_cache=cache
+    frames = decode_video_frames_torchcodec(
+        video, [0.0, 1.0 / FPS], 1.0 / FPS, decoder_cache=cache
     )
     assert frames.shape[0] == 2  # decoded two frames through the creds cache
 
