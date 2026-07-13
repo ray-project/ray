@@ -77,16 +77,21 @@ class DashboardHeadRayEventPublisher:
             )
             return
         except requests.HTTPError as e:
-            # Keep the buffer on server errors (transient); drop it when the
-            # dashboard rejected the request (4xx).
+            # Keep the buffer on server errors (transient); drop the sent batch
+            # when the dashboard rejected the request (4xx).
             status = e.response.status_code if e.response is not None else None
             if status is not None and status < 500:
-                self._pending.clear()
+                self._drop_sent(len(pending))
             raise
         except Exception:
-            self._pending.clear()
+            self._drop_sent(len(pending))
             raise
-        self._pending.clear()
+        self._drop_sent(len(pending))
+
+    def _drop_sent(self, count: int) -> None:
+        # Only drop what was sent; events appended concurrently stay buffered.
+        for _ in range(min(count, len(self._pending))):
+            self._pending.popleft()
 
     def _do_publish(self, events: List[RayEvent]) -> None:
         response = self._session.post(
