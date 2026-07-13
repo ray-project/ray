@@ -211,7 +211,11 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
-  object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
+  // If this node move-freed the object as a producer, tag the REMOVED update so
+  // the owner fires the "freed on producer" callback (fire-once: erase here).
+  const bool freed_by_move = move_freed_object_ids_.erase(object_id) > 0;
+  object_directory_->ReportObjectRemoved(
+      object_id, self_node_id_, object_info, freed_by_move);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
   // it was needed by an active pull request.
@@ -553,6 +557,12 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                         const bool success = !it->second.failed;
                         const bool chunk_is_move = it->second.is_move;
                         push_ack_tracking_.erase(it);
+                        if (success && chunk_is_move) {
+                          // The producer will free its copy (on_push_complete_
+                          // below). Remember so HandleObjectDeleted tags the
+                          // eventual REMOVED update as a move free.
+                          move_freed_object_ids_.insert(object_id);
+                        }
                         if (success && on_push_complete_) {
                           on_push_complete_(object_id, node_id, chunk_is_move);
                         }
@@ -672,17 +682,16 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
     // producer keeps its copy and the move falls back to a normal copy.
     main_service_->post(
         [this, object_id, owner_address, send_reply_callback]() {
-          const bool pinned =
-              on_moved_object_received_ &&
-              on_moved_object_received_(object_id, owner_address);
+          const bool pinned = on_moved_object_received_ &&
+                              on_moved_object_received_(object_id, owner_address);
           // Release the buffer-pool create-reference now that the pin holds its
           // own reference (or, on failure, so the sealed copy can be reclaimed).
           buffer_pool_.ReleaseObject(object_id);
-          send_reply_callback(
-              pinned ? Status::OK()
-                     : Status::IOError("move-semantics consumer pin failed"),
-              nullptr,
-              nullptr);
+          send_reply_callback(pinned
+                                  ? Status::OK()
+                                  : Status::IOError("move-semantics consumer pin failed"),
+                              nullptr,
+                              nullptr);
         },
         "ObjectManager.MovePinAndAck");
     return;
@@ -730,8 +739,12 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // Avoid handling this chunk if it's already being handled by another process.
     // For a move push, defer the buffer-pool release so the sealed object stays
     // pinned (refcount>0) until the consumer pins it — see HandlePush.
-    *object_sealed = buffer_pool_.WriteChunk(
-        object_id, data_size, metadata_size, chunk_index, data, /*defer_release=*/is_move);
+    *object_sealed = buffer_pool_.WriteChunk(object_id,
+                                             data_size,
+                                             metadata_size,
+                                             chunk_index,
+                                             data,
+                                             /*defer_release=*/is_move);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;

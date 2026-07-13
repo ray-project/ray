@@ -143,7 +143,8 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
 
 void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                         const NodeID &node_id,
-                                                        const ObjectInfo &object_info) {
+                                                        const ObjectInfo &object_info,
+                                                        bool freed_by_move) {
   const WorkerID &worker_id = object_info.owner_worker_id;
   const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
   auto owner_client = GetClient(owner_address);
@@ -158,6 +159,12 @@ void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_i
   rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
   update.set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::REMOVED);
+  if (freed_by_move) {
+    // Plasma move semantics: this node physically freed its copy after moving
+    // the object elsewhere. Rides the same update as REMOVED so the owner can
+    // fire the "freed on producer" callback.
+    update.set_freed_on_producer_node_id(node_id.Binary());
+  }
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }

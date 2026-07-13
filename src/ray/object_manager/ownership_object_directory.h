@@ -67,7 +67,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// This method guarantees ordering and batches requests.
   void ReportObjectRemoved(const ObjectID &object_id,
                            const NodeID &node_id,
-                           const ObjectInfo &object_info) override;
+                           const ObjectInfo &object_info,
+                           bool freed_by_move = false) override;
 
   void ReportObjectSpilled(const ObjectID &object_id,
                            const NodeID &node_id,

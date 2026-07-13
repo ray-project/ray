@@ -47,7 +47,8 @@ class MockObjectDirectory : public IObjectDirectory {
               ReportObjectRemoved,
               (const ObjectID &object_id,
                const NodeID &node_id,
-               const ObjectInfo &object_info),
+               const ObjectInfo &object_info,
+               bool freed_by_move),
               (override));
 
   MOCK_METHOD(void,

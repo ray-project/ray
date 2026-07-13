@@ -89,9 +89,14 @@ class IObjectDirectory {
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
+  /// \param freed_by_move If true, this removal is a plasma move-semantics
+  /// producer free (this node pushed the object elsewhere and then deleted its
+  /// copy); the update additionally carries freed_on_producer_node_id so the
+  /// owner can fire the "freed on producer" callback.
   virtual void ReportObjectRemoved(const ObjectID &object_id,
                                    const NodeID &node_id,
-                                   const ObjectInfo &object_info) = 0;
+                                   const ObjectInfo &object_info,
+                                   bool freed_by_move = false) = 0;
 
   /// Report object spilled to external storage.
   ///

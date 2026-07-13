@@ -907,6 +907,35 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
   return true;
 }
 
+bool ReferenceCounter::AddObjectFreedOnProducerCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  if (it->second.freed_on_producer) {
+    // The producer already freed its copy; the notification will never fire
+    // again for this object.
+    return false;
+  }
+  it->second.on_object_freed_on_producer_callbacks.emplace_back(callback);
+  return true;
+}
+
+void ReferenceCounter::OnObjectFreedOnProducer(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return;
+  }
+  it->second.freed_on_producer = true;
+  for (const auto &callback : it->second.on_object_freed_on_producer_callbacks) {
+    callback(object_id);
+  }
+  it->second.on_object_freed_on_producer_callbacks.clear();
+}
+
 void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {

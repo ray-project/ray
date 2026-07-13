@@ -31,6 +31,8 @@ The implementation has been **redesigned** (§7): the producer→consumer `MoveC
 
 **One correctness gap is knowingly left OPEN:** the consumer-dies-before-the-owner-learns race — full description + candidate fixes in **§5 item 1**.
 
+**Next feature (PLANNED, not started):** a "producer physically freed" callback so Ray Data admits the next producer task at the real physical-free moment (M2) instead of Justin's premature submit-time simulation — full design + flow chart in **§8**.
+
 Prior state (2026-07-07):
 
 - Branch tip is the doc commit on top of Fix B (`9d54998e07`) + Fix A (`f3439cbe69`) + Baseline (`dfb6b8407c`), sitting on top of `origin/master` at `e002fae45f`.
@@ -549,3 +551,97 @@ The producer released its copy on push-*completion*, but a completed push does n
 The redesign closes the eviction-before-pin window, but it does **not** close one correctness gap: if the consumer dies *after* pinning but *before* its **batched** `ReportObjectPrimaryMoved` reaches the owner, the owner's `pinned_at_node_id_` stays on the freed-but-alive producer, so lineage reconstruction never fires → permanent `ObjectFetchTimedOutError`. The producer now releases only once the consumer is *pinned*, but not once the owner *knows*.
 
 Full description, why it's permanent, and the candidate fixes live in the single "what's left" list: **§5 item 1**. (It supersedes the pre-redesign "consumer dies before pinning" race, which the gated ack closes.)
+
+---
+
+## 8. Planned: Ray Data backpressure integration — "producer physically freed" callback
+
+**Status: PLANNED, not implemented.** Design agreed 2026-07-13. Spans two repos (core in `~/ray`, Ray Data wiring in `~/rayturbo`).
+
+### 8.1 Goal & the problem being fixed
+
+Move semantics frees the producer's copy the moment the object is handed off, so the producer's output-buffer slot opens up *earlier* than under the copy-based baseline (which holds the producer copy until the object is fully consumed downstream, refcount→0). We want Ray Data to admit the next producer task as soon as that slot is genuinely free — **but not before the bytes are physically gone**, or peak memory regresses.
+
+Justin's `RAY_DATA_MOVE_SEMANTIC` flag (rayturbo `resource_bank.py`) forces `is_cross_node_transfer()→False`, an optimistic **submit-time** simulation: it relaxes the producer's accounted footprint when the task is *dispatched*, before the move has actually happened. Result: the producer admits new work while its copy is still resident and the move is in flight → **peak memory higher than baseline**. We replace that simulation with a signal tied to the *real* physical free.
+
+### 8.2 The trigger: producer physical free (M2), not logical free (M1)
+
+Two producer-side moments (see §1 "How the producer's copy actually leaves plasma"):
+- **M1 (logical):** `ReleaseFreedLocalObject` runs in `on_push_complete_` — marks freed, unpins, enqueues for deletion. **Bytes still resident.**
+- **M2 (physical):** flush → plasma `Delete` → `HandleObjectDeleted`/`HandleObjectMissing`. **Bytes reclaimed.** ← fire here.
+
+We fire on **M2**. Firing on M1 (or earlier, like Justin's submit-time) lets the producer's not-yet-reclaimed bytes overlap the next task's output.
+
+### 8.3 End-to-end flow (new pieces marked ★)
+
+```
+PRODUCER raylet (ObjectManager)   OWNER core worker (= Ray Data driver)        RAY DATA (rayturbo)
+───────────────────────────────   ─────────────────────────────────────       ───────────────────
+on_push_complete_(obj, node, is_move)                            ── on_block_produced() earlier had:
+  │  if is_move:                                                    ★ add_object_freed_on_producer_
+  ├─ ReleaseFreedLocalObject(obj)   (mark freed, unpin, enqueue)       callback(block_ref, cb)
+  └─ ★ move_freed_object_ids_.insert(obj)                              registered on the driver
+  ▼
+FlushFreeObjects → plasma Delete
+  │
+  ▼  M2: plasma physically deletes → delete_object_callback (main.cc:812)
+HandleObjectDeleted(obj)          ← the ONLY hook we touch
+  │                                 (HandleObjectMissing also fires here — untouched)
+  └─ ReportObjectRemoved(obj, self_node, object_info,
+     │                   ★ freed_by_move = move_freed_object_ids_.erase(obj) > 0)
+     │      stages ONE ObjectLocationUpdate:
+     │        plasma_location_update      = REMOVED           (existing)
+     │        ★ freed_on_producer_node_id = self_node         (new — set iff freed_by_move)
+     └────────── batched UpdateObjectLocationBatch RPC ──────────►
+                                                 │
+                                                 ▼
+                                    HandleUpdateObjectLocationBatch
+                                    ★ if has_freed_on_producer_node_id():
+                                        reference_counter_->OnObjectFreedOnProducer(obj)
+                                                 │  fire + clear per-object cbs (fire-once),
+                                                 │  posted on object_freed_callback_service_
+                                                 ▼
+                                    ★ _invoke_object_freed_on_producer_callback(id_bytes)
+                                                 └──────────────────────────►  cb(id_bytes):
+                                                                                 ★ _consumed_refs
+                                                                                    .append(id.hex())
+                                                                                      │
+                                                                    (executor thread) ▼
+                                                                    drain_consumed_blocks →
+                                                                    stats.on_block_consumed →
+                                                                    producer output-byte budget --
+                                                                                      │
+                                                                                      ▼
+                                                                    PER_ACTOR_OUTPUT_BYTES budget
+                                                                    frees → pool admits next task
+                                                                    to this producer actor
+```
+
+Note: at M2 the delete callback (`main.cc:812`) fires **both** `HandleObjectDeleted` (ObjectManager) and `HandleObjectMissing` (NodeManager) — that's existing Ray code. We only touch `HandleObjectDeleted`, which *already* sends the `REMOVED` update; we just set one extra flag on it. `is_move` is known on the producer via `push_ack_tracking_`, so ObjectManager records the move-freed ids itself — no NodeManager map, no separate RPC, no owner-address plumbing (`ReportObjectRemoved` already resolves the owner from `object_info`).
+
+Contrast of *when the producer's output-byte budget is released*:
+
+```
+Justin's flag (simulate):   at task SUBMIT          ── too early → peak memory ↑
+baseline out-of-scope cb:   at refcount→0 (fully consumed downstream) ── too late → lose the win
+★ this plan:                at M2 (producer PHYSICAL free)            ── correct
+```
+
+### 8.4 Implementation parts
+
+**Core (`~/ray`, this branch)** — a new per-object callback mirroring `add_object_out_of_scope_callback` exactly. The producer→owner signal rides the **existing** REMOVED update (one hook, one flag), not a new RPC:
+1. `core_worker.proto`: `optional bytes freed_on_producer_node_id = 6` on `ObjectLocationUpdate` (sibling of `primary_moved_to_node_id`).
+2. `object_manager.{h,cc}`: `move_freed_object_ids_` set on ObjectManager; insert in the `on_push_complete_` firing path when `is_move` (the flag is already in `push_ack_tracking_`). In `HandleObjectDeleted`, `move_freed_object_ids_.erase(obj) > 0` gives `freed_by_move`, passed to `ReportObjectRemoved`. Only the move path populates the set → no false positives from evictions / owner-driven final frees. `HandleObjectMissing` is **not** touched.
+3. `object_directory.h` + `ownership_object_directory.{h,cc}` + mock: add `bool freed_by_move` param to `ReportObjectRemoved`; when true it also sets `freed_on_producer_node_id = node_id` on the same staged `ObjectLocationUpdate` it already builds for REMOVED.
+4. `core_worker.cc` `HandleUpdateObjectLocationBatch`: on `has_freed_on_producer_node_id()` → `reference_counter_->OnObjectFreedOnProducer(obj)`.
+5. `reference_counter.{h,cc}`: `on_object_freed_on_producer_callbacks` + `AddObjectFreedOnProducerCallback` (returns false if already fired; track a bool) + `OnObjectFreedOnProducer` (fire-once).
+6. `core_worker.{h,cc}`: wrapper posting to the existing `object_freed_callback_service_`.
+7. `libcoreworker.pxd` + `_raylet.pyx`: `add_object_freed_on_producer_callback(object_ref, callback)` (+ GIL/Py_INCREF wrapper).
+
+**Ray Data (`~/rayturbo`)**:
+8. `resource_bank.py` `on_new_output`: when move semantics on, register the core callback; `cb(id_bytes)` appends `id_bytes.hex()` to `_consumed_refs` (the buffer `on_block_consumed` already drains). Idempotent vs. the later downstream `on_block_consumed` (unknown-ref skip in `drain_consumed_blocks`); thread-safe (that path is built for off-executor-thread calls).
+9. Remove Justin's `is_cross_node_transfer→False` simulation.
+
+### 8.5 Open question to validate during 8.4 step 8
+
+Popping the ref from `live_block_refs` at M2 means the object's existence on the *consumer* node isn't counted in the M2→downstream-consume window. Confirm that's either correct (the consumer op accounts it as its own input) or display-only — not a second admission gate that would then under-count.
