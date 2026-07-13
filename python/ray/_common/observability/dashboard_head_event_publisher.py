@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List, Optional
+from collections import deque
+from typing import Deque, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_S = 1
 _EXTERNAL_RAY_EVENTS_PATH = "/api/v0/external/ray_events"
+# Max events buffered while the dashboard is unreachable; oldest are dropped.
+_MAX_BUFFERED_EVENTS = 10000
 
 
 @DeveloperAPI
@@ -49,25 +52,35 @@ class DashboardHeadRayEventPublisher:
                 token = f"Bearer {auth_token}"
             self._headers["Authorization"] = token
         self._session = session or requests.Session()
+        # Events waiting to be published, e.g. emitted before the dashboard is up.
+        self._pending: Deque[RayEvent] = deque(maxlen=_MAX_BUFFERED_EVENTS)
 
     def publish(self, event: RayEvent) -> None:
         self.publish_batch([event])
 
     def publish_batch(self, events: List[RayEvent]) -> None:
-        if not events:
+        self._pending.extend(events)
+        if not self._pending:
             return
+        pending = list(self._pending)
         try:
-            self._do_publish(events)
-        except requests.ConnectionError:
-            if self._gcs_client is None:
-                raise
+            self._do_publish(pending)
+        except (requests.ConnectionError, requests.Timeout, RuntimeError) as e:
+            # Dashboard is not reachable (yet); keep events buffered and retry
+            # on the next publish.
+            if self._gcs_client is not None:
+                self._dashboard_url = None
             logger.warning(
-                "Connection to dashboard failed (url=%s). "
-                "Clearing cached URL and retrying.",
-                self._dashboard_url,
+                "Failed to publish to the dashboard, buffering %d event(s): %s",
+                len(self._pending),
+                e,
             )
-            self._dashboard_url = None
-            self._do_publish(events)
+            return
+        except Exception:
+            # Dashboard responded but rejected the request; drop the batch.
+            self._pending.clear()
+            raise
+        self._pending.clear()
 
     def _do_publish(self, events: List[RayEvent]) -> None:
         response = self._session.post(
@@ -86,7 +99,7 @@ class DashboardHeadRayEventPublisher:
                 response.status_code, response.text
             )
             if error is not None:
-                raise RuntimeError(error)
+                raise requests.HTTPError(error, response=response)
         response.raise_for_status()
 
     def _build_headers(self) -> Dict[str, str]:
