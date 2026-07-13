@@ -88,38 +88,14 @@ _STATUS_NOT_FOUND = 0x03  # path doesn't exist on disk
 _STATUS_READ_ERR = 0x04  # IO error reading file content
 _STATUS_PROTOCOL_ERR = 0x05  # malformed frame / unknown opcode / etc.
 
-# The response frame encodes each range's payload length as u32 (see
-# "Response frame" block above), so no single range/IPC frame may exceed
-# 4 GiB - 1. Checked at mapper write time so an oversized IPC buffer fails
-# the mapper task at its origin, not deep in a reducer fetch.
+# The response frame encodes each range's payload length as u32,
+# so no single range/IPC frame may exceed 4 GiB - 1.
+# Checked at mapper write time so an oversized IPC buffer fails
+# at the mapper task
 _MAX_RANGE_BYTES: int = (1 << 32) - 1
 
 
 # ----------------------------------------------------------------- Arrow IPC
-def _ipc_buffer(table: pa.Table, compression: Optional[str] = None) -> pa.Buffer:
-    """Serialize an Arrow ``Table`` to an IPC stream and return the result as
-    a zero-copy ``pa.Buffer``.
-
-    combine_chunks() helps compression
-
-    Compression is applied per RecordBatch via Arrow IPC's built-in codec
-    flag; the resulting stream still has the standard continuation + schema
-    + EOS framing, so format-level corruption detection (``_read_ipc``
-    raising ``ArrowInvalid``) is preserved. The reader auto-detects
-    compression from stream metadata — no caller coordination needed
-    beyond the writer.
-    """
-    if table.num_columns > 0:
-        table = table.combine_chunks()
-    sink = pa.BufferOutputStream()
-    write_opts = (
-        pa.ipc.IpcWriteOptions(compression=compression) if compression else None
-    )
-    with pa.ipc.new_stream(sink, table.schema, options=write_opts) as w:
-        w.write_table(table)
-    return sink.getvalue()
-
-
 def _read_ipc(buf: Union[bytes, "pa.Buffer", memoryview]) -> pa.Table:
     """Decode an IPC stream from bytes or a pa.Buffer view (e.g. mmap).
 
@@ -237,13 +213,11 @@ def _drop_pagecache(fd: int, offset: int, length: int) -> None:
         pass
 
 
-# Fetch helper class used by reducer tasks
+# Fetch helper class used by file server actor
 class _FetchHandler(socketserver.StreamRequestHandler):
-    """Per-connection handler implementing the v1 wire protocol.
-
-    Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
+    """ Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
     Each FETCH can carry multiple source paths, so a reducer with N sources on
-    this node pays only one TCP round-trip's worth of handshake/setup overhead
+    this node pays only one TCP round-trip handshake/setup overhead
     """
     def handle(self):
         srv = self.server
@@ -303,8 +277,7 @@ class _FetchHandler(socketserver.StreamRequestHandler):
             if not real.startswith(srv.base_dir):
                 # Drain the rest of the request before answering so the socket
                 # remains in a well-defined state for future FETCHes on this
-                # connection (the client's protocol contract is "send full
-                # request, then read full response").
+                # connection
                 self._drain_remaining_sources(
                     sock, remaining_source_count=num_sources - len(requests)
                 )
@@ -324,7 +297,6 @@ class _FetchHandler(socketserver.StreamRequestHandler):
         # Zero-copy serve via os.sendfile: validate every file + range FIRST so
         # a missing file / bad range still produces an error status before we
         # commit _STATUS_OK; then os.sendfile each range in REQUEST order
-        # (client maps positionally).
         files = []
         try:
             for path, ranges in requests:
@@ -355,11 +327,7 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                     sock.sendall(struct.pack(">I", length))
                     _sendfile_all(sock, fd, off, length)
                     # Drop these pages from the page cache: hash-shuffle
-                    # ranges are typically read once per reducer, and same-
-                    # node reducers concurrently pwrite their own
-                    # ``prefetch.bin`` -- without this hint the just-served
-                    # (hot in LRU) ranges would evict the reducer's
-                    # incoming data. See _drop_pagecache.
+                    # ranges are typically read once per reducer
                     _drop_pagecache(fd, off, length)
                     srv.bytes_served += length
         finally:
@@ -403,10 +371,7 @@ class _ThreadingServer(socketserver.ThreadingTCPServer):
     request_queue_size = 256
 
 
-# ShuffleManager actor identity. Name is deterministic in
-# (shuffle_id, node_id), so any process can rebuild it from a handle
-# dict and ``ray.get_actor`` — no ActorHandle travels through the
-# map→reduce plumbing.
+# ShuffleManager actor identity. Name is deterministic in (shuffle_id, node_id)
 _SHUFFLE_MANAGER_NAMESPACE = "ray_data_shuffle_external"
 
 
@@ -694,7 +659,7 @@ def open_shuffle_connection(
     endpoint: Tuple[str, int],
     token: str,
 ) -> _ShuffleConnection:
-    """Open a TCP connection to ``endpoint`` and complete the v1 handshake.
+    """Open a TCP connection to ``endpoint`` and complete the handshake.
 
     Raises ``PermissionError`` on auth failure, ``ConnectionError`` if the
     server isn't reachable, ``RuntimeError`` on protocol errors.
@@ -883,18 +848,14 @@ def _is_node_alive(node_id: str) -> Optional[bool]:
 
 
 # Process-global cache of ShuffleManager endpoints: {actor_name: (ip, port)}.
-# Repopulated after actor respawn (retry loop pops the stale entry — see
-# ``_prefetch_node_into``). Concurrent read/write from multiple fetch
-# threads relies on individual dict operations being atomic under
-# CPython's GIL; if this module ever runs on a GIL-free interpreter,
-# wrap accesses in a ``threading.Lock``.
+# Stale entries are popped by ``_prefetch_node_into`` on retry. The lock
+# guards concurrent access from reducer fetch threads.
 _ENDPOINT_CACHE: Dict[str, Tuple[str, int]] = {}
+_ENDPOINT_CACHE_LOCK = threading.Lock()
 
 # --------------------------------------------------------- fetch routing types
-# Named containers replace the anonymous tuples the reducer used to thread
-# through fetch orchestration. Read via attribute access (``group.manager``)
-# instead of positional indexing (``group[0]``). ``slots=True`` keeps memory
-# footprint on par with the tuples they replace.
+# Named containers for reducer fetch orchestration. ``slots=True`` keeps
+# per-instance memory small since we allocate one per source/group/member.
 
 
 @dataclass(slots=True, frozen=True)
@@ -1010,7 +971,8 @@ def _handle_transient_fetch_error(
     # next attempt (server re-sends the same bytes), so rewind the sink
     # so subsequent writes don't overrun into the next fetch group's region.
     out_file_obj.reset()
-    _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
+    with _ENDPOINT_CACHE_LOCK:
+        _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
 
     if _is_node_alive(node_id) is False:
         raise ShuffleNodeLostError(
@@ -1041,44 +1003,32 @@ def _prefetch_node_into(
     members: List[_NodeMember],
     max_bytes_per_fetch: int,
 ) -> None:
-    """Open ONE keep-alive connection to the manager's endpoint and stream
-    every member's shards into ``out_file_obj`` via 1+ multi-source FETCH
-    frames, each bounded by ``max_bytes_per_fetch``.
+    """Stream every member's shards into ``out_file_obj`` over ONE keep-alive
+    connection, chunked into multi-source FETCH frames of
+    ≤ ``max_bytes_per_fetch``.
 
-    Manager is located via named-actor lookup (``_lookup_manager``).
-    Endpoint is resolved via ``manager.endpoint.remote()`` — survives a
-    ShuffleManager restart on a new port.
-
-    Retry policy: wait in place across transient failures (TCP break,
-    actor restarting) at a fixed ``_FETCH_RETRY_INTERVAL_S`` cadence
-    up to ``_FETCH_RETRY_DEADLINE_S``. We escalate only when a verdict
-    lands:
-    - Node confirmed dead → ``ShuffleNodeLostError``.
+    Retry policy: transient failures (TCP break, actor restarting) sleep
+    ``_FETCH_RETRY_INTERVAL_S`` and retry in place, up to
+    ``_FETCH_RETRY_DEADLINE_S``. Escalation only on a hard verdict:
+    - Source node confirmed dead → ``ShuffleNodeLostError``.
     - Actor confirmed dead on a live node → ``ShuffleManagerAnomalyError``.
-    - Retry deadline exhausted → ``ShuffleFetchError`` with total wait
-      diagnostics.
+    - Retry deadline exhausted → ``ShuffleFetchError``.
     """
 
     def _resolve() -> Tuple[str, int]:
         # Process-global cache: a manager's (ip, port) is stable for its
-        # lifetime, so this avoids a blocking ``ray.get`` actor round-trip per
-        # node per task. That round-trip also released the task's CPU (Ray frees
-        # the slot during a blocking get), which oversubscribed nodes; caching
-        # removes both costs. No force-refresh path: if the manager restarts
-        # on a new port mid-task, the cached endpoint goes stale and the
-        # connect fails downstream; recovery is via Ray task retry (which
-        # starts a fresh worker with an empty cache), not in-task re-resolve.
+        # lifetime, so we avoid a blocking ``ray.get`` per node per task.
+        # Staleness (manager restarted on a new port) is caught downstream
+        # at connect time and cleared by ``_handle_transient_fetch_error``.
         key = _manager_name(shuffle_id, node_id)
-        ep = _ENDPOINT_CACHE.get(key)
+        with _ENDPOINT_CACHE_LOCK:
+            ep = _ENDPOINT_CACHE.get(key)
         if ep is not None:
             return ep
         manager = _lookup_manager(shuffle_id, node_id)
         # Bounded wait: manager is NodeAffinity-pinned (soft=False) with
         # max_restarts=-1, so if the node dies the actor stays PENDING forever
-        # and a naked ``ray.get`` hangs indefinitely. ``ray.wait`` bails out
-        # after 60s so we can probe node liveness. 60s comfortably absorbs a
-        # same-node actor restart (seconds) yet still converts a node-death
-        # hang into a typed error in bounded time.
+        # and a naked ``ray.get`` hangs indefinitely.
         ref = manager.endpoint.remote()
         ready, _ = ray.wait([ref], timeout=60)
         if not ready:
@@ -1095,7 +1045,8 @@ def _prefetch_node_into(
                 node_id, exc=e, context="ActorDiedError resolving endpoint",
                 num_sources=len(members),
             )
-        _ENDPOINT_CACHE[key] = ep
+        with _ENDPOINT_CACHE_LOCK:
+            _ENDPOINT_CACHE[key] = ep
         return ep
 
     deadline = time.monotonic() + _FETCH_RETRY_DEADLINE_S
@@ -1179,11 +1130,6 @@ def _handles_to_sources(
 
     Skips handles that produced zero bytes for this partition. Also picks
     the first non-None output schema (for the empty-partition fallback).
-
-    ``node_id`` may be missing on handles produced before that field was
-    added — fall back to "" so ``_is_node_alive`` returns None
-    ("inconclusive"), preserving pre-existing ShuffleFetchError semantics
-    instead of ever raising a false-positive node-lost error.
     """
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None

@@ -49,11 +49,14 @@ from ray.data.block import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-# ReduceFn/PartitionFn are shared with the in-memory variant. External is
-# single-input, so ReduceFn's outer list always has length 1.
+# ReduceFn/PartitionFn and the IPC encode helpers _encode_partition_ipc/_ipc_write_options)
+# are shared with the in-memory variant.
+# External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
     PartitionFn,
     ReduceFn,
+    _encode_partition_ipc,
+    _ipc_write_options,
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _MAX_RANGE_BYTES,
@@ -62,7 +65,6 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _drop_pagecache,
     _group_by_manager,
     _handles_to_sources,
-    _ipc_buffer,
     _is_disk_exhausted,
     _manager_name,
     _prefetch_node_into,
@@ -97,7 +99,7 @@ class _PartitionSpillWriter:
         "_f",
         "_map_id",
         "_pool_budget_bytes",
-        "_compression",
+        "_ipc_write_options",
         "_staging",
         "_staging_bytes",
         "_index",
@@ -115,7 +117,7 @@ class _PartitionSpillWriter:
         self._f = f
         self._map_id = map_id
         self._pool_budget_bytes = pool_budget_bytes
-        self._compression = compression
+        self._ipc_write_options = _ipc_write_options(compression)
         self._staging: Dict[int, List[pa.Table]] = {}
         self._staging_bytes: Dict[int, int] = {}
         self._index: Dict[int, List[Tuple[int, int]]] = {}
@@ -134,7 +136,7 @@ class _PartitionSpillWriter:
         self._decoded_bytes_per_partition[pid] = (
             self._decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
         )
-        buf = _ipc_buffer(tbl, compression=self._compression)
+        buf = _encode_partition_ipc(tbl, self._ipc_write_options)
         # Refuse frames the u32 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
