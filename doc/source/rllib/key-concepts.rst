@@ -1,3 +1,6 @@
+.. meta::
+   :description: Core RLlib architecture: the Algorithm, AlgorithmConfig, EnvRunner actors for sampling, Learner actors for updates, and RLModule models.
+
 .. _rllib-key-concepts:
 
 Key concepts

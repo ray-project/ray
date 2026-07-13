@@ -176,11 +176,6 @@ class ObjectRefStream {
    */
   void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
-  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
-  ///
-  /// \return A list of object IDs that are not read yet.
-  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
-
   /// Pop all ObjectIDs that are not read yet via
   /// TryReadNextItem.
   ///
