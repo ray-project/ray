@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -442,367 +443,375 @@ def _build_root(
     return root_bundle, episodes_table
 
 
-class _LeRobotReadTask(ReadTask):
-    """A Ray Data read task covering one or more contiguous row segments.
+def _build_lerobot_read_task(
+    segments: List[tuple],
+    roots: List[_LeRobotRoot],
+    roots_ref: "ray.ObjectRef",
+    episodes: List[pa.Table],
+    max_block_bytes: int,
+    per_task_row_limit: Optional[int] = None,
+) -> ReadTask:
+    """Plan one read task on the driver and wrap it as a parameterized read
+    function.
 
-    Each segment is a ``(root_index, start, end)`` triple referencing a
-    contiguous row range within one root of :class:`LeRobotDatasource`.
+    Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
+    row range within one root. ``roots`` (slim per-root constants) is used here
+    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
+    function fetches it once. ``episodes`` is the driver-side list of projected
+    episode tables, used here only to cut each segment's slice -- it is NOT
+    shipped; only the per-segment slice travels with the task.
+    """
+    total_rows = 0
+    size_bytes = 0
+    all_input_files: List[str] = []
+    resolved: List[tuple] = []
+    for root_idx, start, end in segments:
+        root = roots[root_idx]
+        eps = episodes[root_idx]
+        start_ep, end_ep = _episodes_for_row_range(eps, start, end)
+        # combine_chunks() materializes a standalone copy of just this slice,
+        # so pyarrow ships only it -- not a view into the whole table buffer.
+        ep_slice = eps.slice(start_ep, end_ep - start_ep).combine_chunks()
+        parquet_segs, video_segs = _resolve_paths(root, ep_slice)
+        all_input_files.extend(parquet_segs)
+        all_input_files.extend(video_segs)
+        total_rows += end - start
+        size_bytes += (end - start) * root.row_size_bytes
+        resolved.append((root_idx, start, end, parquet_segs, ep_slice))
+
+    schema = roots[segments[0][0]].schema
+    block_metadata = BlockMetadata(
+        num_rows=total_rows,
+        size_bytes=size_bytes,
+        input_files=all_input_files,
+        exec_stats=None,
+    )
+    read_fn = functools.partial(
+        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+    )
+    return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
+
+
+def _read_lerobot_task(
+    roots_ref: "ray.ObjectRef",
+    segments_resolved: List[tuple],
+    max_block_bytes: int,
+) -> Iterator[pa.Table]:
+    """Stream decoded rows as Arrow tables, iterating over all segments.
+
+    Runs on a worker: fetches the shared slim per-root state once, then reads
+    each pre-resolved segment.
+    """
+    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
+        yield from _read_lerobot_segment(
+            roots[root_idx],
+            start,
+            end,
+            root_idx,
+            parquet_segs,
+            ep_slice,
+            max_block_bytes,
+        )
+
+
+def _read_lerobot_segment(
+    root: _LeRobotRoot,
+    start: int,
+    end: int,
+    dataset_index: int,
+    parquet_segs: List[str],
+    ep_slice: pa.Table,
+    max_block_bytes: int,
+) -> Iterator[pa.Table]:
+    """Stream decoded rows for one ``[start, end)`` range within a single root.
+
+    Reads the segment's parquet rows, then emits Arrow batches sized from
+    this root's estimated row size (so each batch targets one output block),
+    decoding each batch's camera frames on demand.
+    """
+    fs = root.fs
+
+    # Read all parquet rows for this segment (predicate pushdown on index).
+    filters = [("index", ">=", start), ("index", "<", end)]
+    pq_tables = []
+    for path in parquet_segs:
+        with fs.open(path, "rb") as f:
+            pq_tables.append(pq.read_table(f, filters=filters))
+    full = pa.concat_tables(pq_tables) if pq_tables else None
+    if full is None or full.num_rows == 0:
+        return
+    n_rows = full.num_rows
+    camera_keys = root.video_keys + root.image_keys
+
+    if root.video_keys:
+        video_meta = _video_episode_meta(ep_slice, root.video_keys)
+        cache = new_decoder_cache(root.storage_options)
+        # Per-frame timestamp tolerance for the video decoder, needed only
+        # when there are video cameras. Default to half a frame interval
+        # (0.5 / fps). Computed inside this branch -- not unconditionally --
+        # so image-only and tabular-only datasets never divide by fps.
+        if root.frame_tolerance_s is not None:
+            tolerance_s = root.frame_tolerance_s
+        else:
+            tolerance_s = 0.5 / float(root.fps)
+    else:
+        video_meta = {}
+        cache = None
+        tolerance_s = None
+
+    task_idx_pylist = full.column("task_index").to_pylist()
+    missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
+    if missing_tasks:
+        raise ValueError(
+            f"task_index values {sorted(missing_tasks)} are absent from the "
+            f"dataset's tasks metadata (meta/tasks.parquet); the data and "
+            f"tasks metadata are inconsistent."
+        )
+
+    # Size batches from this root's row size
+    rows_per_batch = max(1, max_block_bytes // (root.row_size_bytes))
+    try:
+        for batch_start in range(0, n_rows, rows_per_batch):
+            batch_end = min(batch_start + rows_per_batch, n_rows)
+            batch = full.slice(batch_start, batch_end - batch_start)
+            frame_buffers: dict = {}
+            if root.video_keys:
+                frame_buffers.update(
+                    _decode_video_batch(root, batch, video_meta, tolerance_s, cache)
+                )
+            if root.image_keys:
+                frame_buffers.update(_decode_image_frames(root, batch))
+            task_list = [
+                root.tasks_dict[task_idx_pylist[i]]
+                for i in range(batch_start, batch_end)
+            ]
+            yield _build_batch(
+                camera_keys,
+                batch,
+                frame_buffers,
+                task_list,
+                dataset_index,
+                root.stats_json,
+            )
+    finally:
+        if cache is not None:
+            cache.clear()
+
+
+def _video_episode_meta(episodes: pa.Table, video_keys: List[str]) -> dict:
+    eps = episodes
+    ep_idx = eps.column("episode_index").to_pylist()
+    meta: dict = {}
+    for vk in video_keys:
+        chunks = eps.column(f"videos/{vk}/chunk_index").to_pylist()
+        files = eps.column(f"videos/{vk}/file_index").to_pylist()
+        from_ts = eps.column(f"videos/{vk}/from_timestamp").to_pylist()
+        meta[vk] = {
+            ep_idx[i]: (chunks[i], files[i], from_ts[i]) for i in range(len(ep_idx))
+        }
+    return meta
+
+
+def _decode_video_batch(
+    root: _LeRobotRoot,
+    batch: pa.Table,
+    video_meta: dict,
+    tolerance_s: float,
+    cache: Any,
+) -> dict:
+    """Decode one batch's video frames to HWC uint8 arrays aligned to the
+    batch's row order.
+
+    Groups rows by video file and decodes each file's timestamps from the
+    shared (per-segment) decoder ``cache``, so a file's decoder is reused
+    across batches instead of being reopened. Returns
+    ``{video_key: list[np.ndarray HWC uint8]}``.
+    """
+    # Imported here, not at module top, so ``import ray.data`` stays
+    # lerobot-free until video is actually decoded on a worker.
+    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
+
+    assert root.video_path is not None
+    n = batch.num_rows
+    ep_idx_col = batch.column("episode_index").to_pylist()
+    ts_col = batch.column("timestamp").to_pylist()
+    out: dict = {}
+    for vk in root.video_keys:
+        ep_info = video_meta[vk]
+        file_to_rows: dict = {}
+        for r in range(n):
+            chunk, fi, from_t = ep_info[ep_idx_col[r]]
+            file_to_rows.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
+        frames_by_row: List[Any] = [None] * n
+        for (chunk, fi), rows_and_ts in file_to_rows.items():
+            # Full URI (with protocol) so torchcodec detects cloud vs local.
+            vpath = (
+                f"{root.root}/"
+                f"{root.video_path.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
+            )
+            row_indices = [r for r, _ in rows_and_ts]
+            timestamps = [t for _, t in rows_and_ts]
+            # lerobot returns a torch.Tensor (N, C, H, W) normalized to
+            # float32 in [0, 1], so we rescale to uint8 below.
+            frames = decode_video_frames_torchcodec(
+                vpath, timestamps, tolerance_s, decoder_cache=cache
+            )
+            # .cpu() before the numpy conversion (a CUDA tensor can't
+            # convert directly). Decode is CPU-only today, so this is a
+            # no-op guard, not an active GPU->host move.
+            arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
+            if arr.dtype != np.uint8:
+                if arr.dtype.kind == "f":
+                    # Undo lerobot's /255 normalization; round rather than
+                    # truncate so pixel values survive the uint8 -> float32
+                    # -> uint8 round-trip exactly.
+                    arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
+                else:
+                    arr = arr.astype(np.uint8)
+            for i, r in enumerate(row_indices):
+                frames_by_row[r] = arr[i]
+        out[vk] = frames_by_row
+    return out
+
+
+def _decode_image_frames(root: _LeRobotRoot, full: pa.Table) -> dict:
+    """Decode in-parquet image cameras to HWC uint8 frames, one per row.
+
+    LeRobot stores ``dtype == 'image'`` cameras as HuggingFace ``Image``
+    structs (``{bytes, path}``) inside the data parquet — so, unlike video,
+    there is no separate file or timestamp matching: each row already holds
+    its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
+    aligned to ``full``'s row order.
     """
 
-    def __init__(
-        self,
-        segments: List[tuple],
-        roots: List[_LeRobotRoot],
-        roots_ref: "ray.ObjectRef",
-        episodes: List[pa.Table],
-        max_block_bytes: int,
-        per_task_row_limit: Optional[int] = None,
-    ) -> None:
-        # ``roots`` (slim per-root constants) is the driver-side list used to
-        # compute this task's BlockMetadata; ``roots_ref`` carries it to workers,
-        # where ``_read`` fetches it once. ``episodes`` is the driver-side list of
-        # projected episode tables, used here only to cut each segment's slice --
-        # it is NOT stored on the task; only the per-segment slice is shipped.
-        total_rows = 0
-        size_bytes = 0
-        all_input_files: List[str] = []
-        resolved: List[tuple] = []
-        for root_idx, start, end in segments:
-            root = roots[root_idx]
-            eps = episodes[root_idx]
-            start_ep, end_ep = _LeRobotReadTask._episodes_for_row_range(eps, start, end)
-            # combine_chunks() materializes a standalone copy of just this slice,
-            # so pyarrow ships only it -- not a view into the whole table buffer.
-            ep_slice = eps.slice(start_ep, end_ep - start_ep).combine_chunks()
-            parquet_segs, video_segs = _LeRobotReadTask._resolve_paths(root, ep_slice)
-            all_input_files.extend(parquet_segs)
-            all_input_files.extend(video_segs)
-            total_rows += end - start
-            size_bytes += (end - start) * root.row_size_bytes
-            resolved.append((root_idx, start, end, parquet_segs, ep_slice))
+    import io
 
-        schema = roots[segments[0][0]].schema
-        block_metadata = BlockMetadata(
-            num_rows=total_rows,
-            size_bytes=size_bytes,
-            input_files=all_input_files,
-            exec_stats=None,
-        )
-        super().__init__(self._read, block_metadata, schema, per_task_row_limit)
-        self._roots_ref = roots_ref
-        self._segments_resolved = resolved
-        self._max_block_bytes = max_block_bytes
+    from PIL import Image
 
-    def _read(self) -> Iterator[pa.Table]:
-        """Stream decoded rows as Arrow tables, iterating over all segments."""
-        roots: List[_LeRobotRoot] = ray.get(self._roots_ref)
-        for root_idx, start, end, parquet_segs, ep_slice in self._segments_resolved:
-            yield from self._read_segment(
-                roots[root_idx], start, end, root_idx, parquet_segs, ep_slice
-            )
-
-    def _read_segment(
-        self,
-        root: _LeRobotRoot,
-        start: int,
-        end: int,
-        dataset_index: int,
-        parquet_segs: List[str],
-        ep_slice: pa.Table,
-    ) -> Iterator[pa.Table]:
-        """Stream decoded rows for one ``[start, end)`` range within a single root.
-
-        Reads the segment's parquet rows, then emits Arrow batches sized from
-        this root's estimated row size (so each batch targets one output block),
-        decoding each batch's camera frames on demand.
-        """
-        fs = root.fs
-
-        # Read all parquet rows for this segment (predicate pushdown on index).
-        filters = [("index", ">=", start), ("index", "<", end)]
-        pq_tables = []
-        for path in parquet_segs:
-            with fs.open(path, "rb") as f:
-                pq_tables.append(pq.read_table(f, filters=filters))
-        full = pa.concat_tables(pq_tables) if pq_tables else None
-        if full is None or full.num_rows == 0:
-            return
-        n_rows = full.num_rows
-        camera_keys = root.video_keys + root.image_keys
-
-        if root.video_keys:
-            video_meta = self._video_episode_meta(ep_slice, root.video_keys)
-            cache = new_decoder_cache(root.storage_options)
-            # Per-frame timestamp tolerance for the video decoder, needed only
-            # when there are video cameras. Default to half a frame interval
-            # (0.5 / fps). Computed inside this branch -- not unconditionally --
-            # so image-only and tabular-only datasets never divide by fps.
-            if root.frame_tolerance_s is not None:
-                tolerance_s = root.frame_tolerance_s
-            else:
-                tolerance_s = 0.5 / float(root.fps)
-        else:
-            video_meta = {}
-            cache = None
-            tolerance_s = None
-
-        task_idx_pylist = full.column("task_index").to_pylist()
-        missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
-        if missing_tasks:
-            raise ValueError(
-                f"task_index values {sorted(missing_tasks)} are absent from the "
-                f"dataset's tasks metadata (meta/tasks.parquet); the data and "
-                f"tasks metadata are inconsistent."
-            )
-
-        # Size batches from this root's row size
-        rows_per_batch = max(1, self._max_block_bytes // (root.row_size_bytes))
-        try:
-            for batch_start in range(0, n_rows, rows_per_batch):
-                batch_end = min(batch_start + rows_per_batch, n_rows)
-                batch = full.slice(batch_start, batch_end - batch_start)
-                frame_buffers: dict = {}
-                if root.video_keys:
-                    frame_buffers.update(
-                        self._decode_video_batch(
-                            root, batch, video_meta, tolerance_s, cache
-                        )
-                    )
-                if root.image_keys:
-                    frame_buffers.update(self._decode_image_frames(root, batch))
-                task_list = [
-                    root.tasks_dict[task_idx_pylist[i]]
-                    for i in range(batch_start, batch_end)
-                ]
-                yield self._build_batch(
-                    camera_keys,
-                    batch,
-                    frame_buffers,
-                    task_list,
-                    dataset_index,
-                    root.stats_json,
+    decoded: dict = {}
+    for ik in root.image_keys:
+        frames: List[Any] = []
+        for cell in full.column(ik).to_pylist():
+            data = cell.get("bytes") if isinstance(cell, dict) else cell
+            if data is None and isinstance(cell, dict) and cell.get("path"):
+                # Derived from how lerobot stores images
+                # There are two ways: inline bytes or a path to the image file.
+                p = cell["path"]
+                p = p if p.startswith(root.fs_root) else f"{root.fs_root}/{p}"
+                with root.fs.open(p, "rb") as fh:
+                    data = fh.read()
+            if data is None:
+                raise ValueError(
+                    f"image column {ik!r}: row has neither inline bytes nor a path"
                 )
-        finally:
-            if cache is not None:
-                cache.clear()
+            arr = np.asarray(
+                Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8
+            )
+            frames.append(arr)
+        decoded[ik] = frames
+    return decoded
 
-    @staticmethod
-    def _video_episode_meta(episodes: pa.Table, video_keys: List[str]) -> dict:
-        eps = episodes
-        ep_idx = eps.column("episode_index").to_pylist()
-        meta: dict = {}
-        for vk in video_keys:
-            chunks = eps.column(f"videos/{vk}/chunk_index").to_pylist()
-            files = eps.column(f"videos/{vk}/file_index").to_pylist()
-            from_ts = eps.column(f"videos/{vk}/from_timestamp").to_pylist()
-            meta[vk] = {
-                ep_idx[i]: (chunks[i], files[i], from_ts[i]) for i in range(len(ep_idx))
-            }
-        return meta
 
-    @staticmethod
-    def _decode_video_batch(
-        root: _LeRobotRoot,
-        batch: pa.Table,
-        video_meta: dict,
-        tolerance_s: float,
-        cache: Any,
-    ) -> dict:
-        """Decode one batch's video frames to HWC uint8 arrays aligned to the
-        batch's row order.
+def _resolve_paths(root: _LeRobotRoot, ep_slice: pa.Table) -> tuple:
+    """Resolve the unique file paths touched by an episode slice.
 
-        Groups rows by video file and decodes each file's timestamps from the
-        shared (per-segment) decoder ``cache``, so a file's decoder is reused
-        across batches instead of being reopened. Returns
-        ``{video_key: list[np.ndarray HWC uint8]}``.
-        """
-        # Imported here, not at module top, so ``import ray.data`` stays
-        # lerobot-free until video is actually decoded on a worker.
-        from lerobot.datasets.video_utils import decode_video_frames_torchcodec
+    Returns ``(parquet_segs, video_segs)`` — the unique parquet + video files
+    used for the ``BlockMetadata.input_files`` attribution. The per-row video
+    paths are re-derived at decode time, so we don't retain per-camera
+    grouping here.
+    """
 
+    def _unique_files(chunk_col: str, file_col: str) -> set:
+        return set(
+            zip(
+                ep_slice.column(chunk_col).to_pylist(),
+                ep_slice.column(file_col).to_pylist(),
+            )
+        )
+
+    parquet_segs: List[str] = [
+        f"{root.fs_root}/{root.data_path.format(chunk_index=c, file_index=f)}"
+        for c, f in sorted(_unique_files("data/chunk_index", "data/file_index"))
+    ]
+
+    video_segs: List[str] = []
+    if root.video_keys:
         assert root.video_path is not None
-        n = batch.num_rows
-        ep_idx_col = batch.column("episode_index").to_pylist()
-        ts_col = batch.column("timestamp").to_pylist()
-        out: dict = {}
-        for vk in root.video_keys:
-            ep_info = video_meta[vk]
-            file_to_rows: dict = {}
-            for r in range(n):
-                chunk, fi, from_t = ep_info[ep_idx_col[r]]
-                file_to_rows.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
-            frames_by_row: List[Any] = [None] * n
-            for (chunk, fi), rows_and_ts in file_to_rows.items():
-                # Full URI (with protocol) so torchcodec detects cloud vs local.
-                vpath = (
-                    f"{root.root}/"
-                    f"{root.video_path.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
-                )
-                row_indices = [r for r, _ in rows_and_ts]
-                timestamps = [t for _, t in rows_and_ts]
-                # lerobot returns a torch.Tensor (N, C, H, W) normalized to
-                # float32 in [0, 1], so we rescale to uint8 below.
-                frames = decode_video_frames_torchcodec(
-                    vpath, timestamps, tolerance_s, decoder_cache=cache
-                )
-                # .cpu() before the numpy conversion (a CUDA tensor can't
-                # convert directly). Decode is CPU-only today, so this is a
-                # no-op guard, not an active GPU->host move.
-                arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
-                if arr.dtype != np.uint8:
-                    if arr.dtype.kind == "f":
-                        # Undo lerobot's /255 normalization; round rather than
-                        # truncate so pixel values survive the uint8 -> float32
-                        # -> uint8 round-trip exactly.
-                        arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
-                    else:
-                        arr = arr.astype(np.uint8)
-                for i, r in enumerate(row_indices):
-                    frames_by_row[r] = arr[i]
-            out[vk] = frames_by_row
-        return out
-
-    @staticmethod
-    def _decode_image_frames(root: _LeRobotRoot, full: pa.Table) -> dict:
-        """Decode in-parquet image cameras to HWC uint8 frames, one per row.
-
-        LeRobot stores ``dtype == 'image'`` cameras as HuggingFace ``Image``
-        structs (``{bytes, path}``) inside the data parquet — so, unlike video,
-        there is no separate file or timestamp matching: each row already holds
-        its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
-        aligned to ``full``'s row order.
-        """
-
-        import io
-
-        from PIL import Image
-
-        decoded: dict = {}
-        for ik in root.image_keys:
-            frames: List[Any] = []
-            for cell in full.column(ik).to_pylist():
-                data = cell.get("bytes") if isinstance(cell, dict) else cell
-                if data is None and isinstance(cell, dict) and cell.get("path"):
-                    # Derived from how lerobot stores images
-                    # There are two ways: inline bytes or a path to the image file.
-                    p = cell["path"]
-                    p = p if p.startswith(root.fs_root) else f"{root.fs_root}/{p}"
-                    with root.fs.open(p, "rb") as fh:
-                        data = fh.read()
-                if data is None:
-                    raise ValueError(
-                        f"image column {ik!r}: row has neither inline bytes nor a path"
-                    )
-                arr = np.asarray(
-                    Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8
-                )
-                frames.append(arr)
-            decoded[ik] = frames
-        return decoded
-
-    @staticmethod
-    def _resolve_paths(root: _LeRobotRoot, ep_slice: pa.Table) -> tuple:
-        """Resolve the unique file paths touched by an episode slice.
-
-        Returns ``(parquet_segs, video_segs)`` — the unique parquet + video files
-        used for the ``BlockMetadata.input_files`` attribution. The per-row video
-        paths are re-derived at decode time, so we don't retain per-camera
-        grouping here.
-        """
-
-        def _unique_files(chunk_col: str, file_col: str) -> set:
-            return set(
-                zip(
-                    ep_slice.column(chunk_col).to_pylist(),
-                    ep_slice.column(file_col).to_pylist(),
+        for k in root.video_keys:
+            video_segs.extend(
+                f"{root.fs_root}/"
+                f"{root.video_path.format(video_key=k, chunk_index=c, file_index=f)}"
+                for c, f in sorted(
+                    _unique_files(f"videos/{k}/chunk_index", f"videos/{k}/file_index")
                 )
             )
 
-        parquet_segs: List[str] = [
-            f"{root.fs_root}/{root.data_path.format(chunk_index=c, file_index=f)}"
-            for c, f in sorted(_unique_files("data/chunk_index", "data/file_index"))
-        ]
+    return parquet_segs, video_segs
 
-        video_segs: List[str] = []
-        if root.video_keys:
-            assert root.video_path is not None
-            for k in root.video_keys:
-                video_segs.extend(
-                    f"{root.fs_root}/"
-                    f"{root.video_path.format(video_key=k, chunk_index=c, file_index=f)}"
-                    for c, f in sorted(
-                        _unique_files(
-                            f"videos/{k}/chunk_index", f"videos/{k}/file_index"
-                        )
-                    )
-                )
 
-        return parquet_segs, video_segs
+def _episodes_for_row_range(
+    episodes: pa.Table,
+    start_row: int,
+    end_row: int,
+) -> tuple:
+    """Return the half-open ``(start, end)`` *row positions* in the episodes
+    table covering ``[start_row, end_row)`` of the global frame index.
 
-    @staticmethod
-    def _episodes_for_row_range(
-        episodes: pa.Table,
-        start_row: int,
-        end_row: int,
-    ) -> tuple:
-        """Return the half-open ``(start, end)`` *row positions* in the episodes
-        table covering ``[start_row, end_row)`` of the global frame index.
-
-        These are episodes-table row positions (used by ``episodes.slice``), NOT
-        ``episode_index`` values -- the two are equal only for the usual
-        ``0..N-1`` numbering, so deriving the slice from positions keeps it
-        correct for any ``episode_index`` numbering.
-        """
-        from_idx = episodes.column("_global_from_index")
-        to_idx = episodes.column("_global_to_index")
-        mask = pc.and_(
-            pc.less(from_idx, end_row),
-            pc.greater(to_idx, start_row),
+    These are episodes-table row positions (used by ``episodes.slice``), NOT
+    ``episode_index`` values -- the two are equal only for the usual
+    ``0..N-1`` numbering, so deriving the slice from positions keeps it
+    correct for any ``episode_index`` numbering.
+    """
+    from_idx = episodes.column("_global_from_index")
+    to_idx = episodes.column("_global_to_index")
+    mask = pc.and_(
+        pc.less(from_idx, end_row),
+        pc.greater(to_idx, start_row),
+    )
+    # Row positions where the mask is true (NOT episode_index values).
+    positions = pc.indices_nonzero(mask).to_pylist()
+    if not positions:
+        raise ValueError(
+            f"No episodes overlap the row range [{start_row}, {end_row}). "
+            f"Dataset has "
+            f"{episodes.column('_global_to_index')[-1].as_py()} total frames "
+            f"across {len(episodes)} episodes."
         )
-        # Row positions where the mask is true (NOT episode_index values).
-        positions = pc.indices_nonzero(mask).to_pylist()
-        if not positions:
-            raise ValueError(
-                f"No episodes overlap the row range [{start_row}, {end_row}). "
-                f"Dataset has "
-                f"{episodes.column('_global_to_index')[-1].as_py()} total frames "
-                f"across {len(episodes)} episodes."
-            )
-        return (positions[0], positions[-1] + 1)
+    return (positions[0], positions[-1] + 1)
 
-    @staticmethod
-    def _build_batch(
-        camera_keys: List[str],
-        table: pa.Table,
-        frame_buffers: dict,
-        task_list: List[str],
-        dataset_index: int,
-        stats_json: str,
-    ) -> pa.Table:
-        """Assemble one Arrow batch from a parquet-row table, decoded camera
-        frames, tasks, and per-dataset stats.  ``camera_keys`` covers both video
-        and image cameras: image columns already exist in the parquet rows as
-        encoded-byte structs and are overwritten in place by their decoded
-        tensors, while video columns are added."""
-        from ray.data.extensions import ArrowVariableShapedTensorArray
 
-        columns: dict = {
-            table.schema.field(i).name: table.column(i)
-            for i in range(table.num_columns)
-        }
-        for k in camera_keys:
-            columns[k] = ArrowVariableShapedTensorArray.from_numpy(frame_buffers[k])
-        # Dictionary-encode the per-dataset-constant string columns so the
-        # (multi-KB) stats JSON and the task label are stored once per block
-        # rather than copied onto every row.
-        columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
-        columns["dataset_index"] = pa.array(
-            [dataset_index] * len(task_list), type=pa.int32()
-        )
-        columns["stats"] = pa.array(
-            [stats_json] * len(task_list), type=pa.string()
-        ).dictionary_encode()
-        return pa.table(columns)
+def _build_batch(
+    camera_keys: List[str],
+    table: pa.Table,
+    frame_buffers: dict,
+    task_list: List[str],
+    dataset_index: int,
+    stats_json: str,
+) -> pa.Table:
+    """Assemble one Arrow batch from a parquet-row table, decoded camera
+    frames, tasks, and per-dataset stats.  ``camera_keys`` covers both video
+    and image cameras: image columns already exist in the parquet rows as
+    encoded-byte structs and are overwritten in place by their decoded
+    tensors, while video columns are added."""
+    from ray.data.extensions import ArrowVariableShapedTensorArray
+
+    columns: dict = {
+        table.schema.field(i).name: table.column(i) for i in range(table.num_columns)
+    }
+    for k in camera_keys:
+        columns[k] = ArrowVariableShapedTensorArray.from_numpy(frame_buffers[k])
+    # Dictionary-encode the per-dataset-constant string columns so the
+    # (multi-KB) stats JSON and the task label are stored once per block
+    # rather than copied onto every row.
+    columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
+    columns["dataset_index"] = pa.array(
+        [dataset_index] * len(task_list), type=pa.int32()
+    )
+    columns["stats"] = pa.array(
+        [stats_json] * len(task_list), type=pa.string()
+    ).dictionary_encode()
+    return pa.table(columns)
 
 
 @PublicAPI(stability="alpha")
@@ -1213,13 +1222,13 @@ class LeRobotDatasource(Datasource):
         roots_ref = ray.put(self.distilled_metas)
         max_block_bytes = self._max_block_bytes(data_context)
         return [
-            _LeRobotReadTask(
-                segments=segments,
-                roots=self.distilled_metas,
-                roots_ref=roots_ref,
-                episodes=self._episodes,
-                max_block_bytes=max_block_bytes,
-                per_task_row_limit=per_task_row_limit,
+            _build_lerobot_read_task(
+                segments,
+                self.distilled_metas,
+                roots_ref,
+                self._episodes,
+                max_block_bytes,
+                per_task_row_limit,
             )
             for segments in task_plan
         ]

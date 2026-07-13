@@ -320,7 +320,7 @@ def test_decode_image_frames_from_path(tmp_path):
     """An image-camera cell holding a path instead of inline bytes (the rare
     non-embedded HF Image layout) is read from the referenced file through the
     dataset filesystem and decoded to HWC uint8 pixels."""
-    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+    from ray.data._internal.datasource.lerobot_datasource import _decode_image_frames
     from ray.data.datasource import LeRobotDatasource
 
     ds = create_lerobot_dataset(
@@ -348,7 +348,7 @@ def test_decode_image_frames_from_path(tmp_path):
             )
         }
     )
-    decoded = _LeRobotReadTask._decode_image_frames(root, table)
+    decoded = _decode_image_frames(root, table)
     frame = np.asarray(decoded["observation.image"][0])
     assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
     assert frame.dtype == np.uint8
@@ -358,7 +358,7 @@ def test_decode_image_frames_from_path(tmp_path):
 def test_decode_image_frames_requires_bytes_or_path(tmp_path):
     """A cell with neither inline bytes nor a path is an inconsistent image
     column and raises, rather than silently yielding an empty frame."""
-    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+    from ray.data._internal.datasource.lerobot_datasource import _decode_image_frames
     from ray.data.datasource import LeRobotDatasource
 
     ds = create_lerobot_dataset(
@@ -378,7 +378,7 @@ def test_decode_image_frames_requires_bytes_or_path(tmp_path):
         }
     )
     with pytest.raises(ValueError, match="neither inline bytes nor a path"):
-        _LeRobotReadTask._decode_image_frames(root, table)
+        _decode_image_frames(root, table)
 
 
 def test_read_lerobot_video_pixel_values(ray_start_regular_shared, lerobot_dataset):
@@ -750,7 +750,9 @@ def test_episodes_for_row_range_uses_row_positions_not_episode_index():
     eps.slice), not episode_index values -- they coincide only for the usual
     0..N-1 numbering. Here episode_index is offset, so a value-based slice would
     pick the wrong rows (the bug Cursor Bugbot flagged)."""
-    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _episodes_for_row_range,
+    )
 
     # 3 episodes at rows 0/1/2, but episode_index offset to 100/101/102.
     eps = pa.table(
@@ -761,11 +763,11 @@ def test_episodes_for_row_range_uses_row_positions_not_episode_index():
         }
     )
     # [10, 20) overlaps only the middle episode -> row position 1, not value 101.
-    assert _LeRobotReadTask._episodes_for_row_range(eps, 10, 20) == (1, 2)
+    assert _episodes_for_row_range(eps, 10, 20) == (1, 2)
     # [5, 25) overlaps all three -> positions (0, 3), not values (100, 103).
-    assert _LeRobotReadTask._episodes_for_row_range(eps, 5, 25) == (0, 3)
+    assert _episodes_for_row_range(eps, 5, 25) == (0, 3)
     with pytest.raises(ValueError, match="No episodes overlap"):
-        _LeRobotReadTask._episodes_for_row_range(eps, 100, 200)
+        _episodes_for_row_range(eps, 100, 200)
 
 
 def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path):
