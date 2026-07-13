@@ -87,10 +87,10 @@ def _build_openai_ingress_request_router(
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
 
-    ``num_replicas`` is pinned to 1 because HAProxy's ingress request router
-    backend currently expects a single endpoint. TODO(eicherseiji): expose
-    these as a user-overridable IngressRequestRouterConfig once HAProxy
-    supports multiple router replicas.
+    The router runs one replica per node (``num_replicas="per_node"``) so each
+    node's HAProxy calls its co-located router and the ``/internal/route`` hop
+    stays on-node. ``max_ongoing_requests`` is raised from the Serve default so
+    the on-path router does not throttle ingress.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
@@ -99,7 +99,7 @@ def _build_openai_ingress_request_router(
 
     deployment = serve.deployment(
         LLMRouter,
-        num_replicas=1,
+        num_replicas="per_node",
         max_ongoing_requests=1000,
     )
     return deployment.bind(

@@ -416,6 +416,24 @@ class TestBuildOpenaiApp:
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
 
+    def test_direct_streaming_router_runs_one_per_node(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        """The ingress request router runs one replica per node so each node's
+        HAProxy calls its co-located router."""
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        router = app._ingress_request_router._bound_deployment
+
+        assert router._deployment_config.num_replicas_per_node is True
+        assert router._replica_config.max_replicas_per_node == 1
+        assert router._deployment_config.max_ongoing_requests == 1000
+
     def test_direct_streaming_user_request_router_config_wins(
         self, llm_config, disable_placement_bundles, monkeypatch
     ):
