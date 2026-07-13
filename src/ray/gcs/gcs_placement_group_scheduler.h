@@ -397,6 +397,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       int max_retry,
       int current_retry_count);
 
+  /// Remove a placement group's bundles from a node in the cluster resource scheduler.
+  ///
+  /// \param node_id The node ID.
+  /// \param bundle_specs Bundles to remove from the node resources.
+  void RemoveBundleResources(
+      const NodeID &node_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
+
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
