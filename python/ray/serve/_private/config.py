@@ -126,6 +126,9 @@ class DeploymentConfig(BaseModel):
     Args:
         num_replicas: The number of processes to start up that
             handles requests to this deployment. Defaults to 1.
+        num_replicas_per_node: When True, the controller keeps the target
+            replica count equal to the number of schedulable nodes, running
+            one replica per node. Set by num_replicas="per_node".
         max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
             a response. Defaults to 5.
@@ -161,6 +164,9 @@ class DeploymentConfig(BaseModel):
 
     num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
+    )
+    num_replicas_per_node: bool = Field(
+        default=False, update_type=DeploymentOptionUpdateType.LightWeight
     )
     max_ongoing_requests: PositiveInt = Field(
         default=DEFAULT_MAX_ONGOING_REQUESTS,

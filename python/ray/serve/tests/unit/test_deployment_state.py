@@ -4389,6 +4389,45 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
+def test_num_replicas_per_node_tracks_node_count(mock_deployment_state_manager):
+    """A num_replicas="per_node" deployment targets one replica per schedulable node."""
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # The fixture starts with a single node, so deploy seeds the target at 1.
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert ds.target_num_replicas == 1
+
+    # A node joins: the control loop bumps the target to match.
+    cluster_node_info_cache.add_node(NodeID.from_random().hex())
+    dsm.update()
+    assert ds.target_num_replicas == 2
+
+    # A node starts draining: it drops out of the schedulable set.
+    draining = next(iter(cluster_node_info_cache.alive_node_ids))
+    cluster_node_info_cache.draining_nodes = {draining: 1}
+    dsm.update()
+    assert ds.target_num_replicas == 1
+
+
+def test_num_replicas_per_node_only_affects_per_node_deployments(
+    mock_deployment_state_manager,
+):
+    """A fixed-num_replicas deployment ignores node-set changes."""
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=2)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    assert ds.target_num_replicas == 2
+
+    cluster_node_info_cache.add_node(NodeID.from_random().hex())
+    dsm.update()
+    assert ds.target_num_replicas == 2
+
+
 def test_get_deployment_ids(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm = create_dsm()

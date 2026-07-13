@@ -3514,7 +3514,14 @@ class DeploymentState:
             f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
         )
 
-        if deployment_info.deployment_config.autoscaling_config:
+        if deployment_info.deployment_config.num_replicas_per_node:
+            # One replica per node: seed the target with the current schedulable
+            # node count. reconcile_num_replicas_per_node keeps it in sync.
+            self._autoscaling_state_manager.deregister_deployment(self._id)
+            target_num_replicas = len(
+                self._cluster_node_info_cache.get_active_node_ids()
+            )
+        elif deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
                 self._id, deployment_info, self._target_state.target_num_replicas
             )
@@ -3646,6 +3653,27 @@ class DeploymentState:
         """Set the target state for the deployment to the provided info."""
         self._set_target_state(
             self._target_state.info, target_num_replicas, updated_via_api=True
+        )
+
+    def reconcile_num_replicas_per_node(self, num_schedulable_nodes: int) -> None:
+        """Keep a num_replicas="per_node" deployment at one replica per node.
+
+        Sets the target replica count to the number of schedulable nodes,
+        recomputed each control loop as nodes join or leave. No-op for
+        deployments that don't use per-node mode or that are being deleted.
+        """
+        if self._target_state.deleting:
+            return
+        if not self._target_state.info.deployment_config.num_replicas_per_node:
+            return
+        if self._target_state.target_num_replicas == num_schedulable_nodes:
+            return
+
+        old_num = self._target_state.target_num_replicas
+        self._set_target_state(self._target_state.info, num_schedulable_nodes)
+        logger.info(
+            f"Adjusting {self._id} from {old_num} to {num_schedulable_nodes} "
+            "replicas to match the number of schedulable nodes."
         )
 
     def _stop_or_update_outdated_version_replicas(
@@ -5948,6 +5976,12 @@ class DeploymentStateManager:
 
         # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
+
+        # STEP 3.5: Reconcile num_replicas="per_node" deployments to the
+        # current schedulable node count so they run one replica per node.
+        num_schedulable_nodes = len(self._cluster_node_info_cache.get_active_node_ids())
+        for deployment_state in self._deployment_states.values():
+            deployment_state.reconcile_num_replicas_per_node(num_schedulable_nodes)
 
         # STEP 4: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():

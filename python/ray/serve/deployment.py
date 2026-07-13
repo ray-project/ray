@@ -270,12 +270,33 @@ class Deployment:
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
+        num_replicas_per_node = num_replicas == "per_node"
         if num_replicas == "auto":
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
 
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+        elif num_replicas_per_node:
+            if autoscaling_config not in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    'num_replicas="per_node" is not allowed when autoscaling_config '
+                    "is provided."
+                )
+            if gang_scheduling_config not in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    'num_replicas="per_node" is not supported with '
+                    "gang_scheduling_config."
+                )
+            # One replica per node is enforced by pinning max_replicas_per_node to 1.
+            if max_replicas_per_node in [DEFAULT.VALUE, None]:
+                max_replicas_per_node = 1
+            elif max_replicas_per_node != 1:
+                raise ValueError(
+                    'num_replicas="per_node" runs one replica per node, so '
+                    "max_replicas_per_node must be unset or 1, got "
+                    f"{max_replicas_per_node}."
+                )
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -284,7 +305,8 @@ class Deployment:
         user_configured_option_names = [
             option
             for option, value in locals().items()
-            if option not in {"self", "func_or_class", "_internal"}
+            if option
+            not in {"self", "func_or_class", "_internal", "num_replicas_per_node"}
             and value is not DEFAULT.VALUE
         ]
 
@@ -310,8 +332,13 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
-            new_deployment_config.num_replicas = num_replicas
+        if num_replicas_per_node:
+            new_deployment_config.num_replicas_per_node = True
+        elif num_replicas not in [DEFAULT.VALUE, None]:
+            # An explicit int or "auto" clears per-node mode.
+            new_deployment_config.num_replicas_per_node = False
+            if num_replicas != "auto":
+                new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config

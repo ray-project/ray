@@ -561,7 +561,9 @@ def deployment(
             If not provided, the name of the class or function is used.
         version: Removed. Specifying this argument raises a ValueError.
         num_replicas: Number of replicas to run that handle requests to
-            this deployment. Defaults to 1.
+            this deployment. Defaults to 1. Set to "auto" for a default
+            autoscaling configuration, or "per_node" to run exactly one
+            replica on every schedulable node (scales as nodes join or leave).
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `resources`, `runtime_env`, and `label_selector`.
@@ -651,6 +653,7 @@ def deployment(
             "gang_scheduling_config is provided. Use "
             "gang_scheduling_config.gang_placement_strategy instead."
         )
+    num_replicas_per_node = num_replicas == "per_node"
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
@@ -658,6 +661,26 @@ def deployment(
         )
 
         ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
+    elif num_replicas_per_node:
+        if autoscaling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                'num_replicas="per_node" is not allowed when autoscaling_config '
+                "is provided."
+            )
+        if gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                'num_replicas="per_node" is not supported with gang_scheduling_config.'
+            )
+        # One replica per node is enforced by pinning max_replicas_per_node to 1.
+        if max_replicas_per_node in [DEFAULT.VALUE, None]:
+            max_replicas_per_node = 1
+        elif max_replicas_per_node != 1:
+            raise ValueError(
+                'num_replicas="per_node" runs one replica per node, so '
+                "max_replicas_per_node must be unset or 1, got "
+                f"{max_replicas_per_node}."
+            )
+        num_replicas = None
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -666,7 +689,8 @@ def deployment(
     user_configured_option_names = [
         option
         for option, value in locals().items()
-        if option != "_func_or_class" and value is not DEFAULT.VALUE
+        if option not in ("_func_or_class", "num_replicas_per_node")
+        and value is not DEFAULT.VALUE
     ]
 
     # Num of replicas should not be 0.
@@ -688,6 +712,7 @@ def deployment(
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
+        num_replicas_per_node=num_replicas_per_node,
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
