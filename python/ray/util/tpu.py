@@ -1254,7 +1254,14 @@ def _discover_and_persist_subslices(
         # lacked a tpu-worker-id label or returned no chip coordinates, the
         # mapping is incomplete. Persisting partial data would later produce
         # placement groups with the wrong number of hosts, so we fail fast here.
-        expected_workers = math.prod(_get_worker_dims_for_topology(parent_topology, ""))
+        #
+        # Use full_slice.num_bundles (= total_chips // chips_per_vm) as the
+        # expected count rather than the static _VALID_TOPOLOGY_WORKER_DIMS_2D
+        # table. The static table assumes chips_per_vm=4 for all 2D topologies,
+        # which is wrong for single-host v6e/v5litepod configurations (8
+        # chips/VM, 1 bundle). The fan-out itself runs full_slice.num_bundles
+        # tasks, so this value is always the correct expected number of results.
+        expected_workers = full_slice.num_bundles
         if len(subslice_labels_by_worker_id) < expected_workers:
             raise RuntimeError(
                 f"Subslice discovery for '{slice_name}' is incomplete: "

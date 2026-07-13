@@ -1786,6 +1786,58 @@ def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
     )
 
 
+def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
+    """Regression: single-host v6e 2x4 (8 chips/VM, 1 bundle) discovery must
+    not raise a spurious 'incomplete' error.
+
+    The static _VALID_TOPOLOGY_WORKER_DIMS_2D table returns (1, 2) for "2x4",
+    implying 2 expected workers. But with chips_per_vm=8 there is only 1
+    bundle (8 chips / 8 chips-per-VM), so the fan-out produces 1 result.
+    The completeness check must use full_slice.num_bundles (the runtime value)
+    not the static table, otherwise a healthy single-host slice always raises.
+    """
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-singlehost"
+
+    # 8 chips covering the full 2x4 grid (x=0..3, y=0..1).
+    single_host_coords = [("tpu0", i, [i % 4, i // 4]) for i in range(8)]
+    single_host_discovery = [{"node_id": "node_0", "coords": single_host_coords}]
+
+    dummy_nodes = [
+        {
+            "NodeID": "node_0",
+            "Alive": True,
+            "Resources": {"TPU": 8},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
+            },
+        }
+    ]
+
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
+        # ray.get called twice: once for .ready(), once for the 1-task fan-out.
+        mock_ray_get.side_effect = [None, single_host_discovery]
+
+        # Must not raise RuntimeError("incomplete: labeled 1 of 2 expected").
+        result_name, result_labels = ray.util.tpu._discover_and_persist_subslices(
+            "2x4", "v6e", 8, None
+        )
+
+    assert result_name == slice_name
+    assert "0" in result_labels  # the single worker was labeled
+    assert len(result_labels) == 1
+
+
 def test_find_available_subslice_skips_incomplete_subslices():
     """Subslices with fewer workers than the topology requires are skipped.
 
