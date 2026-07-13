@@ -212,8 +212,8 @@ std::string SerializeEventsToRayEventsDataJson(
   for (std::unique_ptr<RayEventInterface> &event : events) {
     auto ray_event_or = std::move(*event).Serialize();
     if (ray_event_or.has_error()) {
-      RAY_LOG(ERROR) << "Skipping event that failed to serialize: "
-                     << ray_event_or.message();
+      RAY_LOG(WARNING) << "Skipping event that failed to serialize: "
+                       << ray_event_or.message();
       continue;
     }
     std::string json_str;
