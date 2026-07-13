@@ -17,6 +17,7 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
 
 import logging
+import os
 import threading
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,9 @@ cdef class RayEvent:
         self._session_name = session_name
         self._serialized_data = serialized_data
         self._nested_event_field_number = nested_event_field_number
-        self._event_id = event_id
+        # Assign the id at construction so re-serialization (e.g. publish
+        # retries) keeps a stable id that consumers can dedupe on.
+        self._event_id = event_id if event_id else os.urandom(28)
         self._timestamp_ns = timestamp_ns
 
     cdef unique_ptr[CRayEventInterface] to_cpp_event(self):

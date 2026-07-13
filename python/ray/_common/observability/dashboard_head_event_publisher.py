@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections import deque
 from typing import Deque, Dict, List, Optional
 from urllib.parse import urlparse
@@ -54,39 +55,46 @@ class DashboardHeadRayEventPublisher:
         self._session = session or requests.Session()
         # Events waiting to be published, e.g. emitted before the dashboard is up.
         self._pending: Deque[RayEvent] = deque(maxlen=_MAX_BUFFERED_EVENTS)
+        self._lock = threading.Lock()
 
     def publish(self, event: RayEvent) -> None:
         self.publish_batch([event])
 
     def publish_batch(self, events: List[RayEvent]) -> None:
-        self._pending.extend(events)
-        if not self._pending:
-            return
-        pending = list(self._pending)
-        try:
-            self._do_publish(pending)
-        except (requests.ConnectionError, requests.Timeout, RuntimeError) as e:
-            # Dashboard is not reachable (yet); keep events buffered and retry
-            # on the next publish.
-            if self._gcs_client is not None:
-                self._dashboard_url = None
-            logger.warning(
-                "Failed to publish to the dashboard, buffering %d event(s): %s",
-                len(self._pending),
-                e,
-            )
-            return
-        except requests.HTTPError as e:
-            # Keep the buffer on server errors (transient); drop the sent batch
-            # when the dashboard rejected the request (4xx).
-            status = e.response.status_code if e.response is not None else None
-            if status is not None and status < 500:
+        """Publish events, buffering them while the dashboard is unreachable.
+
+        Transient failures (connection errors, timeouts, 5xx, dashboard address
+        not yet in GCS) keep events buffered for the next publish and do not
+        raise. A 4xx response means the dashboard rejected the batch: it is
+        dropped and the error is raised.
+        """
+        with self._lock:
+            self._pending.extend(events)
+            if not self._pending:
+                return
+            pending = list(self._pending)
+            try:
+                self._do_publish(pending)
+            except requests.HTTPError as e:
+                status = e.response.status_code if e.response is not None else None
+                if status is not None and status < 500:
+                    self._drop_sent(len(pending))
+                    raise
+                self._warn_buffering(e)
+            except (requests.RequestException, RuntimeError) as e:
+                # Dashboard is not reachable (yet); retry on the next publish.
+                if self._gcs_client is not None:
+                    self._dashboard_url = None
+                self._warn_buffering(e)
+            else:
                 self._drop_sent(len(pending))
-            raise
-        except Exception:
-            self._drop_sent(len(pending))
-            raise
-        self._drop_sent(len(pending))
+
+    def _warn_buffering(self, error: Exception) -> None:
+        logger.warning(
+            "Failed to publish to the dashboard, buffering %d event(s): %s",
+            len(self._pending),
+            error,
+        )
 
     def _drop_sent(self, count: int) -> None:
         # Only drop what was sent; events appended concurrently stay buffered.

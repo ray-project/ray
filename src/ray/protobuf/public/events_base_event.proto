@@ -134,7 +134,9 @@ message RayEvent {
   AutoscalerNodeProvisioningEvent autoscaler_node_provisioning_event = 26;
 
   // Hostname of the process that emitted this event.
+  // Currently only populated by events emitted through the Python event path.
   string source_hostname = 27;
   // PID of the process that emitted this event.
+  // Currently only populated by events emitted through the Python event path.
   int32 source_pid = 28;
 }

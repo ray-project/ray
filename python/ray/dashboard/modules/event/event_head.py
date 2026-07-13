@@ -250,7 +250,13 @@ class EventHead(
         request = events_event_aggregator_service_pb2.AddEventsRequest(
             events_data=events_event_aggregator_service_pb2.RayEventsData(events=events)
         )
-        await stub.AddEvents(request)
+        try:
+            await stub.AddEvents(request, timeout=5)
+        except Exception:
+            # The agent may have restarted on a different port; re-resolve
+            # the stub on the next request.
+            self._head_aggregator_stub = None
+            raise
 
     @routes.post("/report_events")
     async def report_events(self, request):
@@ -289,7 +295,7 @@ class EventHead(
             [{"sourceType": "AUTOSCALER", "eventType": "...", "severity": "INFO", ...}]
 
         Each event must have an event_type in the external ray event allowlist
-        (configured via RAY_EXTERNAL_RAY_EVENT_ALLOWLIST).
+        (configured via RAY_external_ray_event_allowlist).
 
         HTTP status codes: 200 on success, 400 if the payload is malformed or
         fails protobuf parsing, 422 if an event type is not in the allowlist
