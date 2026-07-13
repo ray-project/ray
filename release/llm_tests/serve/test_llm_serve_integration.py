@@ -469,7 +469,7 @@ def test_prometheus_autoscaling():
                 prometheus_queries=[P99_TTFT_QUERY],
                 policy=AutoscalingPolicy(
                     policy_function=TTFTAutoscalingPolicy,
-                    # 1ms threshold — any real request triggers scale-up
+                    # 1ms threshold: any real request triggers scale-up
                     policy_kwargs=dict(ttft_target_s=0.001),
                 ),
             ),

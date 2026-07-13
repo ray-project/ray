@@ -24,7 +24,7 @@ class TTFTAutoscalingPolicy:
     policy requests one additional replica.
 
     Scale-down is conservative: TTFT being low doesn't prove excess
-    capacity — it may be low *because* the current replica count is
+    capacity. It may be low *because* the current replica count is
     right.  The policy only scales down when TTFT is below target AND
     ongoing requests per replica is below ``idle_threshold``, indicating
     the replicas genuinely have spare capacity.  The autoscaler's
@@ -79,13 +79,13 @@ class TTFTAutoscalingPolicy:
         current = ctx.current_num_replicas
         metrics = ctx.prometheus_metrics
 
-        # Prometheus unavailable — hold steady.
+        # Prometheus unavailable: hold steady.
         if metrics is None:
             return float(current), {"signal": "no_metrics"}
 
         p99_ttft = metrics.get(self.query)
 
-        # No data point yet (e.g. no traffic) — hold steady.
+        # No data point yet (e.g. no traffic): hold steady.
         if p99_ttft is None:
             return float(current), {"signal": "no_data", "p99_ttft_s": None}
 
@@ -96,7 +96,7 @@ class TTFTAutoscalingPolicy:
             return float(current + 1), {**state, "signal": "scale_up"}
 
         # Scale down: latency is below target AND replicas are idle.
-        # TTFT alone doesn't prove excess capacity — low latency may be
+        # TTFT alone doesn't prove excess capacity; low latency may be
         # the result of having the right replica count under load.
         requests_per_replica = ctx.total_num_requests / current if current > 0 else 0.0
         state["requests_per_replica"] = requests_per_replica
