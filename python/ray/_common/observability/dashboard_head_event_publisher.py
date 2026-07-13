@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import requests
 
 from ray._private import ray_constants
+from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -78,9 +79,14 @@ class DashboardHeadRayEventPublisher:
         if response.ok:
             return
 
-        error = format_authentication_http_error(response.status_code, response.text)
-        if error is not None:
-            raise RuntimeError(error)
+        # Only treat 401/403 as auth errors when token auth is actually enabled;
+        # the endpoint also returns 403 for event types not in the allowlist.
+        if is_token_auth_enabled():
+            error = format_authentication_http_error(
+                response.status_code, response.text
+            )
+            if error is not None:
+                raise RuntimeError(error)
         response.raise_for_status()
 
     def _build_headers(self) -> Dict[str, str]:
