@@ -21,7 +21,11 @@ ValueError: Job with submission_id pytorch-mnist-job already exists."""
 
 class TestExtractConciseErrorMessage:
     def test_deeply_nested_traceback(self):
+        # The output includes the enclosing HTTP status for context, plus the
+        # innermost exception — matching the maintainer request to keep the
+        # "Request failed with status code 400" part visible.
         assert extract_concise_error_message(NESTED_JOB_SUBMIT_ERROR) == (
+            "Request failed with status code 400: "
             "ValueError: Job with submission_id pytorch-mnist-job already exists."
         )
 
