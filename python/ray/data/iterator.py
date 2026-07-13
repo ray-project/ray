@@ -319,19 +319,20 @@ class DataIterator(abc.ABC):
 
         return _IterableFromIterator(_create_iterator)
 
-    def _get_dataset_tag(self) -> Dict[str, str]:
+    def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
         """Metrics tags applied to this iterator's ``data_iter_*`` metrics.
 
         Returns a dict with keys matching ``iter_tag_keys``:
 
         - ``dataset``: the dataset id.
-        - ``split_index``: indicates the split. Empty for plain iterators
-          (which have no split dimension, so their metrics collapse to a
-          single series).
+        - ``split_index``: the output split index for stream-split iterators, or
+          ``None`` for plain iterators (which have no split dimension). ``None``
+          is coerced to the empty-string label downstream so plain-iterator
+          metrics collapse to a single series.
 
         Subclasses override this to supply the real dataset id and split index.
         """
-        return {"dataset": "unknown_dataset", "split_index": ""}
+        return {"dataset": "unknown_dataset", "split_index": None}
 
     @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:

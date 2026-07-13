@@ -95,8 +95,8 @@ class BatchIterator:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
         dataset_tags: The iterator's iteration-metric tags, a dict with keys
-            ``dataset`` (the dataset id) and ``split_index`` (indicates the
-            split, empty for plain iterators).
+            ``dataset`` (the dataset id) and ``split_index`` (the output split
+            index for stream-split iterators, or ``None`` for plain iterators).
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -142,7 +142,7 @@ class BatchIterator:
         ref_bundles: Iterator[RefBundle],
         *,
         stats: Optional[DatasetStats] = None,
-        dataset_tags: Optional[Dict[str, str]] = None,
+        dataset_tags: Optional[Dict[str, Optional[str]]] = None,
         clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",

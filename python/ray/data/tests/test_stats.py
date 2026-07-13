@@ -2050,10 +2050,19 @@ def test_stats_actor_iter_metrics():
 
     assert final_stats == ds_stats
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
-    assert update_fn.call_args_list[-1].args[2] == ""
+    assert update_fn.call_args_list[-1].args[2] is None
 
 
-def test_update_iteration_metrics_exports_new_iter_metrics():
+@pytest.mark.parametrize(
+    "split_index_arg, expected_split_label",
+    [
+        ("3", "split_3"),
+        (None, ""),
+    ],
+)
+def test_update_iteration_metrics_exports_new_iter_metrics(
+    split_index_arg, expected_split_label
+):
     stats = DatasetStats(metadata={}, parent=None)
     stats.iter_total_s.add(11.0)
     stats.iter_blocked_production_wait_s.add(1.0)
@@ -2109,9 +2118,9 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     ]:
         setattr(actor, attr, FakeGauge(attr))
 
-    actor.update_iteration_metrics(stats, "train_dataset_split_3", "3")
+    actor.update_iteration_metrics(stats, "train_dataset", split_index_arg)
 
-    expected_tags = {"dataset": "train_dataset_split_3", "split_index": "3"}
+    expected_tags = {"dataset": "train_dataset", "split": expected_split_label}
     assert recorded["iter_total_s"] == (11.0, expected_tags)
     assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
     assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)

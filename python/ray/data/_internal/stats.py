@@ -493,7 +493,7 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = ("dataset", "split_index")
+        iter_tag_keys = ("dataset", "split")
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -814,12 +814,10 @@ class _StatsActor:
         self,
         stats: "DatasetStats",
         dataset_id: str,
-        split_index: str,
+        split_index: Optional[str] = None,
     ):
-        # ``dataset`` is the dataset id; ``split_index`` indicates the split
-        # (empty for plain iterators, which have no split dimension). Together
-        # these must match ``iter_tag_keys`` exactly.
-        tags = self._create_tags(dataset_tag=dataset_id, split_index=split_index)
+        split_label = "" if split_index is None else f"split_{split_index}"
+        tags = self._create_tags(dataset_tag=dataset_id, split_tag=split_label)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_total_s.set(stats.iter_total_s.get(), tags)
@@ -1040,15 +1038,15 @@ class _StatsActor:
         dataset_tag: str,
         operator_tag: Optional[str] = None,
         node_ip_tag: Optional[str] = None,
-        split_index: Optional[str] = None,
+        split_tag: Optional[str] = None,
     ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
-        if split_index is not None:
-            tags["split_index"] = split_index
+        if split_tag is not None:
+            tags["split"] = split_tag
         return tags
 
 
@@ -1145,7 +1143,7 @@ class _StatsManager:
 
     @staticmethod
     def update_iteration_metrics(
-        stats: "DatasetStats", dataset_tag: str, split_index: str
+        stats: "DatasetStats", dataset_tag: str, split_index: Optional[str] = None
     ):
         args = (stats, dataset_tag, split_index)
         try:
