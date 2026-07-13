@@ -7,6 +7,7 @@ import pytest
 
 import ray.serve._private.controller as controller_mod
 from ray.serve._private.autoscaling_state import (
+    ApplicationAutoscalingState,
     AutoscalingStateManager,
     DeploymentAutoscalingState,
 )
@@ -59,6 +60,18 @@ def _make_state(
         prometheus_address=prometheus_address,
     )
     return state
+
+
+def _register_deployment(
+    mgr, dep_id, prometheus_queries, prometheus_address
+) -> DeploymentAutoscalingState:
+    """Register a deployment with Prometheus config on the manager's state."""
+    app_state = ApplicationAutoscalingState(dep_id.app_name)
+    dep_state = _make_state(prometheus_queries, prometheus_address)
+    dep_state._deployment_id = dep_id
+    app_state._deployment_autoscaling_states[dep_id] = dep_state
+    mgr._app_autoscaling_states[dep_id.app_name] = app_state
+    return dep_state
 
 
 # ---------------------------------------------------------------------------
@@ -155,76 +168,26 @@ class TestAutoscalingStateManagerPrometheus:
     def test_record_routes_to_deployment(self):
         mgr = AutoscalingStateManager()
         dep_id = DeploymentID(name="D", app_name="app")
-
-        # We need a registered deployment for record to work.
-        # Manually set up the internal state.
-        from ray.serve._private.autoscaling_state import (
-            ApplicationAutoscalingState,
-            DeploymentAutoscalingState,
-        )
-
-        app_state = ApplicationAutoscalingState("app")
-        dep_state = DeploymentAutoscalingState(dep_id)
-        dep_state._config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=5,
-            prometheus_queries=["q"],
-            prometheus_address="localhost:9090",
-        )
-        app_state._deployment_autoscaling_states[dep_id] = dep_state
-        mgr._app_autoscaling_states["app"] = app_state
-
+        dep_state = _register_deployment(mgr, dep_id, ["q"], "localhost:9090")
         mgr.record_prometheus_metrics({dep_id: {"q": 7.0}}, time.time())
         assert dep_state._get_cached_prometheus_metrics() == {"q": 7.0}
 
     def test_get_config_by_deployment(self):
         mgr = AutoscalingStateManager()
         dep_id = DeploymentID(name="D", app_name="app")
-
-        from ray.serve._private.autoscaling_state import (
-            ApplicationAutoscalingState,
-            DeploymentAutoscalingState,
-        )
-
-        app_state = ApplicationAutoscalingState("app")
-        dep_state = DeploymentAutoscalingState(dep_id)
-        dep_state._config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=5,
-            prometheus_queries=["rate(rps[5m])", "up"],
-            prometheus_address="localhost:9090",
-        )
-        app_state._deployment_autoscaling_states[dep_id] = dep_state
-        mgr._app_autoscaling_states["app"] = app_state
-
-        config = mgr.get_prometheus_config_by_deployment()
-        assert config == {dep_id: (["rate(rps[5m])", "up"], "localhost:9090")}
+        _register_deployment(mgr, dep_id, ["rate(rps[5m])", "up"], "localhost:9090")
+        assert mgr.get_prometheus_config_by_deployment() == {
+            dep_id: (["rate(rps[5m])", "up"], "localhost:9090")
+        }
 
     def test_get_config_empty_when_none_configured(self):
-        mgr = AutoscalingStateManager()
-        assert mgr.get_prometheus_config_by_deployment() == {}
+        assert AutoscalingStateManager().get_prometheus_config_by_deployment() == {}
 
     def test_get_config_empty_when_no_address(self):
-        """Queries without an address should not be returned."""
+        # Queries without an address are not returned.
         mgr = AutoscalingStateManager()
         dep_id = DeploymentID(name="D", app_name="app")
-
-        from ray.serve._private.autoscaling_state import (
-            ApplicationAutoscalingState,
-            DeploymentAutoscalingState,
-        )
-
-        app_state = ApplicationAutoscalingState("app")
-        dep_state = DeploymentAutoscalingState(dep_id)
-        dep_state._config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=5,
-            prometheus_queries=["up"],
-            # No prometheus_address set
-        )
-        app_state._deployment_autoscaling_states[dep_id] = dep_state
-        mgr._app_autoscaling_states["app"] = app_state
-
+        _register_deployment(mgr, dep_id, ["up"], None)
         assert mgr.get_prometheus_config_by_deployment() == {}
 
 
