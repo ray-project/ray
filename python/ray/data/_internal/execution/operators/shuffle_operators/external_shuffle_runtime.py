@@ -272,9 +272,15 @@ class _FetchHandler(socketserver.StreamRequestHandler):
         for _ in range(num_sources):
             path_len = _recv_u16(sock)
             path = _recvall(sock, path_len).decode("utf-8")
-            # path-traversal guard: realpath must be inside the server base_dir.
+            # Path-traversal guard: resolved path must be strictly inside
+            # ``srv.base_dir``. ``commonpath`` compares component-wise;
+            # ``startswith`` would let sibling prefixes through.
             real = os.path.realpath(path)
-            if not real.startswith(srv.base_dir):
+            try:
+                is_inside = os.path.commonpath([srv.base_dir, real]) == srv.base_dir
+            except ValueError:
+                is_inside = False
+            if not is_inside:
                 # Drain the rest of the request before answering so the socket
                 # remains in a well-defined state for future FETCHes on this
                 # connection
@@ -1131,11 +1137,16 @@ def _handles_to_sources(
     Skips handles that produced zero bytes for this partition. Also picks
     the first non-None output schema (for the empty-partition fallback).
     """
+    # Batch-resolve all ObjectRefs up front — sequential ray.get in the
+    # loop below would cost one round-trip per mapper.
+    refs = [h for h in handles if not isinstance(h, dict)]
+    if refs:
+        resolved = iter(ray.get(refs))
+        handles = [h if isinstance(h, dict) else next(resolved) for h in handles]
+
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None
     for h in handles:
-        if not isinstance(h, dict):
-            h = ray.get(h)
         if output_schema is None:
             output_schema = h.get("schema")
         ranges = h["index"].get(partition_id) or []
