@@ -30,6 +30,10 @@ def _collect_all_events(httpserver):
     return all_events
 
 
+def _has_definition_event(all_events):
+    return any("submissionJobDefinitionEvent" in e for e in all_events)
+
+
 def _get_lifecycle_states(all_events):
     """Extract the set of lifecycle state names from all events."""
     states = set()
@@ -73,23 +77,23 @@ def test_ray_submission_job_events(ray_start_cluster, httpserver):
     )
     assert str(client.get_job_status(submission_id)) == "SUCCEEDED"
 
-    # Wait for all expected lifecycle states to be exported.
+    # Wait for the definition event and all expected lifecycle states to be
+    # exported.
     expected_states = {"PENDING", "RUNNING", "SUCCEEDED"}
-    wait_for_condition(
-        lambda: expected_states.issubset(
-            _get_lifecycle_states(_collect_all_events(httpserver))
-        ),
-        timeout=30,
-    )
+
+    def _all_events_exported():
+        all_events = _collect_all_events(httpserver)
+        return _has_definition_event(all_events) and expected_states.issubset(
+            _get_lifecycle_states(all_events)
+        )
+
+    wait_for_condition(_all_events_exported, timeout=30)
 
     all_events = _collect_all_events(httpserver)
 
-    # --- First event should be a definition event ---
-    assert (
-        "submissionJobDefinitionEvent" in all_events[0]
-    ), f"Expected first event to be a definition event, got: {all_events[0]}"
-
     # --- Definition event ---
+    # Don't assume ordering; the agent and supervisor recorders flush
+    # independently.
     def_events = [e for e in all_events if "submissionJobDefinitionEvent" in e]
     assert len(def_events) == 1, (
         f"Expected exactly 1 definition event, got {len(def_events)}. "
