@@ -23,6 +23,3 @@ gcp_advanced_configurations_json:
         auto_delete: true
         initialize_params:
           disk_size_gb: 800
-
-flags:
-  allow-cross-zone-autoscaling: true

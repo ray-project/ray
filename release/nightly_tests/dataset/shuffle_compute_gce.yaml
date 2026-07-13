@@ -20,6 +20,3 @@ worker_node_types:
       min_workers: 2
       max_workers: 2
       use_spot: false
-
-flags:
-  allow-cross-zone-autoscaling: true

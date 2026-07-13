@@ -10,6 +10,3 @@ head_node_type:
     instance_type: n1-standard-16-nvidia-tesla-t4-1 # aws g4dn.8xlarge
 
 worker_node_types: []
-
-flags:
-  allow-cross-zone-autoscaling: true

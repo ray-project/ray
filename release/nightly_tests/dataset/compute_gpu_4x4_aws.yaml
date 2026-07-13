@@ -23,6 +23,3 @@ advanced_configurations_json:
             Iops: 5000
             Throughput: 1000
             VolumeType: gp3
-
-flags:
-  allow-cross-zone-autoscaling: true
