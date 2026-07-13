@@ -3571,6 +3571,24 @@ class DeploymentState:
         self._deployment_actor_retry_counter = 0
         return True
 
+    def _record_scaling_status_transition(self, old_num: int, new_num: int) -> None:
+        """Transition status to UPSCALING/DOWNSCALING for an automatic scaling event.
+
+        Shared by the autoscaler and num_replicas="per_node" reconciliation so
+        node-driven scaling shows up in deployment status the same way
+        request-driven autoscaling does.
+        """
+        if new_num > old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
+                message=f"Upscaling from {old_num} to {new_num} replicas.",
+            )
+        elif new_num < old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
+                message=f"Downscaling from {old_num} to {new_num} replicas.",
+            )
+
     def autoscale(self, decision_num_replicas: int) -> bool:
         """
         Apply the given scaling decision by updating the target replica count.
@@ -3614,24 +3632,17 @@ class DeploymentState:
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
         new_num = self._target_state.target_num_replicas
+        self._record_scaling_status_transition(old_num, new_num)
         if new_num > old_num:
             logger.info(
                 f"Upscaling {self._id} from {old_num} to {new_num} replicas. "
                 f"{curr_stats_str}"
-            )
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
-                message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
             self._autoscaling_state_manager.record_scale_up(self._id)
         elif new_num < old_num:
             logger.info(
                 f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
                 f"{curr_stats_str}"
-            )
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
-                message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
             self._autoscaling_state_manager.record_scale_down(self._id)
 
@@ -3686,7 +3697,12 @@ class DeploymentState:
             return
 
         old_num = self._target_state.target_num_replicas
-        self._set_target_state(self._target_state.info, target)
+        # Pin the code version so re-setting the target is a pure rescale and
+        # doesn't mint a new version that would restart running replicas.
+        new_info = copy(self._target_state.info)
+        new_info.version = self._target_state.version.code_version
+        self._set_target_state(new_info, target)
+        self._record_scaling_status_transition(old_num, target)
         logger.info(
             f"Adjusting {self._id} from {old_num} to {target} replicas to match "
             "the number of schedulable nodes."
