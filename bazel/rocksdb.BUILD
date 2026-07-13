@@ -48,6 +48,14 @@ cmake(
         "USE_RTTI": "1",
         "ROCKSDB_INSTALL_ON_WINDOWS": "OFF",
         "WITH_RUNTIME_DEBUG": "OFF",
+
+        # rocksdb's CMakeLists auto-enables ccache via
+        # ``find_program(CCACHE_FOUND ccache)`` + ``RULE_LAUNCH_COMPILE`` /
+        # ``RULE_LAUNCH_LINK``. Under bazel's linux-sandbox that breaks two
+        # ways: (1) ccache cache dir is read-only, and (2) the archive step
+        # ends up as ``ccache : librocksdb.a`` because CMake sets
+        # CMAKE_RANLIB to ``:``. Preset the sentinel so find_program skips.
+        "CCACHE_FOUND": "CCACHE_FOUND-NOTFOUND",
     },
     generate_args = ["-G Ninja"],
     lib_source = ":all_srcs",
