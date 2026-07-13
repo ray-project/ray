@@ -553,6 +553,8 @@ def deployment(
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
     max_surge_percent: Default[int] = DEFAULT.VALUE,
+    prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+    prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -653,6 +655,17 @@ def deployment(
             or above ``world_size``. Ranks are reassigned after the deployment
             becomes healthy. Defaults to ``0``, which stops old replicas before
             starting replacements.
+        prefer_local_node_routing: Prefer routing requests to replicas on
+            the same node as the caller. Applies to both proxy-to-replica and
+            replica-to-replica routing. The default differs by caller: proxy
+            handles default to ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
+            (on by default), while inter-deployment handles default to off.
+            An explicit value overrides both defaults.
+        prefer_local_az_routing: Prefer routing requests to replicas in the
+            same availability zone as the caller. Applies to both
+            proxy-to-replica and replica-to-replica routing. If not set,
+            defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
+            (on by default). Explicit deployment config overrides the env var.
 
     Returns:
         `Deployment`
@@ -737,6 +750,8 @@ def deployment(
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
         max_surge_percent=max_surge_percent,
+        prefer_local_node_routing=prefer_local_node_routing,
+        prefer_local_az_routing=prefer_local_az_routing,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

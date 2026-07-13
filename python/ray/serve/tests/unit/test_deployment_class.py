@@ -91,6 +91,8 @@ class TestDeploymentOptions:
         "graceful_shutdown_timeout_s": 10,
         "health_check_period_s": 10,
         "health_check_timeout_s": 10,
+        "prefer_local_node_routing": False,
+        "prefer_local_az_routing": False,
     }
 
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
