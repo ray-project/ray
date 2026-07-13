@@ -327,7 +327,17 @@ class TableBlockAccessor(BlockAccessor):
             yield from self._iter_groups_sorted(sort_key)
 
         columns: Dict[str, List[Any]] = {}
-        builder = self.builder()
+        if keys:
+            for k in keys:
+                columns[k] = []
+        count = collections.defaultdict(int)
+        for agg in aggs:
+            name = agg.name
+            if count[name] > 0:
+                name = self._munge_conflict(name, count[name])
+            count[name] += 1
+            columns[name] = []
+
         for group_keys, group_view in iter_groups():
             # Aggregate.
             init_vals = group_keys
@@ -346,22 +356,18 @@ class TableBlockAccessor(BlockAccessor):
             # Build the row.
             if keys:
                 for k, gk in zip(keys, group_keys):
-                    if columns.get(k) is None:
-                        columns[k] = []
                     columns[k].append(gk)
 
-            count = collections.defaultdict(int)
+            count.clear()
             for agg, accumulator in zip(aggs, accumulators):
                 name = agg.name
                 # Check for conflicts with existing aggregation name.
                 if count[name] > 0:
                     name = self._munge_conflict(name, count[name])
                 count[name] += 1
-                if columns.get(name) is None:
-                    columns[name] = []
                 columns[name].append(accumulator)
 
-        return builder._table_from_pydict(columns)
+        return self.builder()._table_from_pydict(columns)
 
     @classmethod
     def _combine_aggregated_blocks(
