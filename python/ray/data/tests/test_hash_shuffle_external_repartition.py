@@ -1,12 +1,13 @@
-"""End-to-end tests: ``ds.repartition()`` routed through the external
-(file-transport) hash-shuffle variant.
-
-Parity block mirrors ``test_hash_shuffle_v2.py`` — same setup, same
-assertions, same names — with ``use_external_hash_shuffle`` flipped on so
-we exercise the ExternalHashShuffle{Map,Reduce}Op pair via the real
-planner + StreamingExecutor. External-only regressions (flag-off default,
-chained ops) live in a second section below.
+"""``ds.repartition()`` through the external (file-transport) hash-shuffle
+variant. External-only tests (flag-off default, chained ops, on-disk
+cleanup) follow the shared correctness block.
 """
+
+import gc
+import glob
+import os
+import tempfile
+import time
 
 import pytest
 
@@ -39,7 +40,7 @@ def _assert_keys_colocated(per_block):
     ), f"A key landed in more than one block: {per_block}"
 
 
-# --- Parity with test_hash_shuffle_v2.py --------------------------------------
+# --- Correctness -------------------------------------------------------------
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -65,15 +66,35 @@ def test_external_repartition_block_number_matched(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """All-non-empty partitions => exactly num_partitions output blocks."""
+    """All-non-empty partitions => exactly num_partitions output blocks.
+
+    Also asserts on-disk shuffle files under ``$TMPDIR/ray_shuffle_external_*``
+    get cleaned up when the map op shuts down (fire-and-forget
+    ``_cleanup_shuffle_dir`` tasks; ``_teardown_shuffle`` waits briefly).
+    """
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     ctx.use_external_hash_shuffle = True
+
+    pattern = os.path.join(tempfile.gettempdir(), "ray_shuffle_external_*")
+    pre_existing = set(glob.glob(pattern))
 
     # 1000 distinct keys over 8 buckets => all 8 partitions are non-empty.
     ds = ray.data.range(1000, override_num_blocks=20)
     out = ds.repartition(8, keys=["id"]).materialize()
     assert out.num_blocks() == 8
+
+    # Drop references so the map op can shut down + fire its per-node
+    # ``_cleanup_shuffle_dir`` tasks; poll briefly (cleanup is async).
+    del out, ds
+    gc.collect()
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        leftover = set(glob.glob(pattern)) - pre_existing
+        if not leftover:
+            break
+        time.sleep(0.1)
+    assert not leftover, f"leftover shuffle dirs after teardown: {leftover}"
 
 
 def test_external_same_key_lands_in_same_block(
@@ -213,8 +234,7 @@ def test_external_repartition_then_map(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """Downstream consumer (map) sees correct schema + row count from external
-    output bundles — catches schema / metadata propagation bugs."""
+    """Downstream ``map`` sees the external op's output schema + row count."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     ctx.use_external_hash_shuffle = True
@@ -234,8 +254,7 @@ def test_external_two_repartitions_chained(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """Two external repartitions in a row — verifies bundle plumbing between
-    external output and external input (the same operator on both sides)."""
+    """Two external repartitions back-to-back preserve rows."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     ctx.use_external_hash_shuffle = True

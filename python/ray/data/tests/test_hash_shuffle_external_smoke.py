@@ -1,20 +1,12 @@
-"""Smoke test for the external-shuffle operator pair (ExternalHashShuffleMapOp +
-ExternalHashShuffleReduceOp).
+"""Smoke test for the external-shuffle operator pair
+(``ExternalHashShuffleMapOp`` + ``ExternalHashShuffleReduceOp``).
 
-This wires the operators directly — bypassing the Ray Data planner — to
-verify the simplest end-to-end story: feed N input blocks → hash-partition
-into K partitions → reduce each with ``_concat_reduce`` → row count
-preserved, partition count == K, no leaked actors / files.
-
-The point is to catch wiring bugs (RefBundle shape, sentinel metadata,
-callback ordering, ShuffleManager lifecycle) before we add planner glue.
-This is NOT a perf benchmark and NOT exhaustive correctness coverage —
-hash invariants, skew handling, multi-node, compression matrices, etc.
-get their own tests later.
-
-Run with::
-
-    pytest python/ray/data/tests/test_hash_shuffle_external_smoke.py -xvs
+Wires the operators directly — bypassing the Ray Data planner — to verify
+the simplest end-to-end story: feed N input blocks, hash-partition into K
+partitions, reduce each with ``_concat_reduce``, then check row count and
+partition count. Catches wiring bugs (RefBundle shape, sentinel metadata,
+callback ordering, ShuffleManager lifecycle) that the planner-driven
+tests in ``test_hash_shuffle_external_repartition.py`` don't isolate.
 """
 
 import os
@@ -49,7 +41,7 @@ from ray.data.context import DataContext
 
 
 def _make_partition_fn(key_columns, num_partitions):
-    """Concrete PartitionFn over ``hash_partition`` — matches v2's factory."""
+    """Concrete PartitionFn over ``hash_partition``."""
 
     def _partition(block: pa.Table):
         return hash_partition(
@@ -154,9 +146,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
     input_bundles = _build_input_bundles(num_blocks, rows)
     expected_total_rows = num_blocks * rows
 
-    # Use a stub upstream op via a no-op input dependency. The MVP path
-    # plugs ExternalHashShuffleMapOp.input_dependencies[0] into a real upstream; for
-    # smoke we just feed bundles in manually.
+    # Feed bundles into a stub upstream — no real planner-driven input dep.
     from ray.data._internal.execution.operators.input_data_buffer import (
         InputDataBuffer,
     )
@@ -194,11 +184,8 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
             map_op.add_input(upstream.get_next(), input_index=0)
         map_op.all_inputs_done()
 
-        # Drain map → feed reduce. ExternalHashShuffleMapOp now emits N partition
-        # wrapper bundles (one per partition_id, each carrying the same
-        # shared handle-list ref + a __partition__<pid> sentinel), mirroring
-        # v2's map->reduce contract. So we expect num_parts bundles, not
-        # num_blocks (mapper count).
+        # Drain map → feed reduce. The map op emits one partition wrapper
+        # bundle per partition_id (not per mapper).
         map_output = _drain_op(map_op)
         assert len(map_output) == num_parts, (
             f"expected {num_parts} partition wrappers from map, "
@@ -208,27 +195,14 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
             reduce_op.add_input(bundle, input_index=0)
         reduce_op.all_inputs_done()
 
-        # Drain reduce.
+        # Drain reduce + check invariants.
         reduce_output = _drain_op(reduce_op, timeout_s=60.0)
-
-        # ── invariants ─────────────────────────────────────────────────
-        # Row count preserved.
         got_rows = _total_rows(reduce_output)
         assert got_rows == expected_total_rows, (
             f"row count mismatch: got {got_rows}, expected "
             f"{expected_total_rows}"
         )
-        # No more in-flight reducer tasks; every dispatched partition
-        # produced at least one output bundle (_concat_reduce + empty input
-        # combined could legitimately emit zero, but for non-empty inputs
-        # we expect coverage of every partition).
-        partition_ids_seen = set()
-        for bundle in reduce_output:
-            # We don't carry partition_id sentinels on the external-shuffle reduce
-            # output (the partition was an internal concept of the
-            # ShuffleHandle), so we just count distinct output bundles.
-            partition_ids_seen.add(id(bundle))
-        assert len(partition_ids_seen) >= 1
+        assert len({id(bundle) for bundle in reduce_output}) >= 1
     finally:
         reduce_op.shutdown(Timer(), force=True)
         map_op.shutdown(Timer(), force=True)
@@ -236,10 +210,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
 
 
 def test_external_cleanup_shuffle_dir(ray_init_shutdown, tmp_path):
-    """``_cleanup_shuffle_dir`` (fire-and-forget by the map op at shutdown)
-    ``rmtree``s the given ``base_dir`` on the target node. This is the
-    decoupled cleanup path — actor lifetime no longer drives file
-    removal."""
+    """``_cleanup_shuffle_dir`` ``rmtree``s the given ``base_dir``."""
     from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
         _cleanup_shuffle_dir,
     )
