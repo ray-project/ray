@@ -185,6 +185,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// executor.
   std::optional<std::string> ArgTensorTransport(size_t arg_index) const;
 
+  /// Whether any argument or return uses tensor transport.
+  bool UsesTensorTransport() const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   bool ReturnsDynamic() const;

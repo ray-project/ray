@@ -831,6 +831,10 @@ class ObjectReconstructionFailedError(ObjectLostError):
             "The object cannot be reconstructed because lineage reconstruction "
             "is disabled system-wide (object_reconstruction_enabled=False)."
         ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY: (
+            "The object cannot be reconstructed because its task uses "
+            "Ray Direct Transport."
+        ),
     }
 
     def __init__(
