@@ -14,30 +14,11 @@ import pytest
 import ray
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.data.tests.test_hash_shuffle_v2 import (
+    _assert_keys_colocated,
+    _keys_per_block,
+)
 from ray.tests.conftest import *  # noqa: F401, F403
-
-
-def _keys_per_block(ds, columns):
-    """Return, for each output block, the set of distinct key tuples it holds.
-
-    Used to assert the hash-shuffle co-location guarantee: a key must appear in
-    exactly one block.
-    """
-    per_block = []
-    for ref_bundle in ds.iter_internal_ref_bundles():
-        for block_ref in ref_bundle.block_refs:
-            block = ray.get(block_ref)
-            cols = [block[c].to_pylist() for c in columns]
-            per_block.append(set(zip(*cols)))
-    return per_block
-
-
-def _assert_keys_colocated(per_block):
-    """Every key tuple appears in at most one block."""
-    all_keys = [k for block in per_block for k in block]
-    assert len(all_keys) == len(
-        set(all_keys)
-    ), f"A key landed in more than one block: {per_block}"
 
 
 # --- Correctness -------------------------------------------------------------

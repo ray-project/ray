@@ -10,21 +10,15 @@ tests in ``test_hash_shuffle_external_repartition.py`` don't isolate.
 """
 
 import os
-import time
 
-import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
-from ray.data._internal.execution.interfaces import (
-    BlockEntry,
-    ExecutionOptions,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _concat_reduce,
+    _make_hash_partition_fn,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
     ExternalHashShuffleMapOp,
@@ -32,93 +26,19 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_external import (  # noqa: E501
     ExternalHashShuffleReduceOp,
 )
+from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.stats import Timer
-from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+from ray.data.tests.util import run_op_tasks_sync
 
 
 # --- helpers -----------------------------------------------------------------
 
 
-def _make_partition_fn(key_columns, num_partitions):
-    """Concrete PartitionFn over ``hash_partition``."""
-
-    def _partition(block: pa.Table):
-        return hash_partition(
-            block, hash_cols=key_columns, num_partitions=num_partitions
-        )
-
-    return _partition
-
-
-def _build_input_bundles(num_blocks: int, rows_per_block: int) -> list:
-    """Create ``num_blocks`` Plasma'd Arrow tables, return them as input
-    RefBundles. Distinct ``id`` values so we can hash-partition them
-    meaningfully."""
+def _run_and_collect(op) -> list:
+    """Pump ``op`` to completion, collect output bundles."""
+    run_op_tasks_sync(op)
     bundles = []
-    next_id = 0
-    for _ in range(num_blocks):
-        ids = list(range(next_id, next_id + rows_per_block))
-        vals = [f"val_{i}" for i in ids]
-        table = pa.table({"id": ids, "val": vals})
-        next_id += rows_per_block
-        ref = ray.put(table)
-        meta = BlockAccessor.for_block(table).get_metadata()
-        bundles.append(
-            RefBundle(
-                (BlockEntry(ref=ref, metadata=meta),),
-                schema=table.schema,
-                owns_blocks=False,
-            )
-        )
-    return bundles
-
-
-def _drain_op(op, *, timeout_s: float = 30.0) -> list:
-    """Pump the operator until execution finishes; collect output bundles.
-
-    Mirrors the dispatch in
-    ``streaming_executor_state.process_completed_tasks``: ``ray.wait`` on
-    every active task's waitable, then call ``on_data_ready`` on
-    ``DataOpTask`` (streaming gen) and ``on_task_finished`` on
-    ``MetadataOpTask`` (single ref). No backpressure or input-queue
-    ordering — that's the executor's job.
-    """
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        DataOpTask,
-        MetadataOpTask,
-    )
-    from ray.data._internal.execution.metadata_fetcher import InlineMetadataFetcher
-
-    metadata_fetcher = InlineMetadataFetcher()
-
-    bundles = []
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        while op.has_next():
-            bundles.append(op.get_next())
-        active_tasks = op.get_active_tasks()
-        if not active_tasks:
-            if op.has_execution_finished():
-                break
-            time.sleep(0.05)
-            continue
-        ref_to_task = {t.get_waitable(): t for t in active_tasks}
-        ready, _ = ray.wait(
-            list(ref_to_task),
-            num_returns=len(ref_to_task),
-            fetch_local=False,
-            timeout=0.1,
-        )
-        for ref in ready:
-            task = ref_to_task[ref]
-            if isinstance(task, DataOpTask):
-                task.on_data_ready(None, metadata_fetcher)
-            else:
-                assert isinstance(task, MetadataOpTask)
-                task.on_task_finished()
-        if op.has_execution_finished():
-            break
     while op.has_next():
         bundles.append(op.get_next())
     return bundles
@@ -143,7 +63,9 @@ def ray_init_shutdown():
 def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
     """End-to-end: map → reduce, verify total row count preserved."""
     ctx = DataContext.get_current()
-    input_bundles = _build_input_bundles(num_blocks, rows)
+    input_bundles = make_ref_bundles(
+        [list(range(i * rows, (i + 1) * rows)) for i in range(num_blocks)]
+    )
     expected_total_rows = num_blocks * rows
 
     # Feed bundles into a stub upstream — no real planner-driven input dep.
@@ -161,7 +83,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         upstream,
         ctx,
         num_partitions=num_parts,
-        partition_fn=_make_partition_fn(["id"], num_parts),
+        partition_fn=_make_hash_partition_fn(["id"], num_parts),
         pool_budget_bytes=4 * 1024 * 1024,
         fsync_on_close=False,  # don't pay fsync cost on a smoke test
         name="ExternalHashShuffleMap-smoke",
@@ -186,7 +108,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
 
         # Drain map → feed reduce. The map op emits one partition wrapper
         # bundle per partition_id (not per mapper).
-        map_output = _drain_op(map_op)
+        map_output = _run_and_collect(map_op)
         assert len(map_output) == num_parts, (
             f"expected {num_parts} partition wrappers from map, "
             f"got {len(map_output)}"
@@ -196,7 +118,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         reduce_op.all_inputs_done()
 
         # Drain reduce + check invariants.
-        reduce_output = _drain_op(reduce_op, timeout_s=60.0)
+        reduce_output = _run_and_collect(reduce_op)
         got_rows = _total_rows(reduce_output)
         assert got_rows == expected_total_rows, (
             f"row count mismatch: got {got_rows}, expected "
