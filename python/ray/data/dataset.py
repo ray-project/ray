@@ -7548,9 +7548,9 @@ class Dataset:
         df = BlockAccessor.for_block(block).to_pandas()
 
         # An empty dataset yields no batches above, so the builder produces a
-        # DataFrame with no columns. Restore the columns (and dtypes, when the
-        # underlying schema is an Arrow schema) from the dataset schema so the
-        # result still matches the dataset's structure (issue #59946).
+        # DataFrame with no columns. Restore the columns and dtypes from the
+        # dataset schema so the result still matches the dataset's structure
+        # (issue #59946).
         if df.shape[1] == 0:
             import pyarrow as pa
 
@@ -7562,7 +7562,17 @@ class Dataset:
                 else:
                     import pandas
 
-                    df = pandas.DataFrame(columns=list(schema.names))
+                    # Pandas-backed schema: preserve per-column dtypes when known.
+                    types = getattr(base_schema, "types", None)
+                    if types is not None and len(types) == len(schema.names):
+                        df = pandas.DataFrame(
+                            {
+                                name: pandas.Series([], dtype=dtype)
+                                for name, dtype in zip(schema.names, types)
+                            }
+                        )
+                    else:
+                        df = pandas.DataFrame(columns=list(schema.names))
 
         return df
 
