@@ -134,7 +134,6 @@ class AutoscalingCluster:
                 {
                     "RAY_enable_autoscaler_v2": "1",
                     "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
-                    "RAY_NODE_TYPE_NAME": "ray.head.default",
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
                 }
             )

@@ -137,6 +137,9 @@ def autoscaling_cluster(httpserver):
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": (
                 _AUTOSCALER_EVENT_TYPES
             ),
+            # Give the head node a type name so it shows up in node
+            # provisioning events.
+            "RAY_NODE_TYPE_NAME": "ray.head.default",
         },
     )
     ray.init("auto")
