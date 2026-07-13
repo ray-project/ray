@@ -213,11 +213,27 @@ def _stats_to_json(stats: Optional[dict]) -> str:
     return json.dumps(_convert(stats))
 
 
+def _non_camera_features(features: dict) -> Dict[str, tuple]:
+    """Map each non-camera feature to its ``(dtype, shape)``.
+
+    Used for the cross-root compatibility check: camera features
+    (``video`` / ``image``) are compared separately via ``video_keys`` /
+    ``image_keys``, and comparing dtype and shape here -- not just the feature
+    names -- ensures roots read together produce the same output schema.
+    Roots that agree on names but differ in dtype or shape would otherwise
+    yield schema-inconsistent blocks."""
+    return {
+        k: (v.get("dtype"), tuple(v.get("shape") or ()))
+        for k, v in features.items()
+        if v.get("dtype") not in ("video", "image")
+    }
+
+
 def _resolve_filesystem(
     root: Union[str, Path],
     filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"] = None,
     storage_options: Optional[Dict[str, Any]] = None,
-) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
+) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any]]:
     """Resolve the fsspec filesystem and paths for one LeRobot dataset root.
 
     The lerobot library uses fsspec under the hood, and fsspec has native
@@ -243,10 +259,10 @@ def _resolve_filesystem(
             ...) applied to the resolved filesystem and the by-URI video path.
 
     Returns:
-        A ``(fs, fs_root, video_root_uri, video_storage_options,
-        video_creds_unavailable)`` tuple. ``video_creds_unavailable`` is True
-        when a pyarrow ``filesystem`` was given that cannot supply credentials
-        to the by-URI video path.
+        A ``(fs, fs_root, video_root_uri, video_storage_options)`` tuple:
+        ``fs`` / ``fs_root`` resolve metadata + parquet I/O; ``video_root_uri``
+        / ``video_storage_options`` feed the by-URI video decode path (which
+        torchcodec opens directly via ``fsspec``, not through ``fs``).
     """
     import fsspec
     from fsspec.core import split_protocol
@@ -928,7 +944,14 @@ class LeRobotDatasource(Datasource):
             )
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
-        self._read_granularity = _ReadGranularity(read_granularity)
+        try:
+            self._read_granularity = _ReadGranularity(read_granularity)
+        except ValueError:
+            valid = [g.value for g in _ReadGranularity]
+            raise ValueError(
+                f"read_granularity must be one of {valid}, got "
+                f"{read_granularity!r}."
+            ) from None
 
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         self._supports_distributed_reads = not _is_local_scheme(roots)
@@ -957,6 +980,7 @@ class LeRobotDatasource(Datasource):
 
         if len(self.original_metas) > 1:
             ref = self.original_metas[0]
+            ref_feats = _non_camera_features(ref.features)
             for m in self.original_metas[1:]:
                 if sorted(m.video_keys) != sorted(ref.video_keys):
                     raise ValueError(
@@ -975,21 +999,12 @@ class LeRobotDatasource(Datasource):
                         f"fps mismatch: {ref.root!r} has {ref.fps} "
                         f"but {m.root!r} has {m.fps}"
                     )
-                ref_feats = {
-                    k
-                    for k, v in ref.features.items()
-                    if v.get("dtype") not in ("video", "image") and k != "task"
-                }
-                m_feats = {
-                    k
-                    for k, v in m.features.items()
-                    if v.get("dtype") not in ("video", "image") and k != "task"
-                }
-                if ref_feats != m_feats:
+                m_feats = _non_camera_features(m.features)
+                if m_feats != ref_feats:
                     raise ValueError(
                         f"Feature mismatch: {ref.root!r} has "
-                        f"{sorted(ref_feats)} but {m.root!r} has "
-                        f"{sorted(m_feats)}"
+                        f"{sorted(ref_feats.items())} but {m.root!r} has "
+                        f"{sorted(m_feats.items())}"
                     )
 
         if episodes is not None:

@@ -524,6 +524,7 @@ def test_read_lerobot_missing_dataset(ray_start_regular_shared):
         ("image_keys", "image_keys mismatch"),
         ("fps", "fps mismatch"),
         ("feature", "Feature mismatch"),
+        ("feature_shape", "Feature mismatch"),
     ],
 )
 def test_read_lerobot_multi_root_mismatch_raises(
@@ -558,8 +559,11 @@ def test_read_lerobot_multi_root_mismatch_raises(
             info = json.load(f)
         if kind == "fps":
             info["fps"] = 30
-        else:  # feature: add a scalar feature root_a does not have
+        elif kind == "feature":  # add a scalar feature root_a does not have
             info["features"]["extra_signal"] = {"dtype": "float32", "shape": [2]}
+        else:  # feature_shape: same feature names as root_a but a different
+            # shape -- caught only by comparing dtype/shape, not just names.
+            info["features"]["state"]["shape"] = [7]
         with open(info_path, "w") as f:
             json.dump(info, f)
 
