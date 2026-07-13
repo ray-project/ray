@@ -20,6 +20,8 @@ class WorkerMetrics:
 
     # ===== Metric Names =====
     REPORT_TOTAL_BLOCKED_TIME_S = "train_report_total_blocked_time_s"
+    CHECKPOINT_SYNC_TOTAL_TIME_S = "train_checkpoint_sync_total_time_s"
+    CHECKPOINT_TRANSFER_TOTAL_TIME_S = "train_checkpoint_transfer_total_time_s"
 
     @classmethod
     def _create_time_metric(
@@ -47,6 +49,16 @@ class WorkerMetrics:
             cls.REPORT_TOTAL_BLOCKED_TIME_S: cls._create_time_metric(
                 cls.REPORT_TOTAL_BLOCKED_TIME_S,
                 "Cumulative time in seconds to report a checkpoint to the storage.",
+                base_tags,
+            ),
+            cls.CHECKPOINT_SYNC_TOTAL_TIME_S: cls._create_time_metric(
+                cls.CHECKPOINT_SYNC_TOTAL_TIME_S,
+                "Cumulative time in seconds spent synchronizing the checkpoint directory name across all ranks.",
+                base_tags,
+            ),
+            cls.CHECKPOINT_TRANSFER_TOTAL_TIME_S: cls._create_time_metric(
+                cls.CHECKPOINT_TRANSFER_TOTAL_TIME_S,
+                "Cumulative time in seconds spent transferring checkpoint files to storage.",
                 base_tags,
             ),
         }

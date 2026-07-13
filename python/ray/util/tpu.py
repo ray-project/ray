@@ -1,5 +1,7 @@
+import atexit
 import logging
 import math
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
@@ -765,3 +767,77 @@ def slice_placement_group(
         chips_per_vm=chips_per_vm,
         **kwargs,
     )
+
+
+@PublicAPI(stability="alpha")
+def init_jax_profiler(port: Optional[int] = None) -> None:
+    """Setup JAX Profiler server for in-process JAX profiling.
+
+    This opens a background gRPC profiling port inside the current worker process
+    and automatically registers the port to GCS internal_kv so that the Ray Dashboard
+    can discover the profiling endpoint.
+
+    Args:
+        port: The port where JAX profiler server should listen. If None, it reads the
+              port from JAX_PROFILER_PORT environment variable (default: 9999).
+
+    Note:
+        JAX profiling is inherently an in-process operation. The JAX profiler server
+        must run inside the memory space of the target worker process executing the
+        JAX/XLA code in order to capture trace events, Python thread stacks, and XLA
+        execution times.
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        import jax
+
+        if port is None:
+            port = int(os.getenv("JAX_PROFILER_PORT", "9999"))
+        try:
+            # NOTE: We assume there is at most one JAX worker process per host/node
+            # (which is typical for multi-host JAX/TPU VM training). Therefore, we attempt
+            # to bind directly to a single port without dynamically scanning a range.
+            # If this assumption is relaxed in the future (e.g. multiple JAX workers per node),
+            # we should consider switching to dynamic port scanning/allocation.
+            jax.profiler.start_server(port)
+            logger.info(f"Started JAX profiler server on port {port}")
+
+            # Register the JAX profiler port in GCS internal_kv so dashboard head can auto-discover it.
+            try:
+                worker = ray._private.worker.global_worker
+                if worker and hasattr(worker, "node") and worker.node:
+                    node_id_hex = worker.node.node_id
+                    pid = os.getpid()
+                    key = f"jax_profiler_port:{node_id_hex}:{pid}"
+                    ray.experimental.internal_kv._internal_kv_put(
+                        key,
+                        str(port).encode(),
+                        namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                    logger.info(
+                        f"Registered JAX profiler port {port} in GCS internal_kv"
+                    )
+
+                    atexit.register(_cleanup_jax_profiler_kv, key)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to register JAX profiler port in internal_kv: {e}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to start JAX profiler server on port {port}: {e}")
+    except ImportError:
+        logger.warning("JAX is not installed, skipping JAX profiler setup")
+    except Exception as e:
+        logger.error(f"Failed to start JAX profiler server: {e}")
+
+
+def _cleanup_jax_profiler_kv(key: str) -> None:
+    try:
+        ray.experimental.internal_kv._internal_kv_del(
+            key,
+            namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+    except Exception:
+        pass

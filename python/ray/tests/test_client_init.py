@@ -12,11 +12,12 @@ import pytest
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.server as ray_client_server
+from ray._private.client_mode_hook import _explicitly_disable_client_mode
 from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.cloudpickle.compat import pickle
 from ray.cluster_utils import cluster_not_supported
 from ray.job_config import JobConfig
-from ray.util.client import _ClientContext
+from ray.util.client import _ClientContext, ray as ray_client
 from ray.util.client.worker import prepare_init_request_args
 
 
@@ -112,6 +113,17 @@ def test_idempotent_disconnect(init_and_serve):
     ray.connect("localhost:50051")
     ray.disconnect()
     ray.disconnect()
+
+
+def test_public_shutdown_wait_for_processes_in_client_mode(init_and_serve):
+    ray_client.connect("localhost:50051")
+    try:
+        assert ray_client.is_connected()
+        # In client mode, wait_for_processes is a no-op
+        ray.shutdown(wait_for_processes=True)
+        assert not ray_client.is_connected()
+    finally:
+        _explicitly_disable_client_mode()
 
 
 def test_num_clients(init_and_serve_lazy):

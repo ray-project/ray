@@ -27,8 +27,8 @@ def create_or_update_cluster(
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         no_restart: Whether to skip restarting Ray services during the
             update. This avoids interrupting running jobs and can be used to
             dynamically adjust autoscaler configuration.
@@ -36,6 +36,9 @@ def create_or_update_cluster(
             restart Ray. This cannot be used with 'no-restart'.
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+
+    Returns:
+        The cluster config dict applied after bootstrapping.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
@@ -61,8 +64,8 @@ def teardown_cluster(
     """Destroys all nodes of a Ray cluster described by a config json.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         workers_only: Whether to keep the head node running and only
             teardown worker nodes.
         keep_min_workers: Whether to keep min_workers (as specified
@@ -93,8 +96,8 @@ def run_on_cluster(
     """Runs a command on the specified cluster.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         cmd: the command to run, or None for a no-op command.
         run_env: whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
@@ -102,7 +105,7 @@ def run_on_cluster(
         stop: whether to stop the cluster after command run
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
-        port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
+        port_forward: port(s) to forward.
         with_output: Whether to capture command output.
 
     Returns:
@@ -139,8 +142,8 @@ def rsync(
     """Rsyncs files to or from the cluster.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         source: rsync source argument.
         target: rsync target argument.
         down: whether we're syncing remote -> local.
@@ -150,6 +153,9 @@ def rsync(
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         should_bootstrap: whether to bootstrap cluster config before syncing
+
+    Returns:
+        The result of the underlying rsync command.
 
     Raises:
         RuntimeError: If the cluster head node is not found.
@@ -174,8 +180,8 @@ def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
     """Returns head node IP for given configuration file if exists.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
 
     Returns:
         The ip address of the cluster head node.
@@ -192,8 +198,8 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
     """Returns worker node IPs for given configuration file.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
 
     Returns:
         List of worker node ip addresses.
@@ -230,9 +236,9 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made to override.
-        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made to override.
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made to override.
         bundle_label_selectors: A list of label selectors, applied per-bundle to the same
             index in the `bundles` list. For bundles without a label requirement, the
             corresponding item in the list is an empty dictionary. For each bundle.
@@ -321,13 +327,13 @@ def configure_logging(
             If 'record', outputs record-style without formatting.
             'auto' defaults to 'pretty', and disables pretty logging
             if stdin is *not* a TTY. Defaults to "auto".
-        color_mode (str):
+        color_mode:
             Can be "true", "false", or "auto".
 
             Enables or disables `colorful`.
 
             If `color_mode` is "auto", is set to `not stdout.isatty()`
-        vebosity (int):
+        verbosity:
             Output verbosity (0, 1, 2, 3).
 
             Low verbosity will disable `verbose` and `very_verbose` messages.

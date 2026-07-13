@@ -5,7 +5,7 @@ description: Rebuild Ray from source — determines the right build mode based o
 
 # Rebuild Ray
 
-Canonical build docs: doc/source/ray-contribute/development.rst
+Canonical build docs: doc/source/ray-contribute/development.md
 Use the user's configured Python from CLAUDE.local.md, or fall back to `which python`.
 Update this skill if any changes are detected in development.rst.
 
@@ -32,7 +32,7 @@ Two approaches depending on how Ray was installed:
 No rebuild needed — Python changes are picked up automatically.
 
 ### If installed from nightly wheel + setup-dev.py
-1. Ensure a nightly wheel is installed (see doc/source/ray-contribute/development.rst
+1. Ensure a nightly wheel is installed (see doc/source/ray-contribute/development.md
    for the correct wheel URL for the user's platform and Python version)
 2. Link local files: `python python/ray/setup-dev.py`
 3. Can skip specific dirs: `python python/ray/setup-dev.py -y --skip _private dashboard`

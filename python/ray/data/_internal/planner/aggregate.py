@@ -27,7 +27,6 @@ from ray.data.context import DataContext, ShuffleStrategy
 def generate_aggregate_fn(
     key: Optional[Union[str, List[str]]],
     aggs: List[AggregateFn],
-    batch_format: str,
     data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
@@ -85,7 +84,6 @@ def generate_aggregate_fn(
             boundaries=boundaries,
             key=sort_key,
             aggs=aggs,
-            batch_format=batch_format,
         )
 
         if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:

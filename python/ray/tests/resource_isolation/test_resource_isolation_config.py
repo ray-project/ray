@@ -30,10 +30,24 @@ def test_disabled_resource_isolation_with_overrides_raises_value_error():
 
     with pytest.raises(
         ValueError,
+        match="system_reserved_cpu cannot be set when resource isolation is not enabled",
+    ):
+        ResourceIsolationConfig(enable_resource_isolation=False, system_reserved_cpu=0)
+
+    with pytest.raises(
+        ValueError,
         match="system_reserved_memory cannot be set when resource isolation is not enabled",
     ):
         ResourceIsolationConfig(
             enable_resource_isolation=False, system_reserved_memory=1024**3
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="system_reserved_memory cannot be set when resource isolation is not enabled",
+    ):
+        ResourceIsolationConfig(
+            enable_resource_isolation=False, system_reserved_memory=0
         )
 
 
@@ -176,11 +190,29 @@ def test_enabled_with_resource_overrides_less_than_minimum_defaults_raise_value_
 
     with pytest.raises(
         ValueError,
+        match="The requested system_reserved_cpu=0.0 is less than the minimum number of cpus that can be used for resource isolation.",
+    ):
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_cpu=0,
+        )
+
+    with pytest.raises(
+        ValueError,
         match="The requested system_reserved_memory 4194304 is less than the minimum number of bytes that can be used for resource isolation.",
     ):
         ResourceIsolationConfig(
             enable_resource_isolation=True,
             system_reserved_memory=4 * (1024**2),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="The requested system_reserved_memory 0 is less than the minimum number of bytes that can be used for resource isolation.",
+    ):
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_memory=0,
         )
 
 

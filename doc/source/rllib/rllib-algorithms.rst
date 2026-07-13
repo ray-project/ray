@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Catalog of all RLlib built-in algorithms — PPO, DQN, SAC, APPO, IMPALA, DreamerV3, BC, CQL, IQL, MARWIL — with action-space and multi-GPU support details.
 
 .. _rllib-algorithms-doc:
 
@@ -108,6 +109,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 
 
 All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
+For parametric or variable-length action spaces on the new API stack, see the `action masking example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/action_masking_rl_module.py>`__. The example uses PPO.
 
 **Tuned examples:**
 `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-dqn.yaml>`__,
