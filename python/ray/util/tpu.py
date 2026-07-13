@@ -21,6 +21,7 @@ from ray.util.placement_group import (
     placement_group,
     remove_placement_group,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -865,7 +866,6 @@ def dispatch(
         results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
-    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
     if not hasattr(fn, "options"):
         raise TypeError(
