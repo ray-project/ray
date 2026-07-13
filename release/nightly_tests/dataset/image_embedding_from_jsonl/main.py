@@ -36,8 +36,8 @@ OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
 # Ray Data can't prevent OOMs if you don't set `memory` for high-memory operations like
-# like this one. We chose 3 GiB because it was the max USS we observed in Ray 2.56
-# weekly test runs.
+# this one. We chose 3 GiB because it was the max USS we observed in Ray 2.56 weekly
+# test runs.
 READ_MEMORY = 3 * 1024**3
 
 PROCESSOR = ViTImageProcessor(
