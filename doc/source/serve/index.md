@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Scalable, framework-agnostic model serving for online inference APIs, with LLM serving, model composition, response streaming, and request batching."
+---
+
 (rayserve)=
 
 # Ray Serve: Scalable and Programmable Serving

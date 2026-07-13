@@ -111,11 +111,13 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
         --only-tags ray_client
 
+  # Conditionally runs on premerge via the `redis_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ is
+  # modified. Always runs on postmerge.
   - label: ":ray: core: redis tests"
     tags:
-      - core_python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: large
     parallelism: 4
     commands:
@@ -123,6 +125,26 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
+        --except-tags custom_setup
+        --python-version 3.10 --build-name corebuild-py3.10
+
+  # REP-64 GCS FT with the embedded RocksDB backend. Mirrors the redis
+  # tests above but selects rocksdb-mode via TEST_GCS_ROCKSDB=1 (see
+  # python/ray/tests/conftest.py::_setup_rocksdb_gcs). Conditionally
+  # runs on premerge via the `rocksdb_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ or the
+  # rocksdb build config is modified. Always runs on postmerge.
+  - label: ":ray: core: rocksdb tests"
+    tags:
+      - rocksdb_tests
+      - oss
+    instance_type: large
+    parallelism: 4
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
+        --install-mask all-ray-libraries
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test-env=TEST_GCS_ROCKSDB=1
         --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
 
@@ -152,9 +174,8 @@ steps:
 
   - label: ":ray: core: out of disk redis tests"
     tags:
-      - core_python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -162,7 +183,19 @@ steps:
         --only-tags=tmpfs --tmp-filesystem=tmpfs
         --python-version 3.10 --build-name corebuild-py3.10
 
+  - label: ":ray: core: out of disk rocksdb tests"
+    tags:
+      - rocksdb_tests
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --test-env=TEST_GCS_ROCKSDB=1
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
+        --python-version 3.10 --build-name corebuild-py3.10
+
   - label: ":ray: core: doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - core_python
       - doc
@@ -274,6 +307,8 @@ steps:
       - forge
       - ray-wheel-build(python=3.10)
 
+  # Premerge runs only the lowest and highest supported Python versions. The
+  # intermediate versions are covered by the postmerge-only step below.
   - label: ":ray: core: minimal tests {{array.python}}"
     key: core_minimal_tests
     tags:
@@ -293,7 +328,6 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
         --only-tags minimal
-        --python-version {{array.python}}
         --except-tags basic_test,manual,cgroup
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
@@ -328,10 +362,65 @@ steps:
     array:
       python:
         - "3.10"
+        - "3.14"
+
+  # Intermediate Python versions only run on postmerge (skipped on premerge).
+  - label: ":ray: core: minimal tests {{array.python}}"
+    key: core_minimal_tests_postmerge
+    tags:
+      - python
+      - dashboard
+      - oss
+      - min_build
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py
+      # core tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags basic_test,manual,cgroup
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags no_basic_test,manual
+        --skip-ray-installation
+      # core redis tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags no_basic_test,manual
+        --skip-ray-installation
+      # serve tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --only-tags minimal
+        --skip-ray-installation
+    depends_on:
+      - minbuild-core($)
+    array:
+      python:
         - "3.11"
         - "3.12"
         - "3.13"
-        - "3.14"
 
   - label: ":ray: core: cgroup tests"
     tags:
