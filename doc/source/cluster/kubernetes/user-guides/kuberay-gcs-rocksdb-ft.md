@@ -104,6 +104,14 @@ spec:
         containers:
         - name: ray-worker
           image: rayproject/ray:latest
+          env:
+          # Keep workers alive while the head Pod restarts and its volume
+          # reattaches. Because this setup configures GCS fault tolerance
+          # manually (not through gcsFaultToleranceOptions), KubeRay doesn't
+          # inject this timeout automatically, and the 60s default is usually
+          # too short for a PersistentVolume to detach and reattach.
+          - name: RAY_gcs_rpc_server_reconnect_timeout_s
+            value: "600"
 ```
 
 ```{admonition} Keep the mount path and the storage path in sync
