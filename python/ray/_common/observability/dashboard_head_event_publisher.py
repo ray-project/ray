@@ -76,8 +76,14 @@ class DashboardHeadRayEventPublisher:
                 e,
             )
             return
+        except requests.HTTPError as e:
+            # Keep the buffer on server errors (transient); drop it when the
+            # dashboard rejected the request (4xx).
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and status < 500:
+                self._pending.clear()
+            raise
         except Exception:
-            # Dashboard responded but rejected the request; drop the batch.
             self._pending.clear()
             raise
         self._pending.clear()
@@ -92,8 +98,8 @@ class DashboardHeadRayEventPublisher:
         if response.ok:
             return
 
-        # Only treat 401/403 as auth errors when token auth is actually enabled;
-        # the endpoint also returns 403 for event types not in the allowlist.
+        # 401/403 only mean auth failures when token auth is enabled; the
+        # endpoint uses 422 for allowlist rejections.
         if is_token_auth_enabled():
             error = format_authentication_http_error(
                 response.status_code, response.text
