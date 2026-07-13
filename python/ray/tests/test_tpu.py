@@ -1838,6 +1838,62 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
     assert len(result_labels) == 1
 
 
+def test_subslice_auto_select_refreshes_avail_after_discovery(mock_4x4_pgs):
+    """Regression: post-discovery auto-select must use a fresh availability
+    snapshot, not the stale pre-loop one.
+
+    Discovery may block while existing subslice PGs run to completion (so it
+    can acquire the full-slice PG). The pre-loop avail snapshot is captured
+    before those PGs release and still shows the workers as busy. The fix
+    re-captures avail after discovery returns and calls _find_available_subslice
+    with the fresh data.
+
+    The test simulates this by making the first available_resources_per_node()
+    call (pre-loop) return all-busy and the second (post-discovery) return
+    all-free. The function must succeed and select subslice 0.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-stale-avail"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    all_busy = {f"node_{i}": {"TPU": 0} for i in range(4)}
+    all_free = {f"node_{i}": {"TPU": 4} for i in range(4)}
+
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+        patch(
+            "ray._private.state.available_resources_per_node",
+            # First call (pre-loop T=0): all busy — triggers fallthrough to discovery.
+            # Second call (post-discovery refresh): all free — subslice 0 selected.
+            side_effect=[all_busy, all_free],
+        ),
+    ):
+        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
+
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            # subslice_index=None → auto-select
+        )
+
+    assert sg.subslice_index == 0
+    assert sg.num_hosts == 2
+    # Workers must be in ascending numeric order for deterministic rank assignment.
+    selected_workers = [
+        sel[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] for sel in sg.bundle_label_selector
+    ]
+    assert selected_workers == sorted(selected_workers, key=int)
+    sg.shutdown()
+
+
 def test_find_available_subslice_skips_incomplete_subslices():
     """Subslices with fewer workers than the topology requires are skipped.
 

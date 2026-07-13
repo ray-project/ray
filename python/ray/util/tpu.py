@@ -1450,7 +1450,9 @@ def _find_available_subslice(
                 break
 
         if all_idle:
-            return worker_ids, int(idx)
+            # Sort by integer worker-id so bundle index 0 always maps to the
+            # numerically-lowest worker, giving deterministic rank assignment.
+            return sorted(worker_ids, key=int), int(idx)
 
     return None, None
 
@@ -1827,11 +1829,14 @@ def subslice_placement_group(
             # labeled with it. Availability is not checked — the PG will wait
             # for those workers to become free, consistent with how
             # SlicePlacementGroup handles resource contention.
-            candidates = [
-                wid
-                for wid, lbs in s_labels.items()
-                if lbs.get(label_key) == str(subslice_index)
-            ]
+            candidates = sorted(
+                (
+                    wid
+                    for wid, lbs in s_labels.items()
+                    if lbs.get(label_key) == str(subslice_index)
+                ),
+                key=int,
+            )
             if candidates:
                 target_worker_ids = candidates
                 slice_name = s_name
@@ -1856,11 +1861,14 @@ def subslice_placement_group(
         )
         if subslice_index is not None:
             # Specific index: find the matching workers in the new slice.
-            target_worker_ids = [
-                wid
-                for wid, lbs in worker_labels.items()
-                if lbs.get(label_key) == str(subslice_index)
-            ]
+            target_worker_ids = sorted(
+                (
+                    wid
+                    for wid, lbs in worker_labels.items()
+                    if lbs.get(label_key) == str(subslice_index)
+                ),
+                key=int,
+            )
             if not target_worker_ids:
                 max_idx = max(
                     (
@@ -1877,7 +1885,9 @@ def subslice_placement_group(
                 )
         else:
             # Auto-select: find the first idle subslice in the newly
-            # discovered slice.
+            # discovered slice. We also refresh the available resources cache
+            # in case workers were freed during discovery.
+            avail = available_resources_per_node()
             target_worker_ids, selected_index = _find_available_subslice(
                 slice_name,
                 subslice_topology,
