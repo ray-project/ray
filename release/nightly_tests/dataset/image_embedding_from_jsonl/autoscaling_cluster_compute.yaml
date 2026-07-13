@@ -1,6 +1,8 @@
 # This cluster compute is based on a real user setup.
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
+enable_cross_zone_scaling: true
+
 advanced_instance_config:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
@@ -16,6 +18,3 @@ worker_nodes:
       min_nodes: 0
       max_nodes: 40
       market_type: ON_DEMAND
-
-flags:
-  allow-cross-zone-autoscaling: true
