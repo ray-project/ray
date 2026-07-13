@@ -21,22 +21,26 @@ There are two steps.
 
 ### 1. Label your worker nodes
 
-In your Anyscale [compute config](https://docs.anyscale.com/reference/compute-config-api/), add a `labels` block to each worker pool. Use the reserved key `ray-subcluster` to mark which subcluster each pool belongs to.
+Label each worker node with the reserved key `ray-subcluster` to mark which subcluster it belongs to. See {ref}`labels` for how to configure labels. The mechanism used depends on your deployment (cluster YAML, KubeRay, or `ray start --labels`).
+
+For example, in a Ray cluster YAML config:
 
 ```yaml
-worker_nodes:
-  - name: train-workers
-    instance_type: g5.xlarge
-    min_nodes: 2
-    max_nodes: 4
+available_node_types:
+  train_workers:
+    min_workers: 2
+    max_workers: 4
     labels:
       ray-subcluster: training
-  - name: validation-workers
-    instance_type: g4dn.xlarge
-    min_nodes: 0
-    max_nodes: 2
+    node_config:
+      InstanceType: g5.xlarge
+  validation_workers:
+    min_workers: 0
+    max_workers: 2
     labels:
       ray-subcluster: validation
+    node_config:
+      InstanceType: g4dn.xlarge
 ```
 
 Subcluster values are arbitrary strings (`"training"`, `"validation"`, `"tenant_a"`, `"team-blue"`) — pick whatever makes sense for your workload.

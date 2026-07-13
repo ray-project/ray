@@ -802,7 +802,9 @@ assert len(_all_ids) == len(
 serve_llm_dashboard_config = DashboardConfig(
     name="SERVE_LLM",
     default_uid="rayServeLlmDashboard",
-    standard_global_filters=[],
+    standard_global_filters=[
+        'ray_io_cluster=~"$Cluster"',
+    ],
     base_json_file_name="serve_llm_grafana_dashboard_base.json",
     rows=_ALL_ROWS,
 )
