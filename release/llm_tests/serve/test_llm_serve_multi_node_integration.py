@@ -109,9 +109,9 @@ def test_llm_serve_direct_streaming_ingress_router_per_node():
     """The direct-streaming ingress request router places one replica per node
     so each node's HAProxy can call its co-located router.
 
-    ``max_replicas_per_node`` defaults to 1, so the running router replicas are
-    spread one per node; assert they span more than one distinct node with none
-    stacked.
+    The router deploys with ``num_replicas="per_node"``, which pins
+    ``max_replicas_per_node`` to 1, so the running replicas are spread one per
+    node. Assert they span more than one distinct node with none stacked.
     """
     # The autouse cleanup shuts Ray down after each test, so connect before
     # touching Ray APIs (RAY_ADDRESS is set in the release environment).
@@ -138,12 +138,7 @@ def test_llm_serve_direct_streaming_ingress_router_per_node():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    app = build_openai_app(
-        llm_serving_args=LLMServingArgs(
-            llm_configs=[llm_config],
-            ingress_request_router_config={"num_replicas": num_router_nodes},
-        )
-    )
+    app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
     serve.run(app, blocking=False)
 
     def router_one_per_node():
