@@ -681,7 +681,7 @@ async def test_report_external_ray_events_rejects_invalid_payload():
 
 
 @pytest.mark.asyncio
-async def test_report_external_ray_events_rejects_disallowed_event_types(monkeypatch):
+async def test_report_external_ray_events_rejects_disallowed_event_types():
     event_head = EventHead.__new__(EventHead)
     event = events_base_event_pb2.RayEvent(
         event_id=b"1",
