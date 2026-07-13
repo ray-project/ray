@@ -42,6 +42,8 @@ def _has_state(httpserver, pg_id, state):
 
 
 def test_ray_placement_group_events(ray_start_cluster, httpserver):
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
     cluster = ray_start_cluster
     cluster.add_node(
         env_vars={
@@ -65,8 +67,6 @@ def test_ray_placement_group_events(ray_start_cluster, httpserver):
     )
     ray.get(pg.ready())
     pg_id = pg.id.hex()
-
-    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     # The CREATED transition may arrive in a later batch than the definition
     # event, so collect events across all received batches.

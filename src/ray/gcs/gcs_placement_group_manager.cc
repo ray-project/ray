@@ -172,25 +172,29 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
                                        placement_group);
   AddToPendingQueue(placement_group);
 
+  // Capture the state now; it may advance before the Put callback runs.
+  const auto initial_state = placement_group->GetState();
   gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      {[this, placement_group_id, placement_group](Status status) {
+      {[this, placement_group_id, placement_group, initial_state](Status status) {
          // The backend storage is supposed to be reliable, so the status must be ok.
          RAY_CHECK_OK(status);
          if (registered_placement_groups_.contains(placement_group_id)) {
-           // Emit definition and initial lifecycle events
-           std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-           events.push_back(
-               std::make_unique<observability::RayPlacementGroupDefinitionEvent>(
-                   placement_group->GetPlacementGroupTableData(), session_name_));
-           events.push_back(
-               std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-                   placement_group->GetPlacementGroupTableData(),
-                   observability::RayPlacementGroupLifecycleEvent::ConvertState(
-                       placement_group->GetState()),
-                   session_name_));
-           ray_event_recorder_.AddEvents(std::move(events));
+           if (RayConfig::instance().enable_ray_event()) {
+             // Emit definition and initial lifecycle events
+             std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+             events.push_back(
+                 std::make_unique<observability::RayPlacementGroupDefinitionEvent>(
+                     placement_group->GetPlacementGroupTableData(), session_name_));
+             events.push_back(
+                 std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+                     placement_group->GetPlacementGroupTableData(),
+                     observability::RayPlacementGroupLifecycleEvent::ConvertState(
+                         initial_state),
+                     session_name_));
+             ray_event_recorder_.AddEvents(std::move(events));
+           }
 
            auto register_callback_iter =
                placement_group_to_register_callbacks_.find(placement_group_id);
@@ -248,12 +252,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
     // Emit lifecycle event to capture the scheduling state change (e.g., QUEUED ->
     // INFEASIBLE).
-    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-        placement_group->GetPlacementGroupTableData(),
-        observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
-        session_name_));
-    ray_event_recorder_.AddEvents(std::move(events));
+    if (RayConfig::instance().enable_ray_event()) {
+      std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+      events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+          placement_group->GetPlacementGroupTableData(),
+          observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
+          session_name_));
+      ray_event_recorder_.AddEvents(std::move(events));
+    }
 
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
   } else {
@@ -283,13 +289,17 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     }
 
     // Emit lifecycle event to capture the scheduling state change
-    // (e.g., QUEUED -> NO_RESOURCES/FAILED_TO_COMMIT_RESOURCES).
-    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-        pg->GetPlacementGroupTableData(),
-        observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
-        session_name_));
-    ray_event_recorder_.AddEvents(std::move(events));
+    // (e.g., QUEUED -> NO_RESOURCES/FAILED_TO_COMMIT_RESOURCES). Skip REMOVED
+    // since RemovePlacementGroup already emits it.
+    if (state != rpc::PlacementGroupTableData::REMOVED &&
+        RayConfig::instance().enable_ray_event()) {
+      std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+      events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+          pg->GetPlacementGroupTableData(),
+          observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
+          session_name_));
+      ray_event_recorder_.AddEvents(std::move(events));
+    }
   }
 
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
@@ -321,12 +331,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
 
   // Emit lifecycle event for CREATED state
-  std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-  events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-      placement_group->GetPlacementGroupTableData(),
-      rpc::events::PlacementGroupLifecycleEvent::CREATED,
-      session_name_));
-  ray_event_recorder_.AddEvents(std::move(events));
+  if (RayConfig::instance().enable_ray_event()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+        placement_group->GetPlacementGroupTableData(),
+        rpc::events::PlacementGroupLifecycleEvent::CREATED,
+        session_name_));
+    ray_event_recorder_.AddEvents(std::move(events));
+  }
 
   auto placement_group_id = placement_group->GetPlacementGroupID();
   gcs_table_storage_->PlacementGroupTable().Put(
@@ -408,13 +420,15 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           },
           /*prepared_callback=*/
           [this](std::shared_ptr<GcsPlacementGroup> prepared_placement_group) {
-            std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-            events.push_back(
-                std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-                    prepared_placement_group->GetPlacementGroupTableData(),
-                    rpc::events::PlacementGroupLifecycleEvent::PREPARED,
-                    session_name_));
-            ray_event_recorder_.AddEvents(std::move(events));
+            if (RayConfig::instance().enable_ray_event()) {
+              std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+              events.push_back(
+                  std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+                      prepared_placement_group->GetPlacementGroupTableData(),
+                      rpc::events::PlacementGroupLifecycleEvent::PREPARED,
+                      session_name_));
+              ray_event_recorder_.AddEvents(std::move(events));
+            }
           }});
       is_new_placement_group_scheduled = true;
     }
@@ -530,12 +544,14 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       rpc::PlacementGroupStats::REMOVED);
 
   // Emit lifecycle event for REMOVED state
-  std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-  events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-      placement_group->GetPlacementGroupTableData(),
-      rpc::events::PlacementGroupLifecycleEvent::REMOVED,
-      session_name_));
-  ray_event_recorder_.AddEvents(std::move(events));
+  if (RayConfig::instance().enable_ray_event()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+        placement_group->GetPlacementGroupTableData(),
+        rpc::events::PlacementGroupLifecycleEvent::REMOVED,
+        session_name_));
+    ray_event_recorder_.AddEvents(std::move(events));
+  }
 
   gcs_table_storage_->PlacementGroupTable().Put(
       placement_group->GetPlacementGroupID(),
@@ -804,12 +820,15 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             rpc::PlacementGroupStats::QUEUED);
 
         // Emit lifecycle event for RESCHEDULING state
-        std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-        events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-            iter->second->GetPlacementGroupTableData(),
-            rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING,
-            session_name_));
-        ray_event_recorder_.AddEvents(std::move(events));
+        if (RayConfig::instance().enable_ray_event()) {
+          std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+          events.push_back(
+              std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+                  iter->second->GetPlacementGroupTableData(),
+                  rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING,
+                  session_name_));
+          ray_event_recorder_.AddEvents(std::move(events));
+        }
 
         AddToPendingQueue(iter->second, 0);
         gcs_table_storage_->PlacementGroupTable().Put(
@@ -1164,12 +1183,15 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
         placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
 
         // Emit lifecycle event for RESCHEDULING state
-        std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-        events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-            placement_group->GetPlacementGroupTableData(),
-            rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING,
-            session_name_));
-        ray_event_recorder_.AddEvents(std::move(events));
+        if (RayConfig::instance().enable_ray_event()) {
+          std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+          events.push_back(
+              std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+                  placement_group->GetPlacementGroupTableData(),
+                  rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING,
+                  session_name_));
+          ray_event_recorder_.AddEvents(std::move(events));
+        }
 
         AddToPendingQueue(placement_group, 0);
         gcs_table_storage_->PlacementGroupTable().Put(
