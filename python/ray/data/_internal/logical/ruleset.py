@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List, Optional, Type
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Type
 
 from ray.data._internal.logical.interfaces import Rule
 from ray.util.annotations import DeveloperAPI
@@ -44,50 +44,93 @@ class Ruleset:
         """Iterate over the rules in this ruleset.
 
         This method yields rules in dependency order. For example, if B depends on A,
-        then this method yields A before B. The order is otherwise undefined.
+        then this method yields A before B. Each rule is yielded exactly once, and a
+        rule is only yielded once *all* of its dependencies have been yielded (so a
+        rule that several others must precede is not emitted early or duplicated).
+        Insertion order breaks ties among rules that are ready at the same time.
         """
-        roots = self._build_graph()
-        queue = collections.deque(roots)
+        order, _ = self._topological_order()
+        for node in order:
+            yield node.rule
+
+    def _topological_order(self) -> Tuple[List["Ruleset._Node"], int]:
+        """Order the nodes by dependency using Kahn's algorithm.
+
+        Returns the topologically-ordered nodes and the total node count.
+        A node is enqueued the moment its in-degree (count of not-yet-emitted
+        dependencies) hits zero; since an in-degree only decreases and we
+        enqueue solely on the zero-crossing, each node is emitted exactly once.
+        Insertion order breaks ties among nodes that are ready together.
+
+        Nodes that participate in a cycle never reach in-degree zero, so they
+        are absent from the result -- i.e. ``len(order) < total`` exactly when
+        the graph contains a cycle.
+        """
+        nodes, indegree = self._build_graph()
+        queue = collections.deque(n for n in nodes if indegree[id(n)] == 0)
+        order: List["Ruleset._Node"] = []
         while queue:
             node = queue.popleft()
-            yield node.rule
-            queue.extend(node.dependents)
+            order.append(node)
+            for dep in node.dependents:
+                indegree[id(dep)] -= 1
+                if indegree[id(dep)] == 0:
+                    queue.append(dep)
+        return order, len(nodes)
 
-    def _build_graph(self) -> List["Ruleset._Node"]:
-        # NOTE: Because the number of rules will always be relatively small, I've opted
-        # for a simpler but inefficient implementation.
+    def _build_graph(
+        self,
+    ) -> Tuple[List["Ruleset._Node"], Dict[int, int]]:
+        """Build the dependency DAG.
 
-        # Step 1: Add edges from dependencies to their dependants.
+        Returns the nodes (one per rule, in insertion order) and their
+        in-degrees -- the number of rules that must be applied before each.
+        The in-degree map is keyed by node identity (``id``) rather than rule
+        type so that distinct nodes never share a counter, and is computed as
+        the edges are added (every incoming edge bumps the target's in-degree)
+        rather than re-derived by a second traversal. A node whose in-degree
+        is zero is a root.
+        """
         rule_to_node: Dict[Type[Rule], "Ruleset._Node"] = {
             rule: Ruleset._Node(rule) for rule in self._rules
         }
+        indegree: Dict[int, int] = {id(node): 0 for node in rule_to_node.values()}
+
+        # De-duplicate edges. The same ordering can be declared from both ends
+        # -- rule A lists B in ``dependencies()`` while B lists A in
+        # ``dependents()`` -- which would otherwise add the edge twice,
+        # double-counting the in-degree and duplicating ``dependents`` entries.
+        seen_edges: Set[Tuple[int, int]] = set()
+
+        def add_edge(before: "Ruleset._Node", after: "Ruleset._Node") -> None:
+            """Record that ``before`` must be applied before ``after``."""
+            edge = (id(before), id(after))
+            if edge in seen_edges:
+                return
+            seen_edges.add(edge)
+            before.dependents.append(after)
+            indegree[id(after)] += 1
+
         for rule in self._rules:
             node = rule_to_node[rule]
 
-            # These are rules that must be applied *before* this rule.
+            # Rules that must be applied *before* this rule: dependency -> node.
             for dependency in rule.dependencies():
                 if dependency in rule_to_node:
-                    rule_to_node[dependency].dependents.append(node)
+                    add_edge(rule_to_node[dependency], node)
 
-            # These are rules that must be applied *after* this rule.
+            # Rules that must be applied *after* this rule: node -> dependent.
             for dependent in rule.dependents():
                 if dependent in rule_to_node:
-                    node.dependents.append(rule_to_node[dependent])
+                    add_edge(node, rule_to_node[dependent])
 
-        # Step 2: Determine which nodes are roots.
-        roots = list(rule_to_node.values())
-        for node in rule_to_node.values():
-            for dependent in node.dependents:
-                if dependent in roots:
-                    roots.remove(dependent)
-
-        return roots
+        return list(rule_to_node.values()), indegree
 
     def _contains_cycle(self) -> bool:
-        if not self._rules:
-            return
-
-        # If the graph contains nodes but there aren't any root nodes, it means that
-        # there must be a cycle.
-        roots = self._build_graph()
-        return not roots
+        # Kahn's traversal drops any node stuck in a cycle (its in-degree never
+        # reaches zero), so a shortfall between the ordered nodes and the total
+        # means a cycle exists. This correctly flags a graph that mixes an
+        # acyclic component with a disjoint cycle -- a plain "does any root
+        # exist?" check would be fooled by the acyclic root.
+        order, total = self._topological_order()
+        return len(order) != total

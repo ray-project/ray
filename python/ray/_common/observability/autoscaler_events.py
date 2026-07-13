@@ -2,7 +2,6 @@ from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
 from ray._common.observability.internal_event import InternalEventBuilder
-from ray._private.grpc_utils import epoch_to_protobuf_timestamp
 from ray.core.generated.events_autoscaler_config_definition_event_pb2 import (
     AutoscalerConfigDefinitionEvent,
 )
@@ -13,7 +12,6 @@ from ray.core.generated.events_autoscaler_scaling_decision_event_pb2 import (
     AutoscalerScalingDecisionEvent,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
-
 
 # Event type names (from RayEvent.EventType in
 # src/ray/protobuf/public/events_base_event.proto) for autoscaler events
@@ -37,6 +35,10 @@ def is_ray_event_enabled(event_type: Optional[str] = None) -> bool:
         event_type: When given, check that specific RayEvent.EventType name
             against RAY_ENABLE_PYTHON_RAY_EVENT_TYPES; otherwise check whether
             any autoscaler event type is enabled.
+
+    Returns:
+        True if publishing is enabled for the given (or any autoscaler)
+        event type.
     """
     if event_type is not None:
         return event_type in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
@@ -274,6 +276,9 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
         return "autoscaler_provisioning"
 
     def serialize_event_data(self) -> bytes:
+        # Lazy import: grpc_utils pulls in grpc, which minimal installs don't have.
+        from ray._private.grpc_utils import epoch_to_protobuf_timestamp
+
         event = AutoscalerNodeProvisioningEvent()
 
         for requested_instance in self._requested_instances:

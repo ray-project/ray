@@ -305,7 +305,6 @@ class AutoscalerEventLogger:
                 launch_type_count[req.instance_type] += req.count
             for instance_type, count in sorted(launch_type_count.items()):
                 launch_actions.append({"instance_type": instance_type, "count": count})
-                logger.info(f"Adding {count} node(s) of type {instance_type}.")
 
         # Convert TerminationRequest protos to dicts for the builder.
         # TerminationRequest.Cause enum values match the
@@ -325,11 +324,6 @@ class AutoscalerEventLogger:
                         "instance_type": instance_type,
                         "count": count,
                     }
-                )
-                cause_reason = TERMINATION_CAUSE_REASON_MAP.get(cause, "unknown")
-                logger.info(
-                    f"Removing {count} nodes of type "
-                    f"{instance_type} ({cause_reason})."
                 )
 
         # Convert infeasible ResourceRequest protos to grouped resource dicts
@@ -422,6 +416,21 @@ class AutoscalerEventLogger:
         ).hexdigest()
         if payload_hash == self._last_scaling_decision_hash:
             return
+
+        if self._log_cluster_shape:
+            for action in launch_actions:
+                logger.info(
+                    f"Adding {action['count']} node(s) of type "
+                    f"{action['instance_type']}."
+                )
+            for action in terminate_actions:
+                cause_reason = TERMINATION_CAUSE_REASON_MAP.get(
+                    action["cause"], "unknown"
+                )
+                logger.info(
+                    f"Removing {action['count']} nodes of type "
+                    f"{action['instance_type']} ({cause_reason})."
+                )
 
         try:
             builder = AutoscalerScalingDecisionEventBuilder(
