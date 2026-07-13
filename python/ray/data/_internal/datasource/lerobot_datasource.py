@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import functools
 import json
 import logging
@@ -16,6 +17,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Literal,
     NamedTuple,
     Optional,
     Tuple,
@@ -107,6 +109,15 @@ class _LeRobotRoot(NamedTuple):
     frame_tolerance_s: Optional[float]
     """Max seconds a decoded video frame's timestamp may differ from a row's
     timestamp before it is rejected (passed to lerobot's ``decode_video_frames``)."""
+
+
+class _ReadGranularity(str, enum.Enum):
+    """How rows are grouped into base read tasks: one task per physical file
+    (video-file group) or per episode. ``override_num_blocks`` splits/merges
+    from whichever base this selects (see :meth:`LeRobotDatasource._slice`)."""
+
+    FILE = "file"
+    EPISODE = "episode"
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +452,38 @@ def _build_root(
         frame_tolerance_s=frame_tolerance_s,
     )
     return root_bundle, episodes_table
+
+
+def _resolve_root(
+    root: Union[str, Path],
+    filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"],
+    storage_options: Dict[str, Any],
+    frame_tolerance_s: Optional[float],
+) -> Tuple[_LeRobotRoot, pa.Table, "LeRobotDatasetMetadata"]:
+    """Resolve one root into its read-task bundle + per-episode table.
+
+    Runs the single-root pipeline: resolve the filesystem
+    (:func:`_resolve_filesystem`), load LeRobot metadata
+    (:func:`_load_lerobot_metadata`), and distill both (:func:`_build_root`) into
+    a slim :class:`_LeRobotRoot` (shipped to read tasks) and a per-episode Arrow
+    table (used for slicing). The upstream metadata is returned too, so the
+    caller can run cross-root homogeneity checks and expose it via
+    :attr:`LeRobotDatasource.meta`.
+    """
+    fs, fs_root, video_uri, video_opts = _resolve_filesystem(
+        root, filesystem, storage_options
+    )
+    meta = _load_lerobot_metadata(root, fs, fs_root)
+    built_root, built_episodes = _build_root(
+        meta,
+        root,
+        fs,
+        fs_root,
+        video_uri,
+        video_opts,
+        frame_tolerance_s=frame_tolerance_s,
+    )
+    return built_root, built_episodes, meta
 
 
 def _build_lerobot_read_task(
@@ -823,7 +866,7 @@ class LeRobotDatasource(Datasource):
         root: Union[str, Path, List[Union[str, Path]]],
         *,
         episodes: Optional[List[int]] = None,
-        group_by_episode: bool = False,
+        read_granularity: Literal["file", "episode"] = "file",
         filesystem: Optional[
             "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
         ] = None,
@@ -842,11 +885,11 @@ class LeRobotDatasource(Datasource):
                 files are never opened). Applied per root when reading multiple
                 roots. Requesting an ``episode_index`` absent from every root
                 raises. ``None`` (the default) reads all episodes.
-            group_by_episode: How to group rows into read tasks. ``False`` (the
-                default) emits one task per video-file group (each mp4 opened
-                once per task); ``True`` emits one task per episode.
-                ``override_num_blocks`` then splits or merges these into the
-                requested number of output blocks.
+            read_granularity: How rows are grouped into the base read tasks.
+                ``"file"`` (the default) emits one task per video-file group
+                (each mp4 opened once per task); ``"episode"`` emits one task
+                per episode. ``override_num_blocks`` then splits or merges these
+                into the requested number of output blocks.
             filesystem: Filesystem for reading metadata + parquet. A pyarrow
                 ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
                 fsspec ``AbstractFileSystem``. When omitted, it is selected from
@@ -885,15 +928,26 @@ class LeRobotDatasource(Datasource):
             )
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
+        self._read_granularity = _ReadGranularity(read_granularity)
+
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         self._supports_distributed_reads = not _is_local_scheme(roots)
-        self._resolved = [
-            _resolve_filesystem(r, filesystem, self._storage_options) for r in roots
-        ]
-        self.original_metas = [
-            _load_lerobot_metadata(r, fs, fs_root)
-            for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
-        ]
+
+        # Resolve every root on the driver via ``_resolve_root`` (filesystem ->
+        # LeRobot metadata -> slim ``_LeRobotRoot`` bundle + per-episode table).
+        # The bundles are ``ray.put`` for the read tasks; the episode tables
+        # drive slicing, so each read task embeds only its own episode slice
+        # rather than broadcasting the whole table.
+        self.distilled_metas: List[_LeRobotRoot] = []
+        self._episodes: List[pa.Table] = []
+        self.original_metas: List["LeRobotDatasetMetadata"] = []
+        for r in roots:
+            built_root, built_episodes, meta = _resolve_root(
+                r, filesystem, self._storage_options, self._frame_tolerance_s
+            )
+            self.distilled_metas.append(built_root)
+            self._episodes.append(built_episodes)
+            self.original_metas.append(meta)
 
         if any(m.video_keys for m in self.original_metas):
             _check_import(self, module="torchcodec", package="torchcodec")
@@ -938,32 +992,8 @@ class LeRobotDatasource(Datasource):
                         f"{sorted(m_feats)}"
                     )
 
-        # Derived state, computed once on the driver. We ray.put roots for read tasks
-        # and episodes for planning (slicing) -- each read task embeds only its own
-        # episode slice rather than broadcasting the whole table.
-        self.distilled_metas: List[_LeRobotRoot] = []
-        self._episodes: List[pa.Table] = []
-        for m, r, (fs, fs_root, video_uri, video_opts) in zip(
-            self.original_metas, roots, self._resolved
-        ):
-            # Note that we construct these per-root derived state bundles sequentially.
-            # So at scale we assume that the number of episodes per root is (much) larger than the number of roots.
-            built_root, built_episodes = _build_root(
-                m,
-                r,
-                fs,
-                fs_root,
-                video_uri,
-                video_opts,
-                frame_tolerance_s=self._frame_tolerance_s,
-            )
-            self.distilled_metas.append(built_root)
-            self._episodes.append(built_episodes)
-
         if episodes is not None:
             self._apply_episodes_filter(episodes)
-
-        self._group_by_episode: bool = group_by_episode
 
     def _apply_episodes_filter(self, episodes: List[int]) -> None:
         """Restrict each root to the requested ``episode_index`` values.
@@ -1105,9 +1135,9 @@ class LeRobotDatasource(Datasource):
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self.distilled_metas):
             episodes = self._episodes[root_idx]
-            if self._group_by_episode:
+            if self._read_granularity is _ReadGranularity.EPISODE:
                 ranges = self._slices_by_episode(episodes)
-            else:
+            else:  # _ReadGranularity.FILE
                 ranges = self._slices_by_file_group(episodes, ds_root.video_keys)
             all_ranges.extend((root_idx, s, e) for s, e in sorted(ranges))
         return all_ranges
@@ -1178,8 +1208,9 @@ class LeRobotDatasource(Datasource):
         )
 
     def default_num_blocks(self) -> int:
-        """The natural read-task count: one per video-file group (or per episode
-        when ``group_by_episode``).
+        """The natural read-task count for the configured ``read_granularity``:
+        one per video-file group (``"file"``, the default) or per episode
+        (``"episode"``).
 
         ``read_lerobot`` uses this as the default ``override_num_blocks`` so a
         video read is not over-split by Ray's generic block-count floor -- each

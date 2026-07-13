@@ -603,13 +603,21 @@ def test_read_lerobot_local_scheme_pins_reads(
     assert ray.data.read_lerobot(f"local://{lerobot_dataset}").count() == 15
 
 
-@pytest.mark.parametrize("group_by_episode", [False, True])
+@pytest.mark.parametrize("read_granularity", ["file", "episode"])
 def test_read_lerobot_grouping_same_row_count(
-    ray_start_regular_shared, lerobot_dataset, group_by_episode
+    ray_start_regular_shared, lerobot_dataset, read_granularity
 ):
     """Both groupings (per file-group and per episode) yield the same rows."""
-    ds = ray.data.read_lerobot(lerobot_dataset, group_by_episode=group_by_episode)
+    ds = ray.data.read_lerobot(lerobot_dataset, read_granularity=read_granularity)
     assert ds.count() == 15
+
+
+def test_read_lerobot_invalid_read_granularity(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """An unknown ``read_granularity`` is rejected with a clear error."""
+    with pytest.raises(ValueError, match="read_granularity must be one of"):
+        ray.data.read_lerobot(lerobot_dataset, read_granularity="frame")
 
 
 def test_read_lerobot_override_num_blocks_splits_and_merges(
@@ -743,6 +751,26 @@ def test_slices_by_file_group_non_contiguous_splits(video_keys, file_cols):
     )
     out = LeRobotDatasource._slices_by_file_group(eps, video_keys)
     assert sorted(out) == [(0, 10), (10, 20), (20, 30)]
+
+
+def test_read_granularity_file_coalesces_episodes_sharing_a_file():
+    """The one behavior separating the two read granularities: when several
+    episodes share a video file, ``"file"`` coalesces them into a single range
+    (the file is opened once) while ``"episode"`` keeps one range per episode.
+    Same rows either way -- one range spanning all 30 vs three of 10."""
+    from ray.data.datasource import LeRobotDatasource
+
+    # Three contiguous episodes, all in the SAME file (chunk 0, file 0).
+    eps = pa.table(
+        {
+            "_global_from_index": [0, 10, 20],
+            "_global_to_index": [10, 20, 30],
+            "videos/cam/chunk_index": [0, 0, 0],
+            "videos/cam/file_index": [0, 0, 0],
+        }
+    )
+    assert LeRobotDatasource._slices_by_file_group(eps, ["cam"]) == [(0, 30)]
+    assert LeRobotDatasource._slices_by_episode(eps) == [(0, 10), (10, 20), (20, 30)]
 
 
 def test_episodes_for_row_range_uses_row_positions_not_episode_index():
@@ -1071,14 +1099,14 @@ def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("group_by_episode", [False, True])
+@pytest.mark.parametrize("read_granularity", ["file", "episode"])
 def test_read_lerobot_episodes_filters_rows(
-    ray_start_regular_shared, lerobot_dataset, group_by_episode
+    ray_start_regular_shared, lerobot_dataset, read_granularity
 ):
     """``episodes`` loads only the requested episode_indices (a read-time
     pushdown), under both groupings, leaving the kept episodes' rows intact."""
     ds = ray.data.read_lerobot(
-        lerobot_dataset, episodes=[0, 2], group_by_episode=group_by_episode
+        lerobot_dataset, episodes=[0, 2], read_granularity=read_granularity
     )
     rows = ds.take_all()
     assert len(rows) == 10  # 2 of 3 episodes * 5 frames

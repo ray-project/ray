@@ -2796,7 +2796,7 @@ def read_lerobot(
     root: Union[str, List[str]],
     *,
     episodes: Optional[List[int]] = None,
-    group_by_episode: bool = False,
+    read_granularity: Literal["file", "episode"] = "file",
     filesystem: Optional[
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
@@ -2843,7 +2843,7 @@ def read_lerobot(
 
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ...     group_by_episode=True,
+        ...     read_granularity="episode",
         ... )
 
         Read multiple datasets as one (paths may be local or cloud URIs):
@@ -2866,12 +2866,13 @@ def read_lerobot(
             where episodes were skipped). Applied per root when reading multiple
             roots; requesting an ``episode_index`` absent from every root
             raises. ``None`` (the default) reads all episodes.
-        group_by_episode: How to group rows into read tasks. A *file group* is
-            the set of consecutive episodes whose frames share one physical file
-            (an mp4 per camera for video datasets, or the data parquet for image
-            datasets). ``False`` (the default) emits one task per file group, so
-            each file is opened once; ``True`` emits one task per episode. Use
-            ``override_num_blocks`` to tune the final number of output blocks.
+        read_granularity: How rows are grouped into the base read tasks. A *file
+            group* is the set of consecutive episodes whose frames share one
+            physical file (an mp4 per camera for video datasets, or the data
+            parquet for image datasets). ``"file"`` (the default) emits one task
+            per file group, so each file is opened once; ``"episode"`` emits one
+            task per episode. Use ``override_num_blocks`` to tune the final
+            number of output blocks.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
             fsspec ``AbstractFileSystem``. By default it is selected from the URI
@@ -2908,10 +2909,10 @@ def read_lerobot(
             available resources. Use it to cap the number of simultaneous video
             decoders.
         override_num_blocks: Override the number of output blocks from all read
-            tasks. By default this is one read task per file group (per video
-            file for video datasets, per data-parquet file for image/tabular
-            ones), or one per episode when ``group_by_episode``, so each file is
-            opened once; raise it (e.g. to your cluster's CPU count) to
+            tasks. By default this follows ``read_granularity``: one read task
+            per file group (per video file for video datasets, per data-parquet
+            file for image/tabular ones), or per episode, so each file is opened
+            once; raise it (e.g. to your cluster's CPU count) to
             parallelize a monolithic dataset across more workers. Splitting a
             file group re-opens its file(s) once per sub-task, so higher
             parallelism trades amortized file opens for more concurrency;
@@ -2924,7 +2925,7 @@ def read_lerobot(
     datasource = LeRobotDatasource(
         root=root,
         episodes=episodes,
-        group_by_episode=group_by_episode,
+        read_granularity=read_granularity,
         filesystem=filesystem,
         storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
