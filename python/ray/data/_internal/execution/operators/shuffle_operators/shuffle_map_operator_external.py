@@ -1,6 +1,6 @@
 """ExternalHashShuffleMapOp — map phase of the external-shuffle variant.
 
-Drives one ``external_hash_shuffle_map_task`` per input group and, once all mappers finish,
+Drives one ``_external_shuffle_map_task`` per input group and, once all mappers finish,
 emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
 each carrying the SAME shared Ray object (the list of handle refs)
 and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
@@ -38,7 +38,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
     PartitionFn,
-    external_hash_shuffle_map_task,
+    _external_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     make_partition_sentinel,
@@ -264,7 +264,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             None if raw_compression == "none" else raw_compression
         )
 
-        handle_ref = external_hash_shuffle_map_task.options(**ray_options).remote(
+        handle_ref = _external_shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,

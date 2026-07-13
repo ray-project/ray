@@ -41,7 +41,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_t
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
-    external_hash_shuffle_reduce_task,
+    _external_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     extract_partition_id,
@@ -71,7 +71,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle in via
     ``_add_input_inner``, one reduce task out. The wrapper carries
-    ``shared_handles_ref`` + partition_id sentinel; ``external_hash_shuffle_reduce_task``
+    ``shared_handles_ref`` + partition_id sentinel; ``_external_shuffle_reduce_task``
     uses those to fetch its partition's bytes over TCP from each
     mapper's ``ShuffleManager``.
     """
@@ -133,7 +133,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # External-shuffle-specific state below.
         # =====================================================================
 
-        # external_hash_shuffle_reduce_task behavior knobs:
+        # _external_shuffle_reduce_task behavior knobs:
         # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
         # - ``fetch_threads``: concurrent per-source-node fetch threads
         # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
@@ -221,7 +221,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             )
             map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
 
-        block_gen = external_hash_shuffle_reduce_task.options(**reduce_options).remote(
+        block_gen = _external_shuffle_reduce_task.options(**reduce_options).remote(
             handles_ref,
             partition_id,
             self._reduce_fn,

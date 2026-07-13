@@ -727,7 +727,7 @@ class ShuffleNodeLostError(ShuffleFetchError):
     Recovery story: the mapper's return handle is a Ray ObjectRef;
     when its owning node dies, Ray Core marks the ref as lost, and on
     the reducer's next retry (see ``max_retries`` on
-    ``external_hash_shuffle_reduce_task.options``) Ray Core's lineage
+    ``_external_shuffle_reduce_task.options``) Ray Core's lineage
     kicks in — the mapper task is re-executed on a live node, the
     ObjectRef re-materializes with a fresh handle (new node_id, new
     path), and the retried reducer transparently reads from the new

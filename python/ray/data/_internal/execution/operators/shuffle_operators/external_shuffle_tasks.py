@@ -183,7 +183,7 @@ class _PartitionSpillWriter:
 
 
 @ray.remote
-def external_hash_shuffle_map_task(
+def _external_shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
@@ -303,7 +303,7 @@ def external_hash_shuffle_map_task(
                 expected_size = 0
             if final_size_on_close != expected_size:
                 raise RuntimeError(
-                    f"external_hash_shuffle_map_task: file size mismatch — wrote "
+                    f"_external_shuffle_map_task: file size mismatch — wrote "
                     f"{final_size_on_close} bytes, index implies "
                     f"{expected_size}. Refusing to publish corrupt file."
                 )
@@ -338,7 +338,7 @@ def external_hash_shuffle_map_task(
 
 
 @ray.remote
-def external_hash_shuffle_reduce_task(
+def _external_shuffle_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
