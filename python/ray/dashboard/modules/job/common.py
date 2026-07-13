@@ -340,7 +340,9 @@ class JobInfoStorageClient:
                 submission_id=job_id,
                 entrypoint=job_info.entrypoint,
                 serialized_runtime_env=(
-                    json.dumps(job_info.runtime_env) if job_info.runtime_env else None
+                    json.dumps(job_info.runtime_env)
+                    if job_info.runtime_env is not None
+                    else None
                 ),
                 metadata=job_info.metadata,
                 entrypoint_num_cpus=job_info.entrypoint_num_cpus,
