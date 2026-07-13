@@ -32,6 +32,9 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
+from ray.dashboard.modules.event.autoscaler_events_storage import (
+    AutoscalerEventsStorage,
+)
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
 from ray.dashboard.state_api_utils import do_filter, handle_list_api
 from ray.dashboard.subprocesses.module import SubprocessModule
@@ -44,6 +47,11 @@ JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
 
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
+MAX_AUTOSCALER_EVENTS_CACHE_SIZE_BYTES = int(
+    os.environ.get(
+        "RAY_DASHBOARD_MAX_AUTOSCALER_EVENTS_CACHE_SIZE_BYTES", 10 * 1024 * 1024
+    )  # 10MB
+)
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -52,10 +60,16 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS", 1
 )
 
+# Event types cached in the dashboard head for serving via the events APIs.
+_CACHED_AUTOSCALER_EVENT_TYPES = {
+    events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
+}
+
 
 async def _list_cluster_events_impl(
     *,
     all_events: Dict[str, JobEvents],
+    autoscaler_events: List[dict],
     executor: ThreadPoolExecutor,
     option: ListApiOptions,
 ) -> ListApiResponse:
@@ -63,6 +77,7 @@ async def _list_cluster_events_impl(
 
     Args:
         all_events: Mapping of ``job_id`` to per-job event dictionaries.
+        autoscaler_events: List of autoscaler event dictionaries.
         executor: Executor used to run the (CPU-bound) transform off the event loop.
         option: Query options (filters, limit, detail flag).
 
@@ -76,8 +91,13 @@ async def _list_cluster_events_impl(
         result = []
         for _, events in all_events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                result.append(event)
+                row = dict(event)
+                row["time"] = str(datetime.fromtimestamp(int(row["timestamp"])))
+                result.append(row)
+        for event in autoscaler_events:
+            row = dict(event)
+            row["time"] = str(datetime.fromtimestamp(int(row["timestamp"])))
+            result.append(row)
 
         num_after_truncation = len(result)
         result.sort(key=lambda entry: entry["timestamp"])
@@ -119,6 +139,9 @@ class EventHead(
         self.module_started = time.monotonic()
         # {job_id hex(str): {event_id (str): event (dict)}}
         self.events: Dict[str, JobEvents] = defaultdict(JobEvents)
+        self._autoscaler_events_storage = AutoscalerEventsStorage(
+            MAX_AUTOSCALER_EVENTS_CACHE_SIZE_BYTES
+        )
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
@@ -126,7 +149,6 @@ class EventHead(
         )
         self._head_aggregator_stub = None
         self._head_node_id = None
-        self._external_ray_event_allowlist = self._get_external_ray_event_allowlist()
 
         # To init gcs_client in internal_kv for record_extra_usage_tag.
         assert self.gcs_client is not None
@@ -194,10 +216,22 @@ class EventHead(
             if event_type
         }
 
-    def _validate_external_ray_events(
+    def _cache_supported_external_ray_events(
         self, events: List[events_base_event_pb2.RayEvent]
     ) -> None:
-        allowlist = self._external_ray_event_allowlist
+        autoscaler_events = [
+            event
+            for event in events
+            if event.event_type in _CACHED_AUTOSCALER_EVENT_TYPES
+        ]
+        if autoscaler_events:
+            self._autoscaler_events_storage.add_events(autoscaler_events)
+
+    @classmethod
+    def _validate_external_ray_events(
+        cls, events: List[events_base_event_pb2.RayEvent]
+    ) -> None:
+        allowlist = cls._get_external_ray_event_allowlist()
         for event in events:
             event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
                 event.event_type
@@ -318,6 +352,10 @@ class EventHead(
             logger.warning("Rejected external Ray event type: %s", e)
             raise aiohttp.web.HTTPUnprocessableEntity(reason=str(e))
 
+        # Cache before forwarding so events stay locally servable even if
+        # forwarding to the aggregator fails.
+        self._cache_supported_external_ray_events(events)
+
         try:
             await self._forward_external_ray_events(events)
         except Exception:
@@ -346,22 +384,27 @@ class EventHead(
     async def get_event(self, req) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
         if job_id is None:
-            all_events = {
+            event_lists = {
                 job_id: list(job_events.values())
                 for job_id, job_events in self.events.items()
             }
+            autoscaler_events = list(self._autoscaler_events_storage.get_event_values())
+            if autoscaler_events:
+                event_lists.setdefault("global", []).extend(autoscaler_events)
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="All events fetched.",
-                events=all_events,
+                events=event_lists,
             )
 
-        job_events = self.events[job_id]
+        job_events = list(self.events[job_id].values())
+        if job_id == "global":
+            job_events.extend(self._autoscaler_events_storage.get_event_values())
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="Job events fetched.",
             job_id=job_id,
-            events=list(job_events.values()),
+            events=job_events,
         )
 
     @routes.get("/api/v0/cluster_events")
@@ -373,7 +416,10 @@ class EventHead(
 
         async def list_api_fn(option: ListApiOptions):
             return await _list_cluster_events_impl(
-                all_events=self.events, executor=self._executor, option=option
+                all_events=self.events,
+                autoscaler_events=self._autoscaler_events_storage.get_event_values(),
+                executor=self._executor,
+                option=option,
             )
 
         return await handle_list_api(list_api_fn, req)

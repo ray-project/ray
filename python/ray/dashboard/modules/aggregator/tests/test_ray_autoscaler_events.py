@@ -145,7 +145,6 @@ def autoscaling_cluster(httpserver):
     ray.init("auto")
 
     yield cluster
-
     ray.shutdown()
     cluster.shutdown()
 
