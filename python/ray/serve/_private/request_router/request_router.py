@@ -626,10 +626,15 @@ class RequestRouter(ABC):
         Returns:
             The number of seconds to sleep before the next retry.
         """
-        return min(
-            self.initial_backoff_s * (self.backoff_multiplier**attempt),
-            self.max_backoff_s,
-        )
+        try:
+            return min(
+                self.initial_backoff_s * (self.backoff_multiplier**attempt),
+                self.max_backoff_s,
+            )
+        except OverflowError:
+            # initial_backoff_s * (backoff_multiplier**attempt) can overflow
+            # once attempt gets large enough; max_backoff_s is the ceiling anyway.
+            return self.max_backoff_s
 
     def update_backoff_params(
         self,

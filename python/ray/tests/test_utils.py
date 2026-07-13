@@ -152,5 +152,18 @@ def test_object_store_memory_cap_to_linux_shm_cap():
             assert result <= expected_shm_cap
 
 
+def test_object_store_memory_returns_int_when_capped_by_shm():
+    """Test that resolve_object_store_memory returns int even when capped by shm."""
+    available_memory_bytes = 100 * (1024**3)  # 100 GB
+    mock_shm_bytes = 20 * (1024**3) + 8  # add 8 bytes so * 0.95 is not a whole number
+
+    with patch("ray._private.utils.sys.platform", "linux"):
+        with patch(
+            "ray._private.utils.get_shared_memory_bytes", return_value=mock_shm_bytes
+        ):
+            result = resolve_object_store_memory(available_memory_bytes, None)
+            assert isinstance(result, int)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

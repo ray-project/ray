@@ -40,8 +40,7 @@ VERSION=v0.13.4
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/$VERSION/manifests.yaml
 ```
 
-See [Kueue Installation](https://kueue.sigs.k8s.io/docs/installation/#install-a-released-version) for more details on installing Kueue.
-**Note**: Some limitations exist between Kueue and RayJob. See the [limitations of Kueue](https://kueue.sigs.k8s.io/docs/tasks/run_rayjobs/#c-limitations) for more details.
+See [Kueue Installation](https://kueue.sigs.k8s.io/docs/installation/#install-a-released-version) for more details on installing Kueue. **Note**: Some limitations exist between Kueue and RayJob. See the [limitations of Kueue](https://kueue.sigs.k8s.io/docs/tasks/run_rayjobs/#c-limitations) for more details.
 
 
 ## Step 3: Create Kueue Resources
@@ -115,9 +114,7 @@ kubectl apply -f kueue-resources.yaml
 
 ## Step 4: Gang scheduling with Kueue
 
-Kueue always admits workloads in “gang” mode.
-Kueue admits workloads on an “all or nothing” basis, ensuring that Kubernetes never partially provisions a RayJob or RayCluster.
-Use gang scheduling strategy to avoid wasting compute resources caused by inefficient scheduling of workloads.
+Kueue always admits workloads in “gang” mode. Kueue admits workloads on an “all or nothing” basis, ensuring that Kubernetes never partially provisions a RayJob or RayCluster. Use gang scheduling strategy to avoid wasting compute resources caused by inefficient scheduling of workloads.
 
 Download the RayJob YAML manifest from the KubeRay repository.
 
@@ -135,8 +132,7 @@ metadata:
     kueue.x-k8s.io/priority-class: dev-priority
 ```
 
-Create two RayJob custom resources with the same priority `dev-priority`.
-Note these important points for RayJob custom resources:
+Create two RayJob custom resources with the same priority `dev-priority`. Note these important points for RayJob custom resources:
 * The RayJob custom resource includes 1 head Pod and 1 worker Pod, with each Pod requesting 1 CPU and 2G of memory.
 * The RayJob runs a simple Python script that demonstrates a loop running 600 iterations, printing the iteration number and sleeping for 1 second per iteration. Hence, the RayJob runs for about 600 seconds after the submitted Kubernetes Job starts.
 * Set `shutdownAfterJobFinishes` to true for RayJob to enable automatic cleanup. This setting triggers KubeRay to delete the RayCluster after the RayJob finishes.
@@ -146,10 +142,7 @@ Note these important points for RayJob custom resources:
 kubectl create -f ray-job.kueue-toy-sample.yaml
 ```
 
-Each RayJob custom resource requests 2 CPUs and 4G of memory in total.
-However, the ClusterQueue only has 3 CPUs and 6G of memory in total.
-Therefore, the second RayJob custom resource remains pending, and KubeRay doesn't create Pods from the pending RayJob, even though the remaining resources are sufficient for a Pod.
-You can also inspect the `ClusterQueue` to see available and used quotas:
+Each RayJob custom resource requests 2 CPUs and 4G of memory in total. However, the ClusterQueue only has 3 CPUs and 6G of memory in total. Therefore, the second RayJob custom resource remains pending, and KubeRay doesn't create Pods from the pending RayJob, even though the remaining resources are sufficient for a Pod. You can also inspect the `ClusterQueue` to see available and used quotas:
 
 ```bash
 $ kubectl get clusterqueues.kueue.x-k8s.io
@@ -187,8 +180,7 @@ Status:
   Reserving Workloads:  1
 ```
 
-Kueue admits the pending RayJob custom resource when the first RayJob custom resource finishes.
-Check the status of the RayJob custom resources and delete them after they finish:
+Kueue admits the pending RayJob custom resource when the first RayJob custom resource finishes. Check the status of the RayJob custom resources and delete them after they finish:
 
 ```bash
 $ kubectl get rayjobs.ray.io
@@ -202,12 +194,9 @@ $ kubectl delete rayjob rayjob-sample-p5msp
 
 ## Step 5: Priority scheduling with Kueue
 
-This step creates a RayJob with a lower priority class `dev-priority` first and a RayJob with a higher priority class `prod-priority` later.
-The RayJob with higher priority class `prod-priority` takes precedence over the RayJob with lower priority class `dev-priority`.
-Kueue preempts the RayJob with a lower priority to admit the RayJob with a higher priority.
+This step creates a RayJob with a lower priority class `dev-priority` first and a RayJob with a higher priority class `prod-priority` later. The RayJob with higher priority class `prod-priority` takes precedence over the RayJob with lower priority class `dev-priority`. Kueue preempts the RayJob with a lower priority to admit the RayJob with a higher priority.
 
-If you followed the previous step, the RayJob YAML manifest `ray-job.kueue-toy-sample.yaml` should already be set to the `dev-priority` priority class.
-Create a RayJob with the lower priority class `dev-priority`:
+If you followed the previous step, the RayJob YAML manifest `ray-job.kueue-toy-sample.yaml` should already be set to the `dev-priority` priority class. Create a RayJob with the lower priority class `dev-priority`:
 
 ```bash
 kubectl create -f ray-job.kueue-toy-sample.yaml
@@ -234,20 +223,13 @@ You can see that KubeRay operator deletes the Pods belonging to the RayJob with 
 ## Working with RayCluster and RayService
 
 ### RayCluster with Kueue
-For gang scheduling with RayCluster resources, Kueue ensures that all cluster components (head and worker nodes) are provisioned together. This prevents partial cluster creation and resource waste.
-**For detailed RayCluster integration**: See the [Kueue documentation for RayCluster](https://kueue.sigs.k8s.io/docs/tasks/run/rayclusters/).
+For gang scheduling with RayCluster resources, Kueue ensures that all cluster components (head and worker nodes) are provisioned together. This prevents partial cluster creation and resource waste. **For detailed RayCluster integration**: See the [Kueue documentation for RayCluster](https://kueue.sigs.k8s.io/docs/tasks/run/rayclusters/).
 ### RayService with Kueue
-RayService integration with Kueue enables gang scheduling for model serving workloads, ensuring consistent resource allocation for serving infrastructure.
-**For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservices/).
+RayService integration with Kueue enables gang scheduling for model serving workloads, ensuring consistent resource allocation for serving infrastructure. **For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservices/).
 
 ## Ray Autoscaler with Kueue
 
-Kueue can treat a **RayCluster** or the underlying cluster of a **RayService** as an
-**elastic workload**.  Kueue manages queueing and quota for the entire
-cluster, while the in‑tree Ray autoscaler scales worker Pods up and down
-based on the resource demand. This section shows how to enable
-autoscaling for Ray workloads managed by Kueue using a step‑by‑step
-approach similar to the existing Kueue integration guides.
+Kueue can treat a **RayCluster** or the underlying cluster of a **RayService** as an **elastic workload**.  Kueue manages queueing and quota for the entire cluster, while the in‑tree Ray autoscaler scales worker Pods up and down based on the resource demand. This section shows how to enable autoscaling for Ray workloads managed by Kueue using a step‑by‑step approach similar to the existing Kueue integration guides.
 
 > **Supported resources** – At the time of writing, the Kueue
 > autoscaler integration supports `RayCluster` and `RayService`.
@@ -265,11 +247,7 @@ Make sure you have already:
 
 ### Step 1: Create Kueue resources
 
-Define a **ResourceFlavor**, **ClusterQueue**, and **LocalQueue** so that
-Kueue knows how many CPUs and how much memory it can allocate. The
-manifest below creates an 8‑CPU/16‑GiB pool called `default-flavor`,
-registers it in a `ClusterQueue` named `ray-cq`, and defines a
-`LocalQueue` named `ray-lq`:
+Define a **ResourceFlavor**, **ClusterQueue**, and **LocalQueue** so that Kueue knows how many CPUs and how much memory it can allocate. The manifest below creates an 8‑CPU/16‑GiB pool called `default-flavor`, registers it in a `ClusterQueue` named `ray-cq`, and defines a `LocalQueue` named `ray-lq`:
 
 ```yaml
 apiVersion: kueue.x-k8s.io/v1beta1
@@ -311,11 +289,9 @@ kubectl apply -f kueue-resources.yaml
 
 ### Step 2: Enable elastic workloads in Kueue
 
-Autoscaling only works when Kueue’s `ElasticJobsViaWorkloadSlices`
-feature gate is enabled.
+Autoscaling only works when Kueue’s `ElasticJobsViaWorkloadSlices` feature gate is enabled.
 
-Run the following command to add the feature gate flag to the
-`kueue-controller-manager` Deployment:
+Run the following command to add the feature gate flag to the `kueue-controller-manager` Deployment:
 
 ```bash
 kubectl -n kueue-system patch deploy kueue-controller-manager \
@@ -331,21 +307,11 @@ kubectl -n kueue-system patch deploy kueue-controller-manager \
 ### Autoscaling with RayCluster
 #### Step 1: Configure an elastic RayCluster
 
-An elastic RayCluster is one that can change its worker count at
-runtime. Kueue requires three changes to recognize a RayCluster as
-elastic:
+An elastic RayCluster is one that can change its worker count at runtime. Kueue requires three changes to recognize a RayCluster as elastic:
 
-1. **Queue label** – set
-   `metadata.labels.kueue.x-k8s.io/queue-name: <localqueue>` so that
-   Kueue queues this cluster.
-2. **Elastic-job annotation** – add
-   `metadata.annotations.kueue.x-k8s.io/elastic-job: "true"` to mark
-   this cluster as elastic. Kueue creates **WorkloadSlices** for
-   scaling up and down.
-3. **Enable the Ray autoscaler** – set
-   `spec.enableInTreeAutoscaling: true` in the `RayCluster` spec and
-   optionally configure `autoscalerOptions` such as
-   `idleTimeoutSeconds`.
+1. **Queue label** – set `metadata.labels.kueue.x-k8s.io/queue-name: <localqueue>` so that Kueue queues this cluster.
+2. **Elastic-job annotation** – add `metadata.annotations.kueue.x-k8s.io/elastic-job: "true"` to mark this cluster as elastic. Kueue creates **WorkloadSlices** for scaling up and down.
+3. **Enable the Ray autoscaler** – set `spec.enableInTreeAutoscaling: true` in the `RayCluster` spec and optionally configure `autoscalerOptions` such as `idleTimeoutSeconds`.
 
 Here is a minimal manifest for an elastic RayCluster:
 
@@ -400,16 +366,14 @@ spec:
               memory: "5Gi"
 ```
 
-Apply this manifest and verify that Kueue admits the associated
-Workload:
+Apply this manifest and verify that Kueue admits the associated Workload:
 
 ```bash
 kubectl apply -f raycluster-kueue-autoscaler.yaml
 kubectl get workloads.kueue.x-k8s.io -A
 ```
 
-The `ADMITTED` column should show `True` once the `RayCluster`
-has been scheduled by Kueue.
+The `ADMITTED` column should show `True` once the `RayCluster` has been scheduled by Kueue.
 ```bash
 NAMESPACE   NAME                                           QUEUE    RESERVED IN   ADMITTED   FINISHED   AGE
 default     raycluster-raycluster-kueue-autoscaler-21c46   ray-lq   ray-cq        True                  26s
@@ -418,9 +382,7 @@ default     raycluster-raycluster-kueue-autoscaler-21c46   ray-lq   ray-cq      
 (step-2-verify-autoscaling-for-a-raycluster)=
 #### Step 2: Verify autoscaling for a RayCluster
 
-To observe autoscaling, create load on the cluster and watch worker
-Pods appear. The following procedure runs a CPU‑bound workload from
-inside the head Pod and monitors scaling:
+To observe autoscaling, create load on the cluster and watch worker Pods appear. The following procedure runs a CPU‑bound workload from inside the head Pod and monitors scaling:
 
 1. **Enter the head Pod:**
 
@@ -430,9 +392,7 @@ inside the head Pod and monitors scaling:
     kubectl exec -it "$HEAD_POD" -- bash
     ```
 
-2. **Run a workload:** execute the following Python script inside the
-   head container. It submits 20 tasks that each consume a full CPU
-   for about one minute.
+2. **Run a workload:** execute the following Python script inside the head container. It submits 20 tasks that each consume a full CPU for about one minute.
 
     ```bash
     python << 'EOF'
@@ -454,27 +414,21 @@ inside the head Pod and monitors scaling:
     EOF
     ```
 
-   Because the head Pod has a single CPU, the tasks queue up and the
-   autoscaler raises the worker replicas toward the `maxReplicas`.
+   Because the head Pod has a single CPU, the tasks queue up and the autoscaler raises the worker replicas toward the `maxReplicas`.
 
-3. **Monitor worker Pods:** in another terminal, watch the worker
-    Pods scale up and down:
+3. **Monitor worker Pods:** in another terminal, watch the worker Pods scale up and down:
 
     ```bash
     kubectl get pods -w \
       -l ray.io/cluster=raycluster-kueue-autoscaler,ray.io/node-type=worker
     ```
 
-    New worker Pods should appear as the tasks run and vanish once the
-    workload finishes and the idle timeout elapses.
+    New worker Pods should appear as the tasks run and vanish once the workload finishes and the idle timeout elapses.
 
 ### Autoscaling with RayJob
 #### Step 1: Create the RayJob code ConfigMap
 
-This RayJob example fans out CPU-bound tasks, which triggers the Ray
-autoscaler to scale the worker group within the admitted Kueue quota.
-If you used a different LocalQueue name when creating Kueue resources, replace `user-queue`
-in the RayJob metadata with your queue name.
+This RayJob example fans out CPU-bound tasks, which triggers the Ray autoscaler to scale the worker group within the admitted Kueue quota. If you used a different LocalQueue name when creating Kueue resources, replace `user-queue` in the RayJob metadata with your queue name.
 
 Create a ConfigMap that includes the Ray workload:
 
@@ -507,8 +461,7 @@ data:
 
 #### Step 2: Create an elastic RayJob
 
-This RayJob uses the elastic job annotation, enables in-tree autoscaling,
-and mounts the ConfigMap with the Python entrypoint.
+This RayJob uses the elastic job annotation, enables in-tree autoscaling, and mounts the ConfigMap with the Python entrypoint.
 
 ```yaml
 # ray-job-autoscaling-sample.yaml
@@ -607,37 +560,20 @@ kubectl get rayclusters
 kubectl get pods -w -l ray.io/cluster=<raycluster-name>,ray.io/node-type=worker
 ```
 
-During the workload, the worker group scales from 1 to 5 Pods, then
-scales back to 1 after the tasks finish and the cluster becomes idle.
+During the workload, the worker group scales from 1 to 5 Pods, then scales back to 1 after the tasks finish and the cluster becomes idle.
 
 ### Autoscaling with RayService
 #### Step 1: Configure an elastic RayService
 
-A `RayService` deploys a Ray Serve application by materializing the
-`spec.rayClusterConfig` into a managed `RayCluster`. Kueue doesn't
-interact with the RayService object directly. Instead, the KubeRay
-operator propagates relevant metadata from the RayService to the
-managed RayCluster, and **Kueue queues and admits that RayCluster**.
+A `RayService` deploys a Ray Serve application by materializing the `spec.rayClusterConfig` into a managed `RayCluster`. Kueue doesn't interact with the RayService object directly. Instead, the KubeRay operator propagates relevant metadata from the RayService to the managed RayCluster, and **Kueue queues and admits that RayCluster**.
 
 To make a RayService work with Kueue and the Ray autoscaler:
 
-1. **Queue label**
-   `metadata.labels.kueue.x-k8s.io/queue-name` on the `RayService`.
-   KubeRay passes service labels to the underlying `RayCluster`,
-   allowing Kueue to queue it.
-2. **Elastic-job annotation**
-   `metadata.annotations.kueue.x-k8s.io/elastic-job: "true"`.  This
-   annotation propagates to the `RayCluster` and instructs Kueue to
-   treat it as an elastic workload.
-3. **Enable the Ray autoscaler**
-   `spec.rayClusterConfig`, set `enableInTreeAutoscaling: true` and
-   specify worker `minReplicas`/`maxReplicas`.
+1. **Queue label** `metadata.labels.kueue.x-k8s.io/queue-name` on the `RayService`. KubeRay passes service labels to the underlying `RayCluster`, allowing Kueue to queue it.
+2. **Elastic-job annotation** `metadata.annotations.kueue.x-k8s.io/elastic-job: "true"`.  This annotation propagates to the `RayCluster` and instructs Kueue to treat it as an elastic workload.
+3. **Enable the Ray autoscaler** `spec.rayClusterConfig`, set `enableInTreeAutoscaling: true` and specify worker `minReplicas`/`maxReplicas`.
 
-The following manifest deploys a simple Ray Serve app with autoscaling.
-The Serve application (`demo_app`) and deployment names (`ServiceA` and
-`ServiceB`) are placeholders to avoid implying a specific KubeRay
-example. Adjust the deployments and resources for your own
-application.
+The following manifest deploys a simple Ray Serve app with autoscaling. The Serve application (`demo_app`) and deployment names (`ServiceA` and `ServiceB`) are placeholders to avoid implying a specific KubeRay example. Adjust the deployments and resources for your own application.
 
 ```yaml
 apiVersion: ray.io/v1
@@ -743,8 +679,7 @@ spec:
                 memory: "5Gi"
 ```
 
-Apply the manifest and verify that the service's RayCluster is
-admitted by Kueue:
+Apply the manifest and verify that the service's RayCluster is admitted by Kueue:
 
 ```bash
 kubectl apply -f rayservice-kueue-autoscaler.yaml
@@ -752,8 +687,7 @@ kubectl get workloads.kueue.x-k8s.io -A
 ```
 
 
-The `ADMITTED` column should show `True` once the `RayService`
-has been scheduled by Kueue.
+The `ADMITTED` column should show `True` once the `RayService` has been scheduled by Kueue.
 ```bash
 NAMESPACE   NAME                                                 QUEUE    RESERVED IN   ADMITTED   FINISHED   AGE
 default     raycluster-rayservice-kueue-autoscaler-9xvcr-d7add   ray-lq   ray-cq        True                  21s
@@ -762,15 +696,11 @@ default     raycluster-rayservice-kueue-autoscaler-9xvcr-d7add   ray-lq   ray-cq
 
 #### Step 2: Verify autoscaling for a RayService
 
-Autoscaling for a `RayService` is ultimately driven by load on the
-managed RayCluster. The verification procedure is the same as for a
-plain `RayCluster`.
+Autoscaling for a `RayService` is ultimately driven by load on the managed RayCluster. The verification procedure is the same as for a plain `RayCluster`.
 
 To verify autoscaling:
 
-1. Follow the steps in
-   [Step 2: Verify autoscaling for a RayCluster](#step-2-verify-autoscaling-for-a-raycluster),
-   but use the RayService name in the label selector. Concretely:
+1. Follow the steps in [Step 2: Verify autoscaling for a RayCluster](#step-2-verify-autoscaling-for-a-raycluster), but use the RayService name in the label selector. Concretely:
    - when selecting the head Pod, use (remember to replace your cluster name):
       ```bash
       HEAD_POD=$(kubectl get pod \
@@ -778,8 +708,7 @@ To verify autoscaling:
       -o jsonpath='{.items[0].metadata.name}')
       kubectl exec -it "$HEAD_POD" -- bash
       ```
-   - inside the head container, run the same CPU-bound Python script
-     used in the RayCluster example.
+   - inside the head container, run the same CPU-bound Python script used in the RayCluster example.
       ```bash
       python << 'EOF'
       import ray, time
@@ -805,24 +734,12 @@ To verify autoscaling:
         -l ray.io/cluster=rayservice-kueue-autoscaler,ray.io/node-type=worker
       ```
 
-As in the RayCluster case, the worker Pods scale up toward
-`maxReplicas` while the CPU-bound tasks are running and scale back
-down toward `minReplicas` after the tasks finish and the idle timeout
-elapses. The only difference is that the `ray.io/cluster` label now
-matches the RayService name (`rayservice-kueue-autoscaler-9xvcr`) instead of the
-stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
+As in the RayCluster case, the worker Pods scale up toward `maxReplicas` while the CPU-bound tasks are running and scale back down toward `minReplicas` after the tasks finish and the idle timeout elapses. The only difference is that the `ray.io/cluster` label now matches the RayService name (`rayservice-kueue-autoscaler-9xvcr`) instead of the stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
 
 ### Limitations
 
-* **Feature status** – The `ElasticJobsViaWorkloadSlices` feature gate
-  is currently **alpha**. Elastic autoscaling only applies to
-  RayClusters that are annotated with
-  `kueue.x-k8s.io/elastic-job: "true"` and configured with
-  `enableInTreeAutoscaling: true` when ray image < 2.47.0.
+* **Feature status** – The `ElasticJobsViaWorkloadSlices` feature gate is currently **alpha**. Elastic autoscaling only applies to RayClusters that are annotated with `kueue.x-k8s.io/elastic-job: "true"` and configured with `enableInTreeAutoscaling: true` when ray image < 2.47.0.
 
-* **RayJob support** – `RayJob` in-tree autoscaling requires Kueue
-  v0.15.2+.
+* **RayJob support** – `RayJob` in-tree autoscaling requires Kueue v0.15.2+.
 
-* **Kueue versions prior to v0.13** – If you are using a Kueue version
-  earlier than v0.13, restart the Kueue controller once after
-  installation to ensure RayCluster management works correctly.
+* **Kueue versions prior to v0.13** – If you are using a Kueue version earlier than v0.13, restart the Kueue controller once after installation to ensure RayCluster management works correctly.

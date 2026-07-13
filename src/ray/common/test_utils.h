@@ -18,7 +18,6 @@
 #include <future>
 #include <string>
 
-#include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"

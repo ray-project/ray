@@ -43,7 +43,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
       ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-      int64_t reorder_wait_seconds);
+      int64_t reorder_wait_seconds,
+      ExecuteTaskCallback execute_task,
+      CancelTaskCallback cancel_task);
 
   void Stop() override;
 
@@ -106,7 +108,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
 
-  /// Mutext to protect attributes used for thread safe APIs.
+  /// Callbacks used to execute a queued task or reply that it's canceled.
+  ExecuteTaskCallback execute_task_;
+  CancelTaskCallback cancel_task_;
+
+  /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
   /// A map of actor task IDs -> is_canceled

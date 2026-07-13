@@ -81,7 +81,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         clock_.NowUnixMillis());
-    ComputeLabelDomainKey();
+    *placement_group_table_data_.mutable_topology_strategy() =
+        placement_group_spec.topology_strategy();
     SetupStates();
   }
 
@@ -163,20 +164,21 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
-  /// Get the node label key used for label-domain-aware scheduling (e.g.
-  /// "ray.io/gpu-domain"), or std::nullopt if this PG doesn't use it.
-  std::optional<std::string> GetLabelDomainKey() const;
+  /// Get the non-node topology label keys (e.g. {"ray.io/gpu-domain"}), or
+  /// std::nullopt if this PG doesn't use topology-aware scheduling.
+  std::optional<std::vector<std::string>> GetTopologyStrategyKeys() const;
 
-  /// Get the label domain assignment for the given label key.
-  std::optional<std::string> GetLabelDomainAssignment(const std::string &label_key) const;
+  /// Get the topology assignment value selected for `label_key` (e.g. the
+  /// chosen ray.io/gpu-domain for this PG).
+  std::optional<std::string> GetTopologyAssignment(const std::string &label_key) const;
 
-  /// Set the label domain assignment for the given label key.
-  void SetLabelDomainAssignment(const std::string &label_key,
-                                const std::string &label_value);
+  /// Record that `label_value` has been selected for `label_key`.
+  void SetTopologyAssignment(const std::string &label_key,
+                             const std::string &label_value);
 
-  /// Clear all label domain assignments (used when all bundles for label-domain PGs are
-  /// unplaced).
-  void ClearLabelDomainAssignments();
+  /// Clear all topology assignments (used when every bundle of a topology-aware
+  /// PG becomes unplaced, so a fresh selection can be made).
+  void ClearTopologyAssignments();
 
  private:
   // XXX.
@@ -215,10 +217,6 @@ class GcsPlacementGroup {
     }
     last_metric_state_ = cur_state;
   }
-
-  /// Inspects bundle label selectors to determine if this PG requires
-  /// label-domain-aware scheduling and persists the result in the proto.
-  void ComputeLabelDomainKey();
 
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).

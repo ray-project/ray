@@ -66,17 +66,17 @@ if __name__ == "__main__":
         print(client.get_job_logs(job_id))
         assert False, "Job has failed."
 
-    uss_mb_for_agent_component = get_system_metric_for_component(
-        "ray_component_uss_mb",
+    uss_bytes_for_agent_component = get_system_metric_for_component(
+        "ray_component_uss_bytes",
         "agent",
         os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
     )
     assert (
-        len(uss_mb_for_agent_component) > 0
+        len(uss_bytes_for_agent_component) > 0
     ), "Agent component memory metrics are not found."
-    for mb in uss_mb_for_agent_component:
-        print(f"Agent component memory usage: {mb} MB")
-        assert mb < 500, "Agent component memory usage is too high."
+    for bytes in uss_bytes_for_agent_component:
+        print(f"Agent component memory usage: {bytes} bytes")
+        assert bytes < 500 * 1024 * 1024, "Agent component memory usage is too high."
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         results = {

@@ -1,13 +1,17 @@
 import enum
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "Mix",
@@ -64,26 +68,19 @@ class NAry(LogicalOperator):
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
-        num_outputs: Optional[int] = None,
+        input_dependencies: List[LogicalOperator],
     ):
-        """
-        Args:
-            input_ops: The input operators.
-        """
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        """Initialize the n-ary operator.
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+        Args:
+            input_dependencies: The input operators.
+        """
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
-        return self.__class__(*input_dependencies)
+        return self.__class__(input_dependencies)
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -91,16 +88,14 @@ class Zip(NAry):
     """Logical operator for zip."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -111,36 +106,56 @@ class Zip(NAry):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
+    def infer_schema(self) -> Optional["Schema"]:
+        # Reuse the runtime ``BlockAccessor.zip`` so plan-time and
+        # execution-time schemas agree by construction (same column
+        # suffixing rules, etc.).
+        import pyarrow as pa
+
+        from ray.data.block import BlockAccessor
+
+        input_schemas = [op.infer_schema() for op in self.input_dependencies]
+        if not input_schemas or not all(
+            isinstance(s, pa.Schema) for s in input_schemas
+        ):
+            return None
+        try:
+            combined = input_schemas[0].empty_table()
+            for s in input_schemas[1:]:
+                combined = BlockAccessor.for_block(combined).zip(s.empty_table())
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
+            return None
+        return combined.schema
+
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
-class Mix(NAry):
+class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
     """Logical operator for weighted dataset mixing."""
 
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
     weights: List[float] = field(init=False, repr=False)
     stopping_condition: MixStoppingCondition = field(init=False, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
+        *,
         weights: List[float],
         stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
-        if len(input_ops) != len(weights):
+        if len(input_dependencies) != len(weights):
             raise ValueError(
-                f"Number of input operators ({len(input_ops)}) must match "
+                f"Number of input operators ({len(input_dependencies)}) must match "
                 f"number of weights ({len(weights)})."
             )
         if any(weight <= 0 for weight in weights):
             raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
 
@@ -158,27 +173,29 @@ class Mix(NAry):
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
         return self.__class__(
-            *input_dependencies,
+            input_dependencies,
             weights=self.weights,
             stopping_condition=self.stopping_condition,
         )
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
-class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
+class Union(
+    NAry,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorUnifiesInputSchemas,
+):
     """Logical operator for union."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

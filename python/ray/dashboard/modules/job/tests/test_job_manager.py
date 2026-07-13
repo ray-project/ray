@@ -1310,20 +1310,20 @@ while True:
     "use_env_var,stop_timeout",
     [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
 )
-async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
+async def test_stop_job_timeout(job_manager, tmp_path, use_env_var, stop_timeout):
     """
     Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
     """
-    entrypoint = """python -c \"
-import sys
+    ready_file = tmp_path / "handler_installed"
+    handled_file = tmp_path / "sigterm_handled"
+    entrypoint = f"""python -c \"
 import signal
 import time
 def handler(*args):
-    print('SIGTERM signal handled!');
+    open({handled_file.as_posix()!r}, 'w').close()
 signal.signal(signal.SIGTERM, handler)
-
+open({ready_file.as_posix()!r}, 'w').close()
 while True:
-    print('Waiting...')
     time.sleep(1)\"
 """
     if use_env_var:
@@ -1334,9 +1334,7 @@ while True:
     else:
         job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
-    await async_wait_for_condition(
-        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
-    )
+    await async_wait_for_condition(lambda: ready_file.exists())
 
     assert job_manager.stop_job(job_id) is True
 
@@ -1348,9 +1346,7 @@ while True:
             timeout=stop_timeout / 2,
         )
 
-    await async_wait_for_condition(
-        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
-    )
+    await async_wait_for_condition(lambda: handled_file.exists())
 
     await async_wait_for_condition(
         check_job_stopped,

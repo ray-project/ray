@@ -35,12 +35,9 @@ from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
     DeploymentActorConfig,
-    DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
-    HTTPOptions,
-    ProxyLocation,
     RequestRouterConfig,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -72,6 +69,19 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+# protobuf>=7 removed the deprecated FieldDescriptor.label in favor of the
+# is_repeated property; detect once at import and bind the right check.
+if hasattr(FieldDescriptor, "is_repeated"):
+
+    def _field_is_repeated(field: FieldDescriptor) -> bool:
+        return bool(field.is_repeated)
+
+else:
+
+    def _field_is_repeated(field: FieldDescriptor) -> bool:
+        return field.label == FieldDescriptor.LABEL_REPEATED
+
+
 def _proto_to_dict(proto: Message) -> Dict:
     """Recursively convert a protobuf into a Python dictionary.
 
@@ -83,7 +93,7 @@ def _proto_to_dict(proto: Message) -> Dict:
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
         # Handle repeated fields
-        if field.label == FieldDescriptor.LABEL_REPEATED:
+        if _field_is_repeated(field):
             # if we dont do this block the repeated field will be a list of
             # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
             # Explicitly convert to list
@@ -556,10 +566,19 @@ class DeploymentConfig(BaseModel):
         return cls.from_proto(proto)
 
     @classmethod
-    def from_default(cls, **kwargs):
+    def from_default(cls, **kwargs: Any) -> "DeploymentConfig":
         """Creates a default DeploymentConfig and overrides it with kwargs.
 
         Ignores any kwargs set to DEFAULT.VALUE.
+
+        Args:
+            **kwargs: Field overrides for ``DeploymentConfig``. Keys must match
+                the class's field names; values equal to ``DEFAULT.VALUE`` are
+                skipped (the default is kept).
+
+        Returns:
+            A ``DeploymentConfig`` initialized from defaults and updated with
+            the supplied (non-``DEFAULT.VALUE``) kwargs.
 
         Raises:
             TypeError: when a keyword that's not an argument to the class is
@@ -929,6 +948,10 @@ class ReplicaConfig:
             first_bundle = self.placement_group_bundles[0]
 
             # Validate that the replica actor fits in the first bundle.
+            # Downstream code depends on this validation. The scheduler pins the
+            # actor to bundle 0 in deployment_scheduler._schedule_replica, and
+            # DeploymentSchedulingInfo.required_resources reads bundle 0 as the
+            # replica's demand.
             bundle_cpu = first_bundle.get("CPU", 0)
             replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
             if bundle_cpu < replica_actor_num_cpus:
@@ -1098,55 +1121,3 @@ class ReplicaConfig:
             "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
             "max_replicas_per_node": self.max_replicas_per_node,
         }
-
-
-def prepare_imperative_http_options(
-    proxy_location: Union[None, str, ProxyLocation],
-    http_options: Union[None, dict, HTTPOptions],
-) -> HTTPOptions:
-    """Prepare `HTTPOptions` with a resolved `location` based on `proxy_location` and `http_options`.
-
-    Precedence:
-    - If `proxy_location` is provided, it overrides any `location` in `http_options`.
-    - Else if `http_options` specifies a `location` explicitly (HTTPOptions(...) or dict with 'location'), keep it.
-    - Else (no `proxy_location` and no explicit `location`) set `location` to `DeploymentMode.EveryNode`.
-      A bare `HTTPOptions()` counts as an explicit default (`HeadOnly`).
-
-    Args:
-        proxy_location: Optional ProxyLocation (or its string representation).
-        http_options: Optional HTTPOptions instance or dict. If None, a new HTTPOptions() is created.
-
-    Returns:
-        HTTPOptions: New instance with resolved location.
-
-    Note:
-        1. Default ProxyLocation (when unspecified) resolves to DeploymentMode.EveryNode.
-        2. Default HTTPOptions() location is DeploymentMode.HeadOnly.
-        3. `HTTPOptions` is used in `imperative` mode (Python API) cluster set-up.
-            `Declarative` mode (CLI / REST) uses `HTTPOptionsSchema`.
-
-    Raises:
-        ValueError: If http_options is not None, dict, or HTTPOptions.
-    """
-    if http_options is None:
-        location_set_explicitly = False
-        http_options = HTTPOptions()
-    elif isinstance(http_options, dict):
-        location_set_explicitly = "location" in http_options
-        http_options = HTTPOptions(**http_options)
-    elif isinstance(http_options, HTTPOptions):
-        # empty `HTTPOptions()` is considered as user specified the default location value `HeadOnly` explicitly
-        location_set_explicitly = True
-        http_options = HTTPOptions(**http_options.model_dump(exclude_unset=True))
-    else:
-        raise ValueError(
-            f"Unexpected type for http_options: `{type(http_options).__name__}`"
-        )
-
-    if proxy_location is None:
-        if not location_set_explicitly:
-            http_options.location = DeploymentMode.EveryNode
-    else:
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-
-    return http_options

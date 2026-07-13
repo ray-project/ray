@@ -132,10 +132,10 @@ def test_datasets_callback(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
@@ -618,63 +618,6 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypatch):
-    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
-    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V1")
-
-    NUM_WORKERS = 2
-
-    train_ds = ray.data.range(1000)
-    valid_ds = ray.data.range(1000)
-
-    data_config = ray.train.DataConfig(datasets_to_split=["train"])
-    scaling_config = ray.train.ScalingConfig(
-        num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
-    )
-
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="attempt_1",
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        num_workers=scaling_config.num_workers,
-        resources_per_worker=scaling_config.resources_per_worker,
-    )
-    train_run_context = create_dummy_run_context(
-        dataset_config=data_config,
-        scaling_config=scaling_config,
-    )
-    worker_group = DummyWorkerGroup(
-        train_run_context=train_run_context,
-        worker_group_context=worker_group_context,
-    )
-    worker_group._start()
-
-    callback = DatasetsCallback(
-        train_run_context=train_run_context,
-        datasets={"train": train_ds, "valid": valid_ds},
-    )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
-
-    dataset_manager = dataset_manager_for_each_worker[0]
-    processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
-    )
-    processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
-    )
-
-    # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
-    assert (
-        processed_train_ds.get_context().execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
-    )
-    assert (
-        processed_valid_ds.get_context().execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
-    )
-
-
 def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     """Regression test: under the V2 cluster autoscaler, exclude_resources is not set,
     so the scenario that previously caused negative global limits (small cluster,
@@ -720,10 +663,10 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     # Under the V2 cluster autoscaler (default), exclude_resources should be

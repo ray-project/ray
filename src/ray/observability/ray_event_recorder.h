@@ -17,7 +17,7 @@
 #include <boost/circular_buffer.hpp>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
@@ -36,7 +36,7 @@ namespace observability {
 class RayEventRecorder : public RayEventRecorderInterface {
  public:
   RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                   instrumented_io_context &io_service,
+                   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                    size_t max_buffer_size,
                    std::string_view metric_source,
                    ray::observability::MetricInterface &dropped_events_counter,
@@ -59,7 +59,7 @@ class RayEventRecorder : public RayEventRecorderInterface {
   using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
 
   rpc::EventAggregatorClient &event_aggregator_client_;
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
 
