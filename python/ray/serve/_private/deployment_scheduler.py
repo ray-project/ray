@@ -406,6 +406,35 @@ class DeploymentScheduler(ABC):
         self._head_node_id = head_node_id
         self._create_placement_group_fn = create_placement_group_fn
 
+    def get_num_schedulable_nodes(self, deployment_id: DeploymentID) -> int:
+        """Number of active nodes that can host one replica of this deployment.
+
+        Used by num_replicas="per_node" to size the deployment to the nodes it
+        can actually be placed on. A node counts when its total resources fit
+        the replica's resource request, so a resource-less head node is
+        excluded while a single schedulable node still yields one replica.
+        Falls back to the active node count for a deployment whose resource
+        request the scheduler has not recorded yet (the first deploy, before
+        on_deployment_deployed).
+
+        Does not account for label selectors; a per-node deployment constrained
+        by node labels may over-count.
+        """
+        active_node_ids = self._cluster_node_info_cache.get_active_node_ids()
+        info = self._deployments.get(deployment_id)
+        if info is None or info.actor_resources is None:
+            return len(active_node_ids)
+
+        required = info.required_resources
+        total_resources = self._cluster_node_info_cache.get_total_resources_per_node()
+        return sum(
+            1
+            for node_id in active_node_ids
+            if AvailableNodeResources(total_resources.get(node_id, {})).can_fit(
+                required
+            )
+        )
+
     def on_deployment_created(
         self,
         deployment_id: DeploymentID,

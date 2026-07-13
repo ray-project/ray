@@ -3518,8 +3518,8 @@ class DeploymentState:
             # One replica per node: seed the target with the current schedulable
             # node count. reconcile_num_replicas_per_node keeps it in sync.
             self._autoscaling_state_manager.deregister_deployment(self._id)
-            target_num_replicas = len(
-                self._cluster_node_info_cache.get_active_node_ids()
+            target_num_replicas = self._deployment_scheduler.get_num_schedulable_nodes(
+                self._id
             )
         elif deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
@@ -3655,17 +3655,21 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    def reconcile_num_replicas_per_node(self, num_schedulable_nodes: int) -> None:
+    def reconcile_num_replicas_per_node(self) -> None:
         """Keep a num_replicas="per_node" deployment at one replica per node.
 
-        Sets the target replica count to the number of schedulable nodes,
-        recomputed each control loop as nodes join or leave. No-op for
-        deployments that don't use per-node mode or that are being deleted.
+        Sets the target replica count to the number of nodes the replica can be
+        scheduled on, recomputed each control loop as nodes join or leave. No-op
+        for deployments that don't use per-node mode or that are being deleted.
         """
         if self._target_state.deleting:
             return
         if not self._target_state.info.deployment_config.num_replicas_per_node:
             return
+
+        num_schedulable_nodes = self._deployment_scheduler.get_num_schedulable_nodes(
+            self._id
+        )
         if self._target_state.target_num_replicas == num_schedulable_nodes:
             return
 
@@ -5977,11 +5981,10 @@ class DeploymentStateManager:
         # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
 
-        # STEP 3.5: Reconcile num_replicas="per_node" deployments to the
-        # current schedulable node count so they run one replica per node.
-        num_schedulable_nodes = len(self._cluster_node_info_cache.get_active_node_ids())
+        # STEP 3.5: Reconcile num_replicas="per_node" deployments to the current
+        # count of nodes the replica can be scheduled on, one replica per node.
         for deployment_state in self._deployment_states.values():
-            deployment_state.reconcile_num_replicas_per_node(num_schedulable_nodes)
+            deployment_state.reconcile_num_replicas_per_node()
 
         # STEP 4: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():

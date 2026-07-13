@@ -4389,25 +4389,55 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
+def _add_node_with_cpu(cluster_node_info_cache, node_id: str, cpu: float) -> None:
+    cluster_node_info_cache.add_node(node_id, resources={"CPU": cpu})
+
+
 def test_num_replicas_per_node_tracks_node_count(mock_deployment_state_manager):
     """A num_replicas="per_node" deployment targets one replica per schedulable node."""
     create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
-    # The fixture starts with a single node, so deploy seeds the target at 1.
+    # Give the fixture's initial node capacity for the (1 CPU) replica.
+    node_1 = next(iter(cluster_node_info_cache.alive_node_ids))
+    cluster_node_info_cache.total_resources_per_node[node_1] = {"CPU": 4}
+
+    # One schedulable node at deploy time, so the target starts at 1.
     dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
     assert ds.target_num_replicas == 1
 
     # A node joins: the control loop bumps the target to match.
-    cluster_node_info_cache.add_node(NodeID.from_random().hex())
+    node_2 = NodeID.from_random().hex()
+    _add_node_with_cpu(cluster_node_info_cache, node_2, 4)
     dsm.update()
     assert ds.target_num_replicas == 2
 
     # A node starts draining: it drops out of the schedulable set.
-    draining = next(iter(cluster_node_info_cache.alive_node_ids))
-    cluster_node_info_cache.draining_nodes = {draining: 1}
+    cluster_node_info_cache.draining_nodes = {node_2: 1}
     dsm.update()
+    assert ds.target_num_replicas == 1
+
+
+def test_num_replicas_per_node_excludes_nodes_without_capacity(
+    mock_deployment_state_manager,
+):
+    """Nodes that can't fit the replica (e.g. a resource-less head) aren't counted."""
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Fixture's initial node has no CPU (like a head node with no task resources).
+    head = next(iter(cluster_node_info_cache.alive_node_ids))
+    cluster_node_info_cache.total_resources_per_node[head] = {"CPU": 0}
+    worker = NodeID.from_random().hex()
+    _add_node_with_cpu(cluster_node_info_cache, worker, 4)
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+
+    # Only the worker can host the 1-CPU replica; the 0-CPU node is excluded.
     assert ds.target_num_replicas == 1
 
 
@@ -4423,7 +4453,7 @@ def test_num_replicas_per_node_only_affects_per_node_deployments(
     dsm.update()
     assert ds.target_num_replicas == 2
 
-    cluster_node_info_cache.add_node(NodeID.from_random().hex())
+    _add_node_with_cpu(cluster_node_info_cache, NodeID.from_random().hex(), 4)
     dsm.update()
     assert ds.target_num_replicas == 2
 
