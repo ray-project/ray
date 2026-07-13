@@ -20,3 +20,6 @@ worker_nodes:
       min_nodes: 10
       max_nodes: 10
       market_type: ON_DEMAND
+
+flags:
+  allow-cross-zone-autoscaling: true

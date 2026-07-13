@@ -12,3 +12,6 @@ worker_nodes:
       min_nodes: 0
       max_nodes: 300
       market_type: SPOT
+
+flags:
+  allow-cross-zone-autoscaling: true

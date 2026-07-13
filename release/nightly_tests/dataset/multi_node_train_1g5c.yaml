@@ -13,3 +13,6 @@ worker_node_types:
       max_workers: 5
       min_workers: 5
       use_spot: false
+
+flags:
+  allow-cross-zone-autoscaling: true

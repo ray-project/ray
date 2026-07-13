@@ -8,3 +8,6 @@ head_node_type:
     instance_type: g4dn.4xlarge
 
 worker_node_types: []
+
+flags:
+  allow-cross-zone-autoscaling: true
