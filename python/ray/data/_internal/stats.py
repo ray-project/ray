@@ -816,8 +816,8 @@ class _StatsActor:
         dataset_id: str,
         split_index: Optional[str] = None,
     ):
-        split_label = "no_split" if split_index is None else f"split_{split_index}"
-        tags = self._create_tags(dataset_tag=dataset_id, split_tag=split_label)
+        split_tag = "no_split" if split_index is None else f"split_{split_index}"
+        tags = self._create_tags(dataset_tag=dataset_id, split_tag=split_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_total_s.set(stats.iter_total_s.get(), tags)
