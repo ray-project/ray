@@ -108,7 +108,9 @@ def test_log_scheduling_updates():
 
 def test_log_scheduling_updates_without_cluster_shape():
     mock_logger = MockEventLogger(logger)
-    event_logger = AutoscalerEventLogger(mock_logger, log_cluster_shape=False)
+    event_logger = AutoscalerEventLogger(
+        export_event_logger=mock_logger, log_cluster_shape=False
+    )
 
     event_logger.log_cluster_scheduling_update(
         launch_requests=[launch_request("m4.large", 1)],
