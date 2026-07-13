@@ -745,7 +745,7 @@ async def test_report_external_ray_events_rejects_disallowed_event_types(monkeyp
     ]
     monkeypatch.setattr(EventHead, "_get_external_ray_event_allowlist", lambda: set())
 
-    with pytest.raises(aiohttp.web.HTTPForbidden):
+    with pytest.raises(aiohttp.web.HTTPUnprocessableEntity):
         await event_head.report_external_ray_events(_FakeRequest(payload))
 
 

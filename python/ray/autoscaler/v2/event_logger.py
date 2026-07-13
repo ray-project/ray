@@ -5,7 +5,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray._common.observability.autoscaler_event_utils import (
-    TERMINATION_CAUSE_REASON_MAP,
     build_autoscaler_scheduling_update_rows,
 )
 from ray._private.event.event_logger import EventLoggerAdapter
@@ -294,9 +293,6 @@ class AutoscalerEventLogger:
             is_ray_event_enabled,
         )
 
-        if not is_ray_event_enabled(AUTOSCALER_SCALING_DECISION_EVENT_TYPE):
-            return
-
         # Convert LaunchRequest protos to dicts for the builder.
         launch_actions = []
         if launch_requests:
@@ -417,20 +413,24 @@ class AutoscalerEventLogger:
         if payload_hash == self._last_scaling_decision_hash:
             return
 
-        if self._log_cluster_shape:
-            for action in launch_actions:
-                logger.info(
-                    f"Adding {action['count']} node(s) of type "
-                    f"{action['instance_type']}."
-                )
-            for action in terminate_actions:
-                cause_reason = TERMINATION_CAUSE_REASON_MAP.get(
-                    action["cause"], "unknown"
-                )
-                logger.info(
-                    f"Removing {action['count']} nodes of type "
-                    f"{action['instance_type']} ({cause_reason})."
-                )
+        # Mirror the legacy path's human-readable logging. Launch/terminate
+        # messaging is suppressed when log_cluster_shape is off.
+        for row in build_autoscaler_scheduling_update_rows(
+            cluster_resources=dict(cluster_resources),
+            launch_actions=launch_actions if self._log_cluster_shape else None,
+            terminate_actions=(terminate_actions if self._log_cluster_shape else None),
+            infeasible_resource_requests=infeasible_resource_dicts,
+            infeasible_gang_resource_requests=infeasible_gang_dicts,
+            infeasible_cluster_resource_constraints=infeasible_constraint_dicts,
+        ):
+            if row["severity"] == "WARNING":
+                logger.warning(row["message"])
+            elif row.get("log_to_logger"):
+                logger.info(row["message"])
+
+        if not is_ray_event_enabled(AUTOSCALER_SCALING_DECISION_EVENT_TYPE):
+            self._last_scaling_decision_hash = payload_hash
+            return
 
         try:
             builder = AutoscalerScalingDecisionEventBuilder(

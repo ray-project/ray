@@ -329,8 +329,9 @@ class EventHead(
         (configured via RAY_EXTERNAL_RAY_EVENT_ALLOWLIST).
 
         HTTP status codes: 200 on success, 400 if the payload is malformed or
-        fails protobuf parsing, 403 if an event type is not in the allowlist,
-        500 if forwarding to the aggregator fails.
+        fails protobuf parsing, 422 if an event type is not in the allowlist
+        (403 is reserved for token auth failures), 500 if forwarding to the
+        aggregator fails.
         """
         try:
             request_body = await request.json()
@@ -345,8 +346,8 @@ class EventHead(
         try:
             self._validate_external_ray_events(events)
         except ValueError as e:
-            logger.warning("Forbidden external Ray event type: %s", e)
-            raise aiohttp.web.HTTPForbidden(reason=str(e))
+            logger.warning("Rejected external Ray event type: %s", e)
+            raise aiohttp.web.HTTPUnprocessableEntity(reason=str(e))
 
         # Cache before forwarding so events stay locally servable even if
         # forwarding to the aggregator fails.
