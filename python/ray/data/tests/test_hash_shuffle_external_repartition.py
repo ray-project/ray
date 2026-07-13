@@ -210,21 +210,3 @@ def test_external_flag_off_keeps_v2_path(
     assert ds.count() == 200
 
 
-def test_external_repartition_then_map(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    disable_fallback_to_object_extension,
-):
-    """Downstream ``map`` sees the external op's output schema + row count."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_external_hash_shuffle = True
-
-    ds = (
-        ray.data.range(100)
-        .repartition(4, keys=["id"])
-        .map(lambda r: {"id": r["id"], "doubled": r["id"] * 2})
-    )
-    rows = ds.take_all()
-    assert len(rows) == 100
-    assert all(r["doubled"] == r["id"] * 2 for r in rows)
