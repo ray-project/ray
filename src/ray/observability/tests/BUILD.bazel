@@ -99,6 +99,5 @@ ray_cc_test(
     deps = [
         "//src/ray/observability:ray_placement_group_definition_event",
         "//src/ray/observability:ray_placement_group_lifecycle_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
