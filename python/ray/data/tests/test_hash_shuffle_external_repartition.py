@@ -191,22 +191,33 @@ def test_external_repartition_with_sort_produces_sorted_partitions(
             ids = ray.get(block_ref)["id"].to_pylist()
             assert ids == sorted(ids)
 
-
-# --- External-only: regression + chained ops ---------------------------------
-
-
 def test_external_flag_off_keeps_v2_path(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """With flag=False the same call must still work via the v2 path —
-    confirms our dispatch doesn't accidentally hijack the default."""
+    """With flag=False the planner must NOT dispatch to the external variant.
+
+    Row count alone can't distinguish the two paths, and the on-disk shuffle
+    dir gets cleaned up eagerly by ``_do_shutdown`` so a post-hoc filesystem
+    check races with cleanup. Patch ``ExternalHashShuffleMapOp.__init__`` to
+    raise so any construction of the external op fails the test immediately.
+    """
+    from unittest import mock
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
+        ExternalHashShuffleMapOp,
+    )
+
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     ctx.use_external_hash_shuffle = False
 
-    ds = ray.data.range(200).repartition(4, keys=["id"])
-    assert ds.count() == 200
+    with mock.patch.object(
+        ExternalHashShuffleMapOp,
+        "__init__",
+        side_effect=AssertionError("external op was constructed with flag=False"),
+    ):
+        ds = ray.data.range(200).repartition(4, keys=["id"])
+        assert ds.count() == 200
 
 
