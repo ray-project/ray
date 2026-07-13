@@ -23,6 +23,7 @@
 #include "mock/ray/gcs/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
@@ -43,6 +44,13 @@ class GcsPlacementGroupManagerMockTest : public Test {
       : cluster_resource_manager_(PeriodicalRunner::Create(io_context_)) {}
 
   void SetUp() override {
+    // Event emission is gated on this config.
+    RayConfig::instance().initialize(
+        R"(
+{
+"enable_ray_event": true
+}
+)");
     store_client_ = std::make_shared<MockStoreClient>();
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =

@@ -24,6 +24,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -114,7 +115,16 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     }
   }
 
-  void SetUp() override { io_service_.restart(); }
+  void SetUp() override {
+    // Event emission is gated on this config.
+    RayConfig::instance().initialize(
+        R"(
+{
+"enable_ray_event": true
+}
+)");
+    io_service_.restart();
+  }
 
   void TearDown() override { io_service_.stop(); }
 
