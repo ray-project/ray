@@ -139,6 +139,24 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         bundles[i]);
   }
 
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    for (const auto &entry : node_to_bundles) {
+      const auto &node_id = entry.first;
+      const auto &bundles_per_node = entry.second;
+
+      for (const auto &bundle : bundles_per_node) {
+        lease_status_tracker->MarkPrepareRequestPending(node_id, bundle);
+        lease_status_tracker->MarkPrepareRequestReturned(
+            node_id, bundle, ray::Status::OK());
+      }
+      if (lease_status_tracker->AllPrepareRequestsReturned()) {
+        OnAllBundlePrepareRequestReturned(
+            lease_status_tracker, failure_callback, success_callback);
+      }
+    }
+    return;
+  }
+
   for (const auto &entry : node_to_bundles) {
     const auto &node_id = entry.first;
     const auto &bundles_per_node = entry.second;
@@ -284,6 +302,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
 
   if (RayConfig::instance().centralized_actor_scheduling()) {
     RemoveBundleResources(node_id, bundle_specs);
+    return;
   }
 
   const auto raylet_client = GetRayletClientFromNode(node.value());
@@ -388,6 +407,26 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     bundle_locations_per_node[node_id].push_back(bundle_location.second.second);
   }
   lease_status_tracker->MarkCommitPhaseStarted();
+
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    for (const auto &node_to_bundles : bundle_locations_per_node) {
+      const auto &node_id = node_to_bundles.first;
+      const auto &bundles_per_node = node_to_bundles.second;
+      auto commited_bundle_locations = std::make_shared<BundleLocations>();
+      for (const auto &bundle : bundles_per_node) {
+        lease_status_tracker->MarkCommitRequestReturned(
+            node_id, bundle, ray::Status::OK());
+        (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
+      }
+      CommitBundleResources(commited_bundle_locations);
+    }
+
+    if (lease_status_tracker->AllCommitRequestReturned()) {
+      OnAllBundleCommitRequestReturned(
+          lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+    }
+    return;
+  }
 
   for (const auto &node_to_bundles : bundle_locations_per_node) {
     const auto &node_id = node_to_bundles.first;
@@ -612,6 +651,10 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
   // previous lifecycle. In this case, GCS will send a list of bundle ids that
   // are still needed. And Raylet will release other bundles. If the node is
   // dead, there is no need to send the request of release unused bundles.
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    return;
+  }
+
   const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
