@@ -49,10 +49,21 @@ if [[ "${ARCH}" == "aarch64" ]]; then
     echo "Unable to locate a C/C++ compiler for rules_foreign_cc" >&2
     exit 1
   fi
-  sudo ln -sf "${CXX_BIN}" /usr/local/bin/c++
-  sudo ln -sf "${CXX_BIN}" /usr/local/bin/g++
-  sudo ln -sf "${CC_BIN}" /usr/local/bin/cc
-  sudo ln -sf "${CC_BIN}" /usr/local/bin/gcc
+  # Idempotent symlink: skip if src and dest already resolve to the same path.
+  # Re-running otherwise risks `command -v` returning the /usr/local/bin symlink
+  # itself, turning `ln -sf X X` into a self-referential loop that breaks the
+  # compiler with "Too many levels of symbolic links".
+  safe_ln() {
+    local src="$1"
+    local dest="$2"
+    if [[ "$(readlink -f "${src}")" != "$(readlink -f "${dest}" 2>/dev/null)" ]]; then
+      sudo ln -sf "${src}" "${dest}"
+    fi
+  }
+  safe_ln "${CXX_BIN}" /usr/local/bin/c++
+  safe_ln "${CXX_BIN}" /usr/local/bin/g++
+  safe_ln "${CC_BIN}" /usr/local/bin/cc
+  safe_ln "${CC_BIN}" /usr/local/bin/gcc
 fi
 
 # Install ray java dependencies.
