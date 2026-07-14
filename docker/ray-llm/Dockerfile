@@ -8,7 +8,7 @@ COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.25.0"
+ARG VLLM_SCRIPTS_REF="v0.25.1"
 
 # Pin DeepEP to the V1 (NVSHMEM) commit that vLLM's own release image uses. The
 # install script's default drifted to DeepEP V2 ("NCCL Gin"), which needs
@@ -71,10 +71,7 @@ PY
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
 )
 
-# ffmpeg provides the libav* libs torchcodec loads at import time. vLLM 0.25.0
-# imports torchcodec eagerly, and without libav* it raises RuntimeError (not
-# ImportError, so vLLM's guard misses it), so every `import vllm` fails.
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake ffmpeg
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
@@ -110,7 +107,7 @@ EOF
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
 
-# vLLM 0.25.0 defaults to Model Runner V2, which skips multimodal encoder memory
+# vLLM 0.25.1 defaults to Model Runner V2, which skips multimodal encoder memory
 # profiling and OOMs the LLM GPU tests. Force Model Runner V1 for now.
 # TODO (jeffreywang): Use the default MRV2 once https://github.com/vllm-project/vllm/pull/47985 lands.
 ENV VLLM_USE_V2_MODEL_RUNNER=0

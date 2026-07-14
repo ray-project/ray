@@ -619,9 +619,9 @@ Each Ray release is fully tested with a compatible vLLM version.
    * - Ray release
      - vLLM version
    * - nightly
-     - 0.25.0
+     - 0.25.1
    * - 2.57.0
-     - 0.25.0
+     - 0.25.1
    * - 2.56.0
      - 0.22.0
    * - 2.55.0
@@ -654,7 +654,7 @@ If you encounter CUDA out of memory errors, try these strategies:
 
 .. admonition:: Known issue
 
-    On vLLM 0.25.0, VLM inference can OOM because the default Model Runner V2
+    On vLLM 0.25.1, VLM inference can OOM because the default Model Runner V2
     skips multimodal encoder memory profiling and over-allocates KV cache memory.
     Set ``VLLM_USE_V2_MODEL_RUNNER=0`` to fall back to Model Runner V1.
 
@@ -692,21 +692,6 @@ vLLM NIXL EP dependency incompatibility
 
    Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
    and vLLM build in your environment.
-
-
-vLLM torchcodec requirement
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. admonition:: Known issue
-
-   vLLM 0.25.0 imports ``torchcodec`` eagerly, which loads the ``libav*`` libraries at import time.
-   If they're missing, Ray Data LLM fails at ``import vllm`` with a ``RuntimeError``.
-   
-   To mitigate, install ``ffmpeg`` to provide the ``libav*`` libraries:
-
-   .. code-block:: bash
-
-      sudo apt-get update -y && sudo apt-get install -y ffmpeg
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 

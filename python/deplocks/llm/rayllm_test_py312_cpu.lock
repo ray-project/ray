@@ -6295,10 +6295,10 @@ virtualenv==21.2.4 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
-vllm==0.25.0 \
-    --hash=sha256:7e04e2b37164de8c4012f27f75af6c4768039b32610865e9b6fb8c49c34a84aa \
-    --hash=sha256:a36add91a63e4f8543ffd85766fcc604d1f5e48ddae81b9f159bfa8ef25cdc56 \
-    --hash=sha256:c82e96b01af2142ef398ca92f1e9c5f4ffc119f2cc09fe68ea28865323532f0c
+vllm==0.25.1 \
+    --hash=sha256:16fc7a28df1576eb6f7ca0455026551b8f9adb674c19c66059359ef3e964bd1e \
+    --hash=sha256:902be760af4c5ebfad8af5b8ea07a53ae14e5a6c839c8ab56da30581abb75ad2 \
+    --hash=sha256:ddbdec3f1c0f21afa70b7eb6ddf3faa29d26b1302ee4b5d5e00ec3af41b0c2e4
     # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
