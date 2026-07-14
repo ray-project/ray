@@ -2033,5 +2033,80 @@ def test_find_undiscovered_idle_parent():
     assert check([parent_topo], nodes, all_free) is None
 
 
+def test_resolve_chips_per_vm():
+    """chips_per_vm is a per-parent property: the user override always wins,
+    otherwise it is derived from the specific parent topology (single-host v6e
+    topologies report their full chip count, multi-host report 4).
+    """
+    resolve = ray.util.tpu._resolve_chips_per_vm
+    # Explicit override wins regardless of topology.
+    assert resolve(16, "4x4", "v6e") == 16
+    # Derived per parent when omitted.
+    assert resolve(None, "4x4", "v6e") == 4  # multi-host
+    assert resolve(None, "2x4", "v6e") == 8  # single-host (8 chips on one VM)
+    assert resolve(None, "2x2", "v6e") == 4  # single-host, 4 chips
+
+
+def test_subslice_omitted_chips_per_vm_matches_discovered_parent():
+    """Regression: on a mixed v6e cluster (single-host 2x4 = 8 chips/VM and
+    multi-host 4x4 = 4 chips/VM), omitting chips_per_vm must derive it from the
+    parent actually discovered, not the smallest valid parent.
+
+    Here the 2x4 slice (smallest valid parent) is occupied, so discovery falls
+    to the 4x4 slice; chips_per_vm passed to discovery must be 4 (for 4x4), not
+    8 (2x4's value). With the old code it was baked from parent_topologies[0]
+    and discovery would fan out too few workers.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    # Single-host 2x4 slice (1 node, 8 chips, occupied) + multi-host 4x4 slice
+    # (4 nodes, 4 chips each, idle). Nothing cached, forcing discovery.
+    nodes = [
+        {
+            "NodeID": "s24-w0",
+            "Alive": True,
+            "Resources": {"TPU": 8},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-2x4",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
+            },
+        }
+    ] + _slice_nodes("slice-4x4", "4x4")
+
+    avail = {
+        "s24-w0": {"TPU": 0},  # 2x4 occupied
+        **{f"slice-4x4-w{i}": {"TPU": 4} for i in range(4)},  # 4x4 idle
+    }
+
+    captured = {}
+
+    def _fake_discover(parent_topology, version, chips_per_vm, timeout):
+        captured["parent"] = parent_topology
+        captured["chips_per_vm"] = chips_per_vm
+        raise RuntimeError("stop-loop")  # break out of the retry loop
+
+    with (
+        patch("ray.nodes", return_value=nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+        patch(
+            "ray.util.tpu._discover_and_persist_subslices",
+            side_effect=_fake_discover,
+        ),
+        pytest.raises(RuntimeError, match="stop-loop"),
+    ):
+        ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x2",
+            accelerator_version="v6e",
+            # chips_per_vm intentionally omitted
+        )
+
+    assert captured["parent"] == "4x4"
+    assert captured["chips_per_vm"] == 4  # derived from 4x4, not 2x4's 8
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

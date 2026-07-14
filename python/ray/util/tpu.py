@@ -1776,26 +1776,57 @@ def _build_subslice_pg(
     )
 
 
+def _resolve_chips_per_vm(
+    user_chips_per_vm: Optional[int],
+    parent_topology: str,
+    version: str,
+) -> int:
+    """Resolve the effective chips-per-VM for a specific parent topology.
+
+    ``chips_per_vm`` is a property of the parent slice's node type, which
+    varies across topologies in a mixed cluster (e.g. v6e single-host 2x4 is
+    8 chips/VM while multi-host 4x4 is 4 chips/VM). It must therefore be
+    derived from the parent actually being discovered or scheduled, not from
+    an arbitrary member of the candidate list.
+
+    Args:
+        user_chips_per_vm: Caller-supplied override, or ``None`` to infer.
+        parent_topology: The parent topology the subslice belongs to.
+        version: TPU accelerator generation (e.g. ``"v6e"``).
+
+    Returns:
+        The effective chips-per-VM for *parent_topology*.
+    """
+    if user_chips_per_vm is not None:
+        return user_chips_per_vm
+    return _get_default_chips_per_vm(parent_topology, version)
+
+
 def _validate_and_resolve(
     subslice_topology: str,
     accelerator_version: str,
     chips_per_vm: Optional[int],
-) -> Tuple[str, str, List[str], int]:
+) -> Tuple[str, str, List[str], Optional[int]]:
     """Validate all inputs and resolve cluster-dependent parameters.
 
     Normalises topology strings, validates them against the accelerator
-    version, resolves all valid parent topologies from live cluster nodes,
-    and derives ``chips_per_vm`` when not supplied by the caller.
+    version, and resolves all valid parent topologies from live cluster
+    nodes. ``chips_per_vm`` is passed through unchanged (validated if given)
+    rather than defaulted here, because its correct value depends on the
+    specific parent topology later chosen for discovery or scheduling; see
+    :func:`_resolve_chips_per_vm`.
 
     Args:
         subslice_topology: Requested subslice topology (may contain
             whitespace or mixed case; normalised internally).
         accelerator_version: TPU accelerator generation (e.g. ``"v6e"``).
-        chips_per_vm: Caller-supplied chips per VM, or ``None`` to infer.
+        chips_per_vm: Caller-supplied chips per VM, or ``None`` to infer
+            later per parent topology.
 
     Returns:
         ``(version, subslice_topology, parent_topologies, chips_per_vm)``
-        with all values normalised and validated.
+        with topologies normalised and validated and ``chips_per_vm`` left
+        as supplied (possibly ``None``).
 
     Raises:
         ValueError: On any validation failure or if no suitable parent
@@ -1849,14 +1880,6 @@ def _validate_and_resolve(
         if subslice_topology in cluster_topos:
             msg += "  Use slice_placement_group() instead."
         raise ValueError(msg)
-
-    # Derive chips_per_vm from the smallest valid parent so that multi-host
-    # slices report the correct per-VM chip count.  All valid parents in the
-    # same cluster use the same node type and therefore the same chips_per_vm.
-    if chips_per_vm is None:
-        chips_per_vm = _get_default_chips_per_vm(parent_topologies[0], version)
-    if chips_per_vm <= 0:
-        raise ValueError("chips_per_vm must be positive.")
 
     for parent_topology in parent_topologies:
         if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
@@ -1945,9 +1968,12 @@ def subslice_placement_group(
             for i in range(sg.num_hosts)
         ]
     """
-    version, subslice_topology, parent_topologies, chips_per_vm = _validate_and_resolve(
-        subslice_topology, accelerator_version, chips_per_vm
-    )
+    (
+        version,
+        subslice_topology,
+        parent_topologies,
+        user_chips_per_vm,
+    ) = _validate_and_resolve(subslice_topology, accelerator_version, chips_per_vm)
 
     from ray._private.state import available_resources_per_node
 
@@ -1974,13 +2000,15 @@ def subslice_placement_group(
 
         if cached_subslice is not None:
             worker_ids, subslice_index, slice_name, parent_topology, _ = cached_subslice
+            # chips_per_vm depends on the parent's node type, so resolve it
+            # against the parent this subslice actually belongs to.
             return _build_subslice_pg(
                 worker_ids,
                 subslice_index,
                 slice_name,
                 subslice_topology,
                 parent_topology,
-                chips_per_vm,
+                _resolve_chips_per_vm(user_chips_per_vm, parent_topology, version),
                 resources_per_bundle,
                 strategy,
                 name,
@@ -1989,8 +2017,12 @@ def subslice_placement_group(
 
         # No idle cached subslice found — discover the layout of one idle
         # parent slice (preferring the smallest parent topology) and loop
-        # back to claim a subslice from the newly populated cache.
+        # back to claim a subslice from the newly populated cache. chips_per_vm
+        # must match the parent actually being discovered.
         assert discoverable_parent is not None  # guaranteed by the check above
         _discover_and_persist_subslices(
-            discoverable_parent, version, chips_per_vm, head_reservation_timeout_s
+            discoverable_parent,
+            version,
+            _resolve_chips_per_vm(user_chips_per_vm, discoverable_parent, version),
+            head_reservation_timeout_s,
         )
