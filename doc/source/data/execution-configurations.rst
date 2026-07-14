@@ -29,13 +29,10 @@ To use it, modify the attributes in the current :class:`~ray.data.DataContext` o
    ctx.execution_options.verbose_progress = True
 
 * `resource_limits`: Set a soft limit on the resource usage during execution. For example, if there are other parts of the code which require some minimum amount of resources, you may want to limit the amount of resources that Ray Data uses. Auto-detected by default.
-* `exclude_resources`: Amount of resources to exclude from Ray Data. Set this if you have other workloads running on the same cluster. Note:
-
-  * If you're using Ray Data with Ray Train, training resources are automatically reserved and you don't need to set ``exclude_resources`` for them. Otherwise, off by default.
-  * For each resource type, you can't set both ``resource_limits`` and ``exclude_resources``.
+* `exclude_resources`: Deprecated. Use ``label_selector`` to constrain Ray Data work to labeled nodes.
 
 * `preserve_order`: Set this to preserve the ordering between blocks processed by operators under the streaming executor. Off by default.
-* `actor_locality_enabled`: Whether to enable locality-aware task dispatch to actors. This parameter applies to stateful :meth:`~ray.data.Dataset.map` operations. This setting is useful if you know you are consuming the output data directly on the consumer node (such as for ML batch inference). However, other use cases can incur a performance penalty with this setting. Off by default.
+* `actor_locality_enabled`: Deprecated. Ray Data manages actor locality internally.
 * `verbose_progress`: Whether to report progress individually per operator. By default, only AllToAll operators and global progress is reported. This option is useful for performance debugging. On by default.
 
 For more details on each of the preceding options, see :class:`~ray.data.ExecutionOptions`.

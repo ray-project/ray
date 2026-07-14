@@ -2142,6 +2142,9 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
         self._on_replica_state_change = on_replica_state_change
+        # Incremental (state, version) counts for O(1) version-filtered count()
+        # (maintained on add/pop/remove) -> replaces the per-tick O(N) version scan.
+        self._sv_counts: Dict[tuple, int] = defaultdict(int)
 
     def __getstate__(self):
         # Exclude the callback to keep the container picklable (the callback
@@ -2164,6 +2167,7 @@ class ReplicaStateContainer:
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        self._sv_counts[(state, replica.version)] += 1
         if self._on_replica_state_change and state != old_state:
             self._on_replica_state_change(old_state, state)
 
@@ -2245,6 +2249,8 @@ class ReplicaStateContainer:
 
             self._replicas[state] = remaining
             replicas.extend(popped)
+            for _r in popped:
+                self._sv_counts[(state, _r.version)] -= 1
 
         for replica in replicas:
             self._replica_id_index.pop(replica.replica_id, None)
@@ -2278,13 +2284,11 @@ class ReplicaStateContainer:
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
-            return sum(
-                sum(1 for r in self._replicas[state] if r.version == version)
-                for state in states
-            )
+            return sum(self._sv_counts.get((state, version), 0) for state in states)
         elif exclude_version is not None and version is None:
             return sum(
-                sum(1 for r in self._replicas[state] if r.version != exclude_version)
+                len(self._replicas[state])
+                - self._sv_counts.get((state, exclude_version), 0)
                 for state in states
             )
         else:
@@ -2316,6 +2320,8 @@ class ReplicaStateContainer:
             for replica in self._replicas[state]:
                 if remaining_to_find > 0 and replica.replica_id in replica_ids:
                     removed.append(replica)
+                    self._sv_counts[(state, replica.version)] -= 1
+                    self._replica_id_index.pop(replica.replica_id, None)
                     remaining_to_find -= 1
                     found_any = True
                 else:
@@ -3694,6 +3700,23 @@ class DeploymentState:
         Returns:
             Whether any replicas were stopped or reconfigured.
         """
+        # Fast path: if no replica in these states is on an outdated version there
+        # is nothing to stop or reconfigure, so skip the O(N) version-partition pop
+        # that otherwise runs every tick on a single-version deployment. O(#states)
+        # via the incremental _sv_counts (see ReplicaStateContainer.count).
+        if (
+            self._replicas.count(
+                exclude_version=self._target_state.version,
+                states=[
+                    ReplicaState.STARTING,
+                    ReplicaState.PENDING_MIGRATION,
+                    ReplicaState.RUNNING,
+                ],
+            )
+            == 0
+        ):
+            return False
+
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
             states=[
