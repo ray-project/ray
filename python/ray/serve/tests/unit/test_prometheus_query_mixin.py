@@ -85,12 +85,25 @@ class TestQueryScalar:
 
 class TestPrometheusQueryMixin:
     def test_no_address_no_thread(self, monkeypatch):
+        monkeypatch.delenv("RAY_PROMETHEUS_HOST", raising=False)
         calls = []
         monkeypatch.setattr(ap, "_fetch_metrics", lambda *a, **k: calls.append(1) or {})
         mixin = PrometheusQueryMixin(prometheus_queries=["q"])  # no address
         assert mixin.prometheus_metrics is None
         time.sleep(0.2)
         assert calls == []
+
+    def test_address_defaults_to_env(self, monkeypatch):
+        monkeypatch.setenv("RAY_PROMETHEUS_HOST", "http://envhost:9090")
+        mixin = PrometheusQueryMixin(prometheus_queries=["q"])
+        assert mixin._prometheus_address == "http://envhost:9090"
+
+    def test_explicit_address_overrides_env(self, monkeypatch):
+        monkeypatch.setenv("RAY_PROMETHEUS_HOST", "http://envhost:9090")
+        mixin = PrometheusQueryMixin(
+            prometheus_address="http://explicit:9090", prometheus_queries=["q"]
+        )
+        assert mixin._prometheus_address == "http://explicit:9090"
 
     def test_read_does_not_block_on_fetch(self, monkeypatch):
         def slow(address, queries):

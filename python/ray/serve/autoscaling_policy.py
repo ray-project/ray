@@ -2,6 +2,7 @@ import functools
 import json
 import logging
 import math
+import os
 import threading
 import time
 import urllib.parse
@@ -462,6 +463,10 @@ class PrometheusQueryMixin:
     ``fetch_interval_s`` and caches the scalars. Reads never block on the
     network and return ``None`` when Prometheus is unset, unreachable, or the
     cache is older than ``cache_ttl_s``.
+
+    ``prometheus_address`` defaults to the ``RAY_PROMETHEUS_HOST`` environment
+    variable, which Ray's dashboard and managed clusters already set, so the
+    common case needs no address.
     """
 
     def __init__(
@@ -474,7 +479,9 @@ class PrometheusQueryMixin:
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self._prometheus_address = prometheus_address
+        self._prometheus_address = prometheus_address or os.environ.get(
+            "RAY_PROMETHEUS_HOST"
+        )
         if isinstance(prometheus_queries, str):
             prometheus_queries = [prometheus_queries]
         self._prometheus_queries = list(prometheus_queries or [])

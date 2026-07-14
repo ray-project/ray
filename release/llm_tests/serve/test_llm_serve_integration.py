@@ -472,6 +472,7 @@ def test_prometheus_autoscaling():
                     policy_kwargs=dict(
                         # 1ms threshold: any real request triggers scale-up.
                         ttft_target_s=0.001,
+                        model_id=model_id,
                         prometheus_address=prometheus_address,
                     ),
                 ),

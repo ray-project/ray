@@ -77,5 +77,22 @@ class TestTTFTPolicyDecisions:
         assert dec == 0.0 and state["signal"] == "scale_down"
 
 
+class TestQueryScoping:
+    def test_model_id_scopes_query(self):
+        pol = TTFTAutoscalingPolicy(model_id="my-org/m", prometheus_address="x")
+        assert 'model_name="my-org/m"' in pol.query
+
+    def test_default_query_is_unscoped(self):
+        pol = TTFTAutoscalingPolicy(prometheus_address="x")
+        assert "model_name" not in pol.query
+        assert pol.query == P99_TTFT_QUERY
+
+    def test_explicit_query_overrides_model_id(self):
+        pol = TTFTAutoscalingPolicy(
+            model_id="my-org/m", query="custom_query", prometheus_address="x"
+        )
+        assert pol.query == "custom_query"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

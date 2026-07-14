@@ -10,11 +10,19 @@ from ray.serve.autoscaling_policy import PrometheusQueryMixin
 from ray.serve.config import AutoscalingContext
 from ray.util.annotations import PublicAPI
 
-# Default PromQL for p99 TTFT across all vLLM replicas.
-P99_TTFT_QUERY = (
-    "histogram_quantile(0.99, "
-    "sum(rate(ray_vllm_time_to_first_token_seconds_bucket[1m])) by (le))"
-)
+
+def _ttft_query(model_id: Optional[str] = None) -> str:
+    """Build the p99 TTFT PromQL, scoped to ``model_id`` when given."""
+    selector = f'{{model_name="{model_id}"}}' if model_id else ""
+    return (
+        "histogram_quantile(0.99, "
+        f"sum(rate(ray_vllm_time_to_first_token_seconds_bucket{selector}[1m])) "
+        "by (le))"
+    )
+
+
+# Default PromQL for p99 TTFT across all vLLM replicas (not model-scoped).
+P99_TTFT_QUERY = _ttft_query()
 
 
 @PublicAPI(stability="alpha")
@@ -27,7 +35,10 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
     target AND ongoing requests per replica is below ``idle_threshold``. When
     Prometheus data is unavailable the policy holds the current count.
 
-    Configure it through the deployment's AutoscalingConfig::
+    Configure it through the deployment's AutoscalingConfig. Pass ``model_id``
+    so the query is scoped to this deployment; otherwise it aggregates TTFT
+    across every vLLM replica in the cluster. ``prometheus_address`` defaults
+    to the ``RAY_PROMETHEUS_HOST`` environment variable::
 
         from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
         from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy
@@ -37,18 +48,19 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
             max_replicas=8,
             policy=AutoscalingPolicy(
                 policy_function=TTFTAutoscalingPolicy,
-                policy_kwargs=dict(
-                    ttft_target_s=2.0,
-                    prometheus_address="localhost:9090",
-                ),
+                policy_kwargs=dict(ttft_target_s=2.0, model_id="my-org/my-model"),
             ),
         )
 
     Args:
         ttft_target_s: p99 TTFT threshold in seconds; above this it scales up.
         idle_threshold: Max ongoing requests per replica to be considered idle.
-        query: PromQL expression to read; must match the ``P99_TTFT_QUERY`` shape.
+        model_id: Scope the default query to this vLLM model. Ignored if
+            ``query`` is given.
+        query: PromQL to read. Defaults to a p99 TTFT query scoped by
+            ``model_id``. Must resolve to a single-sample instant vector.
         prometheus_address: Prometheus server, ``host:port`` or a full URL.
+            Defaults to the ``RAY_PROMETHEUS_HOST`` environment variable.
         **kwargs: Forwarded to ``PrometheusQueryMixin`` (``fetch_interval_s``,
             ``cache_ttl_s``).
     """
@@ -57,10 +69,13 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
         self,
         ttft_target_s: float = 2.0,
         idle_threshold: float = 1.0,
-        query: str = P99_TTFT_QUERY,
+        model_id: Optional[str] = None,
+        query: Optional[str] = None,
         prometheus_address: Optional[str] = None,
         **kwargs,
     ):
+        if query is None:
+            query = _ttft_query(model_id)
         super().__init__(
             prometheus_address=prometheus_address,
             prometheus_queries=[query],
