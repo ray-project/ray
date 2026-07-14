@@ -2,6 +2,7 @@
 
 import json
 import sys
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -348,9 +349,7 @@ def test_metric_sample_round_trip():
 
 def test_metric_sample_hung_returns_none():
     """If the sampler outlives the join timeout, the sample degrades to None."""
-    import threading as _threading
-
-    release = _threading.Event()
+    release = threading.Event()
 
     def slow():
         release.wait(5)
