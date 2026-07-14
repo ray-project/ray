@@ -3087,11 +3087,10 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
-            partition_size_hint: (Optional) Hint to joining operator about the estimated
-                avg expected size of the individual partition (in bytes).
-                This is used in estimating the total dataset size and allow to tune
-                memory requirement of the individual joining workers to prevent OOMs
-                when joining very large datasets.
+            partition_size_hint: (Optional) **Deprecated** and ignored. The join is
+                now executed on the v2 hash-shuffle path, which sizes reduce-task
+                memory from observed partition sizes rather than a hint. This
+                parameter has no effect and will be removed in a future release.
             aggregator_ray_remote_args: (Optional) Parameter overriding `ray.remote`
                 args passed when constructing joining (aggregator) workers.
             validate_schemas: (Optional) Controls whether validation of provided
@@ -3198,6 +3197,15 @@ class Dataset:
         # NOTE: If no separate keys provided for the right side, assume just the left
         #       side ones
         right_on = right_on or on
+
+        if partition_size_hint is not None:
+            warnings.warn(
+                "`partition_size_hint` is deprecated and ignored: joins now run on "
+                "the v2 hash-shuffle path, which sizes reduce-task memory from "
+                "observed partition sizes. It will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # NOTE: By default validating schemas are disabled as it could be arbitrarily
         #       expensive (potentially executing whole pipeline to completion) to fetch
@@ -6153,8 +6161,9 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
-                `pin_memory` is only supported when using `DefaultCollateFn`.
+            pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
+                `TensorBatchType`. It is recommended to use this flag to pin
+                memory instead of manually pinning memory in the `collate_fn`.
 
         Returns:
             An iterable over Torch Tensor batches.

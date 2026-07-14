@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -61,33 +62,6 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
 }
 
 }  // namespace
-
-absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
-  absl::flat_hash_set<ObjectID> result;
-  for (int64_t index = 0; index <= max_index_seen_; index++) {
-    const auto &object_id = GetObjectRefAtIndex(index);
-    if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
-      continue;
-    }
-
-    if (index >= next_index_) {
-      result.emplace(object_id);
-    }
-  }
-
-  if (end_of_stream_index_ != -1) {
-    // End of stream index is never consumed by a caller
-    // so we should add it here.
-    const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
-    result.emplace(object_id);
-  }
-
-  // Temporarily owned refs are not consumed.
-  for (const auto &object_id : temporarily_owned_refs_) {
-    result.emplace(object_id);
-  }
-  return result;
-}
 
 std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
   // Get all unconsumed refs.
@@ -2016,7 +1990,25 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
+  // Re-assert every live owner-side task state each tick, not just transitions:
+  // the metrics backend clears gauge observations after each export (#56405), so
+  // a task that sits in one state (e.g. PENDING_NODE_ASSIGNMENT) would otherwise
+  // drop out of the gauge. FlushOnChangeCallbacks still emits the final 0 for
+  // keys that just dropped to zero (erased from the counter, so ForEachEntry
+  // won't visit them).
   task_counter_.FlushOnChangeCallbacks();
+  task_counter_.ForEachEntry(
+      [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value)
+          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key, value); });
+}
+
+void TaskManager::RecordTaskState(
+    const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value) {
+  task_by_state_counter_.Record(value,
+                                {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                                 {"Name", std::get<0>(key)},
+                                 {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                                 {"Source", "owner"}});
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

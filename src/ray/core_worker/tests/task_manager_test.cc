@@ -290,6 +290,49 @@ TEST_F(TaskManagerTest, TestRecordMetrics) {
   manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
+// A pending task must stay visible in the owner-side gauge on every
+// RecordMetrics() tick, not only on state transitions, so it does not vanish
+// between scrapes when the metrics backend clears gauge observations after each
+// export (#56405).
+TEST_F(TaskManagerTest, TestRecordMetricsReEmitsAcrossTicksWithoutTransitions) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+
+  // First tick emits PENDING_ARGS_AVAIL=1 for the new task.
+  manager_.RecordMetrics();
+  auto first_tick = fake_task_by_state_counter_.GetTagToValue();
+  ASSERT_EQ(first_tick.size(), 1);
+  ASSERT_EQ(first_tick.begin()->first.at("State"),
+            rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL));
+  ASSERT_EQ(first_tick.begin()->second, 1);
+
+  // Clear observations to detect re-emission.
+  fake_task_by_state_counter_.Clear();
+  ASSERT_TRUE(fake_task_by_state_counter_.GetTagToValue().empty());
+
+  // With no transitions since the last tick, the pending task must still be
+  // re-asserted rather than dropping out of the gauge.
+  manager_.RecordMetrics();
+  auto second_tick = fake_task_by_state_counter_.GetTagToValue();
+  ASSERT_EQ(second_tick.size(), 1) << "pending task must persist without a transition";
+  ASSERT_EQ(second_tick, first_tick);
+
+  // Failing the task drops it out of PENDING_ARGS_AVAIL. On the next tick the gauge
+  // must be retracted to 0 (the on-change callback fires for the now-zero key),
+  // rather than remaining at its last value of 1.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+  manager_.RecordMetrics();
+  auto retracted = fake_task_by_state_counter_.GetTagToValue();
+  double pending_args_avail = -1;
+  for (const auto &[tags, value] : retracted) {
+    if (tags.at("State") == rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL)) {
+      pending_args_avail = value;
+    }
+  }
+  ASSERT_EQ(pending_args_avail, 0) << "gauge must be retracted to 0 after the task fails";
+}
+
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();

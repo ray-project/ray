@@ -84,6 +84,16 @@ You can combine labels in GitHub's search to find issues that match multiple cri
 
 To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow {ref}`these instructions for building <building-ray>` a local copy of Ray to make changes.
 
+## AI-assisted contributions
+
+If you contribute with the help of an AI coding agent, Ray ships an [`AGENTS.md`](https://github.com/ray-project/ray/blob/master/AGENTS.md) at the repository root. Tools that support the `AGENTS.md` convention load it into the agent's context automatically, and Claude Code loads it through `.claude/CLAUDE.md`. It defines the contribution policy AI-assisted PRs are expected to follow, including duplicate-work checks, no low-value busywork PRs, and a human accountability requirement.
+
+The file is reproduced below as an FYI, so you can see exactly what your tools are instructed to do:
+
+```{literalinclude} ../../../AGENTS.md
+:language: text
+```
+
 ## Submitting and merging a contribution
 
 To merge a contribution, complete the following steps:

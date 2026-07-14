@@ -1,3 +1,6 @@
+.. meta::
+   :description: Install Ray and its AI libraries with pip across Linux, Windows (beta), and macOS on x86_64, ARM, and Apple silicon hardware.
+
 .. _installation:
 
 Installing Ray
