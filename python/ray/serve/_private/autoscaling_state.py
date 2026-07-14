@@ -1357,12 +1357,13 @@ class AutoscalingStateManager:
             Only includes deployments with both prometheus_queries and
             prometheus_address configured.
         """
-        result = {}
+        result: Dict[DeploymentID, Tuple[List[str], str]] = {}
         for app_state in self._app_autoscaling_states.values():
             for dep_id, dep_state in app_state._deployment_autoscaling_states.items():
-                if dep_state.has_prometheus_queries():
+                config = dep_state._config
+                if config and config.prometheus_queries and config.prometheus_address:
                     result[dep_id] = (
-                        list(dep_state._config.prometheus_queries),
-                        dep_state._config.prometheus_address,
+                        list(config.prometheus_queries),
+                        config.prometheus_address,
                     )
         return result

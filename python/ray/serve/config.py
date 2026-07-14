@@ -94,7 +94,7 @@ class AutoscalingContext:
         config: Optional[Any],
         total_pending_async_requests: int,
         prometheus_metrics: Optional[
-            Union[Dict[str, float], Callable[[], Dict[str, float]]]
+            Union[Dict[str, float], Callable[[], Optional[Dict[str, float]]]]
         ] = None,
     ):
         # Deployment information
