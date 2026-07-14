@@ -390,21 +390,17 @@ def _normalize_query_url(address: str) -> str:
 def _query_scalar(query_url: str, query: str, timeout_s: float) -> Optional[float]:
     """Run one PromQL query and return its single finite scalar or None.
 
-    An autoscaling signal must resolve to one value. Accepts a scalar result
-    or a one-sample instant vector. Anything else is treated as no data.
+    An autoscaling signal must resolve to one value, so only a single-sample
+    instant vector is accepted. Anything else is treated as no data.
     """
     url = query_url + "?" + urllib.parse.urlencode({"query": query})
     with urllib.request.urlopen(url, timeout=timeout_s) as resp:
         body = json.load(resp)
     data = body.get("data", {})
     result = data.get("result", [])
-    if data.get("resultType") == "scalar" and len(result) == 2:
-        raw = result[1]
-    elif data.get("resultType") == "vector" and len(result) == 1:
-        raw = result[0]["value"][1]
-    else:
+    if data.get("resultType") != "vector" or len(result) != 1:
         return None
-    value = float(raw)
+    value = float(result[0]["value"][1])
     # Prometheus returns NaN or Inf for an empty range such as an idle
     # histogram_quantile. Treat those as no data.
     return value if math.isfinite(value) else None
@@ -415,19 +411,17 @@ def _fetch_metrics(
     queries: List[str],
     timeout_s: float = DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S,
 ) -> Dict[str, float]:
-    """Evaluate ``queries`` against ``address``, omitting no-data or failed."""
+    """Evaluate ``queries`` against ``address``, omitting no-data results.
+
+    Query or parse errors propagate to the caller (``_run_refresh``), which
+    logs and retries on the next interval, so the refresh thread survives.
+    """
     query_url = _normalize_query_url(address)
     out: Dict[str, float] = {}
     for query in queries:
-        try:
-            value = _query_scalar(query_url, query, timeout_s)
-            if value is not None:
-                out[query] = value
-        except Exception as e:
-            logger.warning(f"Failed to evaluate Prometheus query '{query}': {e}")
-            logger.debug(
-                f"Failed to evaluate Prometheus query '{query}'.", exc_info=True
-            )
+        value = _query_scalar(query_url, query, timeout_s)
+        if value is not None:
+            out[query] = value
     return out
 
 

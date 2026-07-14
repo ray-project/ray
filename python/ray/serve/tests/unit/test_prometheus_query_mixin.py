@@ -54,7 +54,8 @@ class TestQueryScalar:
         self._patch(monkeypatch, _vector(2.5))
         assert ap._query_scalar("http://x/api/v1/query", "q", 5.0) == 2.5
 
-    def test_scalar_result_type(self, monkeypatch):
+    def test_scalar_result_type_rejected(self, monkeypatch):
+        # Only single-sample instant vectors are accepted.
         self._patch(
             monkeypatch,
             {
@@ -62,7 +63,7 @@ class TestQueryScalar:
                 "data": {"resultType": "scalar", "result": [0, "3.5"]},
             },
         )
-        assert ap._query_scalar("http://x/api/v1/query", "q", 5.0) == 3.5
+        assert ap._query_scalar("http://x/api/v1/query", "q", 5.0) is None
 
     def test_multi_sample_rejected(self, monkeypatch):
         self._patch(
