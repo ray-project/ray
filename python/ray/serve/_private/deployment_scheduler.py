@@ -417,8 +417,9 @@ class DeploymentScheduler(ABC):
         request the scheduler has not recorded yet (the first deploy, before
         on_deployment_deployed).
 
-        Does not account for label selectors; a per-node deployment constrained
-        by node labels may over-count.
+        Counts by resource fit only. It ignores the deployment's label_selector,
+        so a label-constrained deployment counts nodes it cannot place on and
+        leaves the surplus replicas pending.
         """
         active_node_ids = self._cluster_node_info_cache.get_active_node_ids()
         info = self._deployments.get(deployment_id)

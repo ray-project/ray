@@ -3515,8 +3515,8 @@ class DeploymentState:
         )
 
         if deployment_info.deployment_config.num_replicas_per_node:
-            # One replica per node: seed the target from the schedulable node
-            # count. reconcile_num_replicas_per_node keeps it in sync.
+            # One replica per node: initialize the target to the schedulable
+            # node count. reconcile_num_replicas_per_node keeps it in sync.
             self._autoscaling_state_manager.deregister_deployment(self._id)
             target_num_replicas = self._per_node_target_num_replicas(deployment_info)
         elif deployment_info.deployment_config.autoscaling_config:
@@ -3672,10 +3672,11 @@ class DeploymentState:
         fractional target_capacity is not applied, since a per-node deployment
         is either present on every node or not.
 
-        Node eligibility currently filters by resource fit only, not by node
-        label selectors, so a per-node deployment constrained by node labels may
-        over-count. When no node can host the replica this returns 0 and the
-        deployment reports HEALTHY with no replicas.
+        Node eligibility is by resource fit only. It ignores the deployment's
+        label_selector, so a label-constrained deployment counts nodes it cannot
+        place on and leaves the surplus replicas pending. When no node can host
+        the replica this returns 0 and the deployment reports HEALTHY with no
+        replicas.
         """
         if deployment_info.target_capacity == 0:
             return 0
@@ -6006,15 +6007,15 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
 
-        # STEP 3: Reserve gang placement groups
+        # STEP 4: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
 
-        # STEP 3.5: Reconcile num_replicas="per_node" deployments to the current
+        # STEP 5: Reconcile num_replicas="per_node" deployments to the current
         # count of nodes the replica can be scheduled on, one replica per node.
         for deployment_state in self._deployment_states.values():
             deployment_state.reconcile_num_replicas_per_node()
 
-        # STEP 4: Scale replicas
+        # STEP 6: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas(
                 gang_placement_groups=gang_placement_groups,
@@ -6025,7 +6026,7 @@ class DeploymentStateManager:
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 5: Update status
+        # STEP 7: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -6033,7 +6034,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 8: Schedule all STARTING replicas and stop all STOPPING replicas
         # (Replicas are only added in scale_deployment_replicas when deployment
         # actors are ready, so no additional gate needed here.)
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
@@ -6044,7 +6045,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 7: Broadcast long poll information
+        # STEP 9: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -6054,7 +6055,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 8: Record deployment status metrics
+        # STEP 10: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -6065,7 +6066,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 9: Cleanup
+        # STEP 11: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
