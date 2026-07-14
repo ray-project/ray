@@ -46,11 +46,11 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
-    deployment_config.version = version
+    deployment_config.version = version  # type: ignore[union-attr]
 
     controller_deploy_args = {
         "deployment_name": name,
-        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
+        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),  # type: ignore[union-attr]
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
@@ -123,7 +123,8 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            name=deployment_name, app_name=app_name
+            name=deployment_name,
+            app_name=app_name,  # type: ignore[arg-type]
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,
