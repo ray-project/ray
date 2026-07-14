@@ -178,7 +178,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             and isinstance(schema, pa.Schema)
             and estimated_bytes == 0
         ):
-            self._emit_empty_partition(schema)
+            self._emit_empty_partition(refs, schema)
             return
 
         # Wrapper carries a single ObjectRef pointing at the map op's
@@ -261,7 +261,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             task_id=data_task.get_task_id(),
         )
 
-    def _emit_empty_partition(self, schema: pa.Schema) -> None:
+    def _emit_empty_partition(self, refs: RefBundle, schema: pa.Schema) -> None:
         """Emit one empty output block for an empty partition.
 
         The partition contributed no rows, so there is nothing to reduce; we
@@ -280,6 +280,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             schema=schema,
             owns_blocks=True,
         )
+        refs.destroy_if_owned()
 
         # Empty partition creates a new block; register it for memory tracking.
         self._block_ref_counter.on_block_produced(
