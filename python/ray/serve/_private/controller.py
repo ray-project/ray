@@ -39,6 +39,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_LOG_TO_STDERR,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -325,6 +326,8 @@ class ServeController:
             msg += "  • Router running in main thread (not separate)\n"
         if not RAY_SERVE_LOG_TO_STDERR:
             msg += "  • Log to stderr disabled\n"
+        if RAY_SERVE_FREEZE_GC_ON_STARTUP:
+            msg += "  • Garbage collector is frozen on startup\n"
         msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
         logger.info(msg)
 

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import errno
 import functools
+import gc
 import inspect
 import logging
 import math
@@ -67,6 +68,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
@@ -3843,6 +3845,13 @@ class UserCallableWrapper:
         self._user_autoscaling_stats = getattr(
             self._callable, "record_autoscaling_stats", None
         )
+
+        if RAY_SERVE_FREEZE_GC_ON_STARTUP:
+            # At this point, the user code has finished initializing.
+            # We can now collect garbage and freeze the garbage collector.
+            # Any allocations after this point will be from user requests.
+            gc.collect()
+            gc.freeze()
 
         logger.info(
             "Finished initializing replica.",
