@@ -705,6 +705,61 @@ def test_vllm_placement_group(backend, placement_group_config):
     assert all("resp" in out for out in outs)
 
 
+def get_leaked_pgs(pre_existing):
+    """CREATED placement groups holding GPUs not present before the run."""
+    leaked = {}
+    for pg_id, info in ray.util.placement_group_table().items():
+        if pg_id in pre_existing or info.get("state") != "CREATED":
+            continue
+        gpus = sum(b.get("GPU", 0) for b in (info.get("bundles") or {}).values())
+        if gpus:
+            leaked[pg_id] = gpus
+    return leaked
+
+
+def test_vllm_engine_releases_placement_group():
+    ray.init(ignore_reinit_error=True)
+    pre_existing = set(ray.util.placement_group_table())
+
+    def build():
+        config = vLLMEngineProcessorConfig(
+            model_source="facebook/opt-1.3b",
+            engine_kwargs=dict(
+                tensor_parallel_size=2,
+                pipeline_parallel_size=2,
+                distributed_executor_backend="ray",
+                enable_chunked_prefill=True,
+                max_num_batched_tokens=4096,
+            ),
+            tokenize_stage=False,
+            detokenize_stage=False,
+            chat_template_stage=False,
+            concurrency=1,
+            batch_size=16,
+        )
+        return build_processor(
+            config,
+            preprocess=lambda row: dict(
+                prompt=f"{row['id']} ** 2 = ?",
+                sampling_params=dict(temperature=0.0, max_tokens=5, detokenize=True),
+            ),
+            postprocess=lambda row: dict(resp=row["generated_text"]),
+        )
+
+    for _ in range(2):
+        outs = build()(ray.data.range(16)).take_all()
+        assert len(outs) == 16
+
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if not get_leaked_pgs(pre_existing):
+                break
+            time.sleep(2)
+
+        leaked = get_leaked_pgs(pre_existing)
+        assert not leaked, f"leaked engine placement groups: {leaked}"
+
+
 def test_vllm_autoscaling_no_starvation():
     """Test that chained vLLMEngineProcessor instances with autoscaling
     concurrency can run without starving each other.
