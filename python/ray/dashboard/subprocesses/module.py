@@ -61,9 +61,10 @@ class SubprocessModule(abc.ABC):
         self,
         config: SubprocessModuleConfig,
     ):
-        """
-        Initialize current module when DashboardHead loading modules.
-        :param dashboard_head: The DashboardHead instance.
+        """Initialize current module when DashboardHead loading modules.
+
+        Args:
+            config: The SubprocessModuleConfig instance.
         """
         self._config = config
         self._parent_process = multiprocessing.parent_process()

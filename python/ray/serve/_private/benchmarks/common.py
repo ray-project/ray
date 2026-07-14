@@ -64,7 +64,9 @@ async def run_throughput_benchmark(
         trial_runtime: How long each trial should run for. During the
             duration of one trial, `fn` will be repeatedly called.
 
-    Returns (mean, stddev, latencies).
+    Returns:
+        A tuple ``(mean, stddev, latencies)`` summarizing per-trial throughput
+        across ``num_trials`` runs.
     """
     # Warmup
     start = time.time()

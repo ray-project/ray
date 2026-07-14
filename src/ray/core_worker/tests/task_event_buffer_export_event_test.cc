@@ -27,6 +27,7 @@
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
@@ -69,7 +70,8 @@ class TaskEventTestWriteExport : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
         "test_session_name",
-        NodeID::Nil());
+        NodeID::Nil(),
+        clock_);
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -105,6 +107,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              state_update);
   }
 
+  Clock clock_;
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
   std::string log_dir_ = "event_123";
 };

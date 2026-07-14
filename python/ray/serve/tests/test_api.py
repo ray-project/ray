@@ -16,6 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.request_router.common import (
@@ -115,6 +116,75 @@ def test_ingress_async_init(serve_instance):
     resp = httpx.get(f"{get_application_url()}/check")
     assert resp.status_code == 200
     assert resp.json() == "initialized"
+
+
+def test_ingress_sync_init_subclass_raises():
+    """Subclassing a @serve.ingress class with a sync __init__ must fail loudly.
+
+    The parent __init__ is async, so a sync `super().__init__(...)` call from
+    a subclass would silently drop the returned coroutine and leave the
+    replica uninitialized (e.g. `_serve_asgi_lifespan` never set), surfacing
+    later as a cryptic AttributeError at runtime. We reject the bad pattern
+    at class-definition time with a clear migration message instead.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(WrappedIngress):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+
+def test_ingress_sync_init_via_mixin_subclass_raises():
+    """A sync __init__ inherited from a mixin earlier in the MRO must also raise.
+
+    `class Sub(SyncMixin, WrappedIngress)` doesn't define `__init__` on
+    `Sub` itself, but the resolved `Sub.__init__` is the sync mixin's, which
+    would still silently drop the wrapper's async coroutine. The check must
+    use MRO resolution, not just the subclass `__dict__`.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class SyncMixin:
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(SyncMixin, WrappedIngress):
+            pass
+
+
+def test_ingress_async_init_subclass_allowed():
+    """Subclassing a @serve.ingress class with an async __init__ is allowed."""
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class ExtendedIngress(WrappedIngress):
+        async def __init__(self, *args, **kwargs):
+            await super().__init__(*args, **kwargs)
+
+    # No __init__ defined on subclass is also allowed (inherits parent's async).
+    class InheritingIngress(WrappedIngress):
+        pass
+
+    assert ExtendedIngress is not None
+    assert InheritingIngress is not None
 
 
 class FakeRequestRouter(RequestRouter):
@@ -1253,6 +1323,13 @@ def test_max_ongoing_requests_none(serve_instance):
     assert get_max_ongoing_requests() == 12
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_deploy_app_with_custom_request_router(serve_instance):
     """Test deploying an app with a custom request router configured in the
     deployment decorator."""
@@ -1272,6 +1349,13 @@ class AppWithCustomRequestRouterAndKwargs:
         return "Hello, world!"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_custom_request_router_kwargs(serve_instance):
     """Check that custom kwargs can be passed to the request router."""
 

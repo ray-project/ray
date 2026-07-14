@@ -156,11 +156,11 @@ class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_platform_events(self, req):
         """Return recently observed platform events as a JSON array."""
-        # Sort by timestamp ascending (oldest first) to fix out-of-order
-        # issues caused by potential reconnects/re-deliveries.
+        # Sort by timestamp descending (newest first)
         sorted_events = sorted(
             self._events.values(),
             key=lambda e: e.timestamp.seconds + e.timestamp.nanos / 1e9,
+            reverse=True,
         )
         payload = [
             dashboard_utils.message_to_dict(

@@ -436,6 +436,7 @@ class TestEnvRunnerFailures(unittest.TestCase):
                     "p_crash": 0.0005,
                 }
             )
+            .training(num_epochs=1)
         )
         for multi_agent in [False, True]:
             if multi_agent:

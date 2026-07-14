@@ -151,7 +151,7 @@ def test_many_actors(num_actors: int):
     for _ in tqdm.trange(len(actors), desc="Destroying actors..."):
         _exitted, exiting_actors = ray.wait(exiting_actors)
 
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],

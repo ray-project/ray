@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
+from typing import Any, Dict, Generator
 
 import httpx
 import pytest
@@ -42,6 +43,15 @@ TEST_GRPC_SERVICER_FUNCTIONS = [
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
+
+@pytest.fixture(autouse=True)
+def _clear_stale_ray_address():
+    # Serve CI runs several test targets per container sharing /tmp/ray; a target
+    # killed mid-run can leave a ray_current_cluster pointing at a dead cluster.
+    # Drop it before each test so an address-less ray.init() starts fresh.
+    reset_ray_address()
+    yield
 
 
 @pytest.fixture
@@ -143,6 +153,7 @@ def _shared_serve_instance():
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
+        address="local",
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
@@ -252,12 +263,17 @@ def ray_start_stop_in_specific_directory(request):
 
 
 @pytest.fixture
-def ray_instance(request):
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
     """Starts and stops a Ray instance for this test.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+
+    Yields:
+        Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
     """
 
     original_env_vars = os.environ.copy()
@@ -269,6 +285,7 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
     yield ray.init(
+        address="local",
         _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 1000,
@@ -360,6 +377,7 @@ def metrics_start_shutdown(request):
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     wait_for_metrics_port_free()
     ray.init(
+        address="local",
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 100,
