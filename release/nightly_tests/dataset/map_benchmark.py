@@ -6,6 +6,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pandas as pd
 import ray
+from ray.data._internal.util import MiB
 
 from benchmark import Benchmark
 
@@ -112,7 +113,10 @@ def main(args: argparse.Namespace) -> None:
 
     def benchmark_fn():
         # Load the dataset.
-        ds = ray.data.read_parquet(path)
+        # Intentionally break fusion with subsequent map_batches by using a small number of CPUs.
+        ctx = ray.data.DataContext.get_current()
+        ctx.partitioner_max_bucket_size_bytes = 128 * MiB
+        ds = ray.data.read_parquet(path, num_cpus=1.01)
 
         # Apply the map transformation.
         if args.api == "map":

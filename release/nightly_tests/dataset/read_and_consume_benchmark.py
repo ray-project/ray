@@ -4,6 +4,7 @@ import uuid
 from typing import Callable
 
 from benchmark import Benchmark
+from ray.data._internal.util import MiB
 
 import ray
 
@@ -54,6 +55,9 @@ def main(args):
         # Report arguments for the benchmark.
         return vars(args)
 
+    ctx = ray.data.DataContext.get_current()
+    # Chosen based on hyperparameter tuning.
+    ctx.partitioner_max_bucket_size_bytes = 256 * MiB
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 

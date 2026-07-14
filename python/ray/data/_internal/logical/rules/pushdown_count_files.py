@@ -1,12 +1,14 @@
 import copy
 import dataclasses
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.map_operator import MapBatches, Project
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
-from ray.data.block import DataBatch
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class PushdownCountFiles(Rule):
@@ -29,9 +31,14 @@ class PushdownCountFiles(Rule):
     # tasks can run per core (the work is network-bound, not CPU-bound).
     _PER_TASK_NUM_CPUS_ALLOCATION = 0.5
 
-    def apply(self, plan: LogicalPlan) -> LogicalPlan:
+    # ``Rule.apply`` is typed ``(Plan) -> Plan``; like every other logical rule
+    # this narrows to ``LogicalPlan`` for a more precise signature.
+    def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
         from ray.data._internal.datasource_v2.chunkers.file_chunker import (
             WholeFileChunker,
+        )
+        from ray.data._internal.datasource_v2.listing.file_indexer import (
+            NonSamplingFileIndexer,
         )
         from ray.data._internal.datasource_v2.listing.file_manifest import (
             PATH_COLUMN_NAME,
@@ -91,6 +98,7 @@ class PushdownCountFiles(Rule):
         # appear once per chunk, in different batches, and be over-counted).
         # ``ListFiles`` is frozen, so ``replace`` a copy with a fresh indexer.
         count_indexer = copy.deepcopy(list_files.file_indexer)
+        assert isinstance(count_indexer, NonSamplingFileIndexer), count_indexer
         count_indexer._file_chunker = WholeFileChunker()
         list_files = dataclasses.replace(
             list_files,
@@ -98,15 +106,19 @@ class PushdownCountFiles(Rule):
             file_indexer=count_indexer,
         )
 
-        batch_size: Optional[int] = reader.get_target_metadata_batch_size()
+        # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but
+        # that narrowing is lost inside the ``count_rows`` closure -- bind a
+        # typed local so its declared type carries into the closure.
+        metadata_reader: SupportsMetadata = reader
+        batch_size: Optional[int] = metadata_reader.get_target_metadata_batch_size()
 
-        def count_rows(batch: DataBatch) -> DataBatch:
+        def count_rows(batch: "pa.Table") -> "pa.Table":
             import pyarrow as pa
 
             assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
             total_rows = 0
-            for block_metadata in reader.read_metadata(FileManifest(batch)):
-                total_rows += block_metadata.num_rows
+            for block_metadata in metadata_reader.read_metadata(FileManifest(batch)):
+                total_rows += block_metadata.num_rows or 0
             return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
 
         count_rows_op = MapBatches(

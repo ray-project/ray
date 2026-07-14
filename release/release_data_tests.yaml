@@ -30,6 +30,9 @@
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
+    byod:
+      runtime_env:
+        - RAY_DATA_PARTITIONER_PACK_FILES=1
 
   matrix:
     setup:

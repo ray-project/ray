@@ -2,6 +2,7 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, run_tpch_benchmark
+from ray.data._internal.util import MiB
 
 
 def main(args):
@@ -44,9 +45,9 @@ def main(args):
         quantity = 312
 
         # Calculate total quantity per order
-        lineitem_quantity = lineitem.groupby("l_orderkey").aggregate(
-            Sum(on="l_quantity", alias_name="total_quantity")
-        )
+        lineitem_quantity = lineitem.groupby(
+            "l_orderkey", num_partitions=100
+        ).aggregate(Sum(on="l_quantity", alias_name="total_quantity"))
 
         # Filter orders with total quantity > threshold
         large_orders = lineitem_quantity.filter(expr=col("total_quantity") > quantity)
@@ -95,6 +96,8 @@ def main(args):
         # Report arguments for the benchmark.
         return vars(args)
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.partitioner_max_bucket_size_bytes = 512 * MiB
     run_tpch_benchmark("tpch_q18", benchmark_fn)
 
 

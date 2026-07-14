@@ -9,8 +9,9 @@ default, multiple small files are additionally packed into a shared
 partition so many tiny files don't each become their own read task -- see
 the class docstring for details and the kill switch.
 """
+
 import collections
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, cast
 
 from ray._common.utils import env_bool
 from ray.data._internal.datasource_v2.chunkers.file_chunker import ChunkMetadata
@@ -41,11 +42,13 @@ def _chunk_sort_key(chunk_metadata: Optional[ChunkMetadata]) -> int:
     # ``ChunkMetadata`` subclasses are ``TypedDict``s -- plain ``dict``s at
     # runtime with no distinct class -- so ``isinstance`` can't discriminate them
     # (it raises ``TypeError`` on a TypedDict). Discriminate on each schema's
-    # positional key instead.
-    if "row_group_start" in chunk_metadata:  # ParquetFileChunkMetadata
-        return int(chunk_metadata["row_group_start"])
-    if "chunk_byte_start_idx" in chunk_metadata:  # LineDelimitedFileChunkMetadata
-        return int(chunk_metadata["chunk_byte_start_idx"])
+    # positional key instead. The base ``ChunkMetadata`` declares no keys, so
+    # view it as a plain ``dict`` for the runtime key lookups.
+    meta = cast(Dict[str, int], chunk_metadata)
+    if "row_group_start" in meta:  # ParquetFileChunkMetadata
+        return int(meta["row_group_start"])
+    if "chunk_byte_start_idx" in meta:  # LineDelimitedFileChunkMetadata
+        return int(meta["chunk_byte_start_idx"])
     return 0
 
 
@@ -134,7 +137,7 @@ class FileAffinityPartitioner(FilePartitioner):
         )
         # Kill switch: when False, every completed file emits its own
         # standalone partition (pre-packing behavior).
-        self._pack_files = env_bool("RAY_DATA_PARTITIONER_PACK_FILES", True)
+        self._pack_files = env_bool("RAY_DATA_PARTITIONER_PACK_FILES", False)
         # Completed small files (own weight < max_bucket_size) accumulate here
         # instead of emitting standalone, until the pack would overflow.
         self._pending_pack: "_WeightedBucket[FileManifest]" = _WeightedBucket()
