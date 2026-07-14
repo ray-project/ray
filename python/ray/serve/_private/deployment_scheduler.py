@@ -224,8 +224,8 @@ class ReplicaSchedulingRequest:
     # Bundle index inside gang_placement_group where this replica actor is scheduled.
     # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
     gang_pg_index: Optional[int] = None
-    # Pin this replica to a specific node via soft node affinity. Set by
-    # per-proxy-node deployments to colocate a replica with that node's proxy.
+    # If set, schedule this replica onto this node (soft node affinity). The
+    # ingress request router sets it to co-locate a replica with each proxy.
     target_node_id: Optional[str] = None
 
     @property
@@ -674,8 +674,9 @@ class DeploymentScheduler(ABC):
 
         scheduling_strategy = default_scheduling_strategy
 
-        # A request may pin itself to a node (per-proxy-node deployments); that
-        # overrides any soft target the scheduling policy computed.
+        # The request may carry an explicit node: the ingress request router
+        # pins each replica to a proxy node. It wins over any node the caller
+        # passed in.
         if scheduling_request.target_node_id is not None:
             target_node_id = scheduling_request.target_node_id
 
