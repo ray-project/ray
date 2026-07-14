@@ -161,28 +161,13 @@ _VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
 
 
 def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
-    """Parse a topology string into dimension tuple.
-
-    Args:
-        topology: Topology string like "2x4" or "2x2x2".
-
-    Returns:
-        Tuple of int dimensions.
-    """
+    """Parse a topology string (e.g. "2x4", "2x2x2") into a dimension tuple."""
     return tuple(int(d) for d in topology.strip().lower().split("x"))
 
 
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
-    """Get the worker grid dimensions for a given topology.
-
-    Args:
-        topology: The TPU topology (e.g. "4x4", "2x2x2").
-
-    Returns:
-        Worker dimension tuple: (y, x) for 2D, (z, y, x) for 3D.
-
-    Raises:
-        ValueError: If the topology is not in the known dimension maps.
+    """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
+    (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
     """
     dims = _parse_topology_dims(topology)
     if len(dims) == 2:
@@ -202,14 +187,8 @@ def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
-    """Get default chips per VM for a given topology and accelerator version.
-
-    Args:
-        topology: The TPU topology string (e.g. "2x4").
-        accelerator_version: The accelerator version (e.g. "v6e").
-
-    Returns:
-        Default number of chips per VM for this topology.
+    """Return the default chips-per-VM for *topology* on *accelerator_version*
+    (single-host v5e/v6e topologies pack up to 8 chips on one VM).
     """
     accel_lower = accelerator_version.strip().lower()
 
@@ -371,23 +350,14 @@ def _get_physical_worker_id_from_coords(
     coords_list: List[List[int]],
     parent_topology: str,
 ) -> int:
-    """Compute the physical worker position from libtpu chip coordinates.
+    """Compute the physical worker position (0-based linear mesh index) from a
+    worker's libtpu chip coordinates.
 
-    Each worker owns a block of chips whose dimensions are derived from the
-    parent topology's chip grid divided by its worker grid. The worker's
-    position in the mesh is determined by dividing the minimum (x, y) chip
-    coordinate by the chip block dimensions.
-
-    Args:
-        coords_list: List of coordinate lists from libtpu. Each entry is
-            [x, y] for 2D or [x, y, z] for 3D.
-        parent_topology: The parent topology string (e.g. "4x4").
-
-    Returns:
-        Physical worker ID (0-based linear index in the worker mesh).
-
-    Raises:
-        ValueError: If coordinates don't match the topology.
+    Each worker owns a block of chips sized by the parent topology's chip
+    grid divided by its worker grid; the worker's mesh position is the
+    minimum (x, y[, z]) chip coordinate divided by that block size.
+    *coords_list* entries are [x, y] (2D) or [x, y, z] (3D). Raises
+    ``ValueError`` if the coordinates don't match the topology.
     """
     worker_dims = _get_worker_dims_for_topology(parent_topology)
     chip_dims = _parse_topology_dims(parent_topology)
@@ -445,19 +415,13 @@ def _build_subslice_labels(
     physical_worker_id: int,
     parent_topology: str,
 ) -> Dict[str, str]:
-    """Compute subslice labels for a worker at a given physical position.
+    """Compute subslice labels for the worker at *physical_worker_id* in
+    *parent_topology*.
 
-    For each valid sub-topology smaller than the parent, computes which
-    subslice index this worker belongs to based on its physical position
-    in the worker mesh.
-
-    Args:
-        physical_worker_id: 0-based linear index in the worker mesh.
-        parent_topology: The parent topology string (e.g. "4x4", "4x4x4").
-
-    Returns:
-        Dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to subslice
-        index strings (e.g. "0").
+    For each valid sub-topology smaller than the parent, determines which
+    subslice index this worker belongs to based on its mesh position.
+    Returns a dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to
+    subslice index strings (e.g. "0").
     """
     worker_dims = _get_worker_dims_for_topology(parent_topology)
 

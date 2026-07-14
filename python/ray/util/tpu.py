@@ -1039,21 +1039,11 @@ def _find_valid_parent_topologies(
     subslice_topology: str,
     nodes: List[Dict[str, Any]],
 ) -> List[str]:
-    """Return all cluster topologies that can serve as parents for
-    *subslice_topology*, sorted smallest-first.
+    """Return cluster topologies able to parent *subslice_topology*, smallest-first.
 
-    Consults the cluster's actual node labels so the result always reflects
-    what is physically present.  Every topology whose worker-grid dimensions
-    are strictly larger than the subslice's in all axes is a valid parent.
-
-    Args:
-        subslice_topology: The requested subslice topology (e.g. "2x2").
-        nodes: Node dicts from ``ray.nodes()``.
-
-    Returns:
-        List of valid parent topology strings sorted by total size
-        (smallest first).  Empty when no suitable parent exists in the
-        cluster.
+    Consults actual node labels (not a static table) so the result reflects
+    what is physically present. A topology is a valid parent when its
+    worker-grid dimensions are >= the subslice's in every axis.
     """
     sub_worker_dims = _get_worker_dims_for_topology(subslice_topology)
 
@@ -1085,19 +1075,11 @@ def _find_valid_parent_topologies(
 def _discover_tpu_node_coords(
     mock_coords: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
-    """Remote function that runs on a single TPU worker to discover chip coordinates.
+    """Remote function: discover this TPU worker's physical chip coordinates.
 
-    Uses libtpu.sdk to get the physical (x, y) or (x, y, z) coordinates of every
-    chip on this worker.
-
-    Args:
-        mock_coords: For testing only. Overrides real libtpu discovery.
-
-    Returns:
-        {"node_id": str, "coords": [(hostname, chip_index, [x, y, ...]), ...]}
-
-    Raises:
-        RuntimeError: If libtpu is not importable.
+    Uses libtpu.sdk to get the (x, y[, z]) coordinate of every chip on this
+    worker. Returns ``{"node_id": str, "coords": [(hostname, chip_index,
+    [x, y, ...]), ...]}``. *mock_coords* overrides libtpu for testing.
     """
     node_id = ray.get_runtime_context().get_node_id()
 
@@ -1127,17 +1109,10 @@ def _discover_and_persist_subslices(
     chips_per_vm: int,
     head_reservation_timeout_s: Optional[float],
 ) -> Tuple[str, Dict[str, Dict[str, str]]]:
-    """Temporarily reserve a full slice, run libtpu discovery, compute subslice
-    labels, persist to internal KV, and release the full slice.
+    """Reserve a full slice, run libtpu discovery, compute and persist subslice
+    labels to internal KV, then release the slice.
 
-    Args:
-        parent_topology: Full parent topology (e.g. "4x4").
-        accelerator_version: Accelerator version (e.g. "v6e").
-        chips_per_vm: Chips per VM.
-        head_reservation_timeout_s: Timeout for head PG reservation.
-
-    Returns:
-        (slice_name, {worker_id_label: {label_key: label_value}})
+    Returns ``(slice_name, {worker_id_label: {label_key: label_value}})``.
     """
     logger.info(
         "Running TPU subslice topology discovery for %s (%s)...",
@@ -1293,17 +1268,13 @@ def _refresh_cache_from_kv(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
 ) -> None:
-    """Load KV-persisted subslice labels into the runtime cache for every
-    slice of a candidate parent topology that is not already cached.
+    """Load KV-persisted subslice labels into the runtime cache for any
+    not-yet-cached slice of a candidate parent topology.
 
     Isolates the cache-population side effect so that
     :func:`_collect_known_slice_labels` and
-    :func:`_find_undiscovered_idle_parent` can remain pure reads. Call this
-    once before them so both observe KV-persisted slices.
-
-    Args:
-        parent_topologies: Candidate parent topology strings.
-        nodes: Node dicts from ``ray.nodes()``.
+    :func:`_find_undiscovered_idle_parent` stay pure reads. Call once before
+    them so both observe KV-persisted slices.
     """
     parent_set = set(parent_topologies)
 
@@ -1343,19 +1314,11 @@ def _collect_known_slice_labels(
     parent_topology: str,
     nodes: List[Dict[str, Any]],
 ) -> List[Tuple[str, Dict[str, Dict[str, str]]]]:
-    """Return ``(slice_name, worker_labels)`` pairs for every cached slice
-    whose nodes match *parent_topology*.
+    """Return ``(slice_name, worker_labels)`` for every cached slice whose
+    nodes match *parent_topology*.
 
-    A pure read of the runtime cache. Call :func:`_refresh_cache_from_kv`
-    first so KV-persisted slices are present in the cache.
-
-    Args:
-        parent_topology: Parent topology string (e.g. "4x4").
-        nodes: Node dicts from ``ray.nodes()``.
-
-    Returns:
-        List of ``(slice_name, worker_labels)`` pairs. May be empty if no
-        matching slice has been discovered yet.
+    A pure read of the runtime cache; call :func:`_refresh_cache_from_kv`
+    first so KV-persisted slices are present.
     """
     with _tpu_subslice_cache_lock:
         cache_snapshot = dict(_tpu_subslice_cache)
@@ -1382,23 +1345,12 @@ def _find_available_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
 ) -> Tuple[Optional[List[str]], Optional[int]]:
-    """Find an available (idle) subslice of the requested topology.
+    """Find an idle subslice of *subslice_topology* within *slice_name*.
 
-    Checks that all workers in a candidate subslice have their full TPU
-    resources available.
-
-    Args:
-        slice_name: Name of the physical TPU slice.
-        subslice_topology: Requested subslice topology (e.g. "2x4").
-        worker_labels: Mapping of worker_id_label to subslice label dicts.
-        avail: Per-node available resources from
-            ``available_resources_per_node()``.
-        slice_worker_to_node: Pre-built ``(slice_name, worker_id) -> node``
-            lookup map. Callers should build this once and reuse it across
-            multiple calls to avoid redundant ``ray.nodes()`` round-trips.
-
-    Returns:
-        (target_worker_ids, subslice_index) or (None, None).
+    An idle subslice has all of its workers' full TPU resources available.
+    Returns ``(target_worker_ids, subslice_index)`` or ``(None, None)``.
+    *slice_worker_to_node* (``(slice_name, worker_id) -> node``) should be
+    built once by the caller and reused across calls.
     """
     label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
 
@@ -1597,14 +1549,7 @@ class SubslicePlacementGroup:
 def _build_slice_worker_to_node(
     nodes: List[Dict[str, Any]],
 ) -> Dict[Tuple[str, str], Any]:
-    """Build a ``(slice_name, worker_id) → node`` lookup from live node dicts.
-
-    Args:
-        nodes: Node dicts from ``ray.nodes()``.
-
-    Returns:
-        Dict keyed by ``(slice_name, worker_id_label)`` pairs.
-    """
+    """Build a ``(slice_name, worker_id) → node`` lookup from live node dicts."""
     return {
         (
             node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY),
@@ -1622,23 +1567,12 @@ def _find_undiscovered_idle_parent(
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
 ) -> Optional[str]:
-    """Return the first topology from *parent_topologies* that has at least
-    one undiscovered (absent from cache) and fully idle slice, or ``None``.
+    """Return the first topology from *parent_topologies* (smallest-first) with
+    an undiscovered (absent from cache) and fully idle slice, else ``None``.
 
-    Iterates *parent_topologies* in order (smallest first) so the most
-    resource-efficient parent is preferred for discovery.
-
-    Must be called after :func:`_refresh_cache_from_kv` so the runtime cache
-    already reflects any KV-persisted labels.
-
-    Args:
-        parent_topologies: Ordered list of candidate parent topology strings.
-        nodes: Node dicts from ``ray.nodes()``.
-        avail: Per-node available resources from
-            ``available_resources_per_node()``.
-
-    Returns:
-        First parent topology with a discoverable idle slice, or ``None``.
+    Must run after :func:`_refresh_cache_from_kv` so the cache already
+    reflects KV-persisted labels; otherwise an already-discovered slice may
+    be re-discovered.
     """
     parent_set = set(parent_topologies)
     with _tpu_subslice_cache_lock:
@@ -1678,24 +1612,12 @@ def _find_available_cached_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
 ) -> Optional[Tuple[List[str], int, str, str, Dict[str, Dict[str, str]]]]:
-    """Return the first idle subslice found across all cached slices of any
-    valid parent topology.
+    """Return the first idle subslice across all cached slices of any valid
+    parent topology, or ``None``.
 
-    A pure read of the runtime cache. Call :func:`_refresh_cache_from_kv`
-    first so KV-persisted slices are considered.
-
-    Args:
-        parent_topologies: Ordered list of candidate parent topology strings.
-        subslice_topology: Requested subslice topology (e.g. "2x4").
-        nodes: Node dicts from ``ray.nodes()``.
-        avail: Per-node available resources from
-            ``available_resources_per_node()``.
-        slice_worker_to_node: Pre-built ``(slice_name, worker_id) → node``
-            lookup from :func:`_build_slice_worker_to_node`.
-
-    Returns:
-        ``(worker_ids, subslice_index, slice_name, parent_topology,
-        worker_labels)`` for the first idle subslice found, or ``None``.
+    A pure read of the runtime cache (call :func:`_refresh_cache_from_kv`
+    first). On success returns ``(worker_ids, subslice_index, slice_name,
+    parent_topology, worker_labels)``.
     """
     for parent_topology in parent_topologies:
         for slice_name, worker_labels in _collect_known_slice_labels(
@@ -1728,21 +1650,7 @@ def _build_subslice_pg(
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
 
-    Args:
-        worker_ids: Sorted list of worker-id labels for this subslice.
-        subslice_index: Index of this subslice within its parent slice.
-        slice_name: Name of the physical TPU slice.
-        subslice_topology: Subslice topology string (e.g. "2x4").
-        parent_topology: Parent topology string (e.g. "4x4").
-        chips_per_vm: TPU chips per VM.
-        resources_per_bundle: Per-bundle resources, or ``None`` for the
-            default ``{"CPU": 1, "TPU": chips_per_vm}``.
-        strategy: Placement group strategy.
-        name: Optional placement group name.
-        lifetime: Placement group lifetime (``None`` or ``"detached"``).
-
-    Returns:
-        :class:`SubslicePlacementGroup` handle for the newly reserved PG.
+    *resources_per_bundle* defaults to ``{"CPU": 1, "TPU": chips_per_vm}``.
     """
     if resources_per_bundle is None:
         resources_per_bundle = {"CPU": 1, "TPU": chips_per_vm}
@@ -1787,15 +1695,7 @@ def _resolve_chips_per_vm(
     varies across topologies in a mixed cluster (e.g. v6e single-host 2x4 is
     8 chips/VM while multi-host 4x4 is 4 chips/VM). It must therefore be
     derived from the parent actually being discovered or scheduled, not from
-    an arbitrary member of the candidate list.
-
-    Args:
-        user_chips_per_vm: Caller-supplied override, or ``None`` to infer.
-        parent_topology: The parent topology the subslice belongs to.
-        version: TPU accelerator generation (e.g. ``"v6e"``).
-
-    Returns:
-        The effective chips-per-VM for *parent_topology*.
+    an arbitrary member of the candidate list. A caller override always wins.
     """
     if user_chips_per_vm is not None:
         return user_chips_per_vm
@@ -1807,30 +1707,17 @@ def _validate_and_resolve(
     accelerator_version: str,
     chips_per_vm: Optional[int],
 ) -> Tuple[str, str, List[str], Optional[int]]:
-    """Validate all inputs and resolve cluster-dependent parameters.
+    """Validate inputs and resolve cluster-dependent parameters, returning
+    ``(version, subslice_topology, parent_topologies, chips_per_vm)``.
 
-    Normalises topology strings, validates them against the accelerator
-    version, and resolves all valid parent topologies from live cluster
-    nodes. ``chips_per_vm`` is passed through unchanged (validated if given)
-    rather than defaulted here, because its correct value depends on the
-    specific parent topology later chosen for discovery or scheduling; see
-    :func:`_resolve_chips_per_vm`.
+    Normalises and validates the topology strings and resolves all valid
+    parent topologies from live cluster nodes. ``chips_per_vm`` is passed
+    through unchanged (validated if given) rather than defaulted here,
+    because its correct value depends on the specific parent topology later
+    chosen for discovery or scheduling; see :func:`_resolve_chips_per_vm`.
 
-    Args:
-        subslice_topology: Requested subslice topology (may contain
-            whitespace or mixed case; normalised internally).
-        accelerator_version: TPU accelerator generation (e.g. ``"v6e"``).
-        chips_per_vm: Caller-supplied chips per VM, or ``None`` to infer
-            later per parent topology.
-
-    Returns:
-        ``(version, subslice_topology, parent_topologies, chips_per_vm)``
-        with topologies normalised and validated and ``chips_per_vm`` left
-        as supplied (possibly ``None``).
-
-    Raises:
-        ValueError: On any validation failure or if no suitable parent
-            topology is found in the cluster.
+    Raises ``ValueError`` on any validation failure or if no suitable parent
+    topology is found in the cluster.
     """
     version = get_tpu_version_from_type(accelerator_version)
     subslice_topology = subslice_topology.strip().lower()
