@@ -380,8 +380,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 loss = outputs.loss
                 engine.backward(loss)
                 engine.step()
-
-            last_loss = loss.item()
+                last_loss = loss.item()
             collector.record_batch(num_rows=batch_size, num_tokens=batch_size * seq_len)
             step += 1
 
