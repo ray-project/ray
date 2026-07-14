@@ -20,7 +20,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_resource_manager import StubBlockRefCounter
 
 
@@ -126,11 +125,11 @@ def test_does_not_double_count_usage_from_union():
     input1 = PhysicalOperator("op1", [], DataContext.get_current())
     input2 = PhysicalOperator("op2", [], DataContext.get_current())
     union_op = UnionOperator(DataContext.get_current(), input1, input2)
-    topology = build_streaming_topology(union_op, ExecutionOptions(), noop_counter())
+    counter = StubBlockRefCounter()
+    topology = build_streaming_topology(union_op, ExecutionOptions(), counter)
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
-    counter = StubBlockRefCounter()
     resource_manager = ResourceManager(
         topology,
         ExecutionOptions(),
@@ -156,8 +155,8 @@ def test_does_not_double_count_usage_from_union():
     topology[union_op].add_output(bundle1)
     topology[union_op].add_output(bundle2)
     # Blocks are attributed to their original producer, not union_op.
-    counter.set_usage(input1.id, 1)
-    counter.set_usage(input2.id, 1)
+    counter.on_block_produced(block_ref1, 1, input1.id)
+    counter.on_block_produced(block_ref2, 1, input2.id)
     resource_manager.update_usages()
 
     # The total object store memory usage should be 2. If the resource manager double-
@@ -193,11 +192,11 @@ def test_per_input_inqueue_attribution_for_union():
 
     options = ExecutionOptions()
     options.preserve_order = True
-    topology = build_streaming_topology(union_op, options, noop_counter())
+    counter = StubBlockRefCounter()
+    topology = build_streaming_topology(union_op, options, counter)
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
-    counter = StubBlockRefCounter()
     resource_manager = ResourceManager(
         topology,
         options,
@@ -225,7 +224,8 @@ def test_per_input_inqueue_attribution_for_union():
     union_op.add_input(bundle1, input_index=1)
     union_op.add_input(bundle2, input_index=1)
     # Blocks in union's input buffer are attributed to their producer (input2).
-    counter.set_usage(input2.id, 20)
+    counter.on_block_produced(block_ref1, 10, input2.id)
+    counter.on_block_produced(block_ref2, 10, input2.id)
 
     resource_manager.update_usages()
 

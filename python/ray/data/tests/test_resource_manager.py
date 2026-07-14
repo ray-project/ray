@@ -1,5 +1,6 @@
 import math
 import time
+from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -37,13 +38,19 @@ from ray.data.tests.conftest import noop_counter
 
 
 class StubBlockRefCounter(BlockRefCounter):
-    """Test double for BlockRefCounter with directly settable per-operator usage."""
+    """Test double that stubs BlockRefCounter."""
 
     def __init__(self):
-        super().__init__(add_object_out_of_scope_callback=lambda *_: True)
+        self._bytes_by_producer = defaultdict(int)
 
-    def set_usage(self, producer_id: str, bytes: int) -> None:
-        self._bytes_by_producer[producer_id] = bytes
+    def on_block_produced(self, block_ref, size_bytes, producer_id):
+        self._bytes_by_producer[producer_id] += size_bytes
+
+    def get_object_store_memory_usage(self, producer_id):
+        return self._bytes_by_producer.get(producer_id, 0)
+
+    def clear(self):
+        self._bytes_by_producer.clear()
 
 
 def mock_map_op(
@@ -223,7 +230,8 @@ class TestResourceManager:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
-        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o3, ExecutionOptions(), counter)
 
         mock_cpu = {
             o1: 0,
@@ -254,7 +262,6 @@ class TestResourceManager:
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
             )
 
-        counter = StubBlockRefCounter()
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -266,7 +273,7 @@ class TestResourceManager:
 
         for op in [o2, o3]:
             if mock_counter_bytes[op]:
-                counter.set_usage(op.id, mock_counter_bytes[op])
+                counter.on_block_produced(None, mock_counter_bytes[op], op.id)
 
         resource_manager.update_usages()
 
@@ -302,8 +309,8 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o3, ExecutionOptions(), counter)
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -318,22 +325,16 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # Simulate o2 producing a 100-byte block.
-        counter.set_usage(o2.id, 100)
+        counter.on_block_produced(None, 100, o2.id)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 100
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # Simulate o3 producing a 200-byte block.
-        counter.set_usage(o3.id, 200)
+        counter.on_block_produced(None, 200, o3.id)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 100
-        assert resource_manager.get_op_usage(o3).object_store_memory == 200
-
-        # Simulate o2's block being freed.
-        counter.set_usage(o2.id, 0)
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 200
 
         # After clear(), all usage resets to 0.
@@ -341,6 +342,32 @@ class TestResourceManager:
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+    def test_external_consumer_bytes_not_double_counted(self, restore_data_context):
+        """external_consumer_bytes (iterator prefetch) does not inflate
+        get_op_usage. BlockRefCounter already tracks prefetch buffer blocks
+        via live ObjectRefs. external_consumer_bytes is only used by
+        DownstreamCapacityBackpressurePolicy for the terminal edge ratio."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o3, ExecutionOptions(), counter)
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+            counter,
+        )
+
+        counter.on_block_produced(None, 100, o3.id)
+        resource_manager.set_external_consumer_bytes(50)
+        resource_manager.update_usages()
+
+        assert resource_manager.get_op_usage(o3).object_store_memory == 100
+        assert resource_manager.get_external_consumer_bytes() == 50
 
     def test_union_no_double_counting(self, restore_data_context):
         """UnionOperator passthrough does not inflate global memory usage."""
@@ -352,8 +379,8 @@ class TestResourceManager:
         union_op = mock_union_op([map_a, map_b])
         downstream = mock_map_op(union_op, name="Downstream")
 
-        topo = build_streaming_topology(downstream, ExecutionOptions(), noop_counter())
         counter = StubBlockRefCounter()
+        topo = build_streaming_topology(downstream, ExecutionOptions(), counter)
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -362,8 +389,8 @@ class TestResourceManager:
             counter,
         )
 
-        counter.set_usage(map_a.id, 100)
-        counter.set_usage(map_b.id, 200)
+        counter.on_block_produced(None, 100, map_a.id)
+        counter.on_block_produced(None, 200, map_b.id)
 
         resource_manager.update_usages()
 

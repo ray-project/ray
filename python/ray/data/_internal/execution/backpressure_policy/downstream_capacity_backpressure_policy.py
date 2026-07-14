@@ -164,7 +164,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         BlockRefCounter tracks blocks from production until freed, so
         get_op_usage(op) includes both the operator's buffered outputs AND
-        blocks already in the downstream operator's input queue. To get the
+        the downstream operator's inputs. To get the
         ratio of just buffered outputs to downstream inputs, subtract 1:
 
             output_bytes / downstream_input_bytes

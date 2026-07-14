@@ -421,6 +421,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             memory=self._map_resource_usage.memory,
         )
 
+    def estimate_object_store_usage(self) -> int:
+        # ShuffleMapOperator's outputs are IPC shards consumed by the
+        # reduce stage; they don't count toward backpressure.
+        return 0
+
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
         memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0

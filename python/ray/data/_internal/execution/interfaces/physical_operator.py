@@ -1050,6 +1050,16 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
+    def estimate_object_store_usage(self) -> int:
+        """Returns this operator's object store memory usage in bytes.
+
+        The default implementation reads from BlockRefCounter, which tracks
+        all live blocks attributed to this operator. Subclasses may override
+        to customize (e.g., ShuffleMapOperator returns 0 since its outputs
+        are IPC shards managed by the shuffle reduce stage).
+        """
+        return self._block_ref_counter.get_object_store_memory_usage(self.id)
+
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
         excluding object store memory.
