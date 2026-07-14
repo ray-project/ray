@@ -1029,6 +1029,7 @@ class ActorReplicaWrapper:
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
+        target_node_id: Optional[str] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -1041,6 +1042,7 @@ class ActorReplicaWrapper:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
+            target_node_id: Pin this replica to a node (per-proxy-node placement).
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -1171,6 +1173,7 @@ class ActorReplicaWrapper:
             on_scheduled=self.on_scheduled,
             gang_placement_group=self._gang_placement_group,
             gang_pg_index=self._gang_pg_index,
+            target_node_id=target_node_id,
         )
 
     def on_scheduled(
@@ -1787,6 +1790,8 @@ class DeploymentReplica:
     ):
         self._replica_id = replica_id
         self._actor = ActorReplicaWrapper(replica_id, version)
+        # Node this replica is pinned to (per-proxy-node deployments); None otherwise.
+        self._target_node_id: Optional[str] = None
         self._start_time = None
         self._shutdown_start_time: Optional[float] = None
         self._actor_details = ReplicaDetails(
@@ -1885,6 +1890,11 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def target_node_id(self) -> Optional[str]:
+        """Node this replica is pinned to, or None if unpinned."""
+        return self._target_node_id
+
+    @property
     def actor_http_port(self) -> Optional[int]:
         return self._actor.http_port
 
@@ -1930,6 +1940,7 @@ class DeploymentReplica:
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
+        target_node_id: Optional[str] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1940,16 +1951,19 @@ class DeploymentReplica:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
+            target_node_id: Pin this replica to a node (per-proxy-node placement).
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
         """
+        self._target_node_id = target_node_id
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
             gang_context=gang_context,
+            target_node_id=target_node_id,
         )
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
@@ -3515,10 +3529,10 @@ class DeploymentState:
         )
 
         if deployment_info.deployment_config.num_replicas_per_node:
-            # One replica per node: initialize the target to the schedulable
-            # node count. reconcile_num_replicas_per_node keeps it in sync.
+            # One replica per proxy node. reconcile_per_proxy_node drives the
+            # count and placement from the live proxy-node set each control loop.
             self._autoscaling_state_manager.deregister_deployment(self._id)
-            target_num_replicas = self._per_node_target_num_replicas(deployment_info)
+            target_num_replicas = 0
         elif deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
                 self._id, deployment_info, self._target_state.target_num_replicas
@@ -3664,50 +3678,89 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    def _per_node_target_num_replicas(self, deployment_info: DeploymentInfo) -> int:
-        """Target replica count for a num_replicas="per_node" deployment.
+    @property
+    def uses_per_proxy_node(self) -> bool:
+        """Whether this deployment runs one replica per proxy node."""
+        info = self._target_state.info
+        return info is not None and info.deployment_config.num_replicas_per_node
 
-        One replica per node the replica can be scheduled on. target_capacity=0
-        scales to zero like every other deployment (e.g. during app teardown);
-        fractional target_capacity is not applied, since a per-node deployment
-        is either present on every node or not.
+    def reconcile_per_proxy_node(
+        self, proxy_nodes: Set[str]
+    ) -> List[ReplicaSchedulingRequest]:
+        """Keep one replica pinned to each proxy node.
 
-        Node eligibility is by resource fit only. It ignores the deployment's
-        label_selector, so a label-constrained deployment counts nodes it cannot
-        place on and leaves the surplus replicas pending. When no node can host
-        the replica this returns 0 and the deployment reports HEALTHY with no
-        replicas.
+        Pins a new replica to every proxy node that lacks one and stops the
+        replica on every node that no longer runs a proxy, recomputed each
+        control loop. Returns scheduling requests for the new replicas. No-op
+        unless the deployment uses per-proxy-node placement and isn't deleting.
         """
-        if deployment_info.target_capacity == 0:
-            return 0
-        return self._deployment_scheduler.get_num_schedulable_nodes(self._id)
+        if self._target_state.deleting or not self.uses_per_proxy_node:
+            return []
 
-    def reconcile_num_replicas_per_node(self) -> None:
-        """Keep a num_replicas="per_node" deployment at one replica per node.
-
-        Recomputed each control loop as nodes join or leave. No-op for
-        deployments that don't use per-node mode or that are being deleted.
-        """
-        if self._target_state.deleting:
-            return
-        if not self._target_state.info.deployment_config.num_replicas_per_node:
-            return
-
-        target = self._per_node_target_num_replicas(self._target_state.info)
-        if self._target_state.target_num_replicas == target:
-            return
-
+        # Keep the target count in sync with the proxy-node count for status.
         old_num = self._target_state.target_num_replicas
-        # Pin the code version so re-setting the target is a pure rescale and
-        # doesn't mint a new version that would restart running replicas.
-        new_info = copy(self._target_state.info)
-        new_info.version = self._target_state.version.code_version
-        self._set_target_state(new_info, target)
-        self._record_scaling_status_transition(old_num, target)
+        if old_num != len(proxy_nodes):
+            # Pin the code version so re-setting the target is a pure rescale
+            # and doesn't mint a new version that would restart replicas.
+            new_info = copy(self._target_state.info)
+            new_info.version = self._target_state.version.code_version
+            self._set_target_state(new_info, len(proxy_nodes))
+            self._record_scaling_status_transition(old_num, len(proxy_nodes))
+
+        # Stop replicas at outdated versions so they are re-pinned at the target
+        # version below.
+        self._check_and_stop_outdated_version_replicas()
+
+        # node -> target-version replica that covers it.
+        covered: Dict[str, DeploymentReplica] = {}
+        for replica in self._replicas.get(
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RUNNING,
+            ]
+        ):
+            if replica.version != self._target_state.version:
+                continue
+            node = replica.target_node_id or replica.actor_node_id
+            if node is not None:
+                covered[node] = replica
+
+        stale = {
+            replica.replica_id
+            for node, replica in covered.items()
+            if node not in proxy_nodes
+        }
+        if stale:
+            self.stop_replicas(stale)
+
+        missing = [node for node in proxy_nodes if node not in covered]
+        if stale or missing:
+            self._in_transition = True
+        return self._add_pinned_replicas(missing)
+
+    def _add_pinned_replicas(
+        self, target_nodes: List[str]
+    ) -> List[ReplicaSchedulingRequest]:
+        """Start one replica pinned to each of the given nodes."""
+        if not target_nodes:
+            return []
         logger.info(
-            f"Adjusting {self._id} from {old_num} to {target} replicas to match "
-            "the number of schedulable nodes."
+            f"Adding {len(target_nodes)} replica(s) to {self._id}, "
+            "one per uncovered proxy node."
         )
+        upscale = []
+        for node_id in target_nodes:
+            replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
+            replica = DeploymentReplica(replica_id, self._target_state.version)
+            scheduling_request = replica.start(
+                self._target_state.info,
+                assign_rank_callback=self._rank_manager.assign_rank,
+                target_node_id=node_id,
+            )
+            upscale.append(scheduling_request)
+            self._replicas.add(ReplicaState.STARTING, replica)
+        return upscale
 
     def _stop_or_update_outdated_version_replicas(
         self, max_to_stop: float = math.inf
@@ -5959,11 +6012,17 @@ class DeploymentStateManager:
                 f"Skipping updating target number of replicas as it did not change for deployment {deployment_id}"
             )
 
-    def update(self) -> bool:
+    def update(self, proxy_nodes: Optional[Set[str]] = None) -> bool:
         """Updates the state of all deployments to match their goal state.
 
-        Returns True if any of the deployments have replicas in the RECOVERING state.
+        Args:
+            proxy_nodes: Nodes that run a proxy. num_replicas="per_node"
+                deployments place one replica on each.
+
+        Returns:
+            True if any of the deployments have replicas in the RECOVERING state.
         """
+        proxy_nodes = proxy_nodes or set()
 
         deleted_ids = []
         any_recovering = False
@@ -6010,23 +6069,24 @@ class DeploymentStateManager:
         # STEP 4: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
 
-        # STEP 5: Reconcile num_replicas="per_node" deployments to the current
-        # count of nodes the replica can be scheduled on, one replica per node.
-        for deployment_state in self._deployment_states.values():
-            deployment_state.reconcile_num_replicas_per_node()
-
-        # STEP 6: Scale replicas
+        # STEP 5: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
-            upscale, downscale = deployment_state.scale_deployment_replicas(
-                gang_placement_groups=gang_placement_groups,
-            )
+            if deployment_state.uses_per_proxy_node:
+                # One replica per proxy node, pinned; also stops replicas on
+                # nodes that no longer run a proxy.
+                upscale = deployment_state.reconcile_per_proxy_node(proxy_nodes)
+                downscale = None
+            else:
+                upscale, downscale = deployment_state.scale_deployment_replicas(
+                    gang_placement_groups=gang_placement_groups,
+                )
 
             if upscale:
                 upscales[deployment_id] = upscale
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 7: Update status
+        # STEP 6: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -6034,7 +6094,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 8: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 7: Schedule all STARTING replicas and stop all STOPPING replicas
         # (Replicas are only added in scale_deployment_replicas when deployment
         # actors are ready, so no additional gate needed here.)
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
@@ -6045,7 +6105,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 9: Broadcast long poll information
+        # STEP 8: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -6055,7 +6115,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 10: Record deployment status metrics
+        # STEP 9: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -6066,7 +6126,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 11: Cleanup
+        # STEP 10: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)

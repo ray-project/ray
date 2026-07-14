@@ -4389,134 +4389,93 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
-def _add_node_with_cpu(cluster_node_info_cache, node_id: str, cpu: float) -> None:
-    cluster_node_info_cache.add_node(node_id, resources={"CPU": cpu})
+def _per_node_target_ids(ds) -> set:
+    return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
 
 
-def test_num_replicas_per_node_tracks_node_count(mock_deployment_state_manager):
-    """A num_replicas="per_node" deployment targets one replica per schedulable node."""
-    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+def test_per_proxy_node_pins_one_replica_per_proxy_node(mock_deployment_state_manager):
+    """A per-proxy-node deployment pins one replica to each proxy node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
 
-    # Give the fixture's initial node capacity for the (1 CPU) replica.
-    node_1 = next(iter(cluster_node_info_cache.alive_node_ids))
-    cluster_node_info_cache.total_resources_per_node[node_1] = {"CPU": 4}
-
-    # One schedulable node at deploy time, so the target starts at 1.
     dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
-    assert ds.target_num_replicas == 1
 
-    # A node joins: the control loop bumps the target to match.
-    node_2 = NodeID.from_random().hex()
-    _add_node_with_cpu(cluster_node_info_cache, node_2, 4)
-    dsm.update()
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
     assert ds.target_num_replicas == 2
+    assert _per_node_target_ids(ds) == {n1, n2}
 
-    # A node starts draining: it drops out of the schedulable set.
-    cluster_node_info_cache.draining_nodes = {node_2: 1}
-    dsm.update()
-    assert ds.target_num_replicas == 1
+    # Idempotent: the same proxy-node set adds nothing.
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
 
 
-def test_num_replicas_per_node_excludes_nodes_without_capacity(
-    mock_deployment_state_manager,
-):
-    """Nodes that can't fit the replica (e.g. a resource-less head) aren't counted."""
-    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+def test_per_proxy_node_tracks_node_set(mock_deployment_state_manager):
+    """Replicas follow proxy nodes as they join and leave."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
-
-    # Fixture's initial node has no CPU (like a head node with no task resources).
-    head = next(iter(cluster_node_info_cache.alive_node_ids))
-    cluster_node_info_cache.total_resources_per_node[head] = {"CPU": 0}
-    worker = NodeID.from_random().hex()
-    _add_node_with_cpu(cluster_node_info_cache, worker, 4)
-
+    n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
     dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
 
-    # Only the worker can host the 1-CPU replica; the 0-CPU node is excluded.
-    assert ds.target_num_replicas == 1
+    dsm.update(proxy_nodes={n1, n2})
+    assert _per_node_target_ids(ds) == {n1, n2}
+
+    # A proxy node joins: a replica is pinned to it.
+    dsm.update(proxy_nodes={n1, n2, n3})
+    assert ds.target_num_replicas == 3
+    assert _per_node_target_ids(ds) == {n1, n2, n3}
+
+    # A proxy node leaves: its replica is stopped, the rest stay pinned.
+    dsm.update(proxy_nodes={n1, n3})
+    assert ds.target_num_replicas == 2
+    assert _per_node_target_ids(ds) == {n1, n3}
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
 
 
-def test_num_replicas_per_node_target_capacity(mock_deployment_state_manager):
-    """target_capacity=0 scales a per-node deployment to zero; fractional is ignored."""
-    create_dsm, _, cache, _ = mock_deployment_state_manager
+def test_per_proxy_node_status_reflects_scaling(mock_deployment_state_manager):
+    """A proxy node joining/leaving surfaces UPSCALING/DOWNSCALING, then HEALTHY."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
-    node_1 = next(iter(cache.alive_node_ids))
-    cache.total_resources_per_node[node_1] = {"CPU": 4}
-    _add_node_with_cpu(cache, NodeID.from_random().hex(), 4)
-
-    # target_capacity=0 (e.g. app teardown) drops per-node to zero.
-    zero_info = deployment_info(num_replicas_per_node=True)[0]
-    zero_info.target_capacity = 0
-    dsm.deploy(TEST_DEPLOYMENT_ID, zero_info)
-    ds_zero = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
-    assert ds_zero.target_num_replicas == 0
-
-    # Fractional target_capacity is ignored: still one replica per node.
-    half_info = deployment_info(num_replicas_per_node=True)[0]
-    half_info.target_capacity = 50
-    dsm.deploy(TEST_DEPLOYMENT_ID_2, half_info)
-    ds_half = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
-    dsm.update()
-    assert ds_half.target_num_replicas == 2
-
-
-def test_num_replicas_per_node_status_reflects_scaling(mock_deployment_state_manager):
-    """Node join/leave surfaces UPSCALING/DOWNSCALING status, not a silent HEALTHY."""
-    create_dsm, _, cache, _ = mock_deployment_state_manager
-    dsm: DeploymentStateManager = create_dsm()
-    node_1 = next(iter(cache.alive_node_ids))
-    cache.total_resources_per_node[node_1] = {"CPU": 4}
-
-    # Reach HEALTHY with one replica on the single node.
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
     dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
+
+    dsm.update(proxy_nodes={n1})
     for replica in ds._replicas.get():
         replica._actor.set_ready()
-    dsm.update()
+    dsm.update(proxy_nodes={n1})
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    # A node joins: status reflects the upscale while the new replica starts.
-    node_2 = NodeID.from_random().hex()
-    _add_node_with_cpu(cache, node_2, 4)
-    dsm.update()
+    dsm.update(proxy_nodes={n1, n2})
     assert ds.target_num_replicas == 2
     assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
 
-    # New replica comes up: back to HEALTHY.
     for replica in ds._replicas.get():
         replica._actor.set_ready()
-    dsm.update()
+    dsm.update(proxy_nodes={n1, n2})
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    # A node drains: status reflects the downscale.
-    cache.draining_nodes = {node_2: 1}
-    dsm.update()
+    dsm.update(proxy_nodes={n1})
     assert ds.target_num_replicas == 1
     assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
 
 
-def test_num_replicas_per_node_only_affects_per_node_deployments(
+def test_per_proxy_node_only_affects_per_proxy_node_deployments(
     mock_deployment_state_manager,
 ):
-    """A fixed-num_replicas deployment ignores node-set changes."""
-    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    """A fixed-num_replicas deployment ignores the proxy-node set."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
+    nodes = {NodeID.from_random().hex() for _ in range(3)}
 
     dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=2)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    dsm.update()
+    dsm.update(proxy_nodes=nodes)
     assert ds.target_num_replicas == 2
-
-    _add_node_with_cpu(cluster_node_info_cache, NodeID.from_random().hex(), 4)
-    dsm.update()
-    assert ds.target_num_replicas == 2
+    check_counts(ds, total=2)
 
 
 def test_get_deployment_ids(mock_deployment_state_manager):
