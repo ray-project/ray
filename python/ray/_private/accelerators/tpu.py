@@ -172,14 +172,11 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
     return tuple(int(d) for d in topology.strip().lower().split("x"))
 
 
-def _get_worker_dims_for_topology(
-    topology: str, accelerator_version: str
-) -> Tuple[int, ...]:
-    """Get the worker grid dimensions for a given topology and accelerator version.
+def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
+    """Get the worker grid dimensions for a given topology.
 
     Args:
         topology: The TPU topology (e.g. "4x4", "2x2x2").
-        accelerator_version: The accelerator version (e.g. "v6e", "v4").
 
     Returns:
         Worker dimension tuple: (y, x) for 2D, (z, y, x) for 3D.
@@ -373,22 +370,18 @@ TPU_SUBSLICE_LABEL_PREFIX = "ray.io/tpu-subslice-"
 def _get_physical_worker_id_from_coords(
     coords_list: List[List[int]],
     parent_topology: str,
-    chips_per_vm: int,
 ) -> int:
     """Compute the physical worker position from libtpu chip coordinates.
 
-    Each worker owns a block of chips. The chip block size is determined by
-    chips_per_vm. For 4-chip workers, the block is 2x2 chips. For 8-chip
-    workers (v5e/v6e single-host), it could be 2x4 or 4x2.
-
-    The worker's position in the mesh is determined by dividing the minimum
-    (x, y) chip coordinate by the chip block dimensions.
+    Each worker owns a block of chips whose dimensions are derived from the
+    parent topology's chip grid divided by its worker grid. The worker's
+    position in the mesh is determined by dividing the minimum (x, y) chip
+    coordinate by the chip block dimensions.
 
     Args:
         coords_list: List of coordinate lists from libtpu. Each entry is
             [x, y] for 2D or [x, y, z] for 3D.
         parent_topology: The parent topology string (e.g. "4x4").
-        chips_per_vm: Number of chips per VM for dimension calculation.
 
     Returns:
         Physical worker ID (0-based linear index in the worker mesh).
@@ -396,7 +389,7 @@ def _get_physical_worker_id_from_coords(
     Raises:
         ValueError: If coordinates don't match the topology.
     """
-    worker_dims = _get_worker_dims_for_topology(parent_topology, "")
+    worker_dims = _get_worker_dims_for_topology(parent_topology)
     chip_dims = _parse_topology_dims(parent_topology)
 
     if len(worker_dims) == 2:
@@ -466,7 +459,7 @@ def _build_subslice_labels(
         Dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to subslice
         index strings (e.g. "0").
     """
-    worker_dims = _get_worker_dims_for_topology(parent_topology, "")
+    worker_dims = _get_worker_dims_for_topology(parent_topology)
 
     if len(worker_dims) == 2:
         dim_y, dim_x = worker_dims

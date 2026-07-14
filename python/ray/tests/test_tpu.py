@@ -9,7 +9,7 @@ from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
-    _resolve_parent_from_cluster,
+    _find_valid_parent_topologies,
 )
 
 
@@ -1454,56 +1454,79 @@ def _alive_node(topology: str) -> dict:
     return {"Alive": True, "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology}}
 
 
-def test_resolve_parent_from_cluster_basic():
-    """Smallest valid parent in the cluster is returned."""
-    nodes = [_alive_node("4x4"), _alive_node("16x16")]
-    assert _resolve_parent_from_cluster("2x4", nodes) == "4x4"
-
-
-def test_resolve_parent_from_cluster_uses_cluster_not_theory():
-    """Uses the cluster's actual topology, not the theoretical minimum.
-
-    Regression test: a 16x16 cluster requesting a 2x2 subslice used to
-    resolve the parent as '2x4' (theoretical minimum) then time out trying
-    to reserve a 2x4 slice that does not exist in the cluster.
+def _slice_nodes(slice_name: str, topology: str, n_workers: int = 4):
+    """Node dicts for one slice with slice-name-prefixed NodeIDs, so multiple
+    slices can coexist in a single test without NodeID collisions.
     """
-    nodes = [_alive_node("16x16")]
-    assert _resolve_parent_from_cluster("2x2", nodes) == "16x16"
+    return [
+        {
+            "NodeID": f"{slice_name}-w{i}",
+            "Alive": True,
+            "Resources": {"TPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            },
+        }
+        for i in range(n_workers)
+    ]
 
 
-def test_resolve_parent_from_cluster_picks_smallest_available():
-    """When multiple valid topologies exist, the smallest is chosen."""
-    nodes = [_alive_node("4x4"), _alive_node("8x8"), _alive_node("16x16")]
-    assert _resolve_parent_from_cluster("2x2", nodes) == "4x4"
+def _mock_worker_pg():
+    """A MagicMock PlacementGroup whose id reports non-nil (i.e. created OK)."""
+    from ray.util.placement_group import PlacementGroup
+
+    mock_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_pg.id = mock_id
+    return mock_pg
 
 
-def test_resolve_parent_from_cluster_self_when_no_larger():
-    """Returns the subslice topology itself when no larger parent exists,
-    signalling the caller to fall back to SlicePlacementGroup.
+# Standard 4x4 → 2x4 subslice cache: workers 0,1 form subslice 0; 2,3 form 1.
+_SUBSLICE_2X4_LABELS = {
+    "0": {"ray.io/tpu-subslice-2x4": "0"},
+    "1": {"ray.io/tpu-subslice-2x4": "0"},
+    "2": {"ray.io/tpu-subslice-2x4": "1"},
+    "3": {"ray.io/tpu-subslice-2x4": "1"},
+}
+
+
+@pytest.mark.parametrize(
+    "subslice, cluster_topos, expected",
+    [
+        # All valid parents returned, sorted smallest-first.
+        ("2x4", ["4x4", "16x16"], ["4x4", "16x16"]),
+        # Uses the cluster's actual topology, not the theoretical minimum
+        # (regression: 2x2 on a 16x16-only cluster must resolve to 16x16).
+        ("2x2", ["16x16"], ["16x16"]),
+        # Multiple valid topologies all returned, sorted.
+        ("2x2", ["4x4", "8x8", "16x16"], ["4x4", "8x8", "16x16"]),
+        # Subslice itself is excluded (no strictly larger parent present).
+        ("4x4", ["4x4"], []),
+        # No cluster topology can contain the subslice.
+        ("16x16", ["4x4"], []),
+        # 3D topologies resolve correctly.
+        ("2x2x2", ["4x4x4", "8x8x8"], ["4x4x4", "8x8x8"]),
+    ],
+)
+def test_find_valid_parent_topologies(subslice, cluster_topos, expected):
+    """Valid parents are all cluster topologies strictly larger than the
+    subslice in every axis, sorted smallest-first; the subslice itself is
+    excluded.
     """
-    nodes = [_alive_node("4x4")]
-    assert _resolve_parent_from_cluster("4x4", nodes) == "4x4"
+    nodes = [_alive_node(t) for t in cluster_topos]
+    assert _find_valid_parent_topologies(subslice, nodes) == expected
 
 
-def test_resolve_parent_from_cluster_none_when_absent():
-    """Returns None when no cluster topology can contain the subslice."""
-    nodes = [_alive_node("4x4")]
-    assert _resolve_parent_from_cluster("16x16", nodes) is None
-
-
-def test_resolve_parent_from_cluster_ignores_dead_nodes():
+def test_find_valid_parent_topologies_ignores_dead_nodes():
     """Dead nodes' topology labels are not considered."""
     nodes = [
         {"Alive": False, "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4"}},
         _alive_node("16x16"),
     ]
-    assert _resolve_parent_from_cluster("2x2", nodes) == "16x16"
-
-
-def test_resolve_parent_from_cluster_3d():
-    """3D topologies resolve correctly from cluster labels."""
-    nodes = [_alive_node("4x4x4"), _alive_node("8x8x8")]
-    assert _resolve_parent_from_cluster("2x2x2", nodes) == "4x4x4"
+    assert _find_valid_parent_topologies("2x2", nodes) == ["16x16"]
 
 
 # ---------------------------------------------------------------------------
@@ -1605,12 +1628,7 @@ def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
     # Pre-populate cache so no discovery is needed.
-    ray.util.tpu._tpu_subslice_cache[slice_name] = {
-        "0": {"ray.io/tpu-subslice-2x4": "0"},
-        "1": {"ray.io/tpu-subslice-2x4": "0"},
-        "2": {"ray.io/tpu-subslice-2x4": "1"},
-        "3": {"ray.io/tpu-subslice-2x4": "1"},
-    }
+    ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
 
     # Workers 0 and 1 (subslice 0) fully occupied; workers 2 and 3 idle.
     avail = {
@@ -1819,62 +1837,6 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
     assert len(result_labels) == 1
 
 
-def test_subslice_auto_select_refreshes_avail_after_discovery(mock_4x4_pgs):
-    """Regression: post-discovery auto-select must use a fresh availability
-    snapshot, not the stale pre-loop one.
-
-    Discovery may block while existing subslice PGs run to completion (so it
-    can acquire the full-slice PG). The pre-loop avail snapshot is captured
-    before those PGs release and still shows the workers as busy. The fix
-    re-captures avail after discovery returns and calls _find_available_subslice
-    with the fresh data.
-
-    The test simulates this by making the first available_resources_per_node()
-    call (pre-loop) return all-busy and the second (post-discovery) return
-    all-free. The function must succeed and select subslice 0.
-    """
-    ray.util.tpu._tpu_subslice_cache.clear()
-    mock_head_pg, mock_worker_pg = mock_4x4_pgs
-    slice_name = "test-slice-stale-avail"
-    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
-
-    all_busy = {f"node_{i}": {"TPU": 0} for i in range(4)}
-    all_free = {f"node_{i}": {"TPU": 4} for i in range(4)}
-
-    with (
-        patch(
-            "ray.util.tpu.reserve_tpu_slice",
-            return_value=(slice_name, mock_head_pg),
-        ),
-        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
-        patch("ray.nodes", return_value=dummy_nodes),
-        patch("ray.get") as mock_ray_get,
-        patch(
-            "ray._private.state.available_resources_per_node",
-            # First call (pre-loop T=0): all busy — triggers fallthrough to discovery.
-            # Second call (post-discovery refresh): all free — subslice 0 selected.
-            side_effect=[all_busy, all_free],
-        ),
-    ):
-        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
-
-        sg = ray.util.tpu.subslice_placement_group(
-            subslice_topology="2x4",
-            accelerator_version="v6e",
-            chips_per_vm=4,
-            # subslice_index=None → auto-select
-        )
-
-    assert sg.subslice_index == 0
-    assert sg.num_hosts == 2
-    # Workers must be in ascending numeric order for deterministic rank assignment.
-    selected_workers = [
-        sel[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] for sel in sg.bundle_label_selector
-    ]
-    assert selected_workers == sorted(selected_workers, key=int)
-    sg.shutdown()
-
-
 def test_find_available_subslice_skips_incomplete_subslices():
     """Subslices with fewer workers than the topology requires are skipped.
 
@@ -1936,49 +1898,20 @@ def test_subslice_iterates_to_second_slice_when_first_is_occupied():
     ray.util.tpu._tpu_subslice_cache.clear()
 
     # Pre-populate the runtime cache with two 4x4 slices.
-    subslice_labels = {
-        "0": {"ray.io/tpu-subslice-2x4": "0"},
-        "1": {"ray.io/tpu-subslice-2x4": "0"},
-        "2": {"ray.io/tpu-subslice-2x4": "1"},
-        "3": {"ray.io/tpu-subslice-2x4": "1"},
-    }
-    ray.util.tpu._tpu_subslice_cache["slice-A"] = subslice_labels
-    ray.util.tpu._tpu_subslice_cache["slice-B"] = subslice_labels
+    ray.util.tpu._tpu_subslice_cache["slice-A"] = _SUBSLICE_2X4_LABELS
+    ray.util.tpu._tpu_subslice_cache["slice-B"] = _SUBSLICE_2X4_LABELS
 
-    def _make_slice_nodes(slice_name):
-        return [
-            {
-                "NodeID": f"node_{slice_name}_{i}",
-                "Alive": True,
-                "Resources": {"TPU": 4},
-                "Labels": {
-                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
-                    ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
-                    ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
-                },
-            }
-            for i in range(4)
-        ]
+    dummy_nodes = _slice_nodes("slice-A", "4x4") + _slice_nodes("slice-B", "4x4")
 
-    dummy_nodes = _make_slice_nodes("slice-A") + _make_slice_nodes("slice-B")
-
-    # slice-A: all workers fully occupied
-    # slice-B: all workers idle
+    # slice-A: all workers fully occupied; slice-B: all workers idle.
     avail_resources = {
-        **{f"node_slice-A_{i}": {"TPU": 0} for i in range(4)},
-        **{f"node_slice-B_{i}": {"TPU": 4} for i in range(4)},
+        **{f"slice-A-w{i}": {"TPU": 0} for i in range(4)},
+        **{f"slice-B-w{i}": {"TPU": 4} for i in range(4)},
     }
-
-    from ray.util.placement_group import PlacementGroup
-
-    mock_pg = MagicMock(spec=PlacementGroup)
-    mock_id = MagicMock()
-    mock_id.is_nil.return_value = False
-    mock_pg.id = mock_id
 
     with (
         patch("ray.nodes", return_value=dummy_nodes),
-        patch("ray.util.tpu.placement_group", return_value=mock_pg),
+        patch("ray.util.tpu.placement_group", return_value=_mock_worker_pg()),
         patch(
             "ray._private.state.available_resources_per_node",
             return_value=avail_resources,
@@ -1996,110 +1929,108 @@ def test_subslice_iterates_to_second_slice_when_first_is_occupied():
     sg.shutdown()
 
 
-def test_subslice_same_as_parent_falls_back_to_full_slice():
-    """When no strictly larger parent topology exists, subslice_placement_group
-    falls back to SlicePlacementGroup and wraps the result in a
-    SubslicePlacementGroup for API consistency.
+def test_subslice_uses_any_valid_parent():
+    """When all subslices of the smallest valid parent are occupied, the
+    scheduler tries the next larger valid parent topology instead of failing.
+
+    Cluster: one "4x4" slice (smallest parent, both subslices of "2x4" fully
+    occupied) and one "16x16" slice (larger parent, an idle "2x4" subslice).
     """
     ray.util.tpu._tpu_subslice_cache.clear()
 
-    from ray.util.placement_group import PlacementGroup
+    slice_small = "slice-4x4"
+    slice_large = "slice-16x16"
 
-    mock_pg = MagicMock(spec=PlacementGroup)
-    mock_head_pg = MagicMock(spec=PlacementGroup)
-    mock_id = MagicMock()
-    mock_id.is_nil.return_value = False
-    mock_pg.id = mock_id
+    # Two "2x4" subslices per slice (2 workers each).
+    ray.util.tpu._tpu_subslice_cache[slice_small] = _SUBSLICE_2X4_LABELS
+    ray.util.tpu._tpu_subslice_cache[slice_large] = _SUBSLICE_2X4_LABELS
 
-    # Build a mock SlicePlacementGroup to stand in for the full-slice fallback.
-    mock_slice = MagicMock(spec=SlicePlacementGroup)
-    mock_slice.placement_group = mock_pg
-    mock_slice.num_hosts = 4
-    mock_slice.chips_per_host = 4
-    mock_slice.bundle_resources = {"CPU": 1, "TPU": 4}
-    mock_slice.head_placement_groups = [mock_head_pg]
-    mock_slice.bundle_label_selector = [
-        {
-            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "test-slice-fallback",
-            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
-        }
-        for i in range(4)
-    ]
+    all_nodes = _slice_nodes(slice_small, "4x4") + _slice_nodes(slice_large, "16x16")
 
-    # Cluster has only a 4x4 slice — no larger parent exists, so
-    # _resolve_parent_from_cluster returns the subslice topology itself
-    # ("4x4"), triggering the SlicePlacementGroup fallback path.
+    # "4x4" slice: all workers busy; "16x16" slice: all workers free.
+    avail = {
+        **{f"{slice_small}-w{i}": {"TPU": 0} for i in range(4)},
+        **{f"{slice_large}-w{i}": {"TPU": 4} for i in range(4)},
+    }
+
     with (
-        patch("ray.nodes", return_value=[_alive_node("4x4")]),
+        patch("ray.nodes", return_value=all_nodes),
+        patch("ray.util.tpu.placement_group", return_value=_mock_worker_pg()),
         patch(
-            "ray.util.tpu.SlicePlacementGroup",
-            return_value=mock_slice,
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
         ),
     ):
         sg = ray.util.tpu.subslice_placement_group(
-            subslice_topology="4x4",
+            subslice_topology="2x4",
             accelerator_version="v6e",
             chips_per_vm=4,
         )
 
-    assert sg.parent_topology == "4x4"
-    assert sg.subslice_topology == "4x4"
-    assert sg.subslice_index == 0
-    assert sg.slice_name == "test-slice-fallback"
-    assert sg.num_hosts == 4
-    assert sg.bundle_resources == {"CPU": 1, "TPU": 4}
-    assert len(sg.bundle_label_selector) == 4
+    # Must have selected from the "16x16" parent, not the occupied "4x4".
+    assert sg.parent_topology == "16x16"
+    assert sg.slice_name == slice_large
+    assert sg.num_hosts == 2
     sg.shutdown()
 
 
-def test_subslice_fallback_forwards_resources_per_bundle():
-    """resources_per_bundle must be forwarded to SlicePlacementGroup in the
-    full-slice fallback path, so the underlying PG actually reserves the
-    requested resources and SubslicePlacementGroup.bundle_resources reflects
-    what was allocated.
+def test_subslice_same_as_parent_raises_value_error():
+    """When the requested subslice topology equals the only topology in the
+    cluster, _validate_and_resolve raises ValueError directing the user to
+    slice_placement_group().
     """
     ray.util.tpu._tpu_subslice_cache.clear()
-
-    from ray.util.placement_group import PlacementGroup
-
-    mock_pg = MagicMock(spec=PlacementGroup)
-    mock_id = MagicMock()
-    mock_id.is_nil.return_value = False
-    mock_pg.id = mock_id
-
-    custom_resources = {"CPU": 2, "TPU": 4}
-
-    mock_slice = MagicMock(spec=SlicePlacementGroup)
-    mock_slice.placement_group = mock_pg
-    mock_slice.num_hosts = 4
-    mock_slice.chips_per_host = 4
-    mock_slice.bundle_resources = custom_resources
-    mock_slice.head_placement_groups = []
-    mock_slice.bundle_label_selector = [
-        {
-            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "fallback-slice",
-            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
-        }
-        for i in range(4)
-    ]
-
     with (
+        pytest.raises(ValueError, match="slice_placement_group"),
         patch("ray.nodes", return_value=[_alive_node("4x4")]),
-        patch("ray.util.tpu.SlicePlacementGroup", return_value=mock_slice) as mock_spg,
     ):
-        sg = ray.util.tpu.subslice_placement_group(
+        ray.util.tpu.subslice_placement_group(
             subslice_topology="4x4",
             accelerator_version="v6e",
             chips_per_vm=4,
-            resources_per_bundle=custom_resources,
         )
 
-    # SlicePlacementGroup must have been called with the caller's value.
-    _, kwargs = mock_spg.call_args
-    assert kwargs["resources_per_bundle"] == custom_resources
-    # SubslicePlacementGroup exposes what was actually allocated.
-    assert sg.bundle_resources == custom_resources
-    sg.shutdown()
+
+def test_find_undiscovered_idle_parent():
+    """_find_undiscovered_idle_parent returns the first parent topology that
+    has an undiscovered, fully-idle slice, or None.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+    parent_topo = "4x4"
+
+    def _make_slice_nodes(slice_name, node_ids):
+        return [
+            {
+                "NodeID": nid,
+                "Alive": True,
+                "Resources": {"TPU": 4},
+                "Labels": {
+                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                    ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                    ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: parent_topo,
+                },
+            }
+            for i, nid in enumerate(node_ids)
+        ]
+
+    check = ray.util.tpu._find_undiscovered_idle_parent
+
+    # No nodes at all → None.
+    assert check([parent_topo], [], {}) is None
+
+    nodes = _make_slice_nodes("slice-a", ["n0", "n1"])
+    all_free = {"n0": {"TPU": 4}, "n1": {"TPU": 4}}
+    one_busy = {"n0": {"TPU": 0}, "n1": {"TPU": 4}}
+
+    # Undiscovered and fully idle → returns the parent topology.
+    assert check([parent_topo], nodes, all_free) == parent_topo
+
+    # Undiscovered but one worker busy → None.
+    assert check([parent_topo], nodes, one_busy) is None
+
+    # Slice present in cache → treated as already discovered → None.
+    ray.util.tpu._tpu_subslice_cache["slice-a"] = {}
+    assert check([parent_topo], nodes, all_free) is None
 
 
 if __name__ == "__main__":

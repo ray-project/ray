@@ -355,21 +355,21 @@ def test_parse_topology_dims():
 
 def test_get_worker_dims_2d():
     """Test worker dimension lookup for 2D topologies."""
-    assert tpu._get_worker_dims_for_topology("2x4", "") == (1, 2)
-    assert tpu._get_worker_dims_for_topology("4x4", "") == (2, 2)
-    assert tpu._get_worker_dims_for_topology("8x16", "") == (4, 8)
+    assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
+    assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
 
 
 def test_get_worker_dims_3d():
     """Test worker dimension lookup for 3D topologies."""
-    assert tpu._get_worker_dims_for_topology("2x2x2", "") == (1, 1, 2)
-    assert tpu._get_worker_dims_for_topology("4x4x4", "") == (2, 2, 4)
+    assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
 
 
 def test_get_worker_dims_unknown():
     """Test that unknown topologies raise ValueError."""
     with pytest.raises(ValueError, match="Unknown 2D topology"):
-        tpu._get_worker_dims_for_topology("99x99", "")
+        tpu._get_worker_dims_for_topology("99x99")
 
 
 def test_get_default_chips_per_vm():
@@ -416,28 +416,25 @@ def test_build_subslice_labels_3d():
 
 
 @pytest.mark.parametrize(
-    "coords, parent_topology, chips_per_vm, expected_worker_id",
+    "coords, parent_topology, expected_worker_id",
     [
-        # 4x4 v6e, 4 chips/vm — 4 workers in a 2×2 mesh
-        ([[0, 0], [0, 1], [1, 0], [1, 1]], "4x4", 4, 0),
-        ([[2, 0], [2, 1], [3, 0], [3, 1]], "4x4", 4, 1),
-        ([[0, 2], [0, 3], [1, 2], [1, 3]], "4x4", 4, 2),
-        ([[2, 2], [2, 3], [3, 2], [3, 3]], "4x4", 4, 3),
+        # 4x4 v6e — 4 workers in a 2×2 mesh
+        ([[0, 0], [0, 1], [1, 0], [1, 1]], "4x4", 0),
+        ([[2, 0], [2, 1], [3, 0], [3, 1]], "4x4", 1),
+        ([[0, 2], [0, 3], [1, 2], [1, 3]], "4x4", 2),
+        ([[2, 2], [2, 3], [3, 2], [3, 3]], "4x4", 3),
         # 2x4 single-host v6e (8 chips on one VM — worker at the origin)
         (
             [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3]],
             "2x4",
-            8,
             0,
         ),
     ],
 )
-def test_get_physical_worker_id_2d(
-    coords, parent_topology, chips_per_vm, expected_worker_id
-):
+def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
     """Test physical worker ID computation from 2D chip coordinates."""
     assert (
-        tpu._get_physical_worker_id_from_coords(coords, parent_topology, chips_per_vm)
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
         == expected_worker_id
     )
 
