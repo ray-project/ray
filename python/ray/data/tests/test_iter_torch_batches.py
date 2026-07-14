@@ -129,6 +129,4 @@ def test_iter_torch_batches_pin_memory_with_custom_collate_fn(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
