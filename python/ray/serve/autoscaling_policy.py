@@ -394,7 +394,7 @@ def _query_scalar(query_url: str, query: str, timeout_s: float) -> Optional[floa
     or a one-sample instant vector. Anything else is treated as no data.
     """
     url = query_url + "?" + urllib.parse.urlencode({"query": query})
-    with urllib.request.urlopen(url, timeout=timeout_s) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=timeout_s) as resp:
         body = json.load(resp)
     data = body.get("data", {})
     result = data.get("result", [])
@@ -481,6 +481,8 @@ class PrometheusQueryMixin:
     ):
         super().__init__(**kwargs)
         self._prometheus_address = prometheus_address
+        if isinstance(prometheus_queries, str):
+            prometheus_queries = [prometheus_queries]
         self._prometheus_queries = list(prometheus_queries or [])
         self._fetch_interval_s = fetch_interval_s
         self._cache_ttl_s = cache_ttl_s

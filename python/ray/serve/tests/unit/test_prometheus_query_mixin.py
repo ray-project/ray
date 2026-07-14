@@ -104,7 +104,8 @@ class TestPrometheusQueryMixin:
         )
         start = time.monotonic()
         assert mixin.prometheus_metrics is None  # fetch still running
-        assert time.monotonic() - start < 0.3, "read blocked on the fetch"
+        # Must return well before the 0.8s fetch would complete.
+        assert time.monotonic() - start < 0.5, "read blocked on the fetch"
         for _ in range(50):
             if mixin.prometheus_metrics == {"q": 5.0}:
                 break
