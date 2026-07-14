@@ -353,7 +353,6 @@ class DeepSpeedAdapter(FrameworkAdapter):
         num_steps = self._resolve_num_steps(dataloader)
         if num_steps < 1:
             raise ValueError(f"num_steps must be >= 1, got {num_steps}.")
-        seq_len = self.cfg.data.seq_len
         engine.train()
 
         data_iter = iter(dataloader)
@@ -381,7 +380,9 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 engine.backward(loss)
                 engine.step()
                 last_loss = loss.item()
-            collector.record_batch(num_rows=batch_size, num_tokens=batch_size * seq_len)
+            collector.record_batch(
+                num_rows=input_ids.size(0), num_tokens=input_ids.numel()
+            )
             step += 1
 
             if (
