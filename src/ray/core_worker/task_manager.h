@@ -196,6 +196,13 @@ class ObjectRefStream {
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
 
+  /// Whether the caller has requested deletion of this stream (i.e. the
+  /// language-frontend generator went out of scope). The stream may still be
+  /// retained after this point until EOF is written and the lineage of its
+  /// consumed returns goes out of scope.
+  void MarkCallerDeleted() { caller_deleted_ = true; }
+  bool IsCallerDeleted() const { return caller_deleted_; }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
   bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
@@ -224,6 +231,10 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// Set once the caller requests deletion of the stream (the generator went
+  /// out of scope). Used to decide whether a backpressured executor should be
+  /// released while the stream is still retained. See MarkCallerDeleted.
+  bool caller_deleted_ = false;
 };
 
 class TaskManager : public TaskManagerInterface {

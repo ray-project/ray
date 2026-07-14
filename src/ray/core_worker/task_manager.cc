@@ -842,6 +842,15 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
     return true;
   }
 
+  // Record that the caller has requested deletion (the generator went out of
+  // scope). The stream may still be retained below if EOF has not been written
+  // yet or its consumed returns still have lineage in scope. While it is
+  // retained, a report from a still-running executor is told the stream is
+  // deleted (see HandleReportGeneratorItemReturns) so it stops backpressuring,
+  // whereas a report from a lineage-reconstruction retry (EOF already written)
+  // is still handled to re-materialize the referenced returns.
+  stream_it->second.MarkCallerDeleted();
+
   auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
   if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
     consumption_it->second(Status::NotFound("Stream is deleted."), -1);
@@ -1000,6 +1009,18 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     return false;
   }
   if (backpressure_threshold != -1) {
+    // The stream is still present (found above), but the caller may have already
+    // requested its deletion. Only release the executor for a report the caller
+    // can never consume: a caller that dropped its generator reads no further, so
+    // an UNCONSUMED index is unwanted and we tell the executor to stop
+    // backpressuring. But an ALREADY-CONSUMED index reported here is a lineage-
+    // reconstruction retry of a still-referenced return and MUST be handled to
+    // re-materialize its value (whether or not the generator ever wrote EOF).
+    if (stream_it->second.IsCallerDeleted() &&
+        !stream_it->second.IsObjectConsumed(item_index)) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."));
+      return false;
+    }
     if (consumption_update_callback) {
       ref_stream_consumption_update_callbacks_[generator_id] =
           consumption_update_callback;

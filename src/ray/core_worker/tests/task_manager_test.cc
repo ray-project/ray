@@ -3284,6 +3284,211 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
+TEST_F(TaskManagerLineageTest,
+       TestBackpressureReportHandledAfterCallerDeleteWhenReconstructing) {
+  // Regression test: a backpressured streaming generator whose ObjectRefGenerator
+  // is dropped by the caller while a consumed return is still referenced keeps the
+  // stream parked for lineage reconstruction (EOF written, lineage in scope). A
+  // later reconstruction report for that consumed return must still be handled
+  // (its value re-materialized and consumed progress released) rather than dropped
+  // as "Stream is deleted".
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 1);
+  ASSERT_NE(spec.EffectiveStreamingGeneratorOwnerBackpressureThreshold(), -1);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+
+  // Report the first object (in plasma so it is reconstructable) and consume it.
+  auto return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                       /*finished*/ false,
+                                       generator_id,
+                                       /*dynamic_return_id*/ return_id,
+                                       /*data*/ data,
+                                       /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [](Status s) { ASSERT_TRUE(s.ok()); },
+      noop_consumption_update));
+
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(obj_id, return_id);
+
+  // The generator finishes: EOF is written and the plasma return is recorded as
+  // reconstructable, so the task stays pinned for lineage reconstruction.
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/1,
+                               /*set_in_plasma=*/true);
+
+  // The caller drops the ObjectRefGenerator. The stream can't be deleted yet
+  // because the consumed return still has lineage in scope, so it is retained
+  // and marked caller-deleted (EOF is already written).
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+
+  // A reconstruction retry re-reports the consumed return. Because the index is
+  // already consumed (a still-referenced return being reconstructed, not fresh
+  // production the departed caller would drop), it must be handled: signalled OK
+  // and consumed progress released, not dropped as "Stream is deleted".
+  bool retry_signal_called = false;
+  Status retry_signal_status;
+  int retry_consumption_updates = 0;
+  int64_t retry_last_consumed = -1;
+  Status retry_last_consumption_status;
+  // NOTE: this callback is also invoked with NotFound during the final
+  // TryDelObjectRefStream teardown, so capture the status rather than asserting
+  // OK inside the callback.
+  auto retry_consumption_update = [&](Status status, int64_t num_objects_consumed) {
+    retry_consumption_updates++;
+    retry_last_consumed = num_objects_consumed;
+    retry_last_consumption_status = status;
+  };
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                  /*finished*/ false,
+                                  generator_id,
+                                  /*dynamic_return_id*/ return_id,
+                                  /*data*/ data,
+                                  /*set_in_plasma*/ true);
+  // Already-consumed index, so no new object is written (returns false), but the
+  // report must not be short-circuited before HandleTaskReturn re-materializes it.
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/
+      [&retry_signal_called, &retry_signal_status](Status status) {
+        retry_signal_called = true;
+        retry_signal_status = status;
+      },
+      retry_consumption_update));
+  ASSERT_TRUE(retry_signal_called);
+  ASSERT_TRUE(retry_signal_status.ok());    // handled, not "Stream is deleted"
+  ASSERT_EQ(retry_consumption_updates, 1);  // consumed progress released
+  ASSERT_EQ(retry_last_consumed, 1);
+  ASSERT_TRUE(retry_last_consumption_status.ok());
+
+  // Cleanup: releasing the consumed return lets the stream be deleted.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
+TEST_F(TaskManagerLineageTest,
+       TestBackpressureReportHandledForConsumedIndexAfterCallerDeleteNoEof) {
+  // A caller drops a STILL-RUNNING backpressured generator (EOF never written)
+  // while holding a consumed return. A lineage-reconstruction retry re-reports
+  // that consumed index. Even though EOF was never written, the report must be
+  // handled (its value re-materialized), not dropped as "Stream is deleted" -
+  // otherwise ray.get on the consumed return would hang. This is the case that a
+  // naive "drop when EOF is unwritten" discriminator would break.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 1);
+  ASSERT_NE(spec.EffectiveStreamingGeneratorOwnerBackpressureThreshold(), -1);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+
+  // Report the first object and consume it. The generator keeps running: EOF is
+  // never written and the task is never completed.
+  auto return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                       /*finished*/ false,
+                                       generator_id,
+                                       /*dynamic_return_id*/ return_id,
+                                       /*data*/ data,
+                                       /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [](Status s) { ASSERT_TRUE(s.ok()); },
+      noop_consumption_update));
+
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(obj_id, return_id);
+
+  // Caller drops the generator while it is still running: EOF is NOT written, so
+  // TryDelObjectRefStream defers and the stream is retained + marked caller-deleted.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+
+  // Reconstruction retry re-reports the consumed index while EOF is still unwritten.
+  bool retry_signal_called = false;
+  Status retry_signal_status;
+  int retry_consumption_updates = 0;
+  int64_t retry_last_consumed = -1;
+  Status retry_last_consumption_status;
+  auto retry_consumption_update = [&](Status status, int64_t num_objects_consumed) {
+    retry_consumption_updates++;
+    retry_last_consumed = num_objects_consumed;
+    retry_last_consumption_status = status;
+  };
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                  /*finished*/ false,
+                                  generator_id,
+                                  /*dynamic_return_id*/ return_id,
+                                  /*data*/ data,
+                                  /*set_in_plasma*/ true);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/
+      [&retry_signal_called, &retry_signal_status](Status status) {
+        retry_signal_called = true;
+        retry_signal_status = status;
+      },
+      retry_consumption_update));
+  ASSERT_TRUE(retry_signal_called);
+  ASSERT_TRUE(retry_signal_status.ok());    // handled, not "Stream is deleted"
+  ASSERT_EQ(retry_consumption_updates, 1);  // consumed progress released
+  ASSERT_EQ(retry_last_consumed, 1);
+  ASSERT_TRUE(retry_last_consumption_status.ok());
+
+  // A fresh (unconsumed) index from the departed caller's generator is still
+  // dropped so the executor stops backpressuring.
+  auto fresh_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(/*idx*/ 1,
+                                  /*finished*/ false,
+                                  generator_id,
+                                  /*dynamic_return_id*/ fresh_return_id,
+                                  /*data*/ data,
+                                  /*set_in_plasma*/ true);
+  bool fresh_signal_called = false;
+  Status fresh_signal_status;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/
+      [&fresh_signal_called, &fresh_signal_status](Status status) {
+        fresh_signal_called = true;
+        fresh_signal_status = status;
+      },
+      noop_consumption_update));
+  ASSERT_TRUE(fresh_signal_called);
+  ASSERT_TRUE(fresh_signal_status.IsNotFound());
+
+  // Cleanup: complete the task to write EOF, then drop the remaining reference.
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/1,
+                               /*set_in_plasma=*/true);
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
 TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumption) {
   // Actor-wide backpressure acknowledges report visibility immediately while consumed
   // progress is delivered through the separate consumption callback.
