@@ -1039,6 +1039,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (!put_res.ok()) {
       RAY_LOG(WARNING).WithField(object_id)
           << "Failed to handle streaming dynamic return: " << put_res.status();
+    } else if (!put_res.value()) {
+      // HandleTaskReturn returns false when the object was stored in plasma
+      // (true means it was inlined into the in-memory store). Remember the
+      // plasma-backed reports so they can be failed if the generator task fails
+      // before its first completion records them on the task spec. Inline
+      // reports live in the owner's memory store and are not lost this way.
+      stream_it->second.MarkReportedInPlasma(object_id);
     }
   }
 
@@ -1735,6 +1742,16 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   return store_in_plasma_ids;
 }
 
+std::vector<ObjectID> TaskManager::GetStreamingGeneratorReportedPlasmaRefs(
+    const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto it = object_ref_streams_.find(generator_id);
+  if (it == object_ref_streams_.end()) {
+    return {};
+  }
+  return it->second.GetReportedPlasmaRefs();
+}
+
 void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec,
     rpc::ErrorType error_type,
@@ -1791,10 +1808,31 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // case, all these objects are lost from the plasma store, so we
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
-    auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+    //
+    // spec.NumStreamingGeneratorReturns() is only populated on the first complete
+    // execution (CompletePendingTask). If the task fails before then - e.g. the
+    // executing actor died and cannot be restarted - it is 0, so we would miss
+    // the returns that were already reported and consumed. Enumerate the plasma
+    // refs actually reported to the object ref stream as well; otherwise those
+    // lost objects never get an error value and stay pending creation forever,
+    // hanging ray.get with no ObjectLost/ActorDied error. Route these reported
+    // refs through plasma (put_in_local_plasma_callback_): they were reported in
+    // plasma and a plasma-pull-blocked ray.get is only woken when the error lands
+    // in plasma, not the in-memory store.
+    absl::flat_hash_set<ObjectID> generator_return_ids;
+    absl::flat_hash_set<ObjectID> plasma_return_ids(store_in_plasma_ids.begin(),
+                                                    store_in_plasma_ids.end());
+    const auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
-      const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-      if (store_in_plasma_ids.contains(generator_return_id)) {
+      generator_return_ids.insert(spec.StreamingGeneratorReturnId(i));
+    }
+    for (const auto &reported_id :
+         GetStreamingGeneratorReportedPlasmaRefs(generator_id)) {
+      generator_return_ids.insert(reported_id);
+      plasma_return_ids.insert(reported_id);
+    }
+    for (const auto &generator_return_id : generator_return_ids) {
+      if (plasma_return_ids.contains(generator_return_id)) {
         Status s = put_in_local_plasma_callback_(error, generator_return_id);
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)

@@ -614,6 +614,71 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
     assert_no_leak()
 
 
+def test_streaming_generator_actor_died_before_first_completion(ray_start_cluster):
+    """A streaming-generator actor whose node dies before the first execution
+    completes, with the actor unable to restart (max_restarts=0). The
+    already-reported+consumed return's only copy is lost, and the task fails
+    before its returns were recorded on the spec. ray.get must surface an error
+    rather than hang forever in pending-creation.
+
+    Regression test for the streaming-generator returns being missed by the
+    failure path when the task fails before its first completion.
+    """
+    config = {
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
+        "max_direct_call_object_size": 100,
+        "object_timeout_milliseconds": 200,
+        "task_retry_delay_ms": 100,
+    }
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=config,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+    )
+    ray.init(address=cluster.address)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, object_store_memory=10**8, resources={"actor": 1}
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_restarts=0, max_task_retries=-1, resources={"actor": 1})
+    class Streamer:
+        @ray.method(_generator_backpressure_num_objects=1)
+        def gen(self):
+            i = 0
+            while True:
+                yield np.ones(1_000_000, dtype=np.int8) * i
+                i += 1
+
+    streamer = Streamer.remote()
+    ref_gen = streamer.gen.remote()
+    # Consume the first reported ref without fetching its value, so its only copy
+    # stays on the actor's node.
+    first_ref = next(ref_gen)
+
+    # Kill the actor's node before the generator's first execution completes.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+
+    # The consumed object's only copy is lost and the actor cannot restart, so the
+    # return must be failed with an error. Before the fix it stayed pending-creation
+    # forever and ray.get hung with a GetTimeoutError. Issue a single blocking get
+    # right after the kill (before the failure propagates): it must be woken with
+    # the error rather than hang, so the error is routed through plasma.
+    try:
+        ray.get(first_ref, timeout=60)
+        pytest.fail("expected the lost return to be failed with an error")
+    except ray.exceptions.GetTimeoutError:
+        pytest.fail(
+            "return stuck in pending-creation (ray.get hung) instead of failing"
+        )
+    except ray.exceptions.RayError:
+        pass  # Expected: actor died / object lost.
+
+
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_dynamic_empty_generator_reconstruction_nondeterministic(
     ray_start_cluster, num_returns_type
