@@ -32,10 +32,6 @@ def executor():
     return executor
 
 
-def _prometheus_unreachable(*args, **kwargs):
-    raise ConnectionError("Prometheus unreachable (test)")
-
-
 @pytest.fixture
 def reset_collector(monkeypatch):
     collector.reset_for_testing()
@@ -43,9 +39,9 @@ def reset_collector(monkeypatch):
     # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 for driver-created
     # clusters, so the env var can't keep the opt-out gate open. Patch the gate.
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
-    # Prometheus isn't running in tests, so make the counter queries fail fast to
-    # None at the HTTP boundary.
-    monkeypatch.setattr(util.requests, "get", _prometheus_unreachable)
+    # Prometheus isn't running in tests, so stub the counter query fn;
+    # the readers degrade to None without any network I/O.
+    monkeypatch.setattr(collector, "query_prometheus_counter", lambda promql: None)
     yield
     collector.reset_for_testing()
 
