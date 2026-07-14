@@ -433,6 +433,9 @@ class TestBuildOpenaiApp:
         assert router._deployment_config.num_replicas_per_node is True
         assert router._replica_config.max_replicas_per_node == 1
         assert router._deployment_config.max_ongoing_requests == 1000
+        # num_cpus=0 matches the proxy so the router colocates on every proxy
+        # node, including a resource-less head.
+        assert router._replica_config.ray_actor_options["num_cpus"] == 0
 
     def test_direct_streaming_user_request_router_config_wins(
         self, llm_config, disable_placement_bundles, monkeypatch

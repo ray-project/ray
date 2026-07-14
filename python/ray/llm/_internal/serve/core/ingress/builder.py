@@ -89,8 +89,10 @@ def _build_openai_ingress_request_router(
 
     The router runs one replica per node (``num_replicas="per_node"``) so each
     node's HAProxy calls its co-located router and the ``/internal/route`` hop
-    stays on-node. ``max_ongoing_requests`` is raised from the Serve default so
-    the on-path router does not throttle ingress.
+    stays on-node. ``num_cpus=0`` matches the proxy's footprint so the router is
+    schedulable on every node that runs a proxy, including a resource-less head
+    node. ``max_ongoing_requests`` is raised from the Serve default so the
+    on-path router does not throttle ingress.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
@@ -101,6 +103,7 @@ def _build_openai_ingress_request_router(
         LLMRouter,
         num_replicas="per_node",
         max_ongoing_requests=1000,
+        ray_actor_options={"num_cpus": 0},
     )
     return deployment.bind(
         server=server,
