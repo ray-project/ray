@@ -136,7 +136,8 @@ def join_metric_samples(
     still running past ``timeout``, or raised degrades to ``None``.
     """
     wait([f for f in futures if f is not None], timeout=timeout)
-    return [join_metric_sample(f, timeout=0.0) for f in futures]
+    results = [join_metric_sample(f, timeout=0.0) for f in futures]
+    return results
 
 
 def _is_builtin_cls(cls: type) -> bool:

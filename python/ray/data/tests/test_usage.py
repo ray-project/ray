@@ -330,7 +330,8 @@ def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
 def test_metric_sample_round_trip():
     """start/join returns the sampled value when the query finishes in time."""
     future = util.start_metric_sample(lambda: (2, 5))
-    assert util.join_metric_sample(future) == (2, 5)
+    result = util.join_metric_sample(future)  # pyrefly: ignore[bad-argument-type]
+    assert result == (2, 5)
 
 
 def test_metric_sample_hung_returns_none():
