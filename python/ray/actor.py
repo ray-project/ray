@@ -2544,9 +2544,7 @@ class ActorHandle(Generic[T]):
                 list_args = signature.flatten_args(function_signature, args, kwargs)
             function_descriptor = self._ray_function_descriptor[method_name]
 
-        if num_returns == "dynamic":
-            num_returns = -1
-        elif num_returns == "streaming":
+        if num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN

@@ -438,9 +438,7 @@ class RemoteFunction:
             else:
                 num_returns = 1
 
-        if num_returns == "dynamic":
-            num_returns = -1
-        elif num_returns == "streaming":
+        if num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN

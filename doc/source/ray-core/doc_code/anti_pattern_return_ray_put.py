@@ -129,23 +129,23 @@ assert (
 # __return_static_multi_values_end__
 
 
-# __return_dynamic_multi_values_start__
+# __return_streaming_multi_values_start__
 @ray.remote(num_returns=1)
-def task_with_dynamic_returns_bad(n):
+def task_with_streaming_returns_bad(n):
     return_value_refs = []
     for i in range(n):
         return_value_refs.append(ray.put(np.zeros(i * 1024 * 1024)))
     return return_value_refs
 
 
-@ray.remote(num_returns="dynamic")
-def task_with_dynamic_returns_good(n):
+@ray.remote(num_returns="streaming")
+def task_with_streaming_returns_good(n):
     for i in range(n):
         yield np.zeros(i * 1024 * 1024)
 
 
 assert np.array_equal(
-    ray.get(ray.get(task_with_dynamic_returns_bad.remote(2))[0]),
-    ray.get(next(iter(ray.get(task_with_dynamic_returns_good.remote(2))))),
+    ray.get(ray.get(task_with_streaming_returns_bad.remote(2))[0]),
+    ray.get(next(task_with_streaming_returns_good.remote(2))),
 )
-# __return_dynamic_multi_values_end__
+# __return_streaming_multi_values_end__

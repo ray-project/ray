@@ -29,9 +29,9 @@ If you want to return multiple values and you know the number of returns before 
     :start-after: __return_static_multi_values_start__
     :end-before: __return_static_multi_values_end__
 
-If you don't know the number of returns before calling the task, you should use the :ref:`dynamic generator <dynamic-generators>` pattern if possible.
+If you don't know the number of returns before calling the task, you should use the :ref:`generator <generators>` pattern if possible.
 
 .. literalinclude:: ../doc_code/anti_pattern_return_ray_put.py
     :language: python
-    :start-after: __return_dynamic_multi_values_start__
-    :end-before: __return_dynamic_multi_values_end__
+    :start-after: __return_streaming_multi_values_start__
+    :end-before: __return_streaming_multi_values_end__

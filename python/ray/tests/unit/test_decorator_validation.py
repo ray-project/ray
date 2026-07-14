@@ -28,28 +28,21 @@ class TestRemoteNumReturns:
             def f():
                 return 1
 
-    def test_num_returns_dynamic_with_non_generator_raises_error(self):
-        """Test that num_returns='dynamic' with non-generator raises ValueError."""
+    def test_num_returns_dynamic_rejected(self):
+        """Test that the deprecated num_returns='dynamic' is rejected."""
         with pytest.raises(
-            ValueError, match="num_returns='dynamic' can only be used with generator"
+            ValueError, match="only accepts None, a non-negative integer"
         ):
 
             @ray.remote(num_returns="dynamic")
-            def f():
-                return 1
+            def generator_func():
+                for i in range(3):
+                    yield i
 
     def test_num_returns_streaming_with_generator_succeeds(self):
         """Test that num_returns='streaming' with generator function succeeds."""
 
         @ray.remote(num_returns="streaming")
-        def generator_func():
-            for i in range(3):
-                yield i
-
-    def test_num_returns_dynamic_with_generator_succeeds(self):
-        """Test that num_returns='dynamic' with generator function succeeds."""
-
-        @ray.remote(num_returns="dynamic")
         def generator_func():
             for i in range(3):
                 yield i
@@ -116,17 +109,18 @@ class TestMethodNumReturns:
                 def method(self):
                     return 1
 
-    def test_num_returns_dynamic_with_non_generator_raises_error(self):
-        """Test that num_returns='dynamic' with non-generator raises ValueError."""
+    def test_num_returns_dynamic_rejected(self):
+        """Test that the deprecated num_returns='dynamic' is rejected."""
         with pytest.raises(
-            ValueError, match="num_returns='dynamic' can only be used with generator"
+            ValueError, match="num_returns='dynamic' is no longer supported"
         ):
 
             @ray.remote
             class TestActor:
                 @ray.method(num_returns="dynamic")
-                def method(self):
-                    return 1
+                def generator_method(self):
+                    for i in range(3):
+                        yield i
 
     def test_num_returns_streaming_with_generator_succeeds(self):
         """Test that num_returns='streaming' with generator method succeeds."""
@@ -134,16 +128,6 @@ class TestMethodNumReturns:
         @ray.remote
         class TestActor:
             @ray.method(num_returns="streaming")
-            def generator_method(self):
-                for i in range(3):
-                    yield i
-
-    def test_num_returns_dynamic_with_generator_succeeds(self):
-        """Test that num_returns='dynamic' with generator method succeeds."""
-
-        @ray.remote
-        class TestActor:
-            @ray.method(num_returns="dynamic")
             def generator_method(self):
                 for i in range(3):
                     yield i

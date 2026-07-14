@@ -633,8 +633,6 @@ class Worker:
         # data is serialized tuple of (args, kwargs)
         task.data = dumps_from_client((args, kwargs), self._client_id)
         num_returns = instance._num_returns()
-        if num_returns == "dynamic":
-            num_returns = -1
         if num_returns == "streaming":
             raise RuntimeError(
                 'Streaming actor methods (num_returns="streaming") '
