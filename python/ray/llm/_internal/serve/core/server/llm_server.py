@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import inspect
 import os
 from typing import (
     TYPE_CHECKING,
@@ -100,30 +99,6 @@ def _merge_replica_actor_and_child_actor_bundles(
     return [merged_first_bundle] + [
         copy.copy(bundle) for bundle in child_actor_bundles[1:]
     ]
-
-
-def _fill_autoscaling_model_id(deployment_options: Dict[str, Any], model_id: str):
-    """Scope a model-aware autoscaling policy to this deployment's model.
-
-    Bundled policies such as TTFTAutoscalingPolicy take a model_id to scope their
-    Prometheus query. Fill it from the LLMConfig so users need not repeat it, and
-    leave an explicit model_id untouched.
-    """
-    policy = getattr(deployment_options.get("autoscaling_config"), "policy", None)
-    if policy is None or "model_id" in policy.policy_kwargs:
-        return
-    policy_function = policy.policy_function
-    if isinstance(policy_function, str):
-        try:
-            policy_function = import_attr(policy_function)
-        except Exception:
-            return
-    try:
-        accepts_model_id = "model_id" in inspect.signature(policy_function).parameters
-    except (TypeError, ValueError):
-        return
-    if accepts_model_id:
-        policy.policy_kwargs["model_id"] = model_id
 
 
 class LLMServer(LLMServerProtocol):
@@ -812,7 +787,5 @@ class LLMServer(LLMServerProtocol):
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
         deployment_options["ray_actor_options"] = ray_actor_options
-
-        _fill_autoscaling_model_id(deployment_options, llm_config.model_id)
 
         return deployment_options

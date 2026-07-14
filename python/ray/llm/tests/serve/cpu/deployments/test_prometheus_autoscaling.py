@@ -107,57 +107,5 @@ class TestQueryScoping:
             TTFTAutoscalingPolicy(prometheus_address="x")
 
 
-class TestModelIdAutoFill:
-    """get_deployment_options fills model_id from the LLMConfig."""
-
-    def _config(self, policy_function=TTFTAutoscalingPolicy, **policy_kwargs):
-        from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
-
-        return AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=4,
-            policy=AutoscalingPolicy(
-                policy_function=policy_function, policy_kwargs=policy_kwargs
-            ),
-        )
-
-    def test_fills_model_id(self):
-        from ray.llm._internal.serve.core.server.llm_server import (
-            _fill_autoscaling_model_id,
-        )
-
-        config = self._config(ttft_target_s=2.0)
-        _fill_autoscaling_model_id({"autoscaling_config": config}, "my-org/m")
-        assert config.policy.policy_kwargs["model_id"] == "my-org/m"
-
-    def test_keeps_explicit_model_id(self):
-        from ray.llm._internal.serve.core.server.llm_server import (
-            _fill_autoscaling_model_id,
-        )
-
-        config = self._config(model_id="explicit")
-        _fill_autoscaling_model_id({"autoscaling_config": config}, "my-org/m")
-        assert config.policy.policy_kwargs["model_id"] == "explicit"
-
-    def test_ignores_policy_without_model_id(self):
-        from ray.llm._internal.serve.core.server.llm_server import (
-            _fill_autoscaling_model_id,
-        )
-
-        def plain_policy(ctx):
-            return 1.0, {}
-
-        config = self._config(policy_function=plain_policy)
-        _fill_autoscaling_model_id({"autoscaling_config": config}, "m")
-        assert "model_id" not in config.policy.policy_kwargs
-
-    def test_no_autoscaling_config_is_noop(self):
-        from ray.llm._internal.serve.core.server.llm_server import (
-            _fill_autoscaling_model_id,
-        )
-
-        _fill_autoscaling_model_id({}, "m")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
