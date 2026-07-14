@@ -259,6 +259,16 @@ ci/ray_ci/windows/
 @ windows tools
 ;
 
+# The manylinux forge script is COPY'd into manylinux.Dockerfile and defines
+# the wheel-build toolchain image (compiler, bazel, node) for both arches.
+# Emit 'docker linux_wheels' so editing it rebuilds the manylinux image and
+# runs the wheel/aarch64 core-binary builds, matching manylinux.Dockerfile
+# below. Must precede the general ci/build/ rule, which would otherwise
+# swallow it into 'tools' only.
+ci/build/build-manylinux-forge.sh
+@ docker linux_wheels tools
+;
+
 ci/pipeline/
 ci/build/
 ci/ray_ci/

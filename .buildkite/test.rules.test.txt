@@ -109,6 +109,9 @@ ci/ray_ci/windows/install_tools.sh: windows tools
 
 build-wheel.sh: tools
 ci/build/build_common.py: tools
+# The manylinux forge script feeds the wheel-build image, so it triggers the
+# docker/wheel builds, not just tools.
+ci/build/build-manylinux-forge.sh: docker linux_wheels tools
 
 # === Root Files ===
 
