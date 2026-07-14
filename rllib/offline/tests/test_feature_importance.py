@@ -32,8 +32,14 @@ class TestFeatureImportance(unittest.TestCase):
 
             estimate = evaluator.estimate(sample_batch)
 
-            # Check if the estimate is positive.
-            assert all(val > 0 for val in estimate.values())
+            # Feature importance is a mean of absolute action differences, so it is
+            # non-negative by construction. For an untrained policy a single
+            # low-influence feature can legitimately yield exactly 0 (permuting it
+            # flips no argmax action), which made the strict per-feature `> 0` check
+            # flaky. Require non-negativity for every feature and a positive total
+            # (perturbing features does change some actions).
+            assert all(val >= 0 for val in estimate.values())
+            assert sum(estimate.values()) > 0
 
     def test_feat_importance_estimate_on_dataset(self):
         # TODO (Kourosh): add a test for this
