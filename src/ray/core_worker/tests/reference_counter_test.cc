@@ -838,6 +838,36 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   rc->RemoveLocalReference(obj3, nullptr);
 }
 
+TEST_F(ReferenceCountTest, TestSkipsLocationPublishWithoutSubscribers) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+
+  // While the object locations channel has no subscribers, location updates
+  // must not build or publish any message.
+  EXPECT_CALL(*publisher_, ChannelHasSubscribers)
+      .WillRepeatedly(::testing::Return(false));
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->AddObjectLocation(obj, node);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // Once a subscriber is present, the same updates publish again.
+  EXPECT_CALL(*publisher_, ChannelHasSubscribers).WillRepeatedly(::testing::Return(true));
+  EXPECT_CALL(*publisher_, Publish).Times(::testing::AtLeast(1));
+  rc->AddObjectLocation(obj, node);
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.

@@ -331,6 +331,33 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   ASSERT_TRUE(subscription_index.HasSubscriber(subscriber_id));
 }
 
+TEST_F(PublisherTest, TestChannelHasSubscribers) {
+  const auto channel = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
+  const auto oid = ObjectID::FromRandom();
+
+  // No subscriber registered yet.
+  EXPECT_FALSE(publisher_->ChannelHasSubscribers(channel));
+
+  // Registering a subscription marks the channel as subscribed; other channels
+  // are unaffected.
+  EXPECT_FALSE(publisher_->RegisterSubscription(channel, subscriber_id_, oid.Binary())
+                   .has_error());
+  EXPECT_TRUE(publisher_->ChannelHasSubscribers(channel));
+  EXPECT_FALSE(
+      publisher_->ChannelHasSubscribers(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL));
+
+  // Unsubscribing the last entry marks the channel as unsubscribed again.
+  publisher_->UnregisterSubscription(channel, subscriber_id_, oid.Binary());
+  EXPECT_FALSE(publisher_->ChannelHasSubscribers(channel));
+
+  // Removing a subscriber wholesale also updates the channel.
+  EXPECT_FALSE(publisher_->RegisterSubscription(channel, subscriber_id_, oid.Binary())
+                   .has_error());
+  EXPECT_TRUE(publisher_->ChannelHasSubscribers(channel));
+  publisher_->UnregisterSubscriber(subscriber_id_);
+  EXPECT_FALSE(publisher_->ChannelHasSubscribers(channel));
+}
+
 TEST_F(PublisherTest, TestSubscriber) {
   absl::flat_hash_set<ObjectID> object_ids_published;
   reply = rpc::PubsubLongPollingReply();

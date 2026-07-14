@@ -1705,6 +1705,16 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  if (!object_info_publisher_->ChannelHasSubscribers(
+          rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL)) {
+    // Nobody subscribes to this worker's object locations, which is the common
+    // case when the objects it owns are small enough to be passed inline (no
+    // raylet ever needs to locate them). Skip building and publishing the
+    // update: the message would be dropped at the subscription index anyway,
+    // and a subscriber that registers later receives a full location snapshot
+    // at registration time, so nothing is lost.
+    return;
+  }
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
   auto object_size = it->second.object_size_;

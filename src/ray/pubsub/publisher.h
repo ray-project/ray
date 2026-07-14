@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -193,6 +194,13 @@ class SubscriptionIndex {
   std::vector<UniqueID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
   int64_t GetNumBufferedBytes() const;
+
+  /**
+   * @brief Returns the number of subscriber entries in this index.
+   *
+   * Counts both subscribers to all entities and subscribers to individual keys.
+   */
+  int64_t NumSubscriberEntries() const;
 
   /**
    * @brief Checks if there's no metadata remaining in the private attributes.
@@ -382,6 +390,7 @@ class Publisher : public PublisherInterface {
     // Insert index map for each channel.
     for (auto type : channels) {
       subscription_index_map_.emplace(type, SubscriptionIndex(type));
+      channel_subscriber_counts_.emplace(type, std::make_unique<std::atomic<int64_t>>(0));
       possible_channel_types += rpc::ChannelType_Name(type) + ", ";
     }
 
@@ -402,6 +411,17 @@ class Publisher : public PublisherInterface {
       const std::optional<std::string> &key_id) override;
 
   void Publish(rpc::PubMessage pub_message) override;
+
+  /**
+   * @brief Returns whether any subscriber is registered on the channel.
+   *
+   * Lock-free; safe to call from any thread. The count is updated under mutex_
+   * on (un)registration, so a concurrent reader may see a value that is stale
+   * by one registration. That is safe for the publish fast path: messages
+   * published before a registration completes are dropped by design and
+   * compensated by the snapshot published at registration time.
+   */
+  bool ChannelHasSubscribers(const rpc::ChannelType channel_type) const override;
 
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
@@ -496,6 +516,13 @@ class Publisher : public PublisherInterface {
   /// Index that stores the mapping of messages <-> subscribers.
   absl::flat_hash_map<rpc::ChannelType, SubscriptionIndex> subscription_index_map_
       ABSL_GUARDED_BY(mutex_);
+
+  /// Per-channel subscriber-entry counts mirroring subscription_index_map_, readable
+  /// without mutex_ (see ChannelHasSubscribers). Written under mutex_ whenever the
+  /// index is mutated. The map itself is only populated in the constructor, so
+  /// lock-free lookups are safe.
+  absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<std::atomic<int64_t>>>
+      channel_subscriber_counts_;
 
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
