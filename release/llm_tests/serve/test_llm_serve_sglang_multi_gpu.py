@@ -1,12 +1,7 @@
-"""SGLang deployments that reconfigure the GPUs, one per test.
+"""E2E tests for SGLang deployments that use every GPU on the node.
 
-Each test owns its serve.run/serve.shutdown because the configs need every GPU
-on the node, so they cannot share a resident deployment. Teardown waits for GPU
-memory to fall back near the pre-deploy baseline; serve.shutdown() returns
-before a replica frees its memory, so the next deploy OOMs otherwise.
-
-The GPU-memory helpers below duplicate the ones added to test_utils.py in the
-direct-streaming PR (#64611); consolidate on that helper once both land.
+Each test owns its serve.run/serve.shutdown and gates teardown on GPU memory
+clearing so the next deploy does not OOM.
 """
 
 import concurrent.futures
@@ -41,29 +36,47 @@ def _app_is_running():
         return False
 
 
-def _total_gpu_memory_used_mb() -> float:
-    """Return total GPU memory used (MB) across all devices via nvidia-smi."""
+def get_gpu_memory_used_mb() -> List[float]:
+    """Return GPU memory used (MB) per device via nvidia-smi."""
     result = subprocess.run(
         ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
         capture_output=True,
         text=True,
         check=True,
     )
-    used: List[float] = [
-        float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()
-    ]
-    return sum(used)
+    return [float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()]
 
 
-def _shutdown_and_wait_for_gpu_clear(baseline_mb: float, timeout: float = 240) -> None:
-    """Shut Serve down and block until the engine releases its GPU memory."""
-    serve.shutdown()
+def get_total_gpu_memory_mb() -> float:
+    """Return total GPU memory used (MB) across all devices."""
+    return sum(get_gpu_memory_used_mb())
+
+
+def wait_for_gpu_memory_to_clear(threshold_mb: float, timeout: float = 240) -> None:
+    """Block until total GPU memory used falls below threshold_mb.
+
+    serve.shutdown() returns before an engine has released its GPU memory (the
+    direct-ingress drain keeps the old replica resident for its full graceful
+    shutdown window), so a test that redeploys on the same GPUs must wait for the
+    previous replica to free memory first or the next deployment OOMs.
+    """
     wait_for_condition(
-        lambda: _total_gpu_memory_used_mb()
-        < baseline_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB,
+        lambda: get_total_gpu_memory_mb() < threshold_mb,
         timeout=timeout,
         retry_interval_ms=2000,
     )
+
+
+def _shutdown_and_wait_for_gpu_clear(baseline_mb: float) -> None:
+    """Shut Serve down and block until the engine releases its GPU memory.
+
+    serve.shutdown() returns before the replica frees GPU memory (the
+    direct-ingress drain keeps the old replica resident for its full graceful
+    shutdown window), so a later deployment on the same GPUs OOMs unless we wait
+    for used memory to fall back near the pre-deploy baseline first.
+    """
+    serve.shutdown()
+    wait_for_gpu_memory_to_clear(baseline_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB)
 
 
 def test_sglang_serve_e2e_multi_gpu():
@@ -93,7 +106,7 @@ def test_sglang_serve_e2e_multi_gpu():
         },
     )
 
-    baseline_gpu_mb = _total_gpu_memory_used_mb()
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
@@ -157,7 +170,7 @@ def test_sglang_serve_e2e_pipeline_parallel():
         },
     )
 
-    baseline_gpu_mb = _total_gpu_memory_used_mb()
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
@@ -221,7 +234,7 @@ def test_sglang_serve_e2e_multi_replica():
         },
     )
 
-    baseline_gpu_mb = _total_gpu_memory_used_mb()
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 

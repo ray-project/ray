@@ -1,8 +1,5 @@
-"""SGLang embedding e2e test, isolated from the chat suite.
-
-The embedding server deploys with is_embedding=True to the default app name, so
-it must not share a module with the chat tests: its serve.run would replace the
-chat deployment and break them.
+"""E2E test for the SGLang embedding endpoint on its own module-scoped server
+(is_embedding=True on the default app).
 """
 
 import sys

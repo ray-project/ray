@@ -1,9 +1,8 @@
-"""SGLang e2e tests sharing one module-scoped deployment (sglang_client).
+"""E2E tests against a shared, module-scoped SGLang deployment: chat and
+completions, streaming, tokenize/detokenize, and pause/sleep/reset ops, plus
+placement-group config checks.
 
-Do not serve.shutdown() or redeploy the default app in a test body here; it
-kills the shared controller and breaks the handle-based tests. Tests that need
-their own deployment go in the sibling test_llm_serve_sglang_multi_gpu.py and
-test_llm_serve_sglang_embeddings.py.
+Tests here share one instance; none may call serve.shutdown().
 """
 
 import sys
