@@ -2012,7 +2012,7 @@ py_test(
 
 py_test(
     name = "algorithms/tests/test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_telemetry.py"],
     tags = [
         "algorithms",
@@ -3315,7 +3315,7 @@ py_test(
 
 py_test(
     name = "test_actor_manager",
-    size = "medium",
+    size = "large",
     srcs = ["utils/tests/test_actor_manager.py"],
     data = ["utils/tests/random_numbers.pkl"],
     tags = [

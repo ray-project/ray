@@ -93,9 +93,11 @@ class TestMultiCallback(unittest.TestCase):
         # Build the algorithm. At this stage, callbacks get already validated.
         algo = config.build()
 
-        # Run 10 training iteration and check, if the metrics defined in the
+        # Run a few training iterations and check, if the metrics defined in the
         # callbacks made it into the results. Furthermore, check, if the values are correct.
-        for _ in range(10):
+        # The callback values are constant, so a few iterations are enough; running many
+        # made this test straddle the 180s per-test timeout.
+        for _ in range(3):
             results = algo.train()
             self.assertIn("callback_1", results["env_runners"])
             self.assertIn("callback_2", results["env_runners"])
