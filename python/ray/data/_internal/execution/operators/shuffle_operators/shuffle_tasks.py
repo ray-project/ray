@@ -232,7 +232,7 @@ def _gather_input_shards(
     return tables
 
 
-@ray.remote(max_calls=1)
+@ray.remote
 def _shuffle_reduce_task(
     shard_refs_by_input: List[List[ObjectRef]],
     partition_id: int,

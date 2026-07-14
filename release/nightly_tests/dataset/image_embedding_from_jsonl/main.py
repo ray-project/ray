@@ -35,6 +35,10 @@ INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
 OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
+# Ray Data can't prevent OOMs if you don't set `memory` for high-memory operations like
+# this one. We chose 3 GiB because it was the max USS we observed in Ray 2.56 weekly
+# test runs.
+READ_MEMORY = 3 * 1024**3
 
 PROCESSOR = ViTImageProcessor(
     do_convert_rgb=None,
@@ -206,8 +210,13 @@ def main(args: argparse.Namespace, profiling: Profiling):
     num_gpus = max(args.inference_concurrency)
 
     def benchmark_fn():
+        # `default_map_logical_memory_enabled` is a best practice that's required for
+        # Ray Data to prevent OOMs. It's not enabled by default in Ray 2.56, but we
+        # intend to enable it by default in a future release.
+        ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
         ds = (
-            ray.data.read_json(INPUT_PREFIX, lines=True)
+            ray.data.read_json(INPUT_PREFIX, lines=True, memory=READ_MEMORY)
             .flat_map(decode)
             .map(preprocess)
             .map_batches(
