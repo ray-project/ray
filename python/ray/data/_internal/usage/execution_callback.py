@@ -53,8 +53,8 @@ class UsageCallback(ExecutionCallback):
         self._oom_kills_at_end: Optional[int] = None
         self._unexpected_worker_kills_at_start: Optional[int] = None
         self._unexpected_worker_kills_at_end: Optional[int] = None
-        # Cluster metrics are sampled on background threads off the start path
-        # each reader's start sample is fired before execution starts and joined at execution end.
+        # Cluster metrics are sampled on background threads off the start path.
+        # Each reader's start sample is fired before execution starts and joined at execution end.
         self._spilled_sample: Optional[Future] = None
         self._dead_nodes_sample: Optional[Future] = None
         self._oom_kills_sample: Optional[Future] = None
