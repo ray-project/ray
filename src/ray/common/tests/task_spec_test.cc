@@ -201,6 +201,33 @@ TEST(TaskSpecTest, TestTaskSpecification) {
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategyNodeId() == node_id);
 }
 
+TEST(TaskSpecTest, TestUsesTensorTransport) {
+  TaskSpecification task_spec;
+  ASSERT_FALSE(task_spec.UsesTensorTransport());
+
+  auto &message = task_spec.GetMutableMessage();
+  auto *arg = message.add_args();
+  auto *nested_ref = arg->add_nested_inlined_refs();
+
+  message.set_tensor_transport("");
+  arg->set_tensor_transport("");
+  arg->mutable_object_ref()->set_tensor_transport("");
+  nested_ref->set_tensor_transport("");
+  ASSERT_FALSE(task_spec.UsesTensorTransport());
+
+  message.set_tensor_transport("transport");
+  ASSERT_TRUE(task_spec.UsesTensorTransport());
+  message.clear_tensor_transport();
+  arg->set_tensor_transport("transport");
+  ASSERT_TRUE(task_spec.UsesTensorTransport());
+  arg->clear_tensor_transport();
+  arg->mutable_object_ref()->set_tensor_transport("transport");
+  ASSERT_TRUE(task_spec.UsesTensorTransport());
+  arg->mutable_object_ref()->clear_tensor_transport();
+  nested_ref->set_tensor_transport("transport");
+  ASSERT_TRUE(task_spec.UsesTensorTransport());
+}
+
 TEST(TaskSpecTest, TestRootDetachedActorId) {
   ActorID actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
