@@ -170,6 +170,24 @@ def ray_deps_setup():
         sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
+    # RocksDB is the embedded storage backend for GCS fault tolerance
+    # (REP-64). It is built minimally via rules_foreign_cc's cmake() rule;
+    # see bazel/rocksdb.BUILD for the build configuration.
+    #
+    # Version constraint: pin to a RocksDB release that supports C++17.
+    # RocksDB 10.7.0 (Sep 2025) raised the minimum to C++20 for both the
+    # library and any code including its headers (GCC >= 11, Clang >= 10,
+    # MSVC >= 2019). Ray's .bazelrc sets `-std=c++17`, so bumping past
+    # 10.6.2 requires a coordinated C++20 migration across Ray. v10.6.2
+    # is the latest C++17-compatible release; keep it until/unless Ray
+    # itself moves to C++20.
+    auto_http_archive(
+        name = "com_github_facebook_rocksdb",
+        build_file = "@io_ray//bazel:rocksdb.BUILD",
+        url = "https://github.com/facebook/rocksdb/archive/refs/tags/v10.6.2.tar.gz",
+        sha256 = "14c619b8a10f994aa6061bd12182b20270c4c27c2f3d9cb4376d57f3cd1c5d7f",
+    )
+
     auto_http_archive(
         name = "rules_jvm_external",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",

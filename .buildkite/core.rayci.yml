@@ -111,11 +111,13 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
         --only-tags ray_client
 
+  # Conditionally runs on premerge via the `redis_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ is
+  # modified. Always runs on postmerge.
   - label: ":ray: core: redis tests"
     tags:
-      - core_python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: large
     parallelism: 4
     commands:
@@ -123,6 +125,26 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
+        --except-tags custom_setup
+        --python-version 3.10 --build-name corebuild-py3.10
+
+  # REP-64 GCS FT with the embedded RocksDB backend. Mirrors the redis
+  # tests above but selects rocksdb-mode via TEST_GCS_ROCKSDB=1 (see
+  # python/ray/tests/conftest.py::_setup_rocksdb_gcs). Conditionally
+  # runs on premerge via the `rocksdb_tests` tag (see
+  # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ or the
+  # rocksdb build config is modified. Always runs on postmerge.
+  - label: ":ray: core: rocksdb tests"
+    tags:
+      - rocksdb_tests
+      - oss
+    instance_type: large
+    parallelism: 4
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
+        --install-mask all-ray-libraries
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test-env=TEST_GCS_ROCKSDB=1
         --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
 
@@ -152,13 +174,23 @@ steps:
 
   - label: ":ray: core: out of disk redis tests"
     tags:
-      - core_python
+      - redis_tests
       - oss
-      - skip-on-premerge
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --test-env=TEST_EXTERNAL_REDIS=1
+        --only-tags=tmpfs --tmp-filesystem=tmpfs
+        --python-version 3.10 --build-name corebuild-py3.10
+
+  - label: ":ray: core: out of disk rocksdb tests"
+    tags:
+      - rocksdb_tests
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --test-env=TEST_GCS_ROCKSDB=1
         --only-tags=tmpfs --tmp-filesystem=tmpfs
         --python-version 3.10 --build-name corebuild-py3.10
 
