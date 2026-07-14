@@ -752,6 +752,15 @@ RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
 )
 
+# HAProxy close-spread-time. Drains the old worker's idle connections over this
+# window at soft-stop so they migrate to the reloaded config instead of lingering
+# until hard-stop-after. None omits it.
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
+    else None
+)
+
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.
@@ -979,6 +988,7 @@ RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
     "RAY_SERVE_PORT_QUARANTINE_S",
     float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
+
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.

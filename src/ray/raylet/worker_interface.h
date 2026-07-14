@@ -87,7 +87,8 @@ class WorkerInterface {
   virtual std::optional<pid_t> GetSavedProcessGroupId() const = 0;
   virtual void SetSavedProcessGroupId(pid_t pgid) = 0;
 
-  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(const TaskID &task_id,
+                                        int32_t attempt_number) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;

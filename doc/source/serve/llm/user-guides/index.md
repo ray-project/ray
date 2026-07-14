@@ -24,6 +24,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 ## Choose an engine
 
 - {doc}`vLLM compatibility <vllm-compatibility>`: use vLLM features such as embeddings, structured outputs, vision, and reasoning through Ray Serve LLM.
+- {doc}`Custom vLLM models <custom-vllm>`: serve an out-of-tree architecture with a vLLM plugin, using a Qwen3 reward model as the example.
 - {doc}`SGLang integration <sglang>`: run SGLang as the inference engine instead of vLLM.
 
 ## Operate in production
@@ -45,6 +46,7 @@ KV cache offloading <kv-cache-offloading>
 Prefix-aware routing <prefix-aware-routing>
 Direct streaming <direct-streaming>
 vLLM compatibility <vllm-compatibility>
+Custom vLLM models <custom-vllm>
 SGLang integration <sglang>
 Observability and monitoring <observability>
 ```
