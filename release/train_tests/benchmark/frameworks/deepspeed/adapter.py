@@ -41,6 +41,20 @@ _NUM_EXPERTS_ATTRS = ("num_experts",)
 _TOP_K_ATTRS = ("num_experts_per_tok",)
 
 
+def _deep_update(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge ``overrides`` into ``base`` (nested dicts merge,
+    scalars/lists replace). A shallow update would let a partial override like
+    ``zero_optimization.offload_optimizer`` silently drop the adapter-built
+    ``stage``/``overlap_comm`` keys.
+    """
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def _first_attr(config, names):
     # `is not None` (not truthiness) so a legitimate 0 isn't skipped — a falsy
     # check would silently fall through to the next alias / None.
@@ -169,9 +183,10 @@ class DeepSpeedAdapter(FrameworkAdapter):
             "gradient_clipping": 1.0,
         }
         ds_config.update(self._precision_config())
-        # Framework-native overrides win, so a ds_config.json can fully
-        # customize without code changes.
-        ds_config.update(self.cfg.model.framework_config or {})
+        # Framework-native overrides win, deep-merged so a partial override
+        # (e.g. just zero_optimization.offload_optimizer) refines the
+        # adapter-built config instead of clobbering whole nested blocks.
+        _deep_update(ds_config, self.cfg.model.framework_config or {})
         return ds_config
 
     # ---- model / data --------------------------------------------------------
