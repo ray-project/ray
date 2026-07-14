@@ -284,6 +284,7 @@ python/ray/data/tests/test_idempotency_optimizer_guards.py
 python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
+python/ray/data/tests/test_iter_torch_batches.py
 python/ray/data/tests/test_iterator.py
 python/ray/data/tests/test_join.py
 python/ray/data/tests/test_jumbo_arrow_block.py

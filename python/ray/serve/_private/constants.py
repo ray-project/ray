@@ -618,6 +618,12 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
 RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
+# Feature flag to run gc.collect() + gc.freeze() at the end of replica
+# initialization. Objects allocated during startup are long-lived, so freezing
+# them excludes them from future GC scans, reducing GC pauses / tail latency in
+# the request path. Set to 0 to disable (e.g. if memory usage is a concern).
+RAY_SERVE_FREEZE_GC_ON_STARTUP = get_env_bool("RAY_SERVE_FREEZE_GC_ON_STARTUP", "1")
+
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
@@ -750,6 +756,15 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 # Generous: a reload under load transfers listener FDs from a busy predecessor.
 RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
+)
+
+# HAProxy close-spread-time. Drains the old worker's idle connections over this
+# window at soft-stop so they migrate to the reloaded config instead of lingering
+# until hard-stop-after. None omits it.
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
+    else None
 )
 
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
@@ -1027,6 +1042,7 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
+    RAY_SERVE_FREEZE_GC_ON_STARTUP = get_env_bool("RAY_SERVE_FREEZE_GC_ON_STARTUP", "1")
 
 if RAY_SERVE_ENABLE_HA_PROXY:
     # Direct ingress must be enabled if HAProxy is enabled.

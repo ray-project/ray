@@ -49,31 +49,32 @@ def _assert_keys_colocated(per_block):
     ), f"A key landed in more than one block: {per_block}"
 
 
+@pytest.fixture(autouse=True)
+def data_context_use_hash_shuffle_v2(restore_data_context):
+    ctx = restore_data_context
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
 def test_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
     num_partitions,
 ):
     """No rows are lost or duplicated; key totals are preserved."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(1000, override_num_blocks=10)
-    out = ds.repartition(num_partitions, keys=["id"])
+    out = ds.repartition(num_partitions, keys=["id"]).materialize()
     assert out.count() == 1000
     assert out.sum("id") == sum(range(1000))
 
 
 def test_repartition_block_number_matched(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All-non-empty partitions => exactly num_partitions output blocks."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 1000 distinct keys over 8 buckets => all 8 partitions are non-empty.
     ds = ray.data.range(1000, override_num_blocks=20)
@@ -83,12 +84,9 @@ def test_repartition_block_number_matched(
 
 def test_same_key_lands_in_same_block(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All rows sharing a key should end up in one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"k": row["id"] % 25, "v": row["id"]}
@@ -101,13 +99,10 @@ def test_same_key_lands_in_same_block(
 
 def test_multi_column_keys(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Composite keys hash on all columns: every distinct (a, b) tuple lands in
     exactly one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"a": row["id"] % 5, "b": row["id"] % 7, "v": row["id"]}
@@ -120,13 +115,10 @@ def test_multi_column_keys(
 
 def test_more_partitions_than_keys_emits_empty_blocks(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Requesting more partitions than there are distinct keys emits the extra
     partitions as empty (0-row) blocks that still carry the dataset schema."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 3 distinct keys into 50 partitions => at most 3 non-empty, >=47 empty.
     ds = ray.data.range(600, override_num_blocks=10).map(
@@ -153,12 +145,9 @@ def test_more_partitions_than_keys_emits_empty_blocks(
 
 def test_repartition_empty_dataset(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Empty dataset should still output N blocks"""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(100, override_num_blocks=4).filter(lambda row: False)
     out = ds.repartition(4, keys=["id"]).materialize()
@@ -174,12 +163,9 @@ def test_repartition_empty_dataset(
 
 def test_repartition_with_sort_produces_sorted_partitions(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Check that rows are sorted in every partition."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(200, override_num_blocks=4)
     out = ds.repartition(4, keys=["id"], sort=True)
