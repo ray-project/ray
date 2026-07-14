@@ -470,13 +470,20 @@ class TestMultiplePlatforms:
     POSTMERGE_PIPELINE_ID = "test-postmerge-pipeline-id"
     WORK_REPO = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
     @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
     @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
     def test_multiple_platforms_processed(
-        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
     ):
         """Test that multiple platforms are each processed with correct source refs."""
         from click.testing import CliRunner
@@ -531,13 +538,20 @@ class TestMultiplePlatforms:
             for src, dest in copy_calls
         )
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
     @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
     @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
     def test_multiple_platforms_fails_if_one_missing(
-        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
     ):
         """Test that processing fails if any platform's source image is missing."""
         from click.testing import CliRunner
@@ -579,6 +593,367 @@ class TestMultiplePlatforms:
         assert result.exit_code != 0
         assert isinstance(result.exception, PushRayImageError)
         assert "Source image not found" in str(result.exception)
+
+
+class TestPipFreezeArtifact:
+    """Tests for pip-freeze canonical tag + Buildkite artifact filename."""
+
+    def test_release_branch_cpu_default_python(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="releases/2.56.0",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-py310-cpu"
+        assert (
+            ctx.pip_freeze_artifact_filename()
+            == "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_master_branch_uses_bare_sha(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="master",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "d7951f-py310-cpu"
+        assert (
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_pr_branch_uses_bare_sha(self):
+        # PR / feature branch: not master, not releases/* -> bare sha (the form
+        # this change is verified against on the PR's own release-pipeline CI).
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="ci-publish-step-pip-freeze-artifact",
+            commit="d7951f63abcd",
+        )
+        assert (
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_extra_variation_and_aarch64_suffix(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY_EXTRA,
+            python_version="3.11",
+            platform="cpu",
+            architecture="aarch64",
+            branch="releases/2.56.0",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-extra-py311-cpu-aarch64"
+        assert (
+            ctx.pip_freeze_artifact_filename()
+            == "ray-extra:2.56.0.d7951f-extra-py311-cpu-aarch64_pip-freeze.txt"
+        )
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
+    def test_export_pip_freeze_writes_artifact(self, mock_export, tmp_path):
+        import os
+
+        from ci.ray_ci.automation.push_ray_image import _export_pip_freeze
+
+        # Simulate crane export laying down the image filesystem.
+        def fake_export(src_ref, export_dir):
+            freeze = os.path.join(export_dir, "home", "ray", "pip-freeze.txt")
+            os.makedirs(os.path.dirname(freeze), exist_ok=True)
+            with open(freeze, "w") as f:
+                f.write("ray==2.56.0\nnumpy==1.26.4\n")
+
+        mock_export.side_effect = fake_export
+
+        artifact_dir = tmp_path / "image-info"
+        with mock.patch(
+            "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
+            str(artifact_dir),
+        ):
+            ctx = make_ctx(
+                ray_type=RayType.RAY,
+                python_version="3.10",
+                platform="cpu",
+                architecture=DEFAULT_ARCHITECTURE,
+                branch="releases/2.56.0",
+                commit="d7951f63abcd",
+            )
+            dest = _export_pip_freeze("work-repo:build123-ray-py3.10-cpu", ctx)
+
+        expected = artifact_dir / "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
+        assert dest == str(expected)
+        assert expected.read_text() == "ray==2.56.0\nnumpy==1.26.4\n"
+        mock_export.assert_called_once_with(
+            "work-repo:build123-ray-py3.10-cpu", mock.ANY
+        )
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
+    def test_export_pip_freeze_missing_file_raises(self, mock_export, tmp_path):
+        from ci.ray_ci.automation.push_ray_image import (
+            PushRayImageError,
+            _export_pip_freeze,
+        )
+
+        # crane export "succeeds" but produces no pip-freeze.txt.
+        mock_export.side_effect = lambda src_ref, export_dir: None
+
+        with mock.patch(
+            "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
+            str(tmp_path / "image-info"),
+        ):
+            ctx = make_ctx(platform="cpu", branch="releases/2.56.0")
+            with pytest.raises(PushRayImageError, match="pip-freeze.txt not found"):
+                _export_pip_freeze("work-repo:tag", ctx)
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
+    def test_export_pip_freeze_wraps_crane_error(self, mock_export, tmp_path):
+        from ci.ray_ci.automation.crane_lib import CraneError
+        from ci.ray_ci.automation.push_ray_image import (
+            PushRayImageError,
+            _export_pip_freeze,
+        )
+
+        # crane export itself fails -> wrapped as PushRayImageError (mirrors how
+        # _copy_image wraps ImageTagsError), not propagated as a raw CraneError.
+        mock_export.side_effect = CraneError("crane export failed (rc=1)")
+
+        with mock.patch(
+            "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
+            str(tmp_path / "image-info"),
+        ):
+            ctx = make_ctx(platform="cpu", branch="releases/2.56.0")
+            with pytest.raises(PushRayImageError, match="Failed to export pip-freeze"):
+                _export_pip_freeze("work-repo:tag", ctx)
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_exports_pip_freeze_for_cpu_only(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+    ):
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--platform",
+                "cu12.1.1-cudnn8",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                "releases/2.56.0",
+                "--commit",
+                "d7951f63abcd",
+            ],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        # Exactly one export -- for the cpu platform, not the cuda one.
+        assert mock_export.call_count == 1
+        src_ref = mock_export.call_args[0][0]
+        assert "ray-py3.10-cpu" in src_ref
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_no_export_when_no_cpu_platform(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+    ):
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.12",
+                "--platform",
+                "cu13.0.0-cudnn",
+                "--image-type",
+                "ray-llm",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                "releases/2.56.0",
+                "--commit",
+                "d7951f63abcd",
+            ],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        mock_export.assert_not_called()
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_exports_even_in_dry_run(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+    ):
+        # Feature/PR branch -> _should_upload() is False -> dry_run=True.
+        # The pip-freeze export must STILL run; this is what makes the artifact
+        # verifiable on the PR's own release-pipeline CI build.
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                "ci-publish-step-pip-freeze-artifact",
+                "--commit",
+                "d7951f63abcd",
+            ],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        # Pushes were skipped (dry run)...
+        mock_copy.assert_called()
+        assert all(call.kwargs.get("dry_run") for call in mock_copy.call_args_list)
+        # ...but the pip-freeze artifact was still exported.
+        assert mock_export.call_count == 1
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_export_failure_does_not_break_pipeline(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+    ):
+        # A failure while staging the pip-freeze artifact must NOT fail the
+        # publish step -- image pushes are the critical path, and this code
+        # path cannot be validated until it runs in postmerge.
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+        mock_export.side_effect = RuntimeError("crane export blew up")
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                "releases/2.56.0",
+                "--commit",
+                "d7951f63abcd",
+            ],
+        )
+
+        # The export raised, but the publish step still succeeded...
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert mock_export.call_count == 1
+        # ...and image copying still happened.
+        mock_copy.assert_called()
 
 
 if __name__ == "__main__":

@@ -14,11 +14,12 @@ from ray.data._internal.planner._obstore_download import (
     StoreRegistry,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _split_obstore_uri,
 )
 from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem, _split_uri
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 logger = logging.getLogger(__name__)
 
@@ -268,11 +269,11 @@ class AsyncPartitionActor(PartitionActor):
 
         async def _head_one(uri: str) -> int:
             try:
-                store_url, path = _split_uri(uri)
+                store_url, path = _split_obstore_uri(uri)
                 store = self._registry.get(store_url)
                 async with sem:
                     meta = await obs.head_async(store, path)
-                return meta["size"] if isinstance(meta, dict) else meta.size
+                return meta["size"]
             except Exception:
                 return 0
 

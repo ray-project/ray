@@ -16,6 +16,7 @@ from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner impor
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
+from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
 
 
 @pytest.mark.parametrize(
@@ -116,6 +117,25 @@ def test_round_robin_partitioner_with_no_size_estimates():
     assert len(partitions) == 2
     assert partitions[0] == ["path0", "path2"]
     assert partitions[1] == ["path1"]
+
+
+def test_weighted_round_robin_partitioner_can_emit_before_overflow():
+    partitioner = WeightedRoundRobinPartitioner(
+        num_buckets=1,
+        min_bucket_size=1,
+        max_bucket_size=3,
+        emit_before_overflow=True,
+    )
+
+    partitioner.add_item("a", 2)
+    partitioner.add_item("b", 2)
+
+    assert partitioner.has_partition()
+    assert partitioner.next_partition() == ["a"]
+
+    partitioner.finalize()
+    assert partitioner.has_partition()
+    assert partitioner.next_partition() == ["b"]
 
 
 if __name__ == "__main__":

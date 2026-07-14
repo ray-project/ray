@@ -237,6 +237,7 @@ class FakeDirectIngressController(ServeController):
         self.deployment_state_manager = deployment_state_manager
         self.proxy_state_manager = proxy_state_manager
         self._direct_ingress_enabled = True
+        self._last_ingress_port_tuples = set()
         self._ha_proxy_enabled = False
         self._controller_node_id = "head_node_id"
 
@@ -1134,6 +1135,64 @@ def test_stop_one_running_replica_for_testing_delegates_to_manager(
     direct_ingress_controller._stop_one_running_replica_for_testing(deployment_id)
 
     assert deployment_state_manager.stopped_deployment_id == deployment_id
+
+
+def test_recon_port_gate_feeds_only_new_ingress_tuples(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """C3: update_ports is fed only the set-diff of
+    ingress tuples new since the last sync -- the full set on the first tick (empty
+    cache) and an empty list on an unchanged second tick."""
+    tuples = [("node1", "r1", 30000, 40000), ("node2", "r2", 30001, 40001)]
+    direct_ingress_controller.deployment_state_manager.get_ingress_replicas_info = (
+        lambda: list(tuples)
+    )
+
+    with mock.patch.object(NodePortManager, "update_ports") as mock_update:
+        # First tick: cache empty -> full emit.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert set(mock_update.call_args[0][0]) == set(tuples)
+
+        # Second tick: ingress set unchanged -> empty diff.
+        mock_update.reset_mock()
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_args[0][0] == []
+
+
+def test_recon_port_gate_prune_skips_unchanged_node(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """C4: prune skips a node's O(replicas) reclaim
+    scan when that node's alive-replica set is unchanged since the last prune."""
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    replica_id = ReplicaID(unique_id="replica1", deployment_id=deployment_id)
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="replica1",
+        max_ongoing_requests=100,
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={deployment_id: [replica_info]},
+    )
+    direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    node1_manager = NodePortManager.get_node_manager("node1")
+
+    with mock.patch.object(
+        node1_manager,
+        "_prune_replica_ports",
+        wraps=node1_manager._prune_replica_ports,
+    ) as spy:
+        # First tick: fingerprint unset -> reclaim scan runs.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert spy.call_count == 1
+        # Second tick: alive set unchanged -> reclaim scan skipped.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert spy.call_count == 1
 
 
 if __name__ == "__main__":

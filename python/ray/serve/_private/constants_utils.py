@@ -270,7 +270,8 @@ def _deprecation_warning(name: str) -> None:
 
     TODO: remove this function for the '3.0.0' release.
 
-    :param name: environment variable name
+    Args:
+        name: Environment variable name.
     """
 
     def get_new_name(name: str) -> str:
@@ -300,7 +301,8 @@ def _deprecation_warning(name: str) -> None:
 def warn_if_deprecated_env_var_set(name: str) -> None:
     """Warn if a fully deprecated environment variable is set.
 
-    :param name: environment variable name
+    Args:
+        name: Environment variable name.
     """
     if name in _fully_deprecated_env_vars and os.environ.get(name):
         config_option = _fully_deprecated_env_vars[name]

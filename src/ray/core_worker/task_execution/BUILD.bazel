@@ -73,6 +73,8 @@ ray_cc_library(
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/raylet_rpc_client:raylet_client_interface",
         "//src/ray/rpc:rpc_callback_types",
     ],
 )

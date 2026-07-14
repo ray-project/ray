@@ -16,9 +16,11 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.logical.operators import Project
 from ray.data.aggregate import Count, Max, Mean, Min, Sum
-from ray.data.expressions import col, lit
+from ray.data.expressions import col, lit, star
 from ray.data.tests.conftest import *  # noqa: F401,F403
+from ray.data.tests.util import assert_exprs_equal
 
 
 @pytest.fixture(scope="module")
@@ -151,6 +153,43 @@ class TestProject:
                 pa.field("d", pa.float64()),
             ]
         )
+
+
+class TestDropColumns:
+    """Phase 3: ``Dataset.drop_columns`` reshapes into a ``Project`` over
+    the surviving columns when the input schema is known, so the typed
+    chain stays intact through it."""
+
+    def test_drop_columns_static_schema(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).drop_columns(["b"])
+        # Reshaped to a ``Project`` (not a UDF ``MapBatches``), so the
+        # typed schema chain survives.
+        assert isinstance(ds._logical_plan.dag, Project)
+        assert _static_schema(ds) == pa.schema(
+            [pa.field("a", pa.int32()), pa.field("k", pa.string())]
+        )
+
+    def test_drop_columns_missing_raises_eagerly(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path))
+        with pytest.raises(KeyError, match="not found in dataset schema"):
+            ds.drop_columns(["does_not_exist"])
+
+    def test_drop_columns_after_map_batches_falls_back(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        # Input schema is unknown downstream of ``map_batches``, so the
+        # implementation falls back to a ``MapBatches`` closure and the
+        # typed-chain guarantee no longer holds.
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .map_batches(lambda b: b)
+            .drop_columns(["b"])
+        )
+        assert ds.schema(fetch_if_missing=False) is None
 
 
 class TestAggregate:
@@ -337,6 +376,52 @@ class TestEndToEndStaticResolution:
                 pa.field("mean(b)", pa.float64()),
             ]
         )
+
+
+class TestEagerStarExpansion:
+    """``Project.__post_init__`` should expand ``StarExpr`` to
+    explicit ``col()`` references when the input schema is known, so
+    downstream optimizer rules never see ``StarExpr`` on typed chains."""
+
+    def test_with_column_expands_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).with_column(
+            "new", col("a") + lit(10)
+        )
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        # Star expanded to explicit input cols + the new aliased expr; no
+        # ``StarExpr`` remains on this typed chain.
+        assert_exprs_equal(
+            project.exprs,
+            [col("a"), col("b"), col("k"), (col("a") + lit(10)).alias("new")],
+        )
+
+    def test_rename_columns_expands_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).rename_columns({"a": "A"})
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        # The rename AliasExpr substitutes for its source column "a" *in
+        # place* (position preserved), matching runtime ``eval_projection``
+        # / ``exprlist_to_fields`` ordering.
+        assert_exprs_equal(project.exprs, [col("a")._rename("A"), col("b"), col("k")])
+
+    def test_udf_chain_preserves_star(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        # Input schema is unknown after map_batches, so StarExpr must
+        # stay for runtime ``eval_projection`` to expand per-block.
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .map_batches(lambda b: b)
+            .with_column("new", col("a") + lit(10))
+        )
+        project = ds._logical_plan.dag
+        assert isinstance(project, Project)
+        assert_exprs_equal(project.exprs, [star(), (col("a") + lit(10)).alias("new")])
 
 
 if __name__ == "__main__":
