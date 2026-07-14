@@ -1815,7 +1815,8 @@ class Replica:
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
                 self._initialization_start_time = time.time()
-                if not self._user_callable_initialized:
+                is_first_init = not self._user_callable_initialized
+                if is_first_init:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
@@ -1860,6 +1861,16 @@ class Replica:
                         deployment_config.user_config,
                         rank=rank,
                     )
+
+                if is_first_init and RAY_SERVE_FREEZE_GC_ON_STARTUP:
+                    # User code initialization is complete, including the first
+                    # reconfigure call (if a user_config was provided). Collect
+                    # garbage and freeze the GC: startup objects are long-lived,
+                    # so excluding them from future GC scans reduces GC pauses
+                    # in the request path. Any allocations after this point
+                    # will be from user requests.
+                    gc.collect()
+                    gc.freeze()
 
             # A new replica should not be considered healthy until it passes
             # an initial health check. If an initial health check fails,
@@ -3845,13 +3856,6 @@ class UserCallableWrapper:
         self._user_autoscaling_stats = getattr(
             self._callable, "record_autoscaling_stats", None
         )
-
-        if RAY_SERVE_FREEZE_GC_ON_STARTUP:
-            # At this point, the user code has finished initializing.
-            # We can now collect garbage and freeze the garbage collector.
-            # Any allocations after this point will be from user requests.
-            gc.collect()
-            gc.freeze()
 
         logger.info(
             "Finished initializing replica.",
