@@ -138,7 +138,7 @@ def _setup_torch_process_group(
                 f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
-    elif backend == "hccl":
+    elif backend in ("hccl", "tpu_dist"):
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
@@ -189,13 +189,31 @@ class _TorchBackend(Backend):
             if backend_config.backend is None:
                 resources = worker_group.get_resources_per_worker()
                 num_gpus_per_worker = resources.get("GPU", 0)
+                num_tpus_per_worker = resources.get("TPU", 0)
 
                 if num_gpus_per_worker > 0:
                     backend = "nccl"
+                elif num_tpus_per_worker > 0:
+                    backend = "tpu_dist"
                 else:
                     backend = "gloo"
             else:
                 backend = backend_config.backend
+
+            if backend == "tpu_dist":
+                resources = worker_group.get_resources_per_worker()
+                num_tpus_per_worker = resources.get("TPU", 0)
+                if num_tpus_per_worker != 1:
+                    # Unlike CUDA, the PyTorch TPU runtime (via torch_tpu) binds each
+                    # process to a single TPU device upon initialization. Changing the
+                    # active device dynamically within a single process is not supported.
+                    # Therefore, we strictly require exactly 1 TPU device per worker.
+                    raise ValueError(
+                        "For PyTorch TPU training, each worker must have exactly 1 TPU device. "
+                        f"Got resources_per_worker={{'TPU': {num_tpus_per_worker}}}. "
+                        "Please set `num_workers` to the total number of TPU devices and "
+                        "`resources_per_worker={'TPU': 1}`."
+                    )
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
@@ -216,6 +234,10 @@ class _TorchBackend(Backend):
                     f"{backend_config.init_method}) is not supported. Must "
                     f"be either 'env' or 'tcp'."
                 )
+
+            # PyTorch distributed backends require LOCAL_RANK and other env vars
+            # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
+            worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
             for i in range(len(worker_group)):
