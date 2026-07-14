@@ -31,7 +31,7 @@ The implementation has been **redesigned** (§7): the producer→consumer `MoveC
 
 **One correctness gap is knowingly left OPEN:** the consumer-dies-before-the-owner-learns race — full description + candidate fixes in **§5 item 1**.
 
-**Next feature (PLANNED, not started):** a "producer physically freed" callback so Ray Data admits the next producer task at the real physical-free moment (M2) instead of Justin's premature submit-time simulation — full design + flow chart in **§8**.
+**Ray Data backpressure feature (IMPLEMENTED 2026-07-13, committed both repos, not yet workload-tested):** a "producer physically freed" callback so Ray Data admits the next producer task at the real physical-free moment (M2) instead of Justin's premature submit-time simulation — full design, flow chart, the leak fix found in review, and remaining to-dos in **§8**.
 
 Prior state (2026-07-07):
 
@@ -554,9 +554,9 @@ Full description, why it's permanent, and the candidate fixes live in the single
 
 ---
 
-## 8. Planned: Ray Data backpressure integration — "producer physically freed" callback
+## 8. Ray Data backpressure integration — "producer physically freed" callback
 
-**Status: PLANNED, not implemented.** Design agreed 2026-07-13. Spans two repos (core in `~/ray`, Ray Data wiring in `~/rayturbo`).
+**Status: IMPLEMENTED (2026-07-13), committed in both repos.** Core in `~/ray` (commit `aa6ec723d0`, "Add function using which ray data can register callback to be fired when object is freed from producer", + the callback-lifetime fix in §8.6). Ray Data wiring in `~/rayturbo` (`resource_bank.py` steps 8–9 + the same core fix). Compile-verified; not yet workload-tested (see §8.5 / §8.7).
 
 ### 8.1 Goal & the problem being fixed
 
@@ -627,21 +627,32 @@ baseline out-of-scope cb:   at refcount→0 (fully consumed downstream) ── t
 ★ this plan:                at M2 (producer PHYSICAL free)            ── correct
 ```
 
-### 8.4 Implementation parts
+### 8.4 What was implemented
 
-**Core (`~/ray`, this branch)** — a new per-object callback mirroring `add_object_out_of_scope_callback` exactly. The producer→owner signal rides the **existing** REMOVED update (one hook, one flag), not a new RPC:
+**Core (`~/ray`, and ported into `~/rayturbo`)** — a new per-object callback mirroring `add_object_out_of_scope_callback`. The producer→owner signal rides the **existing** REMOVED update (one hook, one flag), not a new RPC:
 1. `core_worker.proto`: `optional bytes freed_on_producer_node_id = 6` on `ObjectLocationUpdate` (sibling of `primary_moved_to_node_id`).
 2. `object_manager.{h,cc}`: `move_freed_object_ids_` set on ObjectManager; insert in the `on_push_complete_` firing path when `is_move` (the flag is already in `push_ack_tracking_`). In `HandleObjectDeleted`, `move_freed_object_ids_.erase(obj) > 0` gives `freed_by_move`, passed to `ReportObjectRemoved`. Only the move path populates the set → no false positives from evictions / owner-driven final frees. `HandleObjectMissing` is **not** touched.
 3. `object_directory.h` + `ownership_object_directory.{h,cc}` + mock: add `bool freed_by_move` param to `ReportObjectRemoved`; when true it also sets `freed_on_producer_node_id = node_id` on the same staged `ObjectLocationUpdate` it already builds for REMOVED.
 4. `core_worker.cc` `HandleUpdateObjectLocationBatch`: on `has_freed_on_producer_node_id()` → `reference_counter_->OnObjectFreedOnProducer(obj)`.
-5. `reference_counter.{h,cc}`: `on_object_freed_on_producer_callbacks` + `AddObjectFreedOnProducerCallback` (returns false if already fired; track a bool) + `OnObjectFreedOnProducer` (fire-once).
+5. `reference_counter.{h,cc}`: `on_object_freed_on_producer_callbacks` + `freed_on_producer` bool on `Reference`; `AddObjectFreedOnProducerCallback` (returns false if unknown or already fired) + `OnObjectFreedOnProducer` (fire-once). **See §8.6 for the callback-lifetime fix — this is where a leak would live.**
 6. `core_worker.{h,cc}`: wrapper posting to the existing `object_freed_callback_service_`.
 7. `libcoreworker.pxd` + `_raylet.pyx`: `add_object_freed_on_producer_callback(object_ref, callback)` (+ GIL/Py_INCREF wrapper).
 
-**Ray Data (`~/rayturbo`)**:
-8. `resource_bank.py` `on_new_output`: when move semantics on, register the core callback; `cb(id_bytes)` appends `id_bytes.hex()` to `_consumed_refs` (the buffer `on_block_consumed` already drains). Idempotent vs. the later downstream `on_block_consumed` (unknown-ref skip in `drain_consumed_blocks`); thread-safe (that path is built for off-executor-thread calls).
-9. Remove Justin's `is_cross_node_transfer→False` simulation.
+**Ray Data (`~/rayturbo`, `resource_bank.py`)**:
+8. `on_new_output`: when `RAY_DATA_MOVE_SEMANTIC` is on, `_register_freed_on_producer_callback(ref)` registers the core callback; `cb(id_bytes)` appends `id_bytes.hex()` to `_consumed_refs` (the buffer `on_block_consumed` already drains). Idempotent vs. the later downstream `on_block_consumed` (unknown-ref skip in `drain_consumed_blocks`); thread-safe (that path is built for off-executor-thread calls); catches `ValueError` for not-owned blocks (materialized-dataset `InputDataBuffer`) → falls back to normal consumption-driven release.
+9. Removed Justin's `is_cross_node_transfer→False` simulation. `RAY_DATA_MOVE_SEMANTIC` is now **repurposed** to gate the real M2 callback path.
 
-### 8.5 Open question to validate during 8.4 step 8
+### 8.5 Open question to validate (during workload test)
 
 Popping the ref from `live_block_refs` at M2 means the object's existence on the *consumer* node isn't counted in the M2→downstream-consume window. Confirm that's either correct (the consumer op accounts it as its own input) or display-only — not a second admission gate that would then under-count.
+
+### 8.6 Callback-lifetime fix (leak found in review)
+
+The pyx `add_object_freed_on_producer_callback` does `Py_INCREF(callback)`; the balancing `Py_DECREF` runs only in `_invoke_object_freed_on_producer_callback` (i.e. **when the callback fires**) or the `!registered` early-out. But the callback fires only via `OnObjectFreedOnProducer`, i.e. **only when the object is actually moved**. Step 8 registers on *every* output block, so blocks that register but never move (local consumption, `ray.put`, final-stage outputs, move-disabled) would destroy the callback vector on `Reference` erase without ever invoking it → the `Py_INCREF` is never balanced → **leaked Python closures on the driver** (potentially millions in a large Data job). (`add_object_out_of_scope_callback` doesn't have this because out-of-scope always eventually fires; ours doesn't.)
+
+**Fix** (`ReferenceCounter::OnObjectOutOfScopeOrFreed`, both repos): after firing the out-of-scope callbacks, also fire + clear `on_object_freed_on_producer_callbacks`, guarded by `freed_on_producer`. Guarantees exactly-once firing (whichever of `OnObjectFreedOnProducer` / `OnObjectOutOfScopeOrFreed` runs first fires + clears; the other finds an empty vector), so `Py_DECREF` always runs. Semantically sound (object fully out of scope ⇒ producer copy is gone too), idempotent for Ray Data (extra `_consumed_refs` append deduped in `drain_consumed_blocks`), and closes the register-after-out-of-scope race (a late `AddObjectFreedOnProducerCallback` sees `freed_on_producer == true` → returns false → pyx `Py_DECREF`s).
+
+### 8.7 Still to do
+
+- Workload test: run `image_embedding_from_jsonl` / `video_object_detection` (move semantics ON) and confirm peak object-store memory ≤ baseline and no regression vs. Justin's flag; validate §8.5.
+- Unit tests: `add_object_freed_on_producer_callback` fires on move, fires exactly once, and fires (for cleanup) on out-of-scope for a never-moved object (leak regression test).
