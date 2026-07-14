@@ -16,4 +16,4 @@ pip3 install --no-cache-dir \
   "transformers>=4.51.0" \
   "datasets>=3.0" \
   "nvidia-ml-py>=12.0.0"
-pip3 install --no-cache-dir --no-build-isolation "deepspeed>=0.14.0"
+pip3 install --no-cache-dir --no-build-isolation "deepspeed==0.19.2"
