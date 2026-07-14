@@ -87,14 +87,14 @@ def _build_openai_ingress_request_router(
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
 
-    The router runs one replica per proxy node so each node's HAProxy calls its
-    co-located router and the ``/internal/route`` hop stays on-node. This is an
-    internal scaling concept: the controller pins one replica to every node that
-    runs a proxy, so it is set on the deployment config rather than exposed as a
-    public option. ``num_cpus=0`` matches the proxy's footprint so the router is
-    schedulable on every proxy node, including a resource-less head node.
-    ``max_ongoing_requests`` is raised from the Serve default so the on-path
-    router does not throttle ingress.
+    The controller runs the ingress request router with one replica per proxy
+    node so each node's HAProxy calls its co-located router and the
+    ``/internal/route`` hop stays on-node. That placement follows from attaching
+    this Application as the ingress request router, so the builder sets no
+    scaling option for it. ``num_cpus=0`` matches the proxy's footprint so the
+    router is schedulable on every proxy node, including a resource-less head
+    node. ``max_ongoing_requests`` is raised from the Serve default so the
+    on-path router does not throttle ingress.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
@@ -106,7 +106,6 @@ def _build_openai_ingress_request_router(
         max_ongoing_requests=1000,
         ray_actor_options={"num_cpus": 0},
     )
-    deployment._deployment_config.num_replicas_per_node = True
     return deployment.bind(
         server=server,
         pre_routing_tokenization=is_kv_aware(llm_config),

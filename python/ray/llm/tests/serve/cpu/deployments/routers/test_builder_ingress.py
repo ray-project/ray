@@ -428,9 +428,12 @@ class TestBuildOpenaiApp:
         )
 
         app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+        # Attaching the router as the ingress request router is what makes the
+        # controller run one replica per proxy node.
+        assert app._ingress_request_router is not None
         router = app._ingress_request_router._bound_deployment
 
-        assert router._deployment_config.num_replicas_per_node is True
         assert router._deployment_config.max_ongoing_requests == 1000
         # num_cpus=0 matches the proxy so the router colocates on every proxy
         # node, including a resource-less head.
