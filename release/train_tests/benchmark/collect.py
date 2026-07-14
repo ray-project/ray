@@ -123,7 +123,7 @@ _BENCHMARK_COLUMNS = [
     ("Offload_Param", "config/offload_param", _yn, False),
     ("NumParams", "num_params", _int, None),
     ("Dataloader (ray_data/torch)", "config/dataloader", str, None),
-    ("Launcher (ray/torchrun)", "config/launcher", str, None),
+    ("Launcher", "config/launcher", str, None),
     ("Peak GPU Mem (GB)", "gpu/peak_memory_reserved_gb", _g, None),
     ("GPU Mem Capacity (GB)", "gpu/memory_capacity_gb", _g, None),
     ("OOM?", "oom", _yn, False),

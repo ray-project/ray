@@ -28,7 +28,7 @@ class FrameworkAdapter(ABC):
         """Run the full training loop, report metrics via ``self.ctx``, and
         RETURN the final metrics dict (same across data-parallel ranks).
 
-        The return value is required, not optional: the torchrun launcher
+        The return value is required, not optional: the torch.distributed launcher
         collects metrics from the returned value (and selects rank 0's). The Ray
         Train launcher instead reads them off the Result via ``report``, but
         adapters must still return so both launchers work unchanged.

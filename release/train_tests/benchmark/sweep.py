@@ -96,7 +96,7 @@ def main() -> None:
         try:
             metrics = run_experiment(cfg)
             if not metrics:
-                # e.g. the torchrun launcher returns {} when no rank reported.
+                # e.g. the torch.distributed launcher returns {} when no rank reported.
                 raise RuntimeError("run finished but produced no metrics")
             write_results(metrics, name)
             completed.append(name)

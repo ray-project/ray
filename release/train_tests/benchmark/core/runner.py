@@ -7,7 +7,7 @@ Usage:
 
     # torch.distributed parity baseline (Ray actors as the launcher)
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
-        --set launcher=torchrun
+        --set launcher=ray_torch_distributed
 
     # Override any config field inline
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
@@ -23,8 +23,7 @@ from typing import Any, Dict
 
 import ray
 
-# Run on the harness root so `core`, `frameworks`, `data` import cleanly under
-# both `python -m core.runner` and torchrun.
+# Run on the harness root so `core`, `frameworks`, `data` import cleanly.
 import sys
 
 HARNESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,16 +67,18 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         from core.launchers.ray_launcher import run_with_ray
 
         return run_with_ray(cfg)
-    elif cfg.launcher == "torchrun":
+    elif cfg.launcher == "ray_torch_distributed":
         # The torch.distributed parity baseline: vanilla init_process_group
         # ("env://") with Ray actors as the launcher (placement + rank/master
         # env vars). This is exactly how the legacy air_benchmarks ran "vanilla
         # torch" — Ray actors stand up the process group, no ssh/srun needed.
-        from core.launchers.torchrun_launcher import run_with_torchrun
+        from core.launchers.ray_torch_distributed_launcher import (
+            run_with_torch_distributed,
+        )
 
-        return run_with_torchrun(cfg)
+        return run_with_torch_distributed(cfg)
     raise ValueError(
-        f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'torchrun'."
+        f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'ray_torch_distributed'."
     )
 
 
@@ -88,7 +89,7 @@ def main() -> None:
     parser.add_argument(
         "--launcher",
         default=None,
-        help="Override the launcher from the YAML (ray_train | torchrun)",
+        help="Override the launcher from the YAML (ray_train | ray_torch_distributed)",
     )
     parser.add_argument(
         "--set",
@@ -124,7 +125,7 @@ def main() -> None:
     )
 
     if not metrics:
-        # e.g. the torchrun launcher returns {} when no rank reported. Fail
+        # e.g. the torch.distributed launcher returns {} when no rank reported. Fail
         # loudly: a release test must never pass without benchmark results.
         raise RuntimeError(f"{cfg.name} finished but produced no metrics.")
     write_results(metrics, cfg.name)

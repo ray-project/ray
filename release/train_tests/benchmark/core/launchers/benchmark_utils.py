@@ -1,7 +1,7 @@
 """Reusable helpers for launching torch.distributed across Ray actors.
 
-These are the placement / rendezvous primitives behind the ``torchrun``
-launcher — the same pattern the legacy ``air_benchmarks`` benchmark_util used to
+These are the placement / rendezvous primitives behind the
+``ray_torch_distributed`` launcher — the same pattern the legacy ``air_benchmarks`` benchmark_util used to
 stand up "vanilla torch": place one actor per GPU, elect rank 0 as the master,
 and let each actor ``init_process_group("env://")``.
 """
@@ -49,8 +49,8 @@ def create_gpu_actor_group(
 
     ``gpus_per_worker > 1`` reserves multiple GPUs per actor (the
     air_benchmarks benchmark_util pattern) — for node-level launchers that
-    fork one subprocess per GPU. The in-process torchrun launcher drives
-    exactly one GPU per rank, so it keeps the default of 1.
+    fork one subprocess per GPU. The in-process ray_torch_distributed launcher
+    drives exactly one GPU per rank, so it keeps the default of 1.
     """
     import ray
     from ray.util.placement_group import placement_group

@@ -318,7 +318,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
         if torch.cuda.is_available():
             # Logical CUDA index — 0 when CUDA_VISIBLE_DEVICES restricts the
-            # process to one GPU (Ray/torchrun); the NVML sampler maps it back to
+            # process to one GPU (both launchers); the NVML sampler maps it back to
             # the physical index via CVD.
             collector = GpuTrainMetricsCollector(
                 world_size=self.ctx.world_size,

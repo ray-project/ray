@@ -25,7 +25,7 @@ from core.launchers.benchmark_utils import (
     elect_rendezvous,
 )
 from core.registry import get_adapter_cls
-from core.train_context import TorchrunContext
+from core.train_context import TorchDistributedContext
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def _run_in_worker(
     if not dist.is_initialized():
         dist.init_process_group(backend=backend)
 
-    ctx = TorchrunContext(cfg.name)
+    ctx = TorchDistributedContext(cfg.name)
     try:
         metrics = get_adapter_cls(cfg.framework)(cfg, ctx).run()
     finally:
@@ -75,7 +75,7 @@ def _run_in_worker(
     return metrics if ctx.world_rank == 0 else {}
 
 
-def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
+def run_with_torch_distributed(cfg: ExperimentConfig) -> Dict[str, Any]:
     import ray
     from ray.util.placement_group import remove_placement_group
 
@@ -126,7 +126,7 @@ def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
     try:
         node_ips, topology, master_addr, master_port = elect_rendezvous(actors)
         logger.info(
-            f"torchrun: world_size={cfg.scaling.num_workers} "
+            f"ray_torch_distributed: world_size={cfg.scaling.num_workers} "
             f"master={master_addr}:{master_port} nodes={sorted(set(node_ips))}"
         )
         results = ray.get(

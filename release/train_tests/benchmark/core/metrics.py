@@ -144,7 +144,7 @@ class GpuMonitor:
 
     def __init__(self, device_index: int = 0, interval_s: float = 1.0):
         # NVML enumerates *physical* GPUs and ignores CUDA_VISIBLE_DEVICES, so a
-        # worker restricted to one GPU (Ray Train / torchrun set CVD) must map
+        # worker restricted to one GPU (Ray sets CUDA_VISIBLE_DEVICES) must map
         # its logical device back to the physical NVML index, or it would sample
         # the wrong GPU. Resolve CVD here.
         self._device_index = _physical_gpu_index(device_index)

@@ -1,7 +1,7 @@
 """Launcher-agnostic worker context.
 
 Framework adapters write their training loop against this interface once and
-run under both launchers: ``ray`` (Ray Train TorchTrainer) and ``torchrun``
+run under both launchers: ``ray_train`` (TorchTrainer) and ``ray_torch_distributed``
 (the parity baseline from the benchmark modernization proposal).
 """
 
@@ -85,14 +85,14 @@ class RayTrainContext(TrainContext):
         return checkpoint.to_directory()
 
 
-class TorchrunContext(TrainContext):
-    """Minimal context for the torchrun parity baseline.
+class TorchDistributedContext(TrainContext):
+    """Minimal context for the torch.distributed parity baseline.
 
-    Reads the standard torchrun env vars and picks the device. Checkpoint and
+    Reads the standard torch.distributed env vars and picks the device. Checkpoint and
     validation are intentionally no-ops: the parity run only needs throughput
     numbers — the real benchmark (with checkpoint/validation, fault tolerance,
     etc.) runs on Ray Train. Final metrics return via the actor's run() value
-    (see torchrun_launcher), so there's nothing to persist here.
+    (see ray_torch_distributed_launcher), so there's nothing to persist here.
     """
 
     def __init__(self, experiment_name: str):
@@ -127,7 +127,7 @@ class TorchrunContext(TrainContext):
     def report(self, metrics: Dict[str, Any], checkpoint_dir: Optional[str] = None):
         # Parity baseline: log metrics on rank 0; checkpoints are not persisted.
         if self.world_rank == 0:
-            logger.info(f"[torchrun] report: {metrics}")
+            logger.info(f"[torch_dist] report: {metrics}")
 
     def get_checkpoint_dir(self) -> Optional[str]:
         return None
