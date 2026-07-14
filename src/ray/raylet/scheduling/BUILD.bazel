@@ -84,7 +84,7 @@ ray_cc_library(
     name = "local_lease_manager",
     srcs = ["local_lease_manager.cc"],
     hdrs = ["local_lease_manager.h"],
-    visibility = [":__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",

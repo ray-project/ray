@@ -41,13 +41,17 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/clock.h"
 
 namespace ray {
+using raylet::ClusterLeaseManager;
+using raylet::NoopLocalLeaseManager;
 
 namespace rpc {
 class ClientCallManager;
@@ -167,6 +171,9 @@ class GcsServer {
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
 
+  /// Initialize cluster lease manager.
+  void InitClusterLeaseManager();
+
   /// Initialize gcs job manager.
   void InitGcsJobManager(
       const GcsInitData &gcs_init_data,
@@ -261,6 +268,9 @@ class GcsServer {
   rpc::RayletClientPool raylet_client_pool_;
   rpc::CoreWorkerClientPool worker_client_pool_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// The cluster lease manager.
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  NoopLocalLeaseManager local_lease_manager_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// gcs_resource_manager_ depends on cluster_lease_manager_.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;

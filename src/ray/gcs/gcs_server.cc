@@ -314,6 +314,7 @@ void GcsServer::GetOrGenerateClusterId(
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
+  InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
   InitGcsHealthCheckManager(gcs_init_data);
   InitRaySyncer(gcs_init_data);
@@ -546,6 +547,19 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_local_node_with_raylet=*/false);
 }
 
+void GcsServer::InitClusterLeaseManager() {
+  RAY_CHECK(cluster_resource_scheduler_);
+  cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
+      kGCSNodeID,
+      *cluster_resource_scheduler_,
+      /*get_node_info=*/
+      [this](const NodeID &node_id) {
+        return gcs_node_manager_->GetAliveNodeAddress(node_id);
+      },
+      /*announce_infeasible_task=*/nullptr,
+      /*local_lease_manager=*/local_lease_manager_);
+}
+
 void GcsServer::InitGcsJobManager(
     const GcsInitData &gcs_init_data,
     ray::observability::MetricInterface &running_job_gauge,
@@ -601,7 +615,7 @@ void GcsServer::InitGcsActorManager(
       std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
                                           gcs_table_storage_->ActorTable(),
                                           *gcs_node_manager_,
-                                          *cluster_resource_scheduler_,
+                                          *cluster_lease_manager_,
                                           schedule_failure_handler,
                                           schedule_success_handler,
                                           raylet_client_pool_,
@@ -991,6 +1005,7 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
+        cluster_lease_manager_->ScheduleAndGrantLeases();
       },
       io_context_provider_.GetDefaultIOContext());
   gcs_node_manager_->AddNodeRemovedListener(

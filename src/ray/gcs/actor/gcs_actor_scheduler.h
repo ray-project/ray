@@ -32,7 +32,7 @@
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -41,6 +41,7 @@
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+using raylet::ClusterLeaseManager;
 namespace gcs {
 
 using GcsActorSchedulerFailureCallback =
@@ -122,7 +123,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      ClusterResourceScheduler &cluster_resource_scheduler,
+      ClusterLeaseManager &cluster_lease_manager,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::RayletClientPool &raylet_client_pool,
@@ -350,8 +351,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       node_to_workers_when_creating_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
-  /// Reference of ClusterResourceScheduler
-  ClusterResourceScheduler &cluster_resource_scheduler_;
+  /// Reference of ClusterLeaseManager
+  ClusterLeaseManager &cluster_lease_manager_;
   /// The handler to handle the scheduling failures.
   GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
@@ -387,6 +388,18 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor The actor to be forwarded.
   /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
   NodeID SelectWorkerNode(std::shared_ptr<GcsActor> actor);
+
+  /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
+  /// default.
+  ///
+  /// \param actor The actor to be scheduled.
+  void ScheduleByGcs(std::shared_ptr<GcsActor> actor);
+
+  /// Forward the actor to a Raylet for scheduling. The target Raylet is the same node for
+  /// the actor's owner, or selected randomly.
+  ///
+  /// \param actor The actor to be scheduled.
+  void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
 
   friend class GcsActorSchedulerTest;
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);
