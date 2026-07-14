@@ -53,7 +53,6 @@ _CACHE_ENTRIES = {
     # macOS/BSD. Pinning to lib/ keeps the out_static_libs path
     # portable across platforms.
     "CMAKE_INSTALL_LIBDIR": "lib",
-
     "PORTABLE": "ON",
     "FAIL_ON_WARNINGS": "OFF",
     "USE_RTTI": "1",
@@ -61,14 +60,20 @@ _CACHE_ENTRIES = {
     "WITH_RUNTIME_DEBUG": "OFF",
 }
 
+# Same as _CACHE_ENTRIES, but with RocksDB's native TSAN instrumentation
+# turned on. Used under `--config=tsan` so ThreadSanitizer understands
+# RocksDB's lock-free internals. `PORTABLE=ON` above keeps
+# `-fsanitize=thread` compatible with the pie/relocation flags RocksDB
+# adds when WITH_TSAN is set.
+_TSAN_CACHE_ENTRIES = dict(
+    _CACHE_ENTRIES,
+    WITH_TSAN = "ON",
+)
+
 cmake(
     name = "rocksdb",
     cache_entries = select({
-        # Under `--config=tsan`, build RocksDB with its native TSAN
-        # instrumentation so ThreadSanitizer understands its lock-free
-        # internals. `PORTABLE=ON` above keeps `-fsanitize=thread`
-        # compatible with the pie/relocation flags RocksDB adds here.
-        ":tsan_build": dict(_CACHE_ENTRIES, WITH_TSAN = "ON"),
+        ":tsan_build": _TSAN_CACHE_ENTRIES,
         "//conditions:default": _CACHE_ENTRIES,
     }),
     generate_args = ["-G Ninja"],
