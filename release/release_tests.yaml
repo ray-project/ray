@@ -4808,7 +4808,7 @@
 
   run:
     timeout: 3600
-    script: pytest -vs test_llm_serve_sglang.py
+    script: pytest -vs test_llm_serve_sglang.py test_llm_serve_sglang_multi_gpu.py test_llm_serve_sglang_embeddings.py
 
 - name: llm_serve_kv_router
   frequency: manual
