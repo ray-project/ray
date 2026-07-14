@@ -16,8 +16,9 @@ def assign_topology(node_ips: List[str]) -> List[Dict[str, int]]:
     """Pure: per-worker distributed topology from each worker's node IP.
 
     ``node_ips`` is ordered by global rank. Returns, per worker, its ``rank``,
-    ``node_rank``, node-local ``local_rank``, and ``local_world_size``. Nodes
-    are ranked by first appearance (so rank 0's node is node_rank 0).
+    ``node_rank``, and ``local_world_size``. Nodes are ranked by first
+    appearance (so rank 0's node is node_rank 0). No local_rank: each Ray
+    actor sees exactly one GPU, so its local device is always cuda:0.
     """
     node_order: List[str] = []
     for ip in node_ips:
@@ -25,20 +26,14 @@ def assign_topology(node_ips: List[str]) -> List[Dict[str, int]]:
             node_order.append(ip)
     per_node_total = {ip: node_ips.count(ip) for ip in node_order}
 
-    seen: Dict[str, int] = {}
-    topology = []
-    for rank, ip in enumerate(node_ips):
-        local_rank = seen.get(ip, 0)
-        seen[ip] = local_rank + 1
-        topology.append(
-            {
-                "rank": rank,
-                "node_rank": node_order.index(ip),
-                "local_rank": local_rank,
-                "local_world_size": per_node_total[ip],
-            }
-        )
-    return topology
+    return [
+        {
+            "rank": rank,
+            "node_rank": node_order.index(ip),
+            "local_world_size": per_node_total[ip],
+        }
+        for rank, ip in enumerate(node_ips)
+    ]
 
 
 def create_gpu_actor_group(
