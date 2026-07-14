@@ -5,11 +5,13 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
     DefaultDict,
     Dict,
+    Iterator,
     List,
     Mapping,
     Optional,
@@ -26,6 +28,9 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
@@ -40,7 +45,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.util import MiB, capfirst
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
@@ -157,22 +162,81 @@ class _StatsAccumulator:
         )
 
 
+class IterationStage(Enum):
+    """Stages of the iter_batches pipeline, used to attribute training-thread
+    blocked time. Each value is the Prometheus label for the corresponding
+    ``data_iter_blocked_<stage>_seconds`` gauge.
+    """
+
+    PRODUCTION_WAIT = "production_wait"  # waiting on upstream data production
+    DATA_TRANSFER = "data_transfer"  # cross-node ray.get() transfer
+    BATCHING = "batching"  # slicing/shuffling blocks into batches
+    FORMAT = "format"  # converting blocks to batch format
+    COLLATE = "collate"  # applying user collate_fn
+    FINALIZE = "finalize"  # applying user finalize_fn
+
+
+@dataclass
+class TimeSpan:
+    """A measured wall-clock interval (start_s, end_s)."""
+
+    start_s: float = 0.0
+    end_s: float = 0.0
+
+    @property
+    def duration(self) -> float:
+        return self.end_s - self.start_s
+
+
+@contextmanager
+def _maybe_time(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
+    """Time a block, yielding a TimeSpan (or None if timer is None)."""
+    if timer is None:
+        yield None
+    else:
+        with timer.timer() as span:
+            yield span
+
+
 class Timer:
-    """Helper class for tracking accumulated time (in seconds)."""
+    """Helper class for tracking accumulated time (in seconds).
+
+    Every value passed to :meth:`add` is also fed into an internal
+    :class:`DistributionTracker` (a KLL sketch with bounded memory) so
+    :meth:`percentile` can return an approximate p-th percentile at any
+    time. The sketch uses O(k log(n/k)) memory (k=200 by default), so it
+    stays a few kilobytes regardless of how many samples are added —
+    safe for long-running production jobs.
+
+    Percentile accuracy is the KLL guarantee — roughly 1.65% rank error
+    at the default k=200. When the optional ``datasketches`` dependency
+    is not installed, :meth:`percentile` returns 0 (the other stats are
+    unaffected).
+    """
 
     def __init__(self):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
+        # Bounded-memory percentile backend. add() forwards every value
+        # to ``add_sample`` and ``percentile`` reads from it.
+        self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
-    def timer(self) -> None:
-        time_start = time.perf_counter()
+    def timer(self) -> Iterator[TimeSpan]:
+        """Time a block, yielding a fresh ``TimeSpan`` per call.
+
+        The returned span is a distinct instance each call, so multiple
+        threads sharing the same ``Timer`` don't race on span fields.
+        The duration is also accumulated into ``self`` via ``add``.
+        """
+        span = TimeSpan(start_s=time.perf_counter())
         try:
-            yield
+            yield span
         finally:
-            self.add(time.perf_counter() - time_start)
+            span.end_s = time.perf_counter()
+            self.add(span.duration)
 
     def add(self, value: float) -> None:
         self._total += value
@@ -181,6 +245,7 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
+        self._distribution.add_sample(value)
 
     def get(self) -> float:
         return self._total
@@ -193,6 +258,70 @@ class Timer:
 
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
+
+    def percentile(self, p: float) -> float:
+        """Approximate ``p``-th percentile in seconds.
+
+        Backed by the internal :class:`DistributionTracker`'s KLL
+        sketch. Returns 0 when no samples have been added or the
+        optional ``datasketches`` package is unavailable.
+
+        Args:
+            p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
+                for p90 — not ``90``). Values outside this range raise
+                ``ValueError``.
+
+        Returns:
+            The approximate p-th percentile of all samples seen, or 0
+            when the sketch has no data / no backend.
+
+        Raises:
+            ValueError: If ``p`` is outside ``[0.0, 1.0]``.
+        """
+        if not 0.0 <= p <= 1.0:
+            raise ValueError(
+                f"p must be in [0.0, 1.0], got {p!r}. "
+                "Pass a fraction like 0.9, not a percent like 90."
+            )
+        q = self._distribution._quantile(p)
+        return q if q is not None else 0
+
+    def as_dict(self) -> Dict[str, Optional[float]]:
+        """Return a JSON-serializable snapshot of the accumulated stats.
+
+        Only the scalar fields are included. ``_distribution`` (a
+        :class:`DistributionTracker`) is intentionally omitted because it
+        is not JSON-serializable and its sketch is not meant to be
+        persisted across checkpoints. ``_min`` / ``_max`` are reported as
+        ``None`` when no samples have been added (rather than the ``inf``
+        sentinel, which JSON cannot represent).
+        """
+        return {
+            "_total": self._total,
+            "_min": self._min if self._total_count > 0 else None,
+            "_max": self._max if self._total_count > 0 else None,
+            "_total_count": self._total_count,
+        }
+
+    def from_dict(self, state: Optional[Dict[str, Optional[float]]]) -> None:
+        """Restore the scalar stats from a dict produced by :meth:`as_dict`.
+
+        ``_distribution`` is left untouched (it keeps the empty tracker
+        created in ``__init__``), mirroring that the sketch is not
+        persisted. A non-dict ``state`` is ignored, and a ``None`` value
+        for any field falls back to its empty-Timer default (``.get``'s
+        default only fires on a missing key, not a present ``None``).
+        """
+        if not isinstance(state, dict):
+            return
+        _total = state.get("_total")
+        self._total = _total if _total is not None else 0.0
+        _total_count = state.get("_total_count")
+        self._total_count = _total_count if _total_count is not None else 0.0
+        _min = state.get("_min")
+        self._min = _min if _min is not None else float("inf")
+        _max = state.get("_max")
+        self._max = _max if _max is not None else 0.0
 
 
 class _DatasetStatsBuilder:
@@ -364,7 +493,7 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = ("dataset",)
+        iter_tag_keys = ("dataset", "split")
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -395,13 +524,58 @@ class _StatsActor:
         )
         self.iter_batch_finalizing_s = Gauge(
             "data_iter_batch_finalizing_seconds",
-            description="Seconds taken to collate batches by iter_batches()",
+            description="Seconds taken to finalize batches by iter_batches()",
             tag_keys=iter_tag_keys,
         )
 
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_total_s = Gauge(
+            "data_iter_total_seconds",
+            description="Total wall-clock seconds spent in the dataset iterator",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_production_wait_s = Gauge(
+            "data_iter_blocked_production_wait_seconds",
+            description="Seconds user thread is blocked on upstream data production",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_data_transfer_s = Gauge(
+            "data_iter_blocked_data_transfer_seconds",
+            description="Seconds user thread is blocked on cross-node data transfer (ray.get)",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_batching_s = Gauge(
+            "data_iter_blocked_batching_seconds",
+            description="Seconds user thread is blocked on batch creation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_format_s = Gauge(
+            "data_iter_blocked_format_seconds",
+            description="Seconds user thread is blocked on batch formatting",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_collate_s = Gauge(
+            "data_iter_blocked_collate_seconds",
+            description="Seconds user thread is blocked on batch collation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_finalize_s = Gauge(
+            "data_iter_blocked_finalize_seconds",
+            description="Seconds user thread is blocked on batch finalization",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batches_total = Gauge(
+            "data_iter_batches_total",
+            description="Total batches delivered to the user thread",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_rows_total = Gauge(
+            "data_iter_rows_total",
+            description="Total rows delivered to the user thread",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -511,6 +685,8 @@ class _StatsActor:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
+                continue
+            if metric.metrics_type == MetricsType.Unsupported:
                 continue
             metric_name = f"data_{metric.name}"
             metric_description = metric.description
@@ -637,11 +813,14 @@ class _StatsActor:
     def update_iteration_metrics(
         self,
         stats: "DatasetStats",
-        dataset_tag,
+        dataset_id: str,
+        split_index: Optional[str] = None,
     ):
-        tags = self._create_tags(dataset_tag)
+        split_tag = "no_split" if split_index is None else f"split_{split_index}"
+        tags = self._create_tags(dataset_tag=dataset_id, split_tag=split_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_total_s.set(stats.iter_total_s.get(), tags)
         self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
         self.iter_get_s.set(stats.iter_get_s.get(), tags)
         self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
@@ -662,6 +841,18 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_blocked_production_wait_s.set(
+            stats.iter_blocked_production_wait_s.get(), tags
+        )
+        self.iter_blocked_data_transfer_s.set(
+            stats.iter_blocked_data_transfer_s.get(), tags
+        )
+        self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
+        self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
+        self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
+        self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
+        self.iter_batches_total.set(stats.iter_batches_total, tags)
+        self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def register_dataset(
@@ -847,12 +1038,15 @@ class _StatsActor:
         dataset_tag: str,
         operator_tag: Optional[str] = None,
         node_ip_tag: Optional[str] = None,
+        split_tag: Optional[str] = None,
     ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
+        if split_tag is not None:
+            tags["split"] = split_tag
         return tags
 
 
@@ -862,14 +1056,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     does not exist in the connected cluster. The _StatsActor is pinned on
     on driver process' node.
     """
-    if ray._private.worker._global_node is None:
+    if not ray.is_initialized():
         raise RuntimeError(
-            "Global node is not initialized. Driver might be not connected to Ray."
+            "Ray is not initialized. Driver might be not connected to Ray."
         )
 
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-
-    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+    # `_global_node` is None under Ray Client (the driver is not a cluster
+    # worker), so only log the cluster_id when it is available.
+    global_node = ray._private.worker._global_node
+    if global_node is not None:
+        logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")
 
     # so it fate-shares with the driver.
     label_selector = {
@@ -946,8 +1142,10 @@ class _StatsManager:
             return
 
     @staticmethod
-    def update_iteration_metrics(stats: "DatasetStats", dataset_tag: str):
-        args = (stats, dataset_tag)
+    def update_iteration_metrics(
+        stats: "DatasetStats", dataset_tag: str, split_index: Optional[str] = None
+    ):
+        args = (stats, dataset_tag, split_index)
         try:
             get_or_create_stats_actor().update_iteration_metrics.remote(*args)
         except Exception as e:
@@ -1035,7 +1233,9 @@ class DatasetStats:
         self.dataset_uuid: str = UNKNOWN_UUID
         self.time_total_s: float = 0
 
-        # Streaming executor stats
+        # Streaming executor stats. Timer's KLL-sketch percentile
+        # backend has bounded memory, so p50/p90 tracking is always on
+        # — no opt-in needed.
         self.streaming_exec_schedule_s: Timer = Timer()
 
         # Iteration stats, filled out if the user iterates over the dataset.
@@ -1048,9 +1248,17 @@ class DatasetStats:
         self.iter_finalize_batch_s: Timer = Timer()
         self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
+        self.iter_blocked_production_wait_s: Timer = Timer()
+        self.iter_blocked_data_transfer_s: Timer = Timer()
+        self.iter_blocked_batching_s: Timer = Timer()
+        self.iter_blocked_format_s: Timer = Timer()
+        self.iter_blocked_collate_s: Timer = Timer()
+        self.iter_blocked_finalize_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.iter_batches_total: int = 0
+        self.iter_rows_total: int = 0
         self.extra_metrics = {}
 
         # Block fetch stats during iteration.
@@ -1071,6 +1279,24 @@ class DatasetStats:
 
         # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
+
+    def get_blocked_timer(self, stage: IterationStage) -> Timer:
+        """Return the blocked-attribution Timer for the given iteration stage."""
+        match stage:
+            case IterationStage.PRODUCTION_WAIT:
+                return self.iter_blocked_production_wait_s
+            case IterationStage.DATA_TRANSFER:
+                return self.iter_blocked_data_transfer_s
+            case IterationStage.BATCHING:
+                return self.iter_blocked_batching_s
+            case IterationStage.FORMAT:
+                return self.iter_blocked_format_s
+            case IterationStage.COLLATE:
+                return self.iter_blocked_collate_s
+            case IterationStage.FINALIZE:
+                return self.iter_blocked_finalize_s
+            case _:
+                raise ValueError(f"Unknown iteration stage: {stage}")
 
     @property
     def stats_actor(self):
@@ -1106,6 +1332,14 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
+            self.iter_blocked_production_wait_s,
+            self.iter_blocked_data_transfer_s,
+            self.iter_blocked_batching_s,
+            self.iter_blocked_format_s,
+            self.iter_blocked_collate_s,
+            self.iter_blocked_finalize_s,
+            self.iter_batches_total,
+            self.iter_rows_total,
         )
 
         stats_summary_parents = []
@@ -1153,11 +1387,18 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
+        # ``runtime_metrics()`` can still divide by total_wall_time and
+        # produce a meaningful percentage. Per-iteration avg/max are
+        # exposed separately. ``StreamingExecutor._generate_stats``
+        # always assigns a ``Timer`` (never ``None``), so this call site
+        # needs no guard.
+        schedule_timer = self.streaming_exec_schedule_s
+        streaming_exec_schedule_s = schedule_timer.get()
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_max_s = schedule_timer.max()
+        streaming_exec_schedule_p50_s = schedule_timer.percentile(0.5)
+        streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1171,6 +1412,10 @@ class DatasetStats:
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
+            streaming_exec_schedule_avg_s,
+            streaming_exec_schedule_max_s,
+            streaming_exec_schedule_p50_s,
+            streaming_exec_schedule_p90_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1206,12 +1451,19 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_avg_s: float
+    streaming_exec_schedule_max_s: float
+    # KLL-sketch-approximate percentiles (k=200, ~1.65% rank error).
+    # 0 when no samples have been added, or when the optional
+    # ``datasketches`` dependency is unavailable.
+    streaming_exec_schedule_p50_s: float
+    streaming_exec_schedule_p90_s: float
 
     def to_string(
         self,
         already_printed: Optional[Set[str]] = None,
         include_parent: bool = True,
-        add_global_stats=True,
+        add_global_stats: bool = True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -1429,17 +1681,6 @@ class DatasetStatsSummary:
             ss.cpu_time.sum if ss.cpu_time else 0 for ss in self.operators_stats
         )
 
-    def get_max_heap_memory(self) -> float:
-        parent_memory = [p.get_max_heap_memory() for p in self.parents]
-        parent_max = max(parent_memory) if parent_memory else 0
-        if not self.operators_stats:
-            return parent_max
-
-        return max(
-            parent_max,
-            *[ss.memory.max if ss.memory else 0 for ss in self.operators_stats],
-        )
-
 
 @dataclass
 class OperatorStatsSummary:
@@ -1459,7 +1700,6 @@ class OperatorStatsSummary:
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
     udf_time: Optional[StatsSummary] = None
-    memory: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1498,8 +1738,8 @@ class OperatorStatsSummary:
         and generates a `OperatorStatsSummary` object with the results.
 
         Args:
-            block_stats: List of `BlockStats` to calculate stats of
             operator_name: Name of operator associated with `blocks`
+            block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
@@ -1508,7 +1748,6 @@ class OperatorStatsSummary:
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
         udf_time_acc: _StatsAccumulator = _StatsAccumulator()
-        memory_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1531,7 +1770,6 @@ class OperatorStatsSummary:
                     cpu_time_acc.add(es.cpu_time_s)
                 if es.udf_time_s is not None:
                     udf_time_acc.add(es.udf_time_s)
-                memory_acc.add((es.max_uss_bytes or 0) / MiB)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1575,7 +1813,6 @@ class OperatorStatsSummary:
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
         udf_stats = udf_time_acc.get()
-        memory_stats = memory_acc.get(round_digits=2)
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1602,7 +1839,6 @@ class OperatorStatsSummary:
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
             udf_time=udf_stats,
-            memory=memory_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1646,14 +1882,6 @@ class OperatorStatsSummary:
                 fmt(self.udf_time.max),
                 fmt(self.udf_time.mean),
                 fmt(self.udf_time.sum),
-            )
-
-        if self.memory:
-            out += indent
-            out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
-                self.memory.min,
-                self.memory.max,
-                int(self.memory.mean),
             )
 
         if self.output_num_rows:
@@ -1714,10 +1942,13 @@ class OperatorStatsSummary:
             )
         return out
 
-    def __repr__(self, level=0) -> str:
+    def __repr__(self, level: int = 0) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
         `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
         that summarizes operator execution statistics.
+
+        Args:
+            level: The indentation level to use when formatting nested summaries.
 
         Returns:
             String with summary statistics for executing the given operator.
@@ -1748,7 +1979,6 @@ class OperatorStatsSummary:
             f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
             f"{indent}   wall_time={_fmt_dict(self.wall_time)},\n"
             f"{indent}   cpu_time={_fmt_dict(self.cpu_time)},\n"
-            f"{indent}   memory={_fmt_dict(self.memory, include_sum=False)},\n"
             f"{indent}   output_num_rows={_fmt_dict(self.output_num_rows)},\n"
             f"{indent}   output_size_bytes={_fmt_dict(self.output_size_bytes)},\n"
             f"{indent}   node_count={_fmt_dict(self.node_count, include_sum=False, include_count=True)},\n"
@@ -1792,6 +2022,16 @@ class IterStatsSummary:
     iter_unknown_location: int
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
+    # Per-stage training-thread blocked attribution timers.
+    blocked_production_wait_time: Timer
+    blocked_data_transfer_time: Timer
+    blocked_batching_time: Timer
+    blocked_format_time: Timer
+    blocked_collate_time: Timer
+    blocked_finalize_time: Timer
+    # Cumulative batch and row counters.
+    batches_total: int
+    rows_total: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1897,6 +2137,25 @@ class IterStatsSummary:
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
+
+        # Per-stage training-thread blocked attribution.
+        stage_totals = [
+            ("production wait", self.blocked_production_wait_time),
+            ("data transfer (ray.get)", self.blocked_data_transfer_time),
+            ("batching", self.blocked_batching_time),
+            ("format", self.blocked_format_time),
+            ("collate", self.blocked_collate_time),
+            ("finalize (host->device)", self.blocked_finalize_time),
+        ]
+        active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
+        if active_stages:
+            out += "\nPer-stage training-thread blocked time breakdown:\n"
+            for stage_name, timer in active_stages:
+                out += "    * {}: {}\n".format(stage_name, fmt(timer.get()))
+        if self.batches_total:
+            out += "Total batches consumed: {}\n".format(self.batches_total)
+        if self.rows_total:
+            out += "Total rows consumed: {}\n".format(self.rows_total)
 
         return out
 

@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
@@ -36,6 +35,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -455,7 +455,9 @@ class NormalTaskSubmitterTest : public testing::Test {
             [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
         raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
-        store(DefaultCoreWorkerMemoryStoreWithThread::CreateShared()),
+        store_io_context_("NormalTaskSubmitterTest"),
+        store(std::make_shared<CoreWorkerMemoryStore>(store_io_context_.GetIoService(),
+                                                      clock_)),
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
@@ -475,9 +477,6 @@ class NormalTaskSubmitterTest : public testing::Test {
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
       int64_t lease_timeout_ms = kLongTimeout) {
-    if (custom_memory_store != nullptr) {
-      store = custom_memory_store;
-    }
     if (raylet_client_factory == nullptr) {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
           [this](const rpc::Address &) { return this->raylet_client; });
@@ -500,7 +499,9 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client_pool,
         mock_gcs_client_,
         std::move(lease_policy),
-        store,
+        // Use the caller-provided store if given, otherwise fall back to the fixture's
+        // store.
+        custom_memory_store != nullptr ? custom_memory_store : store,
         *task_manager,
         local_node_id,
         worker_type,
@@ -510,7 +511,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         rate_limiter,
         [](const ObjectID &object_id) { return std::nullopt; },
         io_context,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        clock_);
   }
 
   NodeID local_node_id;
@@ -518,6 +520,8 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::shared_ptr<MockRayletClient> raylet_client;
   std::shared_ptr<MockWorkerClient> worker_client;
+  InstrumentedIOContextWithThread store_io_context_;
+  FakeClock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<MockTaskManager> task_manager;
@@ -1375,7 +1379,9 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  InstrumentedIOContextWithThread store_io_context("TestSpillbackRoundTrip");
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1460,6 +1466,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   lease_policy->SetNodeID(local_node_id);
   auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
   instrumented_io_context io_context;
+  Clock clock;
   NormalTaskSubmitter submitter(
       address,
       raylet_client,
@@ -1477,7 +1484,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return std::nullopt; },
       io_context,
-      fake_scheduler_placement_time_ms_histogram_);
+      fake_scheduler_placement_time_ms_histogram_,
+      clock);
 
   submitter.SubmitTask(same1);
   submitter.SubmitTask(same2);
@@ -1532,8 +1540,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
-  // Mock reference counter as enabled
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  Clock clock;
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1618,7 +1627,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
   // Mock reference counter as enabled
   auto memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1679,7 +1688,9 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
-  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  InstrumentedIOContextWithThread store_io_context("TestWorkerLeaseTimeout");
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1709,8 +1720,8 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 2 runs successfully on the second worker; the worker is returned due to the
   // timeout.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(10));  // Sleep for 10ms, causing the lease to time out.
+  // Advance the fake clock past the lease timeout so the lease expires deterministically.
+  clock_.AdvanceTime(absl::Milliseconds(10));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);

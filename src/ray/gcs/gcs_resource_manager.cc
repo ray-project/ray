@@ -290,11 +290,6 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> &&listener) {
-  RAY_CHECK(listener != nullptr);
-  resources_changed_listeners_.emplace_back(std::move(listener));
-}
-
 std::string GcsResourceManager::ToString() const {
   std::ostringstream ostr;
   const int indent = 0;

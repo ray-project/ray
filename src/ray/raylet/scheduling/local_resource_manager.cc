@@ -79,7 +79,7 @@ std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
   buffer << local_resources_.DebugString();
   buffer << " is_draining: " << IsLocalNodeDraining();
-  buffer << " is_idle: " << IsLocalNodeIdle();
+  buffer << " is_idle: " << WasLastRecordedNodeStateIdle();
   return buffer.str();
 }
 
@@ -445,7 +445,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
-  if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
+  if (IsLocalNodeDraining() && WasLastRecordedNodeStateIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
     rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
     shutdown_raylet_gracefully_(std::move(node_death_info));

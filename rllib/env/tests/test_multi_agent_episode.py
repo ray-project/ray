@@ -1563,6 +1563,121 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(rew_list, {"a0": [0.2, 0.3]})
         self.assertNotIn("a1", rew_list)
 
+    def test_get_extra_model_outputs_hanging_val(self):
+        """Tests that get_extra_model_outputs(key=...) correctly indexes hanging_val.
+
+        When an agent has hanging extra_model_outputs (action sent, next obs not
+        yet received), the cached value must be indexed by the requested key before
+        being passed to InfiniteLookbackBuffer.get(). Without the fix:
+        - Non-finalized (list-based): silently returns the entire dict instead of
+          the scalar value (data corruption).
+        - Finalized (numpy-based): crashes in tree.map_structure due to structure
+          mismatch between dict and scalar.
+        """
+
+        def _make_episode():
+            """Build a 2-agent episode where a0 has hanging extra outputs."""
+            episode = MultiAgentEpisode()
+            episode.add_env_reset(
+                observations={"a0": 0, "a1": 0},
+                infos={"a0": {}, "a1": {}},
+            )
+            # t=1: both agents act and get new obs.
+            episode.add_env_step(
+                observations={"a0": 1, "a1": 1},
+                actions={"a0": 10, "a1": 10},
+                rewards={"a0": 1.0, "a1": 1.0},
+                infos={"a0": {}, "a1": {}},
+                terminateds={"a0": False, "a1": False, "__all__": False},
+                truncateds={"a0": False, "a1": False, "__all__": False},
+                extra_model_outputs={
+                    "a0": {"vf_preds": 0.5, "action_dist_inputs": 1.0},
+                    "a1": {"vf_preds": 0.6, "action_dist_inputs": 1.1},
+                },
+            )
+            # t=2: both act, but only a1 gets a new obs.
+            # a0 acts but gets no obs -> hanging action + extra_model_outputs.
+            episode.add_env_step(
+                observations={"a1": 2},
+                actions={"a0": 20, "a1": 20},
+                rewards={"a0": 2.0, "a1": 2.0},
+                infos={"a1": {}},
+                terminateds={"a1": False, "__all__": False},
+                truncateds={"a1": False, "__all__": False},
+                extra_model_outputs={
+                    "a0": {"vf_preds": 0.7, "action_dist_inputs": 1.2},
+                    "a1": {"vf_preds": 0.8, "action_dist_inputs": 1.3},
+                },
+            )
+            return episode
+
+        # --- Non-finalized episode (list-based buffers) ---
+        episode = _make_episode()
+        self.assertIn("a0", episode._hanging_extra_model_outputs_end)
+
+        # List indices -> _get_single_agent_data_by_env_step_indices.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=[-1, -2],
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.7, 0.5])
+        check(result["a1"], [0.8, 0.6])
+
+        # Slice indices -> _get_single_agent_data_by_env_step_indices.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=slice(-2, None),
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.5, 0.7])
+        check(result["a1"], [0.6, 0.8])
+
+        # Single int index -> _get_single_agent_data_by_index.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+        check(result["a1"], 0.8)
+
+        # Control: agent_steps path (already correct).
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=False,
+            agent_ids="a0",
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+
+        # --- Finalized episode (numpy-based buffers via to_numpy()) ---
+        # On the finalized path, the un-indexed hanging_val dict causes a crash
+        # in tree.map_structure: "The two structures don't have the same nested
+        # structure" (ndarray vs dict).
+        episode_fin = _make_episode()
+        episode_fin.to_numpy()
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds",
+            indices=[-1, -2],
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.7, 0.5])
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return

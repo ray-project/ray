@@ -50,6 +50,22 @@ class ScalingConfig(ScalingConfigV1):
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
             override the number of CPU or GPUs used by each worker.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"TPU"``: number of logical TPUs per worker, when ``use_tpu=True``.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"``, ``"GPU"``, and ``"TPU"``
+            (uppercase), and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -153,6 +169,24 @@ class ScalingConfig(ScalingConfigV1):
             if isinstance(self.num_workers, int)
             else self.num_workers[1]
         )
+
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
+
+        - ``None`` -> ``None`` (no constraint; downstream consumers — the
+          placement-group path and the autoscaling coordinator — both
+          accept ``None`` and treat it as "no label requirement").
+        - ``Dict`` -> the same dict replicated for each worker
+        - ``List`` -> the first ``num_workers`` entries (validated to be
+          ``max_workers`` long in ``__post_init__``)
+        """
+        if isinstance(self.label_selector, list):
+            return [s.copy() for s in self.label_selector[:num_workers]]
+        if isinstance(self.label_selector, dict):
+            return [self.label_selector.copy() for _ in range(num_workers)]
+        return None
 
     @property
     def total_resources(self):

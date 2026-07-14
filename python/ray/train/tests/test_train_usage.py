@@ -91,7 +91,7 @@ def run_transformers():
         model = torch.nn.Linear(10, 10)
 
         # Test Transformers utilites
-        training_args = TrainingArguments(output_dir="./results", no_cuda=True)
+        training_args = TrainingArguments(output_dir="./results", use_cpu=True)
         trainer = Trainer(model=model, args=training_args, train_dataset=dataset)
 
         trainer.add_callback(RayTrainReportCallback())

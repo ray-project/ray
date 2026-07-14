@@ -5,8 +5,7 @@ orphan: true
 
 # Serve a Chatbot with Request and Response Streaming
 
-This example deploys a chatbot that streams output back to the
-user. It shows:
+This example deploys a chatbot that streams output back to the user. It shows:
 
 * How to stream outputs from a Serve application
 * How to use WebSockets in a Serve application
@@ -33,8 +32,7 @@ Open a new Python file called `textbot.py`. First, add the imports and the [Serv
 :end-before: __textbot_setup_end__
 ```
 
-Create a [FastAPI deployment](serve-fastapi-http), and initialize the model and the tokenizer in the
-constructor:
+Create a [FastAPI deployment](serve-fastapi-http), and initialize the model and the tokenizer in the constructor:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python
@@ -88,8 +86,7 @@ Create a Python file called `chatbot.py`. First add the imports:
 :end-before: __chatbot_setup_end__
 ```
 
-Create a FastAPI deployment, and initialize the model and the tokenizer in the
-constructor:
+Create a FastAPI deployment, and initialize the model and the tokenizer in the constructor:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python
@@ -161,8 +158,7 @@ Similar to `Textbot` and `Chatbot`, the `Batchbot` needs a streamer to stream ou
 :end-before: __raw_streamer_end__
 ```
 
-Create a FastAPI deployment, and initialize the model and the tokenizer in the
-constructor:
+Create a FastAPI deployment, and initialize the model and the tokenizer in the constructor:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python

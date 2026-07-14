@@ -259,6 +259,7 @@ class Algorithm(Checkpointable, Trainable):
         "model",
         "optimizer",
         "custom_resources_per_env_runner",
+        "custom_resources_per_learner",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
@@ -1048,6 +1049,12 @@ class Algorithm(Checkpointable, Trainable):
                         inference_only=False,
                     )[COMPONENT_LEARNER]
                 # Create the offline evaluation runner group.
+                # Compute the correct pg_offset so offline eval runners
+                # target the right placement group bundle indices
+                # (after main process, env runners, and eval env runners).
+                offline_eval_pg_offset = self.config.num_env_runners
+                if self._should_create_evaluation_env_runners(self.evaluation_config):
+                    offline_eval_pg_offset += self.evaluation_config.num_env_runners
                 self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
                     config=self.evaluation_config,
                     # Do not create a local runner such that the dataset can be split.
@@ -1058,6 +1065,7 @@ class Algorithm(Checkpointable, Trainable):
                     # Note, even if no environment is run, the `MultiRLModule` needs
                     # spaces to construct the policy network.
                     spaces=spaces,
+                    pg_offset=offline_eval_pg_offset,
                 )
 
         # Create an Aggregator actor set, if necessary.

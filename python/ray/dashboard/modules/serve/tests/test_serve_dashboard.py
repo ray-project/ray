@@ -618,7 +618,7 @@ class DeploymentClass:
 deployment_app = DeploymentClass.bind()
 
 
-@serve.deployment(name="hello_world", num_replicas=2, version="v2")
+@serve.deployment(name="hello_world", num_replicas=2)
 class DeploymentClassWithBlockingInit:
     def __init__(self, semaphore_handle):
         ray.get(semaphore_handle.acquire.remote())
@@ -626,6 +626,11 @@ class DeploymentClassWithBlockingInit:
 
     def __call__(self):
         return "test"
+
+
+DeploymentClassWithBlockingInit = DeploymentClassWithBlockingInit.options(
+    _internal=True, version="v2"
+)
 
 
 @pytest.mark.skipif(

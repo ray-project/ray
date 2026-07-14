@@ -490,8 +490,8 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 500 MiB, (2) a local existing zipped file with total unzipped size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
-  The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, or ``.tgz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, or ``.tgz``) containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
+  The specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory.
 
   - Examples
 
@@ -503,6 +503,8 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
     - ``"s3://path/to/my_dir.zip"``
 
+    - ``"s3://path/to/my_dir.tar.gz"``
+
   Note: Setting a local directory per-task or per-actor is currently unsupported; it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: By default, if the local directory contains a ``.gitignore`` and/or ``.rayignore`` file, the specified files are not uploaded to the cluster. To disable the ``.gitignore`` from being considered, set ``RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1`` on the machine doing the uploading.
@@ -512,7 +514,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote zip or wheel file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
+  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote archive (``.zip``, ``.tar.gz``, ``.tgz``) or wheel (``.whl``) file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local ``.whl`` file.
 
   - Examples of entries in the list:
 
@@ -818,25 +820,31 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
   runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 
 Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
-You would need to first compress the ``example_dir`` directory into a zip file.
+You need to first compress the ``example_dir`` directory into a ``.zip`` or ``.tar.gz`` archive.
 
-There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
-You can use the following command in the Terminal to do this:
+There should be no other files or directories at the top level of the archive, other than ``example_dir``.
+You can use one of the following commands in the Terminal:
 
 .. code-block:: bash
 
     cd /some_path
-    zip -r zip_file_name.zip example_dir
+    # Using zip:
+    zip -r archive.zip example_dir
+    # Using tar.gz:
+    tar -czf archive.tar.gz example_dir
 
-Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting zip file contains a single top-level directory.
-In general, the zip file's name and the top-level directory's name can be anything.
-The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
+Run this command from the *parent directory* of the desired ``working_dir`` to ensure that the resulting archive contains a single top-level directory.
+In general, the archive's name and the top-level directory's name can be anything.
+The top-level directory's contents are used as the ``working_dir`` (or ``py_module``).
 
-You can check that the zip file contains a single top-level directory by running the following command in the Terminal:
+You can check that the archive contains a single top-level directory by running one of the following commands in the Terminal:
 
 .. code-block:: bash
 
-  zipinfo -1 zip_file_name.zip
+  # For zip:
+  zipinfo -1 archive.zip
+  # For tar.gz:
+  tar -tzf archive.tar.gz
   # example_dir/
   # example_dir/my_file_1.txt
   # example_dir/subdir/my_file_2.txt
@@ -849,15 +857,22 @@ Your ``runtime_env`` dictionary should contain:
 
   runtime_env = {..., "working_dir": "s3://example_bucket/example.zip", ...}
 
+You can also use ``.tar.gz`` or ``.tgz`` archives:
+
+.. testcode::
+  :skipif: True
+
+  runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.gz", ...}
+
 .. warning::
 
-  Check for hidden files and metadata directories in zipped dependencies.
-  You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
-  Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
-  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
-  If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
+  Check for hidden files and metadata directories in archived dependencies.
+  You can inspect an archive's contents by running ``zipinfo -1 archive.zip`` or ``tar -tzf archive.tar.gz`` in the Terminal.
+  Some archiving methods can cause hidden files or metadata directories to appear at the top level.
+  To avoid this, use ``zip -r`` or ``tar -czf`` directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the command from the directory ``a``.
+  If Ray detects more than a single directory at the top level, it uses the entire archive instead of the top-level directory, which may lead to unexpected behavior.
 
-Currently, four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
+Remote URIs support ``.zip``, ``.tar.gz``, and ``.tgz`` archive formats. Four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.

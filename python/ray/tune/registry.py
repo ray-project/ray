@@ -2,7 +2,7 @@ import atexit
 import logging
 from functools import partial
 from types import FunctionType
-from typing import Callable, Optional, Type, Union
+from typing import Any, Callable, Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -99,6 +99,8 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
         trainable: Function or tune.Trainable class. Functions must
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
+        warn: If True, emit warnings when the registered trainable triggers
+            backwards-compatibility heuristics. Defaults to True.
     """
 
     from ray.tune.trainable import Trainable, wrap_function
@@ -227,7 +229,7 @@ class _Registry:
         atexit.register(_unregister_all)
         self._atexit_handler_registered = True
 
-    def register(self, category, key, value):
+    def register(self, category: str, key: str, value: Any):
         """Registers the value with the global registry.
 
         Args:

@@ -95,6 +95,9 @@ def get_device() -> torch.device:
             :skipif: True
 
             model.to("cuda" if torch.cuda.is_available() else "cpu")
+
+    Returns:
+        The torch device for the current worker.
     """
     from ray.air._internal import torch_utils
 
@@ -141,6 +144,9 @@ def get_devices() -> List[torch.device]:
             ray.get_gpu_ids() == [2,3]
             torch.cuda.is_available() == True
             get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+
+    Returns:
+        A list of torch devices for the current worker.
     """
 
     from ray.air._internal import torch_utils
@@ -162,18 +168,21 @@ def prepare_model(
     workers or the device type being used (CPU, GPU).
 
     Args:
-        model (torch.nn.Module): A torch model to prepare.
+        model: A torch model to prepare.
         move_to_device: Either a boolean indiciating whether to move
             the model to the correct device or an actual device to
             move the model to. If set to False, the model needs
             to manually be moved to the correct device.
-        parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
-            in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
-            or neither.
-        parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+        parallel_strategy: Whether to wrap models in
+            ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            or neither. Must be one of ``"ddp"``, ``"fsdp"``, or ``None``.
+        parallel_strategy_kwargs: Args to pass into
             ``DistributedDataParallel`` or ``FullyShardedDataParallel``
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
+
+    Returns:
+        The prepared model, wrapped according to ``parallel_strategy``.
     """
     if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
@@ -242,8 +251,7 @@ def prepare_data_loader(
                 ...
 
     Args:
-        data_loader (torch.utils.data.DataLoader): The DataLoader to
-            prepare.
+        data_loader: The DataLoader to prepare.
         add_dist_sampler: Whether to add a DistributedSampler to
             the provided DataLoader.
         move_to_device: If set, automatically move the data
@@ -254,6 +262,9 @@ def prepare_data_loader(
             training procedure). If device is CPU, it will be disabled
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
+
+    Returns:
+        The prepared DataLoader.
     """
     record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
     return get_accelerator(_TorchAccelerator).prepare_data_loader(
@@ -298,7 +309,7 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
     """[Deprecated] Wraps optimizer to support automatic mixed precision.
 
     Args:
-        optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+        optimizer: The DataLoader to prepare.
 
     Returns:
         A wrapped optimizer.
@@ -312,7 +323,7 @@ def backward(tensor: torch.Tensor) -> None:
     """[Deprecated] Computes the gradient of the specified tensor w.r.t. graph leaves.
 
     Args:
-        tensor (torch.Tensor): Tensor of which the derivative will be computed.
+        tensor: Tensor of which the derivative will be computed.
     """
     _log_amp_deprecation_warning()
     get_accelerator(_TorchAccelerator).backward(tensor)
@@ -345,8 +356,8 @@ class TorchWorkerProfiler:
     """Utility class for running PyTorch Profiler on a Train worker.
 
     Args:
-        trace_dir (Optional[str]): The directory to store traces on the
-           worker node. If ``None``, this will use a default temporary dir.
+        trace_dir: The directory to store traces on the worker node.
+            If ``None``, this will use a default temporary dir.
     """
 
     WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
@@ -384,17 +395,21 @@ class _TorchAccelerator(Accelerator):
         workers or the device type being used (CPU, GPU).
 
         Args:
-            model (torch.nn.Module): A torch model to prepare.
+            model: A torch model to prepare.
             move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
-                in ``DistributedDataParallel``, ``FullyShardedDataParallel`` (
-                Experimental), or neither.
-            parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+            parallel_strategy: Whether to wrap models in
+                ``DistributedDataParallel``, ``FullyShardedDataParallel`` (
+                Experimental), or neither. Must be one of ``"ddp"``, ``"fsdp"``,
+                or ``None``.
+            parallel_strategy_kwargs: Args to pass into
                 ``DistributedDataParallel`` or ``FullyShardedDataParallel``
                 initialization if ``parallel_strategy`` is set to "ddp"
                 or "fsdp", respectively.
+
+        Returns:
+            The prepared model, wrapped according to ``parallel_strategy``.
         """
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
@@ -494,8 +509,7 @@ class _TorchAccelerator(Accelerator):
         workers or the device type being used (CPU, GPU).
 
         Args:
-            data_loader (torch.utils.data.DataLoader): The DataLoader to
-                prepare.
+            data_loader: The DataLoader to prepare.
             add_dist_sampler: Whether to add a DistributedSampler to
                 the provided DataLoader.
             move_to_device: If set, automatically move the data
@@ -506,6 +520,9 @@ class _TorchAccelerator(Accelerator):
                 training procedure). If device is CPU, it will be disabled
                 regardless of the setting. This configuration will be ignored
                 if ``move_to_device`` is False.
+
+        Returns:
+            The prepared DataLoader.
         """
 
         world_size = session.get_world_size()
@@ -596,7 +613,7 @@ class _TorchAccelerator(Accelerator):
         """Wraps optimizer to support automatic mixed precision.
 
         Args:
-            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+            optimizer: The DataLoader to prepare.
 
         Returns:
             A wrapped optimizer.
@@ -607,7 +624,7 @@ class _TorchAccelerator(Accelerator):
         """Computes the gradient of the specified tensor w.r.t. graph leaves.
 
         Args:
-            tensor (torch.Tensor): Tensor of which the derivative will be computed.
+            tensor: Tensor of which the derivative will be computed.
         """
         if self.amp_is_enabled:
             self.scaler.scale(tensor).backward()

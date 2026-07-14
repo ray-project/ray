@@ -6,6 +6,8 @@ ray_cc_test(
     srcs = ["publisher_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/pubsub:publisher",
     ],
 )

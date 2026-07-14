@@ -21,6 +21,7 @@
 
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -32,11 +33,13 @@ class ObservableStoreClient : public StoreClient {
   explicit ObservableStoreClient(
       std::unique_ptr<StoreClient> delegate,
       ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
-      ray::observability::MetricInterface &storage_operation_count_counter)
+      ray::observability::MetricInterface &storage_operation_count_counter,
+      ClockInterface &clock)
       : delegate_(std::move(delegate)),
         storage_operation_latency_in_ms_histogram_(
             storage_operation_latency_in_ms_histogram),
-        storage_operation_count_counter_(storage_operation_count_counter) {}
+        storage_operation_count_counter_(storage_operation_count_counter),
+        clock_(clock) {}
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -79,6 +82,7 @@ class ObservableStoreClient : public StoreClient {
   std::unique_ptr<StoreClient> delegate_;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
   ray::observability::MetricInterface &storage_operation_count_counter_;
+  ClockInterface &clock_;
 };
 
 }  // namespace gcs
