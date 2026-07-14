@@ -185,12 +185,12 @@ def cluster_dead_node_count() -> Optional[int]:
 
 def _session_name() -> Optional[str]:
     """This Ray session's name, used to scope Prometheus queries to this
-    cluster. None if unavailable.
+    cluster. None if Ray isn't connected (before init / after shutdown).
     """
-    try:
-        return global_worker.node.session_name
-    except AttributeError:
+    node = global_worker.node
+    if node is None:
         return None
+    return node.session_name
 
 
 def _session_scoped_metric_query(metric: str, session_name: Optional[str]) -> str:
