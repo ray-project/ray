@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException

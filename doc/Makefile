@@ -7,6 +7,12 @@
 SPHINXOPTS    = -a -E -W -j auto
 LOCALSPHINXOPTS = -W -j auto
 LINKCHECKOPTS = -a -E -j auto
+# RtD-faithful build: our full-build options plus the two flags Read the Docs
+# adds to its synthesized html command (-T full tracebacks, -D language=en).
+RTDSPHINXOPTS = $(SPHINXOPTS) -T -D language=en
+# Extra args forwarded to the preflight doctor (e.g. RTD_DOCTOR_ARGS=--warn-only
+# to build despite environment drift).
+RTD_DOCTOR_ARGS =
 SPHINXBUILD   = sphinx-build
 SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
@@ -25,15 +31,18 @@ PAPEROPT_a4      = -D latex_paper_size=a4
 PAPEROPT_letter  = -D latex_paper_size=letter
 ALLSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 ALLLOCALSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LOCALSPHINXOPTS) source
+ALLRTDSPHINXOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(RTDSPHINXOPTS) source
 ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS) source
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html rtd rtd-fallback dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
+.PHONY: help clean html rtd rtd-fallback rtd-build rtd-doctor dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
 	@echo "  html            to make standalone HTML files"
+	@echo "  rtd-build       to run a Read-the-Docs-faithful full build (preflight doctor + html)"
+	@echo "  rtd-doctor      to check this environment matches the Read the Docs build"
 	@echo "  dirhtml         to make HTML files named index.html in directories"
 	@echo "  singlehtml      to make a single large HTML file"
 	@echo "  pickle          to make pickle files"
@@ -96,6 +105,22 @@ local:
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
 	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+
+rtd-doctor:
+	python rtd_doctor.py $(RTD_DOCTOR_ARGS)
+
+# RtD-faithful full build for local verification: reproduces the clean full
+# build Read the Docs runs from a fresh checkout, so a clean build here means a
+# clean build on RtD. Distinct from the `rtd` target below, which RtD itself
+# drives as an incremental PR-preview build. The preflight doctor checks Python
+# 3.11 and the docs lock, and blocks on drift unless you pass
+# RTD_DOCTOR_ARGS=--warn-only.
+rtd-build: rtd-doctor
+	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
+	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
+	$(SPHINXBUILD) --keep-going -b html $(ALLRTDSPHINXOPTS) $(BUILDDIR)/html
+	@echo
+	@echo "RtD-faithful build finished. The HTML pages are in $(BUILDDIR)/html."
 
 # Incremental one-shot build for Read the Docs PR previews: restore the latest
 # master build cache, mark only the PR-changed files dirty (load_doc_cache.py +

@@ -118,13 +118,38 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     # Ensures another custom defined method is responding correctly.
     ping_grpc_another_method(channel, app1)
 
-    # TODO: multiplexing and gRPC streaming are not supported in direct ingress / haproxy
+    # TODO: gRPC streaming is not supported in direct ingress / haproxy
     if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        # Ensures model multiplexing is responding correctly.
-        ping_grpc_model_multiplexing(channel, app1)
-
         # Ensure Streaming method is responding correctly.
         ping_grpc_streaming(channel, app1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    reason="Model multiplexing is not supported on the ingress deployment when "
+    "direct ingress / HAProxy is enabled (the multiplexed model ID is not "
+    "propagated to the replica).",
+)
+def test_serving_grpc_proxy_model_multiplexing(ray_start_stop):
+    """Test model multiplexing over gRPC when deployed via the CLI."""
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_multiplexed_app.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app1 = "app1"
+
+    # Wait for the application to be RUNNING before sending requests.
+    wait_for_condition(check_app_running, app_name=app1)
+
+    channel = grpc.insecure_channel(get_application_url("gRPC", app_name=app1))
+
+    # Ensures model multiplexing is responding correctly.
+    ping_grpc_model_multiplexing(channel, app1)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

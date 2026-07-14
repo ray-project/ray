@@ -798,6 +798,12 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
       entry.actor_metadata->Teardown();
     }
   }
+  // Wake every parked async streaming generator: the dead owner's tasks so they
+  // exit their now-disabled per-task waits, and any actor-wide reserver since
+  // the teardown above freed shared budget.
+  if (!dead_entries.empty()) {
+    NotifyAsyncGeneratorBackpressureUnblock(ObjectID::Nil(), /*notify_all=*/true);
+  }
 }
 
 void CoreWorker::SubscribeToNodeChanges() {
@@ -3322,14 +3328,20 @@ Status CoreWorker::ReportGeneratorItemReturns(
           if (actor_metadata) {
             actor_metadata->Teardown();
           }
-          absl::MutexLock lock(&mutex_);
-          generator_backpressure_states_.erase(generator_id);
+          {
+            absl::MutexLock lock(&mutex_);
+            generator_backpressure_states_.erase(generator_id);
+          }
+          // The report to the owner failed, so we gave up on backpressure for
+          // this task (consumed == generated above). Wake it if an async
+          // generator is parked on the per-task wait, plus any actor-wide
+          // reserver since the Teardown above freed shared budget.
+          NotifyAsyncGeneratorBackpressureUnblock(
+              generator_id, /*notify_all=*/actor_metadata != nullptr);
         }
       });
 
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed();
+  return Status::OK();
 }
 
 void CoreWorker::RegisterGeneratorBackpressureState(
@@ -3394,6 +3406,41 @@ bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id)
     actor_metadata->Teardown();
   }
   return true;
+}
+
+void CoreWorker::SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                            void (*fn)(void *),
+                                                            void *ctx) {
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  generator_unblock_notifies_[generator_id] = std::make_pair(fn, ctx);
+}
+
+void CoreWorker::ClearAsyncGeneratorBackpressureUnblockNotify(
+    const ObjectID &generator_id) {
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  generator_unblock_notifies_.erase(generator_id);
+}
+
+void CoreWorker::NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                                         bool notify_all) {
+  // Hold generator_backpressure_notification_guard_ across the callback(s): this both
+  // excludes a concurrent ClearAsyncGeneratorBackpressureUnblockNotify (so the borrowed
+  // ctx stays valid for the duration of the call) and keeps a consistent lock
+  // order, since the mutex is always taken with the GIL released and the
+  // callback acquires the GIL only after.
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  if (notify_all) {
+    for (const auto &[id, cb] : generator_unblock_notifies_) {
+      if (cb.first != nullptr) {
+        cb.first(cb.second);
+      }
+    }
+  } else {
+    auto it = generator_unblock_notifies_.find(generator_id);
+    if (it != generator_unblock_notifies_.end() && it->second.first != nullptr) {
+      it->second.first(it->second.second);
+    }
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3479,13 +3526,23 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
     const bool all_objects_consumed =
         waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated();
 
-    absl::MutexLock lock(&mutex_);
-    auto it = generator_backpressure_states_.find(generator_id);
-    if (it != generator_backpressure_states_.end() &&
-        (teardown || (it->second.task_finished &&
-                      (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
-      generator_backpressure_states_.erase(it);
+    {
+      absl::MutexLock lock(&mutex_);
+      auto it = generator_backpressure_states_.find(generator_id);
+      if (it != generator_backpressure_states_.end() &&
+          (teardown ||
+           (it->second.task_finished &&
+            (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
+        generator_backpressure_states_.erase(it);
+      }
     }
+
+    // Wake any async streaming generator parked on an asyncio.Event. Done after
+    // releasing mutex_ (the callback acquires the GIL). When this task uses
+    // the actor-wide cap, its consumption frees shared budget, so wake every
+    // registered async generator to re-check; otherwise only this one.
+    NotifyAsyncGeneratorBackpressureUnblock(generator_id,
+                                            /*notify_all=*/actor_metadata != nullptr);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3802,60 +3859,6 @@ void CoreWorker::HandleWaitForActorRefDeleted(
   }
 }
 
-void CoreWorker::ProcessSubscribeForObjectEviction(
-    const rpc::WorkerObjectEvictionSubMessage &message) {
-  // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto unpin_object = [this](const ObjectID &object_id) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object is deleted. Unpinning the object.";
-
-    rpc::PubMessage pub_message;
-    pub_message.set_key_id(object_id.Binary());
-    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    pub_message.mutable_worker_object_eviction_message()->set_object_id(
-        object_id.Binary());
-
-    object_info_publisher_->Publish(std::move(pub_message));
-  };
-
-  const auto object_id = ObjectID::FromBinary(message.object_id());
-  const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
-  if (intended_worker_id != worker_context_->GetWorkerID()) {
-    RAY_LOG(INFO).WithField(object_id)
-        << "The SubscribeForObjectEviction message for object is for worker "
-        << intended_worker_id << ", but the current worker is "
-        << worker_context_->GetWorkerID() << ". The RPC will be no-op.";
-    unpin_object(object_id);
-    return;
-  }
-
-  if (message.has_generator_id()) {
-    // For dynamically generated return values, the raylet may subscribe to
-    // eviction events before we know about the object. This can happen when we
-    // receive the subscription request before the reply from the task that
-    // created the object. Add the dynamically created object to our ref
-    // counter so that we know that it exists.
-    const auto generator_id = ObjectID::FromBinary(message.generator_id());
-    RAY_CHECK(!generator_id.IsNil());
-    if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
-      // "streaming".
-      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
-    } else {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-    }
-  }
-
-  // Returns true if the object was present and the callback was added. It might have
-  // already been evicted by the time we get this request, in which case we should
-  // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
-    // If the object is already evicted (callback cannot be set), unregister the
-    // subscription & publish the message so that the subscriber knows it.
-    unpin_object(object_id);
-    RAY_LOG(DEBUG).WithField(object_id) << "Reference for object has already been freed.";
-  }
-}
-
 StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
@@ -3867,19 +3870,16 @@ StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     return result;
   }
 
-  if (!sub_message.has_worker_object_eviction_message() &&
-      !sub_message.has_worker_ref_removed_message() &&
+  if (!sub_message.has_worker_ref_removed_message() &&
       !sub_message.has_worker_object_locations_message()) {
     return StatusT::InvalidArgument(
         absl::StrFormat("Unexpected subscribe command has been received: %s"
-                        "Expected worker_object_eviction, worker_ref_removed, or "
+                        "Expected worker_ref_removed or "
                         "worker_object_locations message",
                         sub_message.DebugString()));
   }
 
-  if (sub_message.has_worker_object_eviction_message()) {
-    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
-  } else if (sub_message.has_worker_ref_removed_message()) {
+  if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
