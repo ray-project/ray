@@ -105,29 +105,27 @@ def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
 
 def join_metric_sample(
     future: Optional["Future[T]"],
-    default: T,
     timeout: float = _SAMPLE_JOIN_TIMEOUT_S,
-) -> T:
+) -> Optional[T]:
     """Wait up to ``timeout`` seconds (default ``_SAMPLE_JOIN_TIMEOUT_S``) for
     the sample started by ``start_metric_sample`` and return its result.
 
-    Returns ``default`` if the sample was never started (``future is None``), is
+    Returns ``None`` if the sample was never started (``future is None``), is
     still running (hung) past ``timeout``, or raised. A stuck or missing
     reader degrades gracefully instead of blocking teardown.
     """
     if future is None:
-        return default
+        return None
     try:
         return future.result(timeout=timeout)
     except Exception:
-        return default
+        return None
 
 
 def join_metric_samples(
     futures: Sequence[Optional["Future[T]"]],
-    default: T,
     timeout: float = _SAMPLE_JOIN_TIMEOUT_S,
-) -> List[T]:
+) -> List[Optional[T]]:
     """Join several samples started by ``start_metric_sample`` under a single
     ``timeout`` ceiling and return their results in order.
 
@@ -135,10 +133,10 @@ def join_metric_samples(
     ``timeout`` per future and can block for ``timeout * len(futures)`` if every
     reader hangs), this waits for all futures concurrently, then drains each
     result without further blocking. Any future that is missing (``None``), is
-    still running past ``timeout``, or raised degrades to ``default``.
+    still running past ``timeout``, or raised degrades to ``None``.
     """
     wait([f for f in futures if f is not None], timeout=timeout)
-    return [join_metric_sample(f, default=default, timeout=0.0) for f in futures]
+    return [join_metric_sample(f, timeout=0.0) for f in futures]
 
 
 def _is_builtin_cls(cls: type) -> bool:

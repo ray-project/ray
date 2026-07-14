@@ -166,7 +166,6 @@ class UsageCallback(ExecutionCallback):
                 end_oom_kills,
                 end_unexpected_worker_kills,
             ],
-            default=None,
         )
 
     def build_usage_info(self) -> UsageInfo:

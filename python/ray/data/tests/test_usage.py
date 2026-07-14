@@ -347,11 +347,11 @@ def test_worker_kill_query_scopes_by_session():
 def test_metric_sample_round_trip():
     """start/join returns the sampled value when the query finishes in time."""
     future = util.start_metric_sample(lambda: (2, 5))
-    assert util.join_metric_sample(future, default=(None, None)) == (2, 5)
+    assert util.join_metric_sample(future) == (2, 5)
 
 
-def test_metric_sample_hung_returns_default():
-    """If the sampler outlives the join timeout, the sample degrades to default."""
+def test_metric_sample_hung_returns_none():
+    """If the sampler outlives the join timeout, the sample degrades to None."""
     import threading as _threading
 
     release = _threading.Event()
@@ -362,10 +362,7 @@ def test_metric_sample_hung_returns_default():
 
     future = util.start_metric_sample(slow)
     try:
-        assert util.join_metric_sample(future, default=(None, None), timeout=0.05) == (
-            None,
-            None,
-        )
+        assert util.join_metric_sample(future, timeout=0.05) is None
     finally:
         # Let the worker thread finish so it doesn't linger past the test.
         release.set()
@@ -378,9 +375,9 @@ def test_join_metric_samples_preserves_order_and_gaps():
         None,
         util.start_metric_sample(lambda: (3, 3)),
     ]
-    assert util.join_metric_samples(futures, default=(None, None)) == [
+    assert util.join_metric_samples(futures) == [
         (1, 1),
-        (None, None),
+        None,
         (3, 3),
     ]
 
