@@ -153,7 +153,10 @@ does, keeping MFU comparable to llm-foundry and NeMo.
 
 ## Tests
 
+Validation runs on a GPU cluster (needs torch/ray/deepspeed): the
+`train_benchmark-qwen3_06b_deepspeed` release test, or locally via the smoke
+experiment:
+
 ```bash
-python -m pytest core/test_harness_logic.py -v   # torch-free: config, MFU/BW math, topology
+python -m core.runner --experiment experiments/qwen3_06b_deepspeed_smoke.yaml
 ```
-Adapter/launcher integration runs on a GPU cluster (needs torch/ray/deepspeed).
