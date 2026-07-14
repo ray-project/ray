@@ -604,8 +604,6 @@ def test_num_replicas_auto_api(serve_instance):
         "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
-        "prometheus_address": None,
-        "prometheus_queries": None,
         "policy": {
             "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
             "policy_kwargs": {},
@@ -666,8 +664,6 @@ def test_num_replicas_auto_basic(serve_instance):
         "smoothing_factor": 1.0,
         "initial_replicas": None,
         "aggregation_function": "mean",
-        "prometheus_address": None,
-        "prometheus_queries": None,
         "policy": {
             "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
             "policy_kwargs": {},

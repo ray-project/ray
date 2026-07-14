@@ -452,7 +452,7 @@ def test_prometheus_autoscaling():
 
     from openai import OpenAI
     from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
-    from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy, P99_TTFT_QUERY
+    from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy
 
     prometheus_address = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
@@ -467,12 +467,13 @@ def test_prometheus_autoscaling():
                 initial_replicas=1,
                 upscale_delay_s=5,
                 downscale_delay_s=600,
-                prometheus_address=prometheus_address,
-                prometheus_queries=[P99_TTFT_QUERY],
                 policy=AutoscalingPolicy(
                     policy_function=TTFTAutoscalingPolicy,
-                    # 1ms threshold: any real request triggers scale-up
-                    policy_kwargs=dict(ttft_target_s=0.001),
+                    policy_kwargs=dict(
+                        # 1ms threshold: any real request triggers scale-up.
+                        ttft_target_s=0.001,
+                        prometheus_address=prometheus_address,
+                    ),
                 ),
             ),
         ),

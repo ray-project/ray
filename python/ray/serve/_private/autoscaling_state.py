@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-    RAY_SERVE_PROMETHEUS_CACHE_TTL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -102,10 +101,6 @@ class DeploymentAutoscalingState:
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
 
-        # Cached Prometheus metrics (populated by background task).
-        self._cached_prometheus_metrics: Optional[Dict[str, float]] = None
-        self._prometheus_cache_timestamp: float = 0.0
-
         self.autoscaling_decision_gauge = metrics.Gauge(
             "serve_autoscaling_desired_replicas",
             description=(
@@ -177,10 +172,6 @@ class DeploymentAutoscalingState:
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
-        # Drop cached Prometheus metrics so a config change does not keep
-        # serving values fetched from a previous prometheus_address.
-        self._cached_prometheus_metrics = None
-        self._prometheus_cache_timestamp = 0.0
 
         # Log when custom autoscaling policy is used for deployment
         if not self._config.policy.is_default_policy_function():
@@ -414,7 +405,6 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
-            prometheus_metrics=self._get_cached_prometheus_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
             total_pending_async_requests=self._total_pending_async_requests,
@@ -822,43 +812,6 @@ class DeploymentAutoscalingState:
 
         return dict(raw_metrics)
 
-    def _get_cached_prometheus_metrics(self) -> Optional[Dict[str, float]]:
-        """Return cached Prometheus metrics if still fresh, else None.
-
-        Called synchronously during the autoscaling tick. The cache is
-        populated by the controller's background Prometheus fetch.
-        """
-        if self._cached_prometheus_metrics is None:
-            return None
-        age = time.time() - self._prometheus_cache_timestamp
-        if age > RAY_SERVE_PROMETHEUS_CACHE_TTL_S:
-            logger.debug(
-                f"Prometheus cache expired for deployment '{self._deployment_id}' "
-                f"(age={age:.1f}s, ttl={RAY_SERVE_PROMETHEUS_CACHE_TTL_S}s)."
-            )
-            return None
-        return self._cached_prometheus_metrics
-
-    def has_prometheus_queries(self) -> bool:
-        """Whether this deployment has Prometheus queries and address configured."""
-        return bool(
-            self._config
-            and self._config.prometheus_queries
-            and self._config.prometheus_address
-        )
-
-    def record_prometheus_metrics(
-        self, metrics: Dict[str, float], timestamp: float
-    ) -> None:
-        """Store Prometheus metrics from the controller's background fetch.
-
-        Args:
-            metrics: mapping of PromQL expression to scalar value.
-            timestamp: when the metrics were fetched.
-        """
-        self._cached_prometheus_metrics = metrics if metrics else None
-        self._prometheus_cache_timestamp = timestamp
-
 
 class ApplicationAutoscalingState:
     """Manages autoscaling for a single application."""
@@ -995,11 +948,9 @@ class ApplicationAutoscalingState:
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
-                    (
-                        self._policy_state.get(deployment_id, {})
-                        if self._policy_state
-                        else {}
-                    ),
+                    self._policy_state.get(deployment_id, {})
+                    if self._policy_state
+                    else {},
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
@@ -1323,47 +1274,3 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
-
-    # --- Prometheus metrics (from the controller's background fetch) ---
-
-    def record_prometheus_metrics(
-        self,
-        metrics_by_deployment: Dict[DeploymentID, Dict[str, float]],
-        timestamp: float,
-    ) -> None:
-        """Store Prometheus metrics from the controller's background fetch.
-
-        Args:
-            metrics_by_deployment: mapping of DeploymentID to query results.
-            timestamp: when the metrics were fetched.
-        """
-        for dep_id, dep_metrics in metrics_by_deployment.items():
-            app_state = self._app_autoscaling_states.get(dep_id.app_name)
-            if app_state is None:
-                continue
-            dep_state = app_state._deployment_autoscaling_states.get(dep_id)
-            if dep_state is not None:
-                dep_state.record_prometheus_metrics(dep_metrics, timestamp)
-
-    def get_prometheus_config_by_deployment(
-        self,
-    ) -> Dict[DeploymentID, Tuple[List[str], str]]:
-        """Return Prometheus config for all deployments that have it.
-
-        Used by the controller's background fetch to know what to query.
-
-        Returns:
-            Mapping of DeploymentID to (queries, address) tuples.
-            Only includes deployments with both prometheus_queries and
-            prometheus_address configured.
-        """
-        result: Dict[DeploymentID, Tuple[List[str], str]] = {}
-        for app_state in self._app_autoscaling_states.values():
-            for dep_id, dep_state in app_state._deployment_autoscaling_states.items():
-                config = dep_state._config
-                if config and config.prometheus_queries and config.prometheus_address:
-                    result[dep_id] = (
-                        list(config.prometheus_queries),
-                        config.prometheus_address,
-                    )
-        return result
