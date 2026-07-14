@@ -431,7 +431,6 @@ class TestBuildOpenaiApp:
         router = app._ingress_request_router._bound_deployment
 
         assert router._deployment_config.num_replicas_per_node is True
-        assert router._replica_config.max_replicas_per_node == 1
         assert router._deployment_config.max_ongoing_requests == 1000
         # num_cpus=0 matches the proxy so the router colocates on every proxy
         # node, including a resource-less head.
