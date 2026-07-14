@@ -236,6 +236,16 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       ClockInterface &clock);
 
  private:
+  /// Records the placement-group-state gauge for a single state. Shared by the
+  /// on-change callback and the per-tick re-emit in RecordMetrics so both go
+  /// through one implementation.
+  ///
+  /// \param state The placement group state to record.
+  /// \param value The current count for `state`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordPlacementGroupState(rpc::PlacementGroupTableData::PlacementGroupState state,
+                                 int64_t value) const;
+
   /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding
