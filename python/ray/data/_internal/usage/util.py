@@ -24,8 +24,6 @@ T = TypeVar("T")
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
 
-# Bounded timeout for the GCS RPC calls
-_GCS_RPC_TIMEOUT_S = 5.0
 # Bounded timeout for the Prometheus counter HTTP queries
 _PROMETHEUS_QUERY_TIMEOUT_S = 1.0
 # Timeout for join_metric_sample: how long the callback waits for a background

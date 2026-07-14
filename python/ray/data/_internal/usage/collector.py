@@ -31,7 +31,6 @@ from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.util import (
-    _GCS_RPC_TIMEOUT_S,
     anonymize_op_name,
     query_prometheus_counter,
 )
@@ -46,6 +45,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bounded timeout for the GCS RPC calls
+_GCS_RPC_TIMEOUT_S = 5.0
 # Cumulative raylet worker-kill counters (Prometheus metric names). Scoped to
 # the current session at query time via ``_worker_kill_query``.
 _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
@@ -192,8 +193,8 @@ def _session_name() -> Optional[str]:
         return None
 
 
-def _worker_kill_query(metric: str, session_name: Optional[str]) -> str:
-    """Cluster-wide ``sum`` of a raylet worker-kill counter, scoped to this
+def _session_scoped_metric_query(metric: str, session_name: Optional[str]) -> str:
+    """Cluster-wide ``sum`` of a metric counter, scoped to this
     session via the ``SessionName`` label. Falls back to an unscoped sum when the
     session name is unknown.
     """
@@ -206,7 +207,7 @@ def cluster_oom_kills() -> Optional[int]:
     Prometheus, scoped to this session. None if the query failed.
     """
     return query_prometheus_counter(
-        _worker_kill_query(_OOM_KILL_METRIC, _session_name())
+        _session_scoped_metric_query(_OOM_KILL_METRIC, _session_name())
     )
 
 
@@ -215,7 +216,7 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
     Prometheus, scoped to this session. None if the query failed.
     """
     return query_prometheus_counter(
-        _worker_kill_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
+        _session_scoped_metric_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
     )
 
 
