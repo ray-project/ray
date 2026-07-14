@@ -731,7 +731,10 @@ class ShuffleNodeLostError(ShuffleFetchError):
     """
 
 
-class ShuffleManagerAnomalyError(ShuffleFetchError):
+# Not a ShuffleFetchError subclass — reducer options list
+# ``retry_exceptions=[ShuffleFetchError]``, and retry can't repair this
+# (mapper refs are "live" so no lineage kicks in; no serving manager).
+class ShuffleManagerAnomalyError(RuntimeError):
     """Raised when a ShuffleManager is unreachable while its node is alive.
 
     Under our configuration (``max_restarts=-1``, ``lifetime="detached"``,

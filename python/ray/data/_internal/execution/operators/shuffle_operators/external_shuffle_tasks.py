@@ -536,7 +536,7 @@ def _external_shuffle_reduce_task(
                     accum_bytes += table.nbytes
                 # fdatasync turns this fd's dirty pwrite'd pages clean,
                 # so the DONTNEED that follows actually evicts them.
-                os.fdatasync(fd)
+                os.fsync(fd)
                 _drop_pagecache(fd, base, size)
 
             with ThreadPoolExecutor(max_workers=n_threads) as ex:

@@ -576,7 +576,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         if name == "Map":
             self._map_bar = pg
 
-    # External-shuffle-specific accessors consumed by ExternalHashShuffleReduceOp.
     @property
     def num_partitions(self) -> int:
         return self._num_partitions
