@@ -14,6 +14,7 @@ from typing import (
     Any,
     Callable,
     Deque,
+    cast,
     Dict,
     Iterable,
     List,
@@ -4552,14 +4553,15 @@ class DeploymentState:
                     # rank was never released).
                     replica_id = replica.replica_id.unique_id
                     if not self._rank_manager.has_replica_rank(replica_id):
-                        # A replica that reached SUCCEEDED has a node id, and
-                        # its rank was recovered from the actor's metadata.
-                        assert replica.actor_node_id is not None
-                        assert replica.rank is not None
+                        # Cross-language replicas can reach SUCCEEDED with
+                        # actor_node_id/rank unset (they skip the Python
+                        # allocation ray.get that sets node_id), so cast to
+                        # preserve the prior pass-through behavior rather than
+                        # asserting -- an assert here would abort the loop.
                         self._rank_manager.recover_rank(
                             replica_id,
-                            replica.actor_node_id,
-                            replica.rank,
+                            cast(str, replica.actor_node_id),
+                            cast(ReplicaRank, replica.rank),
                         )
                 # Register recovered gang replicas in the incremental
                 # bookkeeping (newly created gang replicas are already
@@ -4574,10 +4576,11 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                assert replica.actor_node_id is not None
+                # Cross-language replicas can be RUNNING with actor_node_id
+                # unset; cast to preserve the prior pass-through behavior.
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id,
-                    replica.actor_node_id,
+                    cast(str, replica.actor_node_id),
                 )
 
                 # if replica version is the same as the target version,
