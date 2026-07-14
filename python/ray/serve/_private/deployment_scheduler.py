@@ -224,6 +224,9 @@ class ReplicaSchedulingRequest:
     # Bundle index inside gang_placement_group where this replica actor is scheduled.
     # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
     gang_pg_index: Optional[int] = None
+    # Pin this replica to a specific node via soft node affinity. Set by
+    # per-proxy-node deployments to colocate a replica with that node's proxy.
+    target_node_id: Optional[str] = None
 
     @property
     def requested_resources(self) -> RequestedResources:
@@ -405,36 +408,6 @@ class DeploymentScheduler(ABC):
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
         self._create_placement_group_fn = create_placement_group_fn
-
-    def get_num_schedulable_nodes(self, deployment_id: DeploymentID) -> int:
-        """Number of active nodes that can host one replica of this deployment.
-
-        Used by num_replicas="per_node" to size the deployment to the nodes it
-        can actually be placed on. A node counts when its total resources fit
-        the replica's resource request, so a resource-less head node is
-        excluded while a single schedulable node still yields one replica.
-        Falls back to the active node count for a deployment whose resource
-        request the scheduler has not recorded yet (the first deploy, before
-        on_deployment_deployed).
-
-        Counts by resource fit only. It ignores the deployment's label_selector,
-        so a label-constrained deployment counts nodes it cannot place on and
-        leaves the surplus replicas pending.
-        """
-        active_node_ids = self._cluster_node_info_cache.get_active_node_ids()
-        info = self._deployments.get(deployment_id)
-        if info is None or info.actor_resources is None:
-            return len(active_node_ids)
-
-        required = info.required_resources
-        total_resources = self._cluster_node_info_cache.get_total_resources_per_node()
-        return sum(
-            1
-            for node_id in active_node_ids
-            if AvailableNodeResources(total_resources.get(node_id, {})).can_fit(
-                required
-            )
-        )
 
     def on_deployment_created(
         self,
@@ -700,6 +673,11 @@ class DeploymentScheduler(ABC):
         placement_group = None
 
         scheduling_strategy = default_scheduling_strategy
+
+        # A request may pin itself to a node (per-proxy-node deployments); that
+        # overrides any soft target the scheduling policy computed.
+        if scheduling_request.target_node_id is not None:
+            target_node_id = scheduling_request.target_node_id
 
         if scheduling_request.gang_placement_group is not None:
             # Gang scheduling -- use the reserved gang placement group

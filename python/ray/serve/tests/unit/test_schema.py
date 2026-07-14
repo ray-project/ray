@@ -362,19 +362,6 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.model_validate(deployment_schema)
 
-    def test_num_replicas_per_node(self):
-        deployment_schema = self.get_minimal_deployment_schema()
-
-        deployment_schema["num_replicas"] = "per_node"
-        deployment_schema["autoscaling_config"] = None
-        DeploymentSchema.model_validate(deployment_schema)
-
-        # per_node cannot be combined with an autoscaling config.
-        deployment_schema["num_replicas"] = "per_node"
-        deployment_schema["autoscaling_config"] = {"max_replicas": 99}
-        with pytest.raises(ValueError):
-            DeploymentSchema.model_validate(deployment_schema)
-
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
 

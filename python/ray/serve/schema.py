@@ -322,8 +322,7 @@ class DeploymentSchema(BaseModel):
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null. Can also be set to "
-            "`auto` for a default autoscaling configuration, or `per_node` "
-            "to run one replica on every schedulable node."
+            "`auto` for a default autoscaling configuration."
         ),
     )
     max_ongoing_requests: int = Field(
@@ -495,20 +494,11 @@ class DeploymentSchema(BaseModel):
                     "Manually setting num_replicas is not allowed "
                     "when autoscaling_config is provided."
                 )
-        # `num_replicas="per_node"` runs one replica per node and does not
-        # autoscale, so it cannot be paired with an autoscaling config
-        elif num_replicas == "per_node":
-            if autoscaling_config not in [None, DEFAULT.VALUE]:
-                raise ValueError(
-                    'num_replicas="per_node" is not allowed when '
-                    "autoscaling_config is provided."
-                )
         # A null `num_replicas` or `num_replicas="auto"` can be paired
         # with a non-null autoscaling_config
         elif num_replicas not in ["auto", None, DEFAULT.VALUE]:
             raise ValueError(
-                '`num_replicas` must be an int, "auto", or "per_node", but got: '
-                f"{num_replicas}"
+                f'`num_replicas` must be an int or "auto", but got: {num_replicas}'
             )
 
         return values
@@ -692,8 +682,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.autoscaling_config = (
             info.deployment_config.autoscaling_config.model_dump()
         )
-    elif info.deployment_config.num_replicas_per_node:
-        schema.num_replicas = "per_node"
     else:
         schema.num_replicas = info.deployment_config.num_replicas
 
