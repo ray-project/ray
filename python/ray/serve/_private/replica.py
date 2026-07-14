@@ -2731,9 +2731,12 @@ class Replica:
                     await result_gen.aclose()
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
-                    # `status.code` is always a `grpc.StatusCode` on this path
-                    # (`ResponseStatus.code` is annotated as `Union[str, ...]`).
-                    status_code_callback(status.code.name)  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
+                    code_name = (
+                        status.code.name
+                        if isinstance(status.code, grpc.StatusCode)
+                        else status.code
+                    )
+                    status_code_callback(code_name)
                     set_grpc_code_and_details(context, status)
 
     async def _maybe_handle_builtin_grpc_service(
@@ -3213,9 +3216,9 @@ class Replica:
                 if not response_started:
                     # `_http_options` is always set while the direct ingress
                     # server is running.
+                    assert self._http_options is not None
                     msg = (
-                        f"Request {request_id} timed out after "  # type: ignore[union-attr]
-                        # pyrefly: ignore[missing-attribute]
+                        f"Request {request_id} timed out after "
                         f"{self._http_options.request_timeout_s}s."
                     )
                     await send_http_response(msg, 408, send)
@@ -4085,16 +4088,9 @@ class UserCallableWrapper:
                 )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    # NOTE: this concatenates a str with a DeploymentID (which is
-                    # a dataclass, not a str), so reaching this branch raises a
-                    # TypeError rather than the intended RayServeException.
-                    # Preserving runtime behavior; see the type-checking report.
-                    # pyrefly: ignore[unsupported-operation]
-                    "user_config or rank specified but deployment "
-                    + self._deployment_id  # type: ignore[operator]
-                    + " missing "
-                    + RECONFIGURE_METHOD
-                    + " method"
+                    f"user_config or rank specified but deployment "
+                    f"{self._deployment_id} missing "
+                    f"{RECONFIGURE_METHOD} method"
                 )
             kwargs = {}
             if user_subscribed_to_rank:

@@ -2012,8 +2012,11 @@ def calculate_target_capacity_direction(
             next_target_capacity_direction = TargetCapacityDirection.DOWN
         elif next_target_capacity is None:
             next_target_capacity_direction = None
-        # The two branches above ensure both capacities are non-None here.
-        elif curr_target_capacity < next_target_capacity:  # type: ignore[operator]  # pyrefly: ignore[unsupported-operation]
+        elif (
+            curr_target_capacity is not None
+            and next_target_capacity is not None
+            and curr_target_capacity < next_target_capacity
+        ):
             next_target_capacity_direction = TargetCapacityDirection.UP
         else:
             next_target_capacity_direction = TargetCapacityDirection.DOWN

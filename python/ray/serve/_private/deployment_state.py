@@ -1497,11 +1497,11 @@ class ActorReplicaWrapper:
                 # `_assign_rank_callback` is set by `start()` for every replica
                 # that reaches this non-recovery path, and `_node_id` was
                 # populated from the allocation check above.
-                # pyrefly: ignore[not-callable]
-                self._rank = self._assign_rank_callback(  # type: ignore[misc]
+                assert self._assign_rank_callback is not None
+                assert self._node_id is not None
+                self._rank = self._assign_rank_callback(
                     self._replica_id.unique_id,
-                    # pyrefly: ignore[bad-argument-type]
-                    self._node_id,  # type: ignore[arg-type]
+                    self._node_id,
                 )
                 self._ready_obj_ref = replica_ready_check_func.remote(
                     deployment_config, self._rank, self._gang_context
@@ -4554,11 +4554,12 @@ class DeploymentState:
                     if not self._rank_manager.has_replica_rank(replica_id):
                         # A replica that reached SUCCEEDED has a node id, and
                         # its rank was recovered from the actor's metadata.
+                        assert replica.actor_node_id is not None
+                        assert replica.rank is not None
                         self._rank_manager.recover_rank(
                             replica_id,
-                            # pyrefly: ignore[bad-argument-type]
-                            replica.actor_node_id,  # type: ignore[arg-type]
-                            replica.rank,  # type: ignore[arg-type]
+                            replica.actor_node_id,
+                            replica.rank,
                         )
                 # Register recovered gang replicas in the incremental
                 # bookkeeping (newly created gang replicas are already
@@ -4573,11 +4574,10 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                assert replica.actor_node_id is not None
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id,
-                    # A SUCCEEDED replica always has a node id.
-                    # pyrefly: ignore[bad-argument-type]
-                    replica.actor_node_id,  # type: ignore[arg-type]
+                    replica.actor_node_id,
                 )
 
                 # if replica version is the same as the target version,
@@ -4588,8 +4588,8 @@ class DeploymentState:
 
                 # Log the startup latency.
                 # `_start_time` is set when the replica starts or recovers.
-                # pyrefly: ignore[unsupported-operation]
-                e2e_replica_start_latency = time.time() - replica._start_time  # type: ignore[operator]
+                assert replica._start_time is not None
+                e2e_replica_start_latency = time.time() - replica._start_time
                 replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
@@ -4666,8 +4666,8 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                # pyrefly: ignore[unsupported-operation]
-                is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S  # type: ignore[operator]
+                assert replica._start_time is not None
+                is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
 
