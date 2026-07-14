@@ -43,6 +43,7 @@ def _prometheus_headers() -> Dict[str, str]:
     try:
         headers = json.loads(os.environ.get("RAY_PROMETHEUS_HEADERS", "{}"))
     except json.JSONDecodeError:
+        logger.debug("Failed to parse RAY_PROMETHEUS_HEADERS as JSON", exc_info=True)
         return {}
     if isinstance(headers, list):
         return dict(headers)
@@ -64,9 +65,13 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
             timeout=_PROMETHEUS_QUERY_TIMEOUT_S,
         )
         if resp.status_code != 200:
+            logger.debug(
+                "Prometheus counter query %r returned %d", promql, resp.status_code
+            )
             return None
         results = resp.json()["data"]["result"]
         if not results:
+            logger.debug("Prometheus counter query %r returned empty result", promql)
             return None
         return int(sum(float(r["value"][1]) for r in results))
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
