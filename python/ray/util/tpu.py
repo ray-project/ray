@@ -1636,7 +1636,6 @@ def subslice_placement_group(
     subslice_topology: str,
     accelerator_version: str,
     chips_per_vm: Optional[int] = None,
-    subslice_index: Optional[int] = None,
     resources_per_bundle: Optional[Dict[str, float]] = None,
     strategy: str = "STRICT_SPREAD",
     name: str = "",
@@ -1664,8 +1663,6 @@ def subslice_placement_group(
         chips_per_vm: Optional override for chips per VM. Useful for
             ambiguous topologies like v6e 2x4 which can be 1 VM (8 chips)
             or 2 VMs (4 chips each).
-        subslice_index: Specific subslice index to request. If ``None``
-            (default), an available subslice is selected automatically.
         resources_per_bundle: Per-bundle resources. Defaults to
             ``{"CPU": 1, "TPU": chips_per_vm}``.
         strategy: Placement group strategy (default ``"STRICT_SPREAD"``).
