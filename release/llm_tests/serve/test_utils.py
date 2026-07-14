@@ -301,10 +301,11 @@ def get_total_gpu_memory_mb() -> float:
 def wait_for_gpu_memory_to_clear(threshold_mb: float, timeout: float = 240) -> None:
     """Block until total GPU memory used falls below threshold_mb.
 
-    serve.shutdown() returns before an engine has released its GPU memory (the
-    direct-ingress drain keeps the old replica resident for its full graceful
-    shutdown window), so a test that redeploys on the same GPUs must wait for the
-    previous replica to free memory first or the next deployment OOMs.
+    serve.shutdown() can return before a replica has released its GPU memory,
+    since the engine tears down asynchronously and, under direct ingress, the
+    drain keeps the old replica resident for its graceful shutdown window. A
+    test that redeploys on the same GPUs must wait for the previous replica to
+    free memory first or the next deployment OOMs.
     """
     wait_for_condition(
         lambda: get_total_gpu_memory_mb() < threshold_mb,

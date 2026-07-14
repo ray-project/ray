@@ -29,12 +29,9 @@ def _app_is_running():
 
 
 def _shutdown_and_wait_for_gpu_clear(baseline_mb: float) -> None:
-    """Shut Serve down and block until the engine releases its GPU memory.
+    """Shut Serve down and wait for GPU memory to clear.
 
-    serve.shutdown() returns before the replica frees GPU memory (the
-    direct-ingress drain keeps the old replica resident for its full graceful
-    shutdown window), so a later deployment on the same GPUs OOMs unless we wait
-    for used memory to fall back near the pre-deploy baseline first.
+    See wait_for_gpu_memory_to_clear for why the wait is needed.
     """
     serve.shutdown()
     wait_for_gpu_memory_to_clear(baseline_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB)

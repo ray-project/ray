@@ -42,6 +42,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
+    _add_openai_models_retrieve_route,
     _merge_replica_actor_and_child_actor_bundles,
 )
 
@@ -269,26 +270,26 @@ class SGLangServer:
             set_global_state,
         )
 
-        engine = self.engine
-        # ``scheduler_info`` moved off ``Engine`` in newer SGLang releases; fall back
-        # to the scheduler init result when the direct attribute is absent.
-        scheduler_info = getattr(engine, "scheduler_info", None)
-        if scheduler_info is None:
-            scheduler_info = engine._scheduler_init_result.scheduler_infos[0]
+        # Mirror launch_server: _GlobalState.scheduler_info is the first scheduler's
+        # info, which the Engine exposes as _scheduler_init_result.scheduler_infos.
+        scheduler_info = self.engine._scheduler_init_result.scheduler_infos[0]
 
         set_global_state(
             _GlobalState(
-                tokenizer_manager=engine.tokenizer_manager,
-                template_manager=engine.template_manager,
+                tokenizer_manager=self.engine.tokenizer_manager,
+                template_manager=self.engine.template_manager,
                 scheduler_info=scheduler_info,
             )
         )
         # Copy ``server_args`` so we don't mutate the engine's own instance.
-        server_args = copy.copy(engine.server_args)
+        server_args = copy.copy(self.engine.server_args)
         server_args.skip_server_warmup = True
         app.is_single_tokenizer_mode = True
         app.server_args = server_args
         app.warmup_thread_kwargs = {"server_args": server_args}
+        # Match the OpenAiIngress surface: SGLang's native app lists models at
+        # GET /v1/models but has no single-model retrieve route.
+        _add_openai_models_retrieve_route(app, self._llm_config)
         return app
 
     def _build_generate_kwargs(
