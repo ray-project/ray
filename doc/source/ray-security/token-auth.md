@@ -84,32 +84,43 @@ Generated new authentication token and saved to /Users/<username>/.ray/auth_toke
 
 ### Local development with ray start
 
-When you use `ray start --head` to start a local cluster after setting `RAY_AUTH_MODE=token` as an environment variable, you need to generate a token first:
+When you start a local head cluster with `ray start --head`, Ray enables token authentication automatically if a token is already available from any of the token sources, even when you haven't set `RAY_AUTH_MODE=token`. Ray considers a token available when any of the following is set: the `RAY_AUTH_TOKEN` environment variable, a valid file at the path in `RAY_AUTH_TOKEN_PATH`, or the default token file `~/.ray/auth_token`. Generate a token once with `ray get-auth-token --generate` and Ray uses it every time you run `ray start --head` on that machine. To opt out when a token is available, set `RAY_AUTH_MODE=disabled`.
 
-- If no token exists, `ray start` shows an error message with instructions.
-- Run `ray get-auth-token --generate` to generate a new token at the path `~/.ray/auth_token`.
-- Once generated, Ray uses the token every time you run `ray start`.
+If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
 
-The following example demonstrates this flow:
+- If you didn't set `RAY_AUTH_MODE=token`, authentication stays disabled and `ray start --head` logs a warning that the cluster is unauthenticated.
+- If you set `RAY_AUTH_MODE=token`, `ray start` raises an error with instructions to generate a token.
+
+`ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
+
+The following example demonstrates the recommended flow:
 
 ```bash
-# Set the environment variable.
-$ export RAY_AUTH_MODE=token
-
-# First attempt - an error is raised if no token exists.
+# First attempt without a token - authentication stays disabled.
 $ ray start --head
 ...
-ray.exceptions.AuthenticationError: Token authentication is enabled but no authentication token was found. Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. To generate a token for local development, use `ray get-auth-token --generate` For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html
+Ray runtime started.
+...
+$ ray stop
 
 # Generate a token.
 $ ray get-auth-token --generate
 <token is output and written to ~/.ray/auth_token>
 
-# Start local cluster again - works now.
+# Start local cluster again - token authentication is now enabled automatically.
 $ ray start --head
 ...
 Ray runtime started.
 ...
+```
+
+If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
+
+```bash
+$ export RAY_AUTH_MODE=token
+$ ray start --head
+...
+ray.exceptions.AuthenticationError: Token authentication is enabled but no authentication token was found. Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. To generate a token for local development, use `ray get-auth-token --generate` For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html
 ```
 
 ## Configure token authentication for remote clusters
