@@ -262,91 +262,146 @@ NETWORK_TOTAL_PANEL = Panel(
 # Data Loading Metrics
 #
 # These panels are backed by Ray Data iteration metrics emitted while the
-# training loop consumes batches (e.g. via `iter_torch_batches`).
-# NOTE: The exprs group by (dataset, rank). The `rank` label is not emitted
-# yet (see the TODO on `iter_tag_keys` in ray/data/_internal/stats.py); until
-# it lands, series group under an empty rank and the panels remain valid.
-DATA_LOADING_AVG_BATCH_LATENCY_PANEL = Panel(
+# training loop consumes batches (e.g. via `iter_torch_batches`). Each series
+# is grouped by (dataset, split): `dataset` identifies the dataset and `split`
+# identifies the per-consumer split introduced in #64608 (`split_0`, `split_1`,
+# ...; plain non-stream-split iterators report `split="no_split"`). For the Ray
+# Train path there is one split per worker, so "one line per rank" is
+# `by (dataset, split)`.
+DATA_LOADING_RATIO_PANEL = Panel(
     id=18,
-    title="Avg Batch Latency by Stage",
-    description="Average wall-clock time spent in each data loading stage per batch, per dataset and consumer rank. This is the raw cost of each stage, including time hidden by pipelining, so it does not necessarily indicate a training bottleneck. See the Training Thread Blocked Time panel for stall attribution.",
-    unit="seconds",
+    title="Data Loading Ratio",
+    description="Ratio of time the training thread spent blocked on data loading vs. time spent in training/user code, one line per rank. A value >= 1 means the loop waited on data at least as long as it spent training. The headline signal for whether the training loop is data loading bound.",
+    unit="",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Production Wait: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Data Transfer: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Batching: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Format: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Collate: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[1m])) by (dataset, rank) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Finalize: {{dataset}}, rank {{rank}}",
+            expr="sum(rate(ray_data_iter_total_blocked_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_user_seconds{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
         ),
     ],
     fill=0,
     stack=False,
 )
 
-DATA_LOADING_BLOCKED_TIME_BREAKDOWN_PANEL = Panel(
+DATA_LOADING_BLOCKED_TIME_BY_STAGE_PANEL = Panel(
     id=19,
-    title="Training Thread Blocked Time by Stage",
-    description="Seconds per second the training thread was blocked waiting on each data loading stage, per dataset and consumer rank. A value of 1 means the training thread was fully stalled on that stage. The dominant stage identifies the data loading bottleneck; near-zero everywhere means training is not data loading bound.",
+    title="Blocked Time by Stage (fleet avg)",
+    description="Average per-batch stall time attributed to each data loading stage, averaged across all ranks. Six series (one per stage) in one panel; the tallest stage is the current bottleneck. Use this to localize which stage is eating the time at a glance.",
     unit="seconds",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Production Wait: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Production Wait: {{dataset}}",
         ),
         Target(
-            expr="sum(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Data Transfer: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Data Transfer: {{dataset}}",
         ),
         Target(
-            expr="sum(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Batching: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Batching: {{dataset}}",
         ),
         Target(
-            expr="sum(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Format: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Format: {{dataset}}",
         ),
         Target(
-            expr="sum(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Collate: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Collate: {{dataset}}",
         ),
         Target(
-            expr="sum(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Finalize: {{dataset}}, rank {{rank}}",
+            expr="avg(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[1m]) / rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset)",
+            legend="Finalize: {{dataset}}",
         ),
     ],
+    fill=0,
+    stack=False,
 )
 
-DATA_LOADING_BLOCKED_VS_TOTAL_PANEL = Panel(
+DATA_LOADING_BLOCKED_PRODUCTION_WAIT_PANEL = Panel(
     id=20,
-    title="Training Thread Blocked vs Total Iteration Time",
-    description="Seconds per second the training thread spent blocked waiting for the next batch, compared against total iteration time (blocked + user code), per dataset and consumer rank. Blocked time approaching total time means the training loop is dominated by data loading.",
+    title="Blocked: Production Wait by Rank",
+    description="Per-batch stall waiting on upstream block production, one line per rank. Use this to tell whether upstream production is slow for one rank or all.",
     unit="seconds",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_total_blocked_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Blocked: {{dataset}}, rank {{rank}}",
+            expr="sum(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
         ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BLOCKED_DATA_TRANSFER_PANEL = Panel(
+    id=22,
+    title="Blocked: Data Transfer by Rank",
+    description="Per-batch stall on cross-node ray.get() block transfer, one line per rank. Use this to isolate a rank with slow/remote object fetches.",
+    unit="seconds",
+    targets=[
         Target(
-            expr="sum(rate(ray_data_iter_total_seconds{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Total: {{dataset}}, rank {{rank}}",
+            expr="sum(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BLOCKED_BATCHING_PANEL = Panel(
+    id=23,
+    title="Blocked: Batching by Rank",
+    description="Per-batch stall building batches (slice/shuffle), one line per rank. Use this to spot uneven batching cost across ranks.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BLOCKED_FORMAT_PANEL = Panel(
+    id=24,
+    title="Blocked: Format by Rank",
+    description="Per-batch stall converting blocks to batch format, one line per rank. Use this to find a rank with disproportionate format cost.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BLOCKED_COLLATE_PANEL = Panel(
+    id=25,
+    title="Blocked: Collate by Rank",
+    description="Per-batch stall in the user collate_fn, one line per rank. Use this to detect a rank where collate is the bottleneck.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BLOCKED_FINALIZE_PANEL = Panel(
+    id=26,
+    title="Blocked: Finalize by Rank",
+    description="Per-batch stall in the user finalize_fn, one line per rank. Use this to detect a rank where finalize is the bottleneck.",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[1m])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
         ),
     ],
     fill=0,
@@ -354,18 +409,14 @@ DATA_LOADING_BLOCKED_VS_TOTAL_PANEL = Panel(
 )
 
 DATA_LOADING_THROUGHPUT_PANEL = Panel(
-    id=22,
-    title="Data Loading Throughput",
-    description="Rows and batches delivered to the training thread per second, per dataset and consumer rank.",
+    id=27,
+    title="Iterator Throughput by Rank",
+    description="Average rows/sec delivered to the training thread, one line per rank. A rank with a low delivery rate is starving; cross-check against the stall panels.",
     unit="",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_rows_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Rows/s: {{dataset}}, rank {{rank}}",
-        ),
-        Target(
-            expr="sum(rate(ray_data_iter_batches_total{{{global_filters}}}[1m])) by (dataset, rank)",
-            legend="Batches/s: {{dataset}}, rank {{rank}}",
+            expr="sum(rate(ray_data_iter_rows_total{{{global_filters}}}[1m])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
         ),
     ],
     fill=0,
@@ -416,9 +467,14 @@ TRAIN_GRAFANA_ROWS = [
         title="Data Loading",
         id=21,
         panels=[
-            DATA_LOADING_AVG_BATCH_LATENCY_PANEL,
-            DATA_LOADING_BLOCKED_TIME_BREAKDOWN_PANEL,
-            DATA_LOADING_BLOCKED_VS_TOTAL_PANEL,
+            DATA_LOADING_RATIO_PANEL,
+            DATA_LOADING_BLOCKED_TIME_BY_STAGE_PANEL,
+            DATA_LOADING_BLOCKED_PRODUCTION_WAIT_PANEL,
+            DATA_LOADING_BLOCKED_DATA_TRANSFER_PANEL,
+            DATA_LOADING_BLOCKED_BATCHING_PANEL,
+            DATA_LOADING_BLOCKED_FORMAT_PANEL,
+            DATA_LOADING_BLOCKED_COLLATE_PANEL,
+            DATA_LOADING_BLOCKED_FINALIZE_PANEL,
             DATA_LOADING_THROUGHPUT_PANEL,
         ],
         collapsed=False,
