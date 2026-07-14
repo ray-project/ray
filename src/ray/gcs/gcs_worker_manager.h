@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <deque>
 #include <vector>
 
 #include "ray/gcs/gcs_kv_manager.h"
@@ -25,6 +26,8 @@
 
 namespace ray {
 namespace gcs {
+
+class GcsInitData;
 
 class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
@@ -67,10 +70,26 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
+  /**
+   * @brief Rebuilds the dead-worker id queue from the worker table on GCS startup and
+   * trims it to the retention cap.
+   *
+   * @param gcs_init_data Metadata loaded from the store at startup, providing the worker
+   * table snapshot to rebuild the queue from.
+   */
+  void RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data);
 
  private:
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
+
+  /**
+   * @brief Records a newly dead worker and evicts the oldest one when the retention cap
+   * is exceeded.
+   *
+   * @param worker_id The id of the worker that just died.
+   */
+  void TrimDeadWorkers(const WorkerID &worker_id);
 
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
@@ -94,6 +113,10 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       "Number of worker failures that are not intentional. For example, worker failures "
       "due to system related errors.",
       /*unit=*/""};
+
+  /// Queue of dead worker ids in death order (oldest at front); bounds retention in the
+  /// worker table. Only accessed on io_context_.
+  std::deque<WorkerID> dead_worker_ids_queue_;
 };
 
 }  // namespace gcs

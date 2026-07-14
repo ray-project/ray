@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "End-to-end workflow for converting an ML model to a Serve app, testing it locally with serve run, building a config file, and deploying to production."
+---
+
 (serve-develop-and-deploy)=
 
 # Develop and Deploy an ML Application
