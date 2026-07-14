@@ -217,6 +217,21 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
   // Mutex is acquired, no copy inflight, safe to abort the object_id.
   auto it = create_buffer_state_.find(object_id);
   if (it != create_buffer_state_.end()) {
+    if (it->second.num_seals_remaining_ == 0) {
+      // Plasma move semantics: this object was already sealed with a deferred
+      // create-reference release (WriteChunk(defer_release=true)) and is a
+      // valid, sealed, local object being pinned by the move path. Abort() on
+      // a sealed object is illegal and trips a fatal RAY_CHECK in the plasma
+      // client ("called abort on an object without a reference to it"), which
+      // crashes the raylet. The entry legitimately lingers only until
+      // ReleaseObject() drops the create-reference after the pin completes, so
+      // the refcount never hits 0 in the seal->pin window (the eviction race
+      // this redesign closes). Skip the abort and leave the entry for
+      // ReleaseObject(); do NOT release it here, or that window reopens.
+      RAY_LOG(DEBUG) << "Skipping abort of sealed move object " << object_id
+                     << " (deferred release pending pin)";
+      return;
+    }
     RAY_CHECK_OK(store_client_->Release(object_id));
     RAY_CHECK_OK(store_client_->Abort(object_id));
     create_buffer_state_.erase(object_id);

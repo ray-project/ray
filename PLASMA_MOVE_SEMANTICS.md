@@ -27,7 +27,7 @@ The implementation has been **redesigned** (§7): the producer→consumer `MoveC
 - **`~/ray`, branch `karticam/plasma-move-semantics` — CANONICAL; the redesign lives here.** Master-based; post-#63181 (no raylet-to-raylet `FreeObjects` RPC). Compile-verified: `bazel build //src/ray/raylet:raylet //src/ray/object_manager/... //src/ray/raylet/tests:node_manager_test` is green. Pushed for review.
 - **`~/rayturbo`, branch `karticam/plasma-move-semantics`** — the fork used to **build ECR images** (`push_ray_image.sh`); pre-#63181 (still has the `FreeObjects` RPC + `local_only`). The redesign was **reverted here** to the old `MoveCompleted` design; only workload-test scripts remain modified. (Also `karticam/plasma-move-semantics-actor-only` = the jhsu-base variant.) **To validate the fix on a workload, the redesign must be re-applied here and built into an image** — adapt to the pre-#63181 differences (e.g. `FreeObjects` still present; `PullRequest`/service shape differs).
 
-**Verification state:** compile-verified only. **NOT workload-tested** (not yet run on the `image_embedding_from_jsonl` eviction repro with the fix) and **no unit tests added** (§5 item 2).
+**Verification state:** compile-verified; **workload-tested 2026-07-14** (actor-only branch) on `heterogeneous_memory_batch_inference` (n=6 move-sem-ON) plus a fan-out microbenchmark. Testing **surfaced a raylet-crashing bug in the redesign** — `AbortCreate` aborting a *sealed* deferred-release object — now **FIXED** (full mechanism + fix in **§7.5**); all post-fix runs are crash-free. Still **no unit tests added** (§5 item 2).
 
 **One correctness gap is knowingly left OPEN:** the consumer-dies-before-the-owner-learns race — full description + candidate fixes in **§5 item 1**.
 
@@ -551,6 +551,36 @@ The producer released its copy on push-*completion*, but a completed push does n
 The redesign closes the eviction-before-pin window, but it does **not** close one correctness gap: if the consumer dies *after* pinning but *before* its **batched** `ReportObjectPrimaryMoved` reaches the owner, the owner's `pinned_at_node_id_` stays on the freed-but-alive producer, so lineage reconstruction never fires → permanent `ObjectFetchTimedOutError`. The producer now releases only once the consumer is *pinned*, but not once the owner *knows*.
 
 Full description, why it's permanent, and the candidate fixes live in the single "what's left" list: **§5 item 1**. (It supersedes the pre-redesign "consumer dies before pinning" race, which the gated ack closes.)
+
+### 7.5 Crash found in workload testing — `AbortCreate` on a sealed deferred-release object (FIXED 2026-07-14)
+
+Workload-testing the redesign with move semantics ON crash-looped raylets on a fatal `RAY_CHECK` (fired ~70×/run, **only** with move semantics on — the OFF baseline was clean):
+
+```
+NodeManager::HandleObjectLocal → CancelPull → ObjectBufferPool::AbortCreate
+  → AbortCreateInternal → plasma::PlasmaClient::Abort()
+      Check failed: object_entry != objects_in_use_.end()
+      "Plasma client called abort on an object without a reference to it"  (client.cc:606)
+```
+
+**Root cause — the deferred release leaves a *sealed* object in `create_buffer_state_`, a state `AbortCreate` was never written to handle.** The plasma client ref-counts each object (`objects_in_use_[id].count`): `Create` → count 2 (an extra +1 held until seal, `client.cc:193`), `Seal` internally calls `Release` → count 1 (`client.cc:598`). The **non-move** `WriteChunk` then immediately `Release`s (1→0, dropping it from `objects_in_use_`) **and erases** the `create_buffer_state_` entry — all inside one `pool_mutex_` critical section, across the `Seal` call. The **move** path (`defer_release=true`) seals but keeps both the count-1 client reference and the `create_buffer_state_` entry; that held reference is exactly what keeps the object refcount>0 through the seal→pin window (§7.2).
+
+`AbortCreateInternal` does `Release` then `Abort`, which is correct only for an *unsealed, count-2* in-progress create (`Release` 2→1 leaves it present, `Abort` discards it). On a *sealed, count-1* deferred entry it does `Release` 1→0 — removing it from `objects_in_use_` — then `Abort` finds nothing → fatal check. (`Abort` on a sealed object is illegal regardless; the following `RAY_CHECK(!is_sealed)` would also fire.)
+
+**Why the non-move path never hit this:** `Seal`+`Release`+`erase` all run inside one `pool_mutex_` critical section, and `AbortCreate` also needs `pool_mutex_`, so any `AbortCreate` the seal triggers is forced to wait until the entry is already erased → it finds nothing → no-op. The move path breaks that atomicity: it holds `pool_mutex_` only across `Seal` and defers the release+erase to a *separate* `main_service_` task (`ReleaseObject`, posted from `HandlePush`). `AbortCreate` — also posted to `main_service_`, by the seal's "object added" notification (`main.cc:806`) — then races `ReleaseObject` for the lock. `AbortCreate`'s post is enqueued *during* `Seal` (before `HandlePush` posts the release), so on the single-threaded `main_service_` it runs first ~every time → it aborts the sealed entry.
+
+**Trigger paths.** `AbortCreate` runs whenever any pull for the object is cancelled after it becomes local, all funneling through `ObjectManager::CancelPull → PullManager::CancelPull → cancel_pull_request_ → AbortCreate`:
+- the **wait** pull — `HandleObjectLocal → CancelPull` (Ray Data's streaming executor calls `ray.wait` on block refs, so every block has one; this is the stack seen in the crashing Ray Data run),
+- the **task-argument** pull — `LeaseDependencyManager::RemoveLeaseDependencies`,
+- the **`ray.get`** pull — `CancelGetRequest`.
+
+Because they share one chokepoint, the fix lives there rather than in `HandleObjectLocal`.
+
+**Threads (validated empirically).** `HandlePush`/`WriteChunk`/`Seal` run on the object-manager `rpc_service_` pool; `HandleObjectLocal`, `AbortCreate`, and the posted `ReleaseObject` all run on the single `main_service_` (raylet main) thread. A local 2-node `cluster_utils` cluster with per-function `std::this_thread::get_id()` logs confirmed `HandlePush` on `rpc_service_` pool threads and `HandleObjectLocal == AbortCreate` on one `main_service_` thread, disjoint from `HandlePush`.
+
+**The fix (`ObjectBufferPool::AbortCreateInternal`):** if the found entry is already sealed (`num_seals_remaining_ == 0` — which, since the non-move path erases at seal, uniquely identifies a deferred-release move object), **skip the `Release`+`Abort` and return**, leaving the entry for `ReleaseObject` to drop after the pin. Chosen as a *no-op* rather than "release + erase here" deliberately: releasing the create-reference at abort time would drop the refcount to 0 before the pin's `Get` reference is held, reopening the exact seal→pin eviction window §7 exists to close. Correct regardless of which of `AbortCreate` / `ReleaseObject` wins the race.
+
+**Verification.** With the fix, `heterogeneous_memory_batch_inference` (actor-only) ran crash-free across n=6 move-sem-ON runs, plus a fan-out microbenchmark (14 ON runs); zero recurrences of the check. Unit/regression test still to add (§5 item 2): `AbortCreate` on a sealed deferred-release entry must be a no-op (must not call `Abort`).
 
 ---
 
