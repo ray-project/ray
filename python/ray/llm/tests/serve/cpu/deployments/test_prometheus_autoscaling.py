@@ -8,13 +8,14 @@ from ray.serve.config import AutoscalingContext
 from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy
 
 
-def _ctx(current=2, total_requests=0.0):
+def _ctx(current=2, total_requests=0.0, target=None):
+    target = current if target is None else target
     return AutoscalingContext(
         deployment_id=DeploymentID(name="d", app_name="a"),
         deployment_name="d",
         app_name="a",
         current_num_replicas=current,
-        target_num_replicas=current,
+        target_num_replicas=target,
         running_replicas=[],
         total_num_requests=total_requests,
         total_queued_requests=0.0,
@@ -74,6 +75,20 @@ class TestTTFTPolicyDecisions:
     def test_scale_down_floors_at_zero(self):
         dec, state = _policy_with_ttft(0.1)(_ctx(current=1, total_requests=0.0))
         assert dec == 0.0 and state["signal"] == "scale_down"
+
+    def test_scale_up_steps_off_target_during_rampup(self):
+        # Running below target while replicas start: step off target (6), not
+        # off the running count (3), so Serve reads it as a scale-up.
+        dec, state = _policy_with_ttft(5.0)(_ctx(current=2, target=5))
+        assert dec == 6.0 and state["signal"] == "scale_up"
+
+    def test_no_data_holds_target(self):
+        pol = TTFTAutoscalingPolicy(model_id="m", prometheus_address="x")
+        pol._started = True
+        pol._cache.values = {}
+        pol._cache.timestamp = time.monotonic()
+        dec, state = pol(_ctx(current=2, target=5))
+        assert dec == 5.0 and state["signal"] == "no_data"
 
 
 class TestQueryScoping:

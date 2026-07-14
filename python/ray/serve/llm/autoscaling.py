@@ -90,20 +90,25 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
     def __call__(
         self, ctx: AutoscalingContext
     ) -> Tuple[Union[int, float], Dict[str, Any]]:
-        current = ctx.current_num_replicas
+        # Step relative to the current target, not the running count: Serve
+        # compares the returned value against target_num_replicas to pick a
+        # direction, so a step off the running count reads as a downscale while
+        # replicas are still starting.
+        target = ctx.target_num_replicas
+        running = ctx.current_num_replicas
         metrics = self.prometheus_metrics
         if metrics is None:
-            return float(current), {"signal": "no_metrics"}
+            return float(target), {"signal": "no_metrics"}
         p99_ttft = metrics.get(self.query)
         if p99_ttft is None:
-            return float(current), {"signal": "no_data", "p99_ttft_s": None}
+            return float(target), {"signal": "no_data", "p99_ttft_s": None}
         state = {"p99_ttft_s": p99_ttft}
         if p99_ttft > self.ttft_target_s:
-            return float(current + 1), {**state, "signal": "scale_up"}
-        requests_per_replica = ctx.total_num_requests / current if current > 0 else 0.0
+            return float(target + 1), {**state, "signal": "scale_up"}
+        requests_per_replica = ctx.total_num_requests / running if running > 0 else 0.0
         state["requests_per_replica"] = requests_per_replica
         if requests_per_replica < self.idle_threshold:
             # AutoscalingConfig.min_replicas owns the floor, so this may reach 0
             # when scale-to-zero is configured.
-            return float(max(0, current - 1)), {**state, "signal": "scale_down"}
-        return float(current), {**state, "signal": "steady"}
+            return float(max(0, target - 1)), {**state, "signal": "scale_down"}
+        return float(target), {**state, "signal": "steady"}
