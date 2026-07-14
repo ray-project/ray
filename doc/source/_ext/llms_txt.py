@@ -6,12 +6,15 @@ output structured by the site's navigation (the `llms.txt spec
 output). It emits three kinds of file into the HTML build output:
 
 ``llms.txt`` (root)
-    The index. ``# title`` + ``> summary`` blockquote, then one ``## Section``
-    per top-level ``toctree`` entry of the root document. Each section lists its
-    landing page followed by its direct ``toctree`` children as
-    ``- [title](url): description`` lines. Sections named in
-    ``llms_txt_optional_sections`` are moved to a trailing ``## Optional``
-    section (per the spec, content an agent may skip to save context).
+    The index. ``# title`` + ``> summary`` blockquote, a pointer to
+    ``llms-full.txt``, then one ``## Section`` per top-level ``toctree`` entry of
+    the root document. Each section lists its landing page and **every** in-scope
+    page beneath it (the full ``toctree`` subtree, deduped) as
+    ``- [title](url): description`` lines, so an agent can find any page from the
+    index itself without drilling into the corpus. Sections named in
+    ``llms_txt_optional_sections`` move to a trailing ``## Optional`` section;
+    any in-scope page not reachable via the nav toctrees is swept into a final
+    ``## Other pages`` section so the index stays complete.
 
 ``<section>/llms-full.txt``
     The verbatim source of every in-scope page under a section, each prefixed
@@ -267,75 +270,104 @@ def _link(label: str, url: str, description: str) -> str:
     return f"- [{label}]({url})"
 
 
+def _collect_pages(env, landing, cache, exclude, seen):
+    """Recursively collect ``(title, docname)`` for every in-scope toctree
+    descendant of ``landing``, in document order, deduped via ``seen`` (each page
+    is listed once, under the first section that reaches it)."""
+    pages = []
+    for title, child in _toctree_children(env, landing, cache):
+        if child in seen or _excluded(env, child, exclude):
+            continue
+        seen.add(child)
+        pages.append((title, child))
+        pages.extend(_collect_pages(env, child, cache, exclude, seen))
+    return pages
+
+
 def _build_sections(app, env, exclude, cache):
-    """Build ``[(label, landing_docname, [(child_label, child_doc), ...]), ...]``."""
+    """Build ``([(label, landing, pages), ...], unreached)``.
+
+    ``pages`` is every in-scope page under a section — the full toctree subtree,
+    deduped so each page appears under only the first section that reaches it —
+    so the index can list any page without an agent having to drill into the
+    corpus. ``unreached`` is any in-scope page not reachable via the nav
+    toctrees (e.g. orphan pages), swept into a trailing section so the index
+    stays complete.
+    """
     root_doc = getattr(env.config, "root_doc", None) or getattr(
         env.config, "master_doc", "index"
     )
+    seen = {root_doc}
     sections = []
     for label, landing in _toctree_children(env, root_doc, cache):
-        if _excluded(env, landing, exclude):
+        if landing in seen or _excluded(env, landing, exclude):
             continue
-        children = [
-            (child_label, child)
-            for child_label, child in _toctree_children(env, landing, cache)
-            if not _excluded(env, child, exclude)
-        ]
-        sections.append((label, landing, children))
-    return sections
+        seen.add(landing)
+        pages = _collect_pages(env, landing, cache, exclude, seen)
+        sections.append((label, landing, pages))
+    unreached = sorted(
+        d for d in env.all_docs if d not in seen and not _excluded(env, d, exclude)
+    )
+    return sections, unreached
 
 
-def _render_index(app, env, sections, title, summary, optional, meta_types, cache):
-    """Render the root ``llms.txt`` index as a string."""
+def _render_index(
+    app,
+    env,
+    sections,
+    unreached,
+    title,
+    summary,
+    optional,
+    meta_types,
+    cache,
+    full_enabled,
+):
+    """Render the root ``llms.txt`` index as a string.
+
+    Lists every in-scope page under its nav section (so an agent can find any
+    page in the index itself, without drilling into the corpus), points at the
+    full-text ``llms-full.txt``, and sweeps any un-navigated pages into a
+    trailing ``## Other pages`` section.
+    """
     lines = [f"# {title}", ""]
     if summary:
         lines += [f"> {summary}", ""]
+    if full_enabled:
+        lines += [
+            "Full page text, grouped by section, is in "
+            f"[llms-full.txt]({_asset_url(app, 'llms-full.txt')}).",
+            "",
+        ]
 
-    def render(section, heading=None):
-        label, landing, children = section
-        out = [f"## {heading or label}", ""]
-        out.append(
-            _link(
-                _doc_title(env, landing),
-                _page_url(app, landing),
-                _description(env, landing, meta_types, cache),
-            )
+    def entry(label, docname):
+        return _link(
+            label,
+            _page_url(app, docname),
+            _description(env, docname, meta_types, cache),
         )
-        for child_label, child in children:
-            out.append(
-                _link(
-                    child_label,
-                    _page_url(app, child),
-                    _description(env, child, meta_types, cache),
-                )
-            )
+
+    def render(label, landing, pages, heading=None):
+        out = [f"## {heading or label}", ""]
+        out.append(entry(_doc_title(env, landing), landing))
+        out += [entry(page_title, page) for page_title, page in pages]
         out.append("")
         return out
 
     main = [s for s in sections if s[0] not in optional]
     optional_secs = [s for s in sections if s[0] in optional]
-    for section in main:
-        lines += render(section)
+    for label, landing, pages in main:
+        lines += render(label, landing, pages)
     if optional_secs:
+        # Flatten optional sections' links under the single Optional heading.
         lines += ["## Optional", ""]
-        for section in optional_secs:
-            # Flatten optional sections' links under the single Optional heading.
-            label, landing, children = section
-            lines.append(
-                _link(
-                    label,
-                    _page_url(app, landing),
-                    _description(env, landing, meta_types, cache),
-                )
-            )
-            for child_label, child in children:
-                lines.append(
-                    _link(
-                        child_label,
-                        _page_url(app, child),
-                        _description(env, child, meta_types, cache),
-                    )
-                )
+        for label, landing, pages in optional_secs:
+            lines.append(entry(label, landing))
+            lines += [entry(page_title, page) for page_title, page in pages]
+        lines.append("")
+    if unreached:
+        lines += ["## Other pages", ""]
+        lines += [entry(_doc_title(env, page), page) for page in unreached]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -616,14 +648,24 @@ def on_build_finished(app, exception):
     meta_types = _meta_node_types()
     cache: dict = {}
 
-    sections = _build_sections(app, env, exclude, cache)
+    full_enabled = getattr(config, "llms_txt_full", True)
+    sections, unreached = _build_sections(app, env, exclude, cache)
     index = _render_index(
-        app, env, sections, title, summary, optional, meta_types, cache
+        app,
+        env,
+        sections,
+        unreached,
+        title,
+        summary,
+        optional,
+        meta_types,
+        cache,
+        full_enabled,
     )
     (Path(app.outdir) / "llms.txt").write_text(index, encoding="utf-8")
     logger.info("[llms_txt] wrote llms.txt (%d sections)", len(sections))
 
-    if getattr(config, "llms_txt_full", True):
+    if full_enabled:
         max_tokens = getattr(config, "llms_txt_full_max_shard_tokens", None) or 200000
         _write_full_files(
             app, env, exclude, title, summary, sections, meta_types, cache, max_tokens

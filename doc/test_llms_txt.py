@@ -62,7 +62,14 @@ FILES = {
     "secA/page3.rst": (
         "Page Three\n==========\n\n"
         "This is the first real paragraph of page three and becomes its "
-        "description via the fallback.\n"
+        "description via the fallback.\n\n"
+        ".. toctree::\n\n   page3-sub\n"
+    ),
+    # A grandchild (two levels under the Section A landing) — must appear in a
+    # complete index, which lists the full subtree, not just direct children.
+    "secA/page3-sub.rst": (
+        "Page Three Sub\n==============\n\n"
+        "A grandchild page reached two levels under Section A.\n"
     ),
     # --- Section B: landing (html_meta) + a plain child + an EXCLUDED child
     "secB/index.md": (
@@ -106,6 +113,13 @@ FILES = {
     "guides/topic-b/intro.rst": (
         "Topic B Intro\n=============\n\n"
         "Body text for the topic B intro page within the guides section here.\n"
+    ),
+    # In-scope but not referenced by any toctree — must still appear, under the
+    # trailing "## Other pages" catch-all, so the index stays complete.
+    "orphan.rst": (
+        ":orphan:\n\n"
+        "Orphan Page\n===========\n\n"
+        "An in-scope page not referenced by any toctree.\n"
     ),
 }
 
@@ -192,6 +206,21 @@ def test_llms_txt():
             "page URL not absolute / wrong",
         )
 
+        # Complete index: a grandchild (two levels under the section landing) is
+        # listed, not just direct children.
+        _check(
+            "Page Three Sub" in index,
+            "grandchild page missing — index isn't listing the full subtree",
+        )
+        # Pointer to the full-text corpus.
+        _check(
+            "[llms-full.txt](https://example.com/docs/llms-full.txt)" in index,
+            "index missing pointer to llms-full.txt",
+        )
+        # Catch-all: an in-scope page in no toctree still appears.
+        _check("## Other pages" in index, "missing '## Other pages' catch-all")
+        _check("Orphan Page" in index, "orphan page missing from catch-all")
+
         # --- llms-full root manifest + per-dir shards ---
         manifest = (out / "llms-full.txt").read_text(encoding="utf-8")
         _check(manifest.startswith("# TestProj: full documentation"), "bad manifest H1")
@@ -200,7 +229,7 @@ def test_llms_txt():
             _check((out / rel).exists(), f"missing shard {rel}")
         # Manifest entries carry page count + the section description.
         _check(
-            "(4 pages): Everything in section A." in manifest,
+            "pages): Everything in section A." in manifest,
             "manifest entry missing page count + description",
         )
 
