@@ -225,8 +225,7 @@ class ReplicaSchedulingRequest:
     # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
     gang_pg_index: Optional[int] = None
     # If set, schedule this replica onto this node with hard node affinity. The
-    # ingress request router sets it to co-locate a replica with each proxy: the
-    # replica lands on that node or not at all, never spilling off-node.
+    # ingress request router sets it to co-locate a replica with each proxy.
     target_node_id: Optional[str] = None
 
     @property
@@ -675,10 +674,9 @@ class DeploymentScheduler(ABC):
 
         scheduling_strategy = default_scheduling_strategy
 
-        # The request may carry an explicit node: the ingress request router
-        # pins each replica to a proxy node. It wins over any node the caller
-        # passed in and uses hard affinity, so the replica co-locates with the
-        # proxy or not at all rather than silently spilling off-node.
+        # The request may carry an explicit node. The ingress request router
+        # pins each replica to a proxy node with hard affinity. It wins over any
+        # node the caller passed in.
         pin_to_target_node = scheduling_request.target_node_id is not None
         if pin_to_target_node:
             target_node_id = scheduling_request.target_node_id
