@@ -560,7 +560,9 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
 def test_fuse_map_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
 
     ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
     dag = get_execution_plan(ds._logical_plan)[0].dag
@@ -576,7 +578,9 @@ def test_fuse_map_into_shuffle_reduce(
 def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
 
     ds = (
         ray.data.range(100)
@@ -599,10 +603,9 @@ def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
 def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """A map with a ``concurrency=`` cap is NOT fused into the reduce. The
-    reduce runs one task per partition with no concurrency cap, so fusing would
-    silently ignore the user's limit; keeping the map separate honors it."""
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
 
     ds = (
         ray.data.range(100)
@@ -622,7 +625,9 @@ def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
 ):
     from ray.data.datasource.datasink import Datasink
 
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
 
     class _NoopDatasink(Datasink):
         def write(self, blocks, ctx):

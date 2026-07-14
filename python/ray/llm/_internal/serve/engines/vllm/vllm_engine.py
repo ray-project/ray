@@ -182,14 +182,20 @@ def _get_vllm_engine_config(
             engine_config.hf_model_id = local_path
             logger.info(f"Resolved model from mirror to local path: {local_path}")
 
-    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-        **engine_config.get_initialization_kwargs()
-    )
     from vllm.usage.usage_lib import UsageContext
 
-    vllm_engine_config = async_engine_args.create_engine_config(
-        usage_context=UsageContext.OPENAI_API_SERVER
-    )
+    try:
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+            **engine_config.get_initialization_kwargs()
+        )
+        vllm_engine_config = async_engine_args.create_engine_config(
+            usage_context=UsageContext.OPENAI_API_SERVER
+        )
+    except Exception as e:
+        # vLLM's ModelConfig is a pydantic dataclass; its ValidationError holds an
+        # unpicklable ArgsKwargs and cannot cross the Ray task boundary. Re-raise as
+        # a plain error so the real message propagates instead of a pickling failure.
+        raise RuntimeError(f"Failed to create vLLM engine config: {e}") from None
     return async_engine_args, vllm_engine_config
 
 
