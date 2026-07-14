@@ -69,7 +69,9 @@ Ray places one actor per GPU (using its scheduler), the harness sets the
 torch.distributed env vars (rank/world_size/master) itself, and each actor runs
 the adapter. This is exactly how the legacy `air_benchmarks` ran "vanilla
 torch" — Ray actors stand up the process group, no ssh/srun needed — so it's the
-single baseline we keep. Launch it like the Ray run, from the head:
+single baseline we keep. It is not a scheduled release test: run it manually
+when refreshing the published parity numbers in the benchmark docs. Launch it
+like the Ray run, from the head:
 
 ```bash
 python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
@@ -121,7 +123,8 @@ The NVML sampler maps the logical device to the correct *physical* GPU via
 
 Steady-state metrics exclude `training.warmup_steps` so model download,
 compilation, and allocator warmup don't skew throughput. View any run with
-`python collect.py`.
+`python collect.py` (`--view benchmark` for the report-row schema; this is
+also how the nightly release test's results are rendered).
 
 ## MFU / FLOPs accounting (dense + MoE)
 

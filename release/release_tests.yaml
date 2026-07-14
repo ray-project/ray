@@ -2121,12 +2121,8 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
-# P0 LLM perf-regression benchmark (Qwen3-0.6B + DeepSpeed on 4x L40S).
-# Tracks tokens/sec, MFU/HFU, and memory via core.runner; results render with
-# `python collect.py --view benchmark`. A torch.distributed parity baseline
-# runs manually with `--set launcher=ray_torch_distributed` (same workload via
-# torch.distributed); the parity result is published in the benchmark docs
-# rather than gated here.
+# P0 LLM perf-regression test (Qwen3-0.6B + DeepSpeed on 4x L40S).
+# See train_tests/benchmark/core/README.md for the harness details.
 - name: train_benchmark-qwen3_06b_deepspeed
   # Matches the gpu_cu130_py3.10.lock depset below.
   python: "3.10"
