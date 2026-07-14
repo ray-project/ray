@@ -78,6 +78,7 @@ def deployment_info(
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
     replica_config: Optional[ReplicaConfig] = None,
+    ingress_request_router: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -89,6 +90,7 @@ def deployment_info(
         ),
         replica_config=replica_config or ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
+        ingress_request_router=ingress_request_router,
     )
 
     if version is not None:
@@ -4399,7 +4401,7 @@ def test_per_proxy_node_pins_one_replica_per_proxy_node(mock_deployment_state_ma
     dsm: DeploymentStateManager = create_dsm()
     n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
 
-    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     dsm.update(proxy_nodes={n1, n2})
@@ -4417,7 +4419,7 @@ def test_per_proxy_node_tracks_node_set(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
     n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
-    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     dsm.update(proxy_nodes={n1, n2})
@@ -4440,7 +4442,7 @@ def test_per_proxy_node_status_reflects_scaling(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
     n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
-    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     dsm.update(proxy_nodes={n1})
