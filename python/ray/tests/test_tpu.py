@@ -2047,7 +2047,58 @@ def test_subslice_same_as_parent_falls_back_to_full_slice():
     assert sg.subslice_index == 0
     assert sg.slice_name == "test-slice-fallback"
     assert sg.num_hosts == 4
+    assert sg.bundle_resources == {"CPU": 1, "TPU": 4}
     assert len(sg.bundle_label_selector) == 4
+    sg.shutdown()
+
+
+def test_subslice_fallback_forwards_resources_per_bundle():
+    """resources_per_bundle must be forwarded to SlicePlacementGroup in the
+    full-slice fallback path, so the underlying PG actually reserves the
+    requested resources and SubslicePlacementGroup.bundle_resources reflects
+    what was allocated.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    from ray.util.placement_group import PlacementGroup
+
+    mock_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_pg.id = mock_id
+
+    custom_resources = {"CPU": 2, "TPU": 4}
+
+    mock_slice = MagicMock(spec=SlicePlacementGroup)
+    mock_slice.placement_group = mock_pg
+    mock_slice.num_hosts = 4
+    mock_slice.chips_per_host = 4
+    mock_slice.bundle_resources = custom_resources
+    mock_slice.head_placement_groups = []
+    mock_slice.bundle_label_selector = [
+        {
+            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "fallback-slice",
+            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+        }
+        for i in range(4)
+    ]
+
+    with (
+        patch("ray.nodes", return_value=[_alive_node("4x4")]),
+        patch("ray.util.tpu.SlicePlacementGroup", return_value=mock_slice) as mock_spg,
+    ):
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="4x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            resources_per_bundle=custom_resources,
+        )
+
+    # SlicePlacementGroup must have been called with the caller's value.
+    _, kwargs = mock_spg.call_args
+    assert kwargs["resources_per_bundle"] == custom_resources
+    # SubslicePlacementGroup exposes what was actually allocated.
+    assert sg.bundle_resources == custom_resources
     sg.shutdown()
 
 

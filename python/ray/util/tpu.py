@@ -1795,12 +1795,11 @@ def subslice_placement_group(
     # parent slice exists (e.g. requesting "16x16" on v6e). Fall back to a
     # full SlicePlacementGroup and wrap the result for API consistency.
     if parent_topology == subslice_topology:
-        if resources_per_bundle is None:
-            resources_per_bundle = {"CPU": 1, "TPU": chips_per_vm}
         full_slice = SlicePlacementGroup(
             topology=subslice_topology,
             accelerator_version=version,
             chips_per_vm=chips_per_vm,
+            resources_per_bundle=resources_per_bundle,
             strategy=strategy,
             name=name,
             lifetime=lifetime,
@@ -1820,7 +1819,7 @@ def subslice_placement_group(
             slice_name=slice_name_fallback,
             num_hosts=full_slice.num_hosts,
             chips_per_host=full_slice.chips_per_host,
-            bundle_resources=resources_per_bundle,
+            bundle_resources=full_slice.bundle_resources,
             head_placement_groups=full_slice.head_placement_groups,
             bundle_label_selectors=full_slice.bundle_label_selector,
         )
