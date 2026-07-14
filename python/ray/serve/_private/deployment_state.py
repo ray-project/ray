@@ -6010,14 +6010,12 @@ class DeploymentStateManager:
         """Updates the state of all deployments to match their goal state.
 
         Args:
-            proxy_nodes: Nodes that run a proxy. num_replicas="per_node"
-                deployments place one replica on each.
+            proxy_nodes: Nodes that run a proxy. The ingress request router
+                places one replica on each.
 
         Returns:
             True if any of the deployments have replicas in the RECOVERING state.
         """
-        proxy_nodes = proxy_nodes or set()
-
         deleted_ids = []
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
@@ -6060,10 +6058,10 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
 
-        # STEP 4: Reserve gang placement groups
+        # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
 
-        # STEP 5: Scale replicas
+        # STEP 4: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas(
                 gang_placement_groups=gang_placement_groups,
@@ -6075,7 +6073,7 @@ class DeploymentStateManager:
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 6: Update status
+        # STEP 5: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -6083,7 +6081,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 7: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         # (Replicas are only added in scale_deployment_replicas when deployment
         # actors are ready, so no additional gate needed here.)
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
@@ -6094,7 +6092,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 8: Broadcast long poll information
+        # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -6104,7 +6102,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 9: Record deployment status metrics
+        # STEP 8: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -6115,7 +6113,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 10: Cleanup
+        # STEP 9: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
