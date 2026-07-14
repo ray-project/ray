@@ -79,12 +79,9 @@ struct SchedulingClassToIds {
 
   /// Gets the scheduling class descriptor for the given id.
   ///
-  /// Returns a shared_ptr (not a reference) by design. The descriptors are stored as
-  /// `shared_ptr<const>` and never mutated after insertion, so handing out a shared_ptr
-  /// under `mutex_` lets callers read the descriptor after the lock is released without
-  /// copying it. Returning a reference into `sched_id_to_cls_` would instead dangle if a
-  /// concurrent `GetSchedulingClass()` inserted a new class and rehashed the map (or if
-  /// an entry were ever evicted) after this function released the lock.
+  /// Returns a `shared_ptr<const>` copied out under `mutex_`. Descriptors are immutable
+  /// once registered, so callers can read the result after the lock is released, and the
+  /// shared ownership keeps it valid even if the map rehashes or evicts the entry.
   static std::shared_ptr<const SchedulingClassDescriptor> GetSchedulingClassDescriptor(
       SchedulingClass id);
 
