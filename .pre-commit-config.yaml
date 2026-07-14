@@ -92,14 +92,18 @@ repos:
       - id: black
         exclude: |
           (?x)^(
-            python/ray/cloudpickle/|
+            doc/external/|
             python/build/|
-            python/ray/core/src/ray/gcs/|
-            python/ray/thirdparty_files/|
             python/ray/_private/thirdparty/|
-            python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/cloudpickle/|
+            python/ray/core/src/ray/gcs/|
+            python/ray/serve/_private/application_state.py|
             python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
-            doc/external/
+            python/ray/serve/_private/controller.py|
+            python/ray/serve/_private/deployment_state.py|
+            python/ray/serve/_private/replica.py|
+            python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/thirdparty_files/
           )
         types_or: [python]
 
@@ -142,10 +146,9 @@ repos:
           ]
         files: |
           (?x)^(
-            python/ray/serve/handle.py|
-            python/ray/serve/tests/typing_files/check_handle_typing.py|
             python/ray/serve/_private/__init__.py|
             python/ray/serve/_private/api.py|
+            python/ray/serve/_private/application_state.py|
             python/ray/serve/_private/autoscaling_state.py|
             python/ray/serve/_private/benchmarks/__init__.py|
             python/ray/serve/_private/benchmarks/serialization/__init__.py|
@@ -159,12 +162,14 @@ repos:
             python/ray/serve/_private/config.py|
             python/ray/serve/_private/constants.py|
             python/ray/serve/_private/constants_utils.py|
+            python/ray/serve/_private/controller.py|
             python/ray/serve/_private/controller_avatar.py|
             python/ray/serve/_private/controller_health_metrics_tracker.py|
             python/ray/serve/_private/default_impl.py|
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
             python/ray/serve/_private/endpoint_state.py|
@@ -185,6 +190,7 @@ repos:
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
             python/ray/serve/_private/queue_monitor.py|
+            python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
             python/ray/serve/_private/replica_result.py|
             python/ray/serve/_private/request_ingress_metrics.py|
@@ -202,7 +208,9 @@ repos:
             python/ray/serve/_private/tracing_utils.py|
             python/ray/serve/_private/usage.py|
             python/ray/serve/_private/utils.py|
-            python/ray/serve/_private/version.py
+            python/ray/serve/_private/version.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
           )
 
   # Second type checker over the same Serve allowlist. Pyrefly resolves
@@ -223,10 +231,9 @@ repos:
         pass_filenames: true
         files: |
           (?x)^(
-            python/ray/serve/handle.py|
-            python/ray/serve/tests/typing_files/check_handle_typing.py|
             python/ray/serve/_private/__init__.py|
             python/ray/serve/_private/api.py|
+            python/ray/serve/_private/application_state.py|
             python/ray/serve/_private/autoscaling_state.py|
             python/ray/serve/_private/benchmarks/__init__.py|
             python/ray/serve/_private/benchmarks/serialization/__init__.py|
@@ -240,12 +247,14 @@ repos:
             python/ray/serve/_private/config.py|
             python/ray/serve/_private/constants.py|
             python/ray/serve/_private/constants_utils.py|
+            python/ray/serve/_private/controller.py|
             python/ray/serve/_private/controller_avatar.py|
             python/ray/serve/_private/controller_health_metrics_tracker.py|
             python/ray/serve/_private/default_impl.py|
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
             python/ray/serve/_private/endpoint_state.py|
@@ -266,6 +275,7 @@ repos:
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
             python/ray/serve/_private/queue_monitor.py|
+            python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
             python/ray/serve/_private/replica_result.py|
             python/ray/serve/_private/request_ingress_metrics.py|
@@ -283,7 +293,9 @@ repos:
             python/ray/serve/_private/tracing_utils.py|
             python/ray/serve/_private/usage.py|
             python/ray/serve/_private/utils.py|
-            python/ray/serve/_private/version.py
+            python/ray/serve/_private/version.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
           )
 
   - repo: https://github.com/pre-commit/pygrep-hooks

@@ -4,6 +4,7 @@ import os
 import pickle
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
@@ -11,13 +12,15 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Type,
     Union,
+    cast,
 )
 
 import ray
 from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -116,6 +119,9 @@ from ray.serve.schema import (
 )
 from ray.util import metrics
 
+if TYPE_CHECKING:
+    from ray.serve._private.long_poll import KeyType
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -153,7 +159,7 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(
+    async def __init__(  # type: ignore[misc]
         self,
         *,
         http_options: HTTPOptions,
@@ -183,7 +189,7 @@ class ServeController:
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
         # the constructor.
-        self.global_logging_config = None
+        self.global_logging_config: Optional[LoggingConfig] = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
             global_logging_config = pickle.loads(log_config_checkpoint)
@@ -233,14 +239,19 @@ class ServeController:
             http_options = http_options.model_copy(update={"location": None})
 
         # Configure proxy default HTTP and gRPC options.
+        # `global_logging_config` was set by `reconfigure_global_logging_config`
+        # above, so it is never None past this point.
         self.proxy_state_manager = ProxyStateManager(
             http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
-            logging_config=self.global_logging_config,
+            logging_config=cast(LoggingConfig, self.global_logging_config),
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_location=proxy_location,
-            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
+            proxy_actor_class=cast(
+                Type[ProxyActor],
+                HAProxyManager if self._ha_proxy_enabled else ProxyActor,
+            ),
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
@@ -273,7 +284,7 @@ class ServeController:
             self.autoscaling_state_manager,
             self.endpoint_state,
             self.kv_store,
-            self.global_logging_config,
+            cast(LoggingConfig, self.global_logging_config),
         )
 
         # Controller actor details
@@ -311,7 +322,7 @@ class ServeController:
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
-        self._proxy_nodes = set()
+        self._proxy_nodes: Set[str] = set()
         self._update_proxy_nodes()
 
         # Initialize to None (not []) to ensure the first broadcast always happens,
@@ -382,6 +393,8 @@ class ServeController:
     ):
         if isinstance(replica_metric_report, bytes):
             replica_metric_report = decompress_metric_report(replica_metric_report)
+        # Decompression (above) always yields a ReplicaMetricReport.
+        replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         deployment = replica_metric_report.replica_id.deployment_id.name
@@ -408,6 +421,8 @@ class ServeController:
     ):
         if isinstance(handle_metric_report, bytes):
             handle_metric_report = decompress_metric_report(handle_metric_report)
+        # Decompression (above) always yields a HandleMetricReport.
+        handle_metric_report = cast(HandleMetricReport, handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         deployment = handle_metric_report.deployment_id.name
@@ -465,7 +480,7 @@ class ServeController:
             deployment_id
         )
 
-    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
+    async def listen_for_change(self, keys_to_snapshot_ids: "Dict[KeyType, int]"):
         """Proxy long pull client's listen request.
 
         Args:
@@ -525,7 +540,7 @@ class ServeController:
             return {}
         return self.proxy_state_manager.get_proxy_handles()
 
-    def get_proxy_names(self) -> bytes:
+    def get_proxy_names(self) -> Optional[bytes]:
         """Returns the proxy actor name list serialized by protobuf."""
         if self.proxy_state_manager is None:
             return None
@@ -674,8 +689,13 @@ class ServeController:
         # that may be stale for autoscaling
         if any_recovering is False:
             self.autoscaling_state_manager.drop_stale_handle_metrics(
-                self.deployment_state_manager.get_alive_replica_actor_ids()
-                | self.proxy_state_manager.get_alive_proxy_actor_ids()
+                # None actor_ids (STARTING replicas) are harmless here; cast to
+                # satisfy the landed set[str] signature without a behavior change.
+                cast(
+                    Set[str],
+                    self.deployment_state_manager.get_alive_replica_actor_ids()
+                    | self.proxy_state_manager.get_alive_proxy_actor_ids(),
+                )
             )
 
         self._maybe_update_ingress_ports()
@@ -716,7 +736,7 @@ class ServeController:
             # Update port values for ingress replicas.
             # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
-                Tuple[str, str, int, int]
+                Tuple[Optional[str], str, Optional[int], Optional[int]]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
 
             # update_port_if_missing is additive and idempotent, so we send update_ports
@@ -725,7 +745,14 @@ class ServeController:
             # the replica count. The full set is recomputed and cached each tick, so after
             # a controller restart the empty cache re-sends everything on the first tick.
             fresh = set(ingress_replicas_info_list)
-            NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
+            # update_ports expects fully-allocated tuples; cast to its landed
+            # signature (getter is honestly typed Optional for pending replicas).
+            NodePortManager.update_ports(
+                cast(
+                    List[Tuple[str, str, int, int]],
+                    list(fresh - self._last_ingress_port_tuples),
+                )
+            )
             self._last_ingress_port_tuples = fresh
 
             # Clean up stale ports
@@ -802,7 +829,9 @@ class ServeController:
             tag_keys=("actor_id",),
         )
         self.num_control_loops_gauge.set_default_tags(
-            {"actor_id": ray.get_runtime_context().get_actor_id()}
+            # The controller always runs inside an actor, so the actor ID is
+            # never None here.
+            {"actor_id": cast(str, ray.get_runtime_context().get_actor_id())}
         )
 
         # Autoscaling metrics delay gauges
@@ -939,10 +968,11 @@ class ServeController:
 
         return self.proxy_state_manager.get_proxy_details().get(node_id)
 
-    def get_deployment_timestamps(self, app_name: str) -> float:
+    # Implicitly returns None when the app doesn't exist.
+    def get_deployment_timestamps(self, app_name: str) -> Optional[float]:  # type: ignore[return]
         """Returns the deployment timestamp for the given app.
 
-        Currently used for test only.
+        Returns None if the app doesn't exist. Currently used for test only.
         """
         for (
             _app_name,
@@ -1296,7 +1326,7 @@ class ServeController:
 
     def list_deployments_internal(
         self,
-    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
+    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, Optional[str]]]:
         """Gets the current information about all deployments.
 
         Returns:
@@ -1540,7 +1570,10 @@ class ServeController:
         # Create target groups for each application
         target_groups = []
         for app_name in apps:
-            route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            # `apps` was filtered above to apps with a non-None route prefix.
+            route_prefix = cast(
+                str, self.application_state_manager.get_route_prefix(app_name)
+            )
             app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
             if app_target_groups:
                 target_groups.extend(app_target_groups)
@@ -1581,8 +1614,10 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name)
         )
+        # NOTE: `ingress_deployment_name` may still be None before the app is
+        # built; the resulting DeploymentID lookup then misses and yields [].
         return self._get_running_replica_details_for_deployment(
-            app_name, ingress_deployment_name
+            app_name, cast(str, ingress_deployment_name)
         )
 
     def _get_target_groups_for_app(
@@ -1758,14 +1793,20 @@ class ServeController:
         self, replica_detail: ReplicaDetails, protocol: RequestProtocol
     ) -> int:
         """Get the port for a replica."""
-        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        # Running replicas always have their node ID populated.
+        node_manager = NodePortManager.get_node_manager(
+            cast(str, replica_detail.node_id)
+        )
         return node_manager.get_port(replica_detail.replica_id, protocol)
 
     def _is_port_allocated(
         self, replica_detail: ReplicaDetails, protocol: RequestProtocol
     ) -> bool:
         """Check if the port for a replica is allocated."""
-        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        # Running replicas always have their node ID populated.
+        node_manager = NodePortManager.get_node_manager(
+            cast(str, replica_detail.node_id)
+        )
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
@@ -1940,7 +1981,8 @@ class ServeController:
         log_file_path = None
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.MemoryHandler):
-                log_file_path = handler.target.baseFilename
+                # Serve's MemoryHandler always wraps a file handler.
+                log_file_path = cast(logging.FileHandler, handler.target).baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
@@ -1952,12 +1994,12 @@ class ServeController:
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],
     new_config: ServeDeploySchema,
-    curr_target_capacity_direction: Optional[float],
+    curr_target_capacity_direction: Optional[TargetCapacityDirection],
 ) -> Optional[TargetCapacityDirection]:
     """Compares two Serve configs to calculate the next scaling direction."""
 
     curr_target_capacity = None
-    next_target_capacity_direction = None
+    next_target_capacity_direction: Optional[TargetCapacityDirection] = None
 
     if curr_config is not None and applications_match(curr_config, new_config):
         curr_target_capacity = curr_config.target_capacity
@@ -1970,7 +2012,8 @@ def calculate_target_capacity_direction(
             next_target_capacity_direction = TargetCapacityDirection.DOWN
         elif next_target_capacity is None:
             next_target_capacity_direction = None
-        elif curr_target_capacity < next_target_capacity:
+        # The two branches above ensure both capacities are non-None here.
+        elif curr_target_capacity < next_target_capacity:  # type: ignore[operator]  # pyrefly: ignore[unsupported-operation]
             next_target_capacity_direction = TargetCapacityDirection.UP
         else:
             next_target_capacity_direction = TargetCapacityDirection.DOWN
