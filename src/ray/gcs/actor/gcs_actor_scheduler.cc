@@ -30,7 +30,7 @@ GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    ClusterResourceScheduler &cluster_resource_scheduler,
+    ClusterLeaseManager &cluster_lease_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
@@ -40,7 +40,7 @@ GcsActorScheduler::GcsActorScheduler(
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      cluster_resource_scheduler_(cluster_resource_scheduler),
+      cluster_lease_manager_(cluster_lease_manager),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
@@ -51,12 +51,19 @@ GcsActorScheduler::GcsActorScheduler(
 }
 
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
-  // TODO(irabbani): Understand why this CHECK exists and either remove or
-  // add an error message.
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
+  if (RayConfig::instance().centralized_actor_scheduling() &&
+      !actor->GetLeaseSpecification().GetRequiredResources().IsEmpty()) {
+    ScheduleByGcs(actor);
+  } else {
+    ScheduleByRaylet(actor);
+  }
+}
+
+void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
   // Select a node to where the actor is forwarded.
-  auto node_id = LeaseWorkerNode(actor);
+  auto node_id = SelectForwardingNode(actor);
 
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
@@ -73,27 +80,13 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   address.set_node_id(node.value()->node_id());
   actor->UpdateAddress(address);
 
-  // TODO(irabbani): Understand why this CHECK exists and either remove or
-  // add an error message.
   RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                 .emplace(actor->GetActorID())
                 .second);
 
-  if (RayConfig::instance().centralized_actor_scheduling()) {
-    actor->SetGrantOrReject(true);
-  } else {
-    // Lease worker directly from the node.
-    actor->SetGrantOrReject(false);
-  }
+  // Lease worker directly from the node.
+  actor->SetGrantOrReject(false);
   LeaseWorkerFromNode(actor, node.value());
-}
-
-NodeID GcsActorScheduler::LeaseWorkerNode(std::shared_ptr<GcsActor> actor) {
-  if (RayConfig::instance().centralized_actor_scheduling()) {
-    return SelectWorkerNode(actor);
-  }
-
-  return SelectForwardingNode(actor);
 }
 
 NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) {
@@ -114,79 +107,52 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }
 
-NodeID GcsActorScheduler::SelectWorkerNode(std::shared_ptr<GcsActor> actor) {
-  // Select a node to lease worker for the actor.
-  std::shared_ptr<const rpc::GcsNodeInfo> node;
-  // owner node or 'best' node (if available)
-  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> maybe_node = std::nullopt;
-
-  // If an actor has resource requirements, we will try to schedule it on the same node as
-  // the owner if possible.
-  const auto &lease_spec = actor->GetLeaseSpecification();
-  if (!lease_spec.GetRequiredResources().IsEmpty()) {
-    bool is_infeasible;
-    auto best_node = cluster_resource_scheduler_.GetBestSchedulableNode(
-        lease_spec,
-        /*preferred_node_id*/ std::string(),  // actor->GetOwnerNodeID().Binary(),
-        /*exclude_local_node*/ false,
-        /*requires_object_store_memory*/ true,
-        &is_infeasible);
-    if (!is_infeasible && !best_node.IsNil()) { /* may not need nil check here */
-      const auto best_node_id = ray::NodeID::FromBinary(best_node.Binary());
-      maybe_node = gcs_node_manager_.GetAliveNode(best_node_id);
+void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
+  auto reply = std::make_shared<rpc::RequestWorkerLeaseReply>();
+  auto send_reply_callback = [this, actor, reply](Status status,
+                                                  std::function<void()> success,
+                                                  std::function<void()> failure) {
+    if (reply->canceled()) {
+      HandleRequestWorkerLeaseCanceled(
+          actor,
+          NodeID::Nil(),
+          reply->failure_type(),
+          /*scheduling_failure_message*/ reply->scheduling_failure_message());
+      return;
     }
-    if (maybe_node.has_value()) {
-      RAY_LOG(DEBUG)
-              .WithField(actor->GetActorID())
-              .WithField(NodeID::FromBinary(maybe_node.value()->node_id()))
-          << "Scheduling " << actor->GetActorID() << " on *best* node "
-          << NodeID::FromBinary(maybe_node.value()->node_id());
+    const auto &retry_at_raylet_address = reply->retry_at_raylet_address();
+    RAY_CHECK(!retry_at_raylet_address.node_id().empty());
+    auto node_id = NodeID::FromBinary(retry_at_raylet_address.node_id());
+    auto node = gcs_node_manager_.GetAliveNode(node_id);
+    RAY_CHECK(node.has_value());
 
-      if (!cluster_resource_scheduler_.AllocateRemoteTaskResources(
-              best_node, lease_spec.GetRequiredResources().GetResourceMap())) {
-        RAY_LOG(DEBUG)
-                .WithField(actor->GetActorID())
-                .WithField(NodeID::FromBinary(maybe_node.value()->node_id()))
-            << "Failed to allocate resources for request " << lease_spec.LeaseId()
-            << " on *best* node " << NodeID::FromBinary(maybe_node.value()->node_id());
-      }
-      actor->SetAcquiredResources(ResourceMapToResourceRequest(
-          actor->GetLeaseSpecification().GetRequiredResources().GetResourceMap(), false));
-    } else {
-      maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-    }
+    // Update the address of the actor as it is tied to a node.
+    rpc::Address address;
+    address.set_node_id(node.value()->node_id());
+    actor->UpdateAddress(address);
 
-    node = maybe_node.has_value() ? maybe_node.value()
-                                  : gcs_node_manager_.SelectRandomAliveNode();
-    if (maybe_node.has_value()) {
-      RAY_LOG(DEBUG)
-              .WithField(actor->GetActorID())
-              .WithField(NodeID::FromBinary(node->node_id()))
-          << "Scheduling " << actor->GetActorID() << " on non-head owner node "
-          << NodeID::FromBinary(node->node_id());
-    } else {
-      RAY_LOG(DEBUG)
-              .WithField(actor->GetActorID())
-              .WithField(NodeID::FromBinary(node->node_id()))
-          << "Scheduling " << actor->GetActorID() << " on random node (#1) "
-          << NodeID::FromBinary(node->node_id());
-    }
-  } else {
-    RAY_LOG(DEBUG).WithField(actor->GetActorID()) << "EMPTY LEASE ";
-    maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-    if (maybe_node.has_value()) {
-      node = maybe_node.value();
-    } else {
-      node = gcs_node_manager_.SelectRandomAliveNode();
-    }
-    RAY_LOG(DEBUG)
-            .WithField(actor->GetActorID())
-            .WithField(NodeID::FromBinary(node->node_id()))
-        << "Scheduling " << actor->GetActorID() << " on random node (#2) "
-        << NodeID::FromBinary(node->node_id());
-  }
+    RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                  .emplace(actor->GetActorID())
+                  .second);
 
-  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+    actor->SetAcquiredResources(ResourceMapToResourceRequest(
+        actor->GetLeaseSpecification().GetRequiredResources().GetResourceMap(), false));
+    // Lease worker directly from the node.
+    actor->SetGrantOrReject(true);
+    LeaseWorkerFromNode(actor, node.value());
+  };
+
+  // Queue and schedule the actor locally (gcs).
+  const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+  RayLease lease(
+      actor->GetLeaseSpecification(),
+      owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
+  cluster_lease_manager_.QueueAndScheduleLease(
+      std::move(lease),
+      /*grant_or_reject=*/false,
+      /*is_selected_based_on_locality=*/false,
+      {ray::raylet::internal::ReplyCallback(std::move(send_reply_callback),
+                                            reply.get())});
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
@@ -764,13 +730,14 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   if (RayConfig::instance().centralized_actor_scheduling()) {
     auto &cluster_resource_manager =
-        cluster_resource_scheduler_.GetClusterResourceManager();
+        cluster_lease_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
     cluster_resource_manager.AddNodeAvailableResources(
         scheduling::NodeID(actor->GetNodeID().Binary()),
         actor->GetAcquiredResources().GetResourceSet());
