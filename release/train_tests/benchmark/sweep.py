@@ -84,7 +84,7 @@ def main() -> None:
     if args.dry_run:
         return
 
-    completed, failed = [], []
+    completed, oomed, failed = [], [], []
     for combo in cells:
         name = cell_name(base.name, combo)
         overrides = [f"{k}={v}" for k, v in combo.items()] + [f"name={name}"]
@@ -99,16 +99,26 @@ def main() -> None:
                 # e.g. the torch.distributed launcher returns {} when no rank reported.
                 raise RuntimeError("run finished but produced no metrics")
             write_results(metrics, name)
-            completed.append(name)
+            if metrics.get("oom"):
+                # Expected sweep outcome: the oom=true row records that this
+                # cell doesn't fit. Tallied separately — not a success.
+                logger.warning(f"Cell {name} OOMed; row recorded.")
+                oomed.append(name)
+            else:
+                completed.append(name)
         except Exception as e:  # noqa: BLE001 - one bad cell shouldn't kill the grid
             logger.error(f"Cell {name} failed: {type(e).__name__}: {e}")
             failed.append(name)
             if not args.continue_on_error:
                 raise
 
-    logger.info(f"Sweep done: {len(completed)} ok, {len(failed)} failed.")
+    logger.info(
+        f"Sweep done: {len(completed)} ok, {len(oomed)} oom, {len(failed)} failed."
+    )
+    if oomed:
+        logger.info(f"OOM cells (recorded as oom=true rows): {oomed}")
     if failed:
-        logger.info(f"Failed cells (often OOM): {failed}")
+        logger.info(f"Failed cells: {failed}")
     logger.info("Render with: python collect.py")
 
 

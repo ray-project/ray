@@ -129,6 +129,11 @@ def main() -> None:
         # loudly: a release test must never pass without benchmark results.
         raise RuntimeError(f"{cfg.name} finished but produced no metrics.")
     write_results(metrics, cfg.name)
+    if metrics.get("oom"):
+        # The oom=true row is persisted above for debugging, but a scheduled
+        # benchmark run that OOMed has no valid throughput/MFU — fail the job
+        # rather than letting the release test pass without real numbers.
+        raise RuntimeError(f"{cfg.name} hit CUDA OOM; no valid benchmark result.")
 
 
 if __name__ == "__main__":
