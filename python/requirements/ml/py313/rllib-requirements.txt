@@ -1,9 +1,0 @@
-# For auto-generating an env-rendering Window.
-pyglet==1.5.15
-imageio-ffmpeg==0.4.5
-rich==13.7.1
-# Msgpack checkpoint stuff.
-msgpack
-msgpack-numpy
-ormsgpack
-tf_keras

@@ -330,6 +330,115 @@ TEST(GeneratorWaiterTest, TeardownTaskIdempotent) {
   ASSERT_EQ(waiter->TotalObjectGenerated(), 0);
 }
 
+TEST(GeneratorWaiterTest, IsBackpressuredReflectsThreshold) {
+  // Disabled (threshold -1) is never backpressured, even with unconsumed objects.
+  auto disabled = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      -1, []() { return Status::OK(); });
+  disabled->IncrementObjectGenerated();
+  disabled->IncrementObjectGenerated();
+  ASSERT_FALSE(disabled->IsBackpressured());
+
+  auto waiter =
+      std::make_shared<TaskGeneratorBackpressureWaiter>(2, []() { return Status::OK(); });
+  // 0 unconsumed < 2.
+  ASSERT_FALSE(waiter->IsBackpressured());
+  waiter->IncrementObjectGenerated();
+  // 1 unconsumed < 2.
+  ASSERT_FALSE(waiter->IsBackpressured());
+  waiter->IncrementObjectGenerated();
+  // 2 unconsumed >= 2 -> backpressured.
+  ASSERT_TRUE(waiter->IsBackpressured());
+  // Consume one -> 1 unconsumed < 2 -> no longer backpressured.
+  waiter->OnObjectReportAccepted();
+  waiter->OnObjectConsumed(1);
+  ASSERT_FALSE(waiter->IsBackpressured());
+}
+
+TEST(GeneratorWaiterTest, IsBackpressuredFalseAfterDisable) {
+  auto waiter =
+      std::make_shared<TaskGeneratorBackpressureWaiter>(1, []() { return Status::OK(); });
+  waiter->IncrementObjectGenerated();
+  ASSERT_TRUE(waiter->IsBackpressured());
+  // Disabling (e.g. owner death) releases backpressure unconditionally.
+  waiter->DisableBackpressure();
+  ASSERT_FALSE(waiter->IsBackpressured());
+}
+
+TEST(GeneratorWaiterTest, TryReserveActorWideSlotIsNonBlockingAndRespectsCap) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      2, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // Admits up to the cap without blocking.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_EQ(md.per_task_generated, 2);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2);
+
+  // At the cap: returns false and does NOT reserve (unlike the blocking variant
+  // which would park here).
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_EQ(md.per_task_generated, 2);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2);
+
+  // Consuming frees budget below the cap; the next try succeeds.
+  waiter->OnConsumedForTask(md, 1);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_EQ(md.per_task_generated, 3);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 3);
+}
+
+TEST(GeneratorWaiterTest, TryReserveSlotForwardsThroughMetadata) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      1, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // The metadata forwarder mirrors TryReserveActorWideSlot.
+  ASSERT_TRUE(md.TryReserveSlot());
+  ASSERT_FALSE(md.TryReserveSlot());
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 1);
+}
+
+TEST(GeneratorWaiterTest, TryReserveActorWideSlotGroupedYield) {
+  // Like ReserveActorWideSlot, the non-blocking variant admits the whole group
+  // of `_num_objects_per_yield` objects at once.
+  constexpr int64_t kPerYield = 3;
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      2 * kPerYield, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, kPerYield));
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, kPerYield));
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2 * kPerYield);
+
+  // Budget full: the next group is rejected without blocking.
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md, kPerYield));
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2 * kPerYield);
+
+  // Consuming a group worth admits one more group.
+  waiter->OnConsumedForTask(md, kPerYield);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, kPerYield));
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 3 * kPerYield);
+}
+
+TEST(GeneratorWaiterTest, TryReserveActorWideSlotReturnsTrueWhenTaskNotAlive) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      1, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // Fill the cap so a live task would be rejected.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+
+  // After teardown, try-reserve returns true (so the caller's loop can exit)
+  // without admitting anything -- mirroring ReserveActorWideSlot's dead-task
+  // behavior.
+  waiter->TeardownTask(md);
+  const int64_t generated_after_teardown = waiter->TotalObjectGenerated();
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_EQ(waiter->TotalObjectGenerated(), generated_after_teardown);
+}
+
 TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
   constexpr int kThreshold = 5;
   constexpr int kThreads = 4;
