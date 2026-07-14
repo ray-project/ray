@@ -50,6 +50,22 @@ class ScalingConfig(ScalingConfigV1):
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
             override the number of CPU or GPUs used by each worker.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"TPU"``: number of logical TPUs per worker, when ``use_tpu=True``.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"``, ``"GPU"``, and ``"TPU"``
+            (uppercase), and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.

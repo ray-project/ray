@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -20,6 +23,15 @@ V = TypeVar("V")
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "`ingress_request_router` requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
+)
+
+CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR = (
+    "A custom `request_router_config.request_router_class` is not supported on "
+    "the ingress deployment when HAProxy is enabled. HAProxy load-balances "
+    "ingress traffic with its own algorithm and bypasses the Serve request "
+    "router, so the custom router would be silently ignored. Remove the custom "
+    "`request_router_class` from the ingress deployment, or configure HAProxy's "
+    "load-balancing algorithm instead."
 )
 
 
@@ -85,6 +97,12 @@ class BuiltApplication:
             )
 
 
+def _has_custom_request_router(deployment: Deployment) -> bool:
+    """Whether the deployment configures a non-default request router class."""
+    request_router_config = deployment._deployment_config.request_router_config
+    return not request_router_config.is_default_request_router()
+
+
 def _make_deployment_handle_default(
     deployment: Deployment, app_name: str
 ) -> DeploymentHandle:
@@ -129,6 +147,18 @@ def build_app(
         )
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
         raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
+
+    # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
+    # the ingress deployment's Serve request router, so a custom router there is
+    # silently ignored. Reject it unless an `ingress_request_router` is attached
+    # (the Serve LLM direct-streaming path), where HAProxy delegates replica
+    # selection back to that router.
+    if (
+        RAY_SERVE_ENABLE_HA_PROXY
+        and ingress_request_router is None
+        and _has_custom_request_router(app._bound_deployment)
+    ):
+        raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     handles = IDDict()
     deployment_names = IDDict()

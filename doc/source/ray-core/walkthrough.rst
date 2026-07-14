@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray's distributed computing primitives — tasks, actors, and objects — with examples for turning Python functions and classes into distributed apps.
+
 .. _core-walkthrough:
 
 What's Ray Core?
@@ -10,7 +13,6 @@ What's Ray Core?
     Key Concepts <key-concepts>
     User Guides <user-guide>
     Examples <examples/overview>
-    api/index
     Internals <internals>
 
 

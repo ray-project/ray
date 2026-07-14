@@ -31,6 +31,7 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_init_data.h"
@@ -85,7 +86,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
+    cluster_resource_manager_ =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_service_));
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
@@ -1327,7 +1329,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
   pg_data->set_placement_group_id(pg_id.Binary());
-  pg_data->set_label_domain_key("ray.io/gpu-domain");
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
 
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["GPU"] = 4;
@@ -1366,8 +1369,9 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(2));
   pg_data->set_placement_group_id(pg_id.Binary());
-  pg_data->set_label_domain_key("ray.io/gpu-domain");
-  (*pg_data->mutable_label_domain_assignments())["ray.io/gpu-domain"] = "rack-1";
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
+  (*pg_data->mutable_topology_assignments())["ray.io/gpu-domain"] = "rack-1";
 
   // One placed bundle (has node_id) and one unplaced bundle.
   auto *placed_bundle = pg_data->add_bundles();

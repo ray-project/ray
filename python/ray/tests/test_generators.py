@@ -36,6 +36,9 @@ def assert_no_leak():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="This test requires Linux.",
 )
+# This test can spill many GiB to disk (the normal-return task may not OOM and
+# instead materializes all returns), so it needs a longer timeout.
+@pytest.mark.timeout(600)
 def test_generator_oom(ray_start_regular_shared):
     num_returns = 100
 
@@ -447,6 +450,13 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
 def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
+    # The num_returns_type=None variants used to hang under the RocksDB GCS
+    # backend: RocksDB's per-write WAL fsync delayed the actor-death
+    # notification enough to expose a pre-existing reconstruction race, so the
+    # driver hung in list(gen). Fixed by making the death-notification tables
+    # (NODE, ACTOR) soft-durable, which skips the fsync on those tables, so
+    # these variants now pass and are no longer skipped. See the
+    # SoftDurableTables() comment in rocksdb_store_client.cc for detail.
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,

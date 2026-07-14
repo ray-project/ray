@@ -41,10 +41,7 @@ class MockObjectManager : public ObjectManagerInterface {
               (const TaskMetricsKey &task_key),
               (const, override));
   MOCK_METHOD(int, GetServerPort, (), (const, override));
-  MOCK_METHOD(void,
-              FreeObjects,
-              (const std::vector<ObjectID> &object_ids, bool local_only),
-              (override));
+  MOCK_METHOD(void, FreeObjects, (const std::vector<ObjectID> &object_ids), (override));
   MOCK_METHOD(bool, IsPlasmaObjectSpillable, (const ObjectID &object_id), (override));
   MOCK_METHOD(int64_t, GetUsedMemory, (), (const, override));
   MOCK_METHOD(bool, PullManagerHasPullsQueued, (), (const, override));
@@ -58,6 +55,14 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, RecordMetrics, (), (override));
   MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
+  MOCK_METHOD(std::vector<ObjectID>,
+              GetLocalObjectsOwnedBy,
+              (const WorkerID &worker_id),
+              (const, override));
+  MOCK_METHOD(std::vector<ObjectID>,
+              GetLocalObjectsOwnedByOwnersOn,
+              (const NodeID &node_id),
+              (const, override));
   MOCK_METHOD(void, HandleObjectAdded, (const ObjectInfo &object_info), (override));
   MOCK_METHOD(void, HandleObjectDeleted, (const ObjectID &object_id), (override));
 };

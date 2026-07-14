@@ -59,10 +59,8 @@ python3 samples/long_running_task.py
 ### Step 6: Profile using Ray Dashboard
 
 - Visit http://localhost:8265/#/cluster.
-- Click `Stack Trace` for `ray::long_running_task`.
-    ![StackTrace](../images/stack_trace.png)
-- Click `CPU Flame Graph` for `ray::long_running_task`.
-    ![FlameGraph](../images/cpu_flame_graph.png)
+- Click `Stack Trace` for `ray::long_running_task`. ![StackTrace](../images/stack_trace.png)
+- Click `CPU Flame Graph` for `ray::long_running_task`. ![FlameGraph](../images/cpu_flame_graph.png)
 - For additional details on using the profiler, See [Python CPU profiling in the Dashboard](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
 
 ### Step 7: Clean up
