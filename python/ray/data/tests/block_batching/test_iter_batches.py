@@ -827,9 +827,9 @@ def test_e2e_blocked_attribution_by_scenario(
     captured = []
     orig = _StatsManager.update_iteration_metrics
 
-    def spy(stats, dataset_tag):
+    def spy(stats, dataset_tag, split_index):
         captured.append(stats)
-        return orig(stats, dataset_tag)
+        return orig(stats, dataset_tag, split_index)
 
     patches.append(patch.object(_StatsManager, "update_iteration_metrics", spy))
 
