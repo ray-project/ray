@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -26,6 +27,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/reference_counter_interface.h"
@@ -107,15 +109,15 @@ class ObjectRefStream {
    *
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \param[out] consumed_object_ids Appended with the object ids actually
-   * advanced past (capped at the end of the stream). The caller is responsible
-   * for releasing the owner-side references held for these objects.
-   * \return KeyError if it reaches to EoF before consuming any item.
-   * InvalidArgument if the last requested ref is not ready. Ok otherwise.
+   * \param[out] consumed_object_ids Appended with all object ids actually
+   * advanced past, including EOF-region refs. The caller is responsible for
+   * releasing the owner-side references held for these objects.
+   * \return InvalidArgument if the last requested ref is not ready. Ok
+   * otherwise.
    */
   Status TryReadNextItems(int64_t num_items, std::vector<ObjectID> *consumed_object_ids);
 
-  /// Return True if there's no more object to read. False otherwise.
+  /// Return True if the cursor has reached or passed EOF. False otherwise.
   bool IsFinished() const;
 
   std::pair<ObjectID, bool> PeekNextItem();
@@ -170,11 +172,19 @@ class ObjectRefStream {
    * caller should pass 1 past the highest index that the generator is
    * guaranteed to return. The EOF index will be set to the max of this index
    * and the next index for the caller to consume.
+   * \param[in] end_of_stream_error The object written to every EOF-region ref
+   * (the sentinel and any refs peeked past EOF). END_OF_STREAMING_GENERATOR for
+   * a clean completion; the real terminal error (TASK_CANCELLED, ACTOR_DIED, or
+   * a serialized RayTaskError for a task that failed before reporting a stream
+   * item) otherwise. Recorded once, on the first call (first-writer-wins,
+   * matching the end_of_stream_index_ guard below).
    * \param[out] object_ids_to_eof The ObjectIDs that should be marked with the
    * EOF sentinel. This includes the EOF index itself and any already-peeked
    * refs after EOF.
    */
-  void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
+  void MarkEndOfStream(int64_t item_index,
+                       RayObject end_of_stream_error,
+                       std::vector<ObjectID> *object_ids_to_eof);
 
   /// Pop all ObjectIDs that are not read yet via
   /// TryReadNextItem.
@@ -186,6 +196,10 @@ class ObjectRefStream {
   int64_t LastConsumedIndex() const { return next_index_ - 1; }
 
   int64_t EofIndex() const { return end_of_stream_index_; }
+
+  /// The object written to every EOF-region ref, recorded by MarkEndOfStream.
+  /// Only valid once the stream has been ended (EofIndex() != -1).
+  const RayObject &EndOfStreamError() const { return *end_of_stream_error_; }
 
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
@@ -207,8 +221,14 @@ class ObjectRefStream {
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
   int64_t end_of_stream_index_ = -1;
-  /// The next index of the stream.
-  /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
+  /// The object written to every EOF-region ref. END_OF_STREAMING_GENERATOR for
+  /// a clean completion; the real terminal error (TASK_CANCELLED, ACTOR_DIED, a
+  /// serialized RayTaskError, ...) otherwise. Built and recorded once, when
+  /// end_of_stream_index_ is first set.
+  std::optional<RayObject> end_of_stream_error_;
+  /// The next index of the stream. Bulk consumers may advance this past
+  /// end_of_stream_index_ after consuming EOF-region refs that were already
+  /// returned by PeekNextItems.
   int64_t next_index_ = 0;
   /// The maximum index that we have seen from the executor. We need to track
   /// this in case the first execution fails mid-generator, and the second task
@@ -306,9 +326,10 @@ class TaskManager : public TaskManagerInterface {
    * Ray preserves first `max_num_generator_returns` indexes for a streaming
    * generator returns.
    * - MarkEndOfStream must be called when a task finishes or fails.
-   * Once this API is called, the stream will contain the sentinel object
-   * that raises END_OF_STREAMING_GENERATOR error at the end of the stream.
-   * The language frontend can catch this error and take proper actions.
+   * Once this API is called, the stream will contain terminal-error objects
+   * for EOF-region refs. Clean completion uses END_OF_STREAMING_GENERATOR;
+   * failures use their real error type. The language frontend can catch this
+   * error and take proper actions.
    * - The generator's first return value contains an exception
    * if the task fails by a system error. Otherwise, it contains nothing.
    *
@@ -456,8 +477,8 @@ class TaskManager : public TaskManagerInterface {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   * \return Status InvalidArgument if the last requested ref is not ready. OK
+   * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)
       ABSL_LOCKS_EXCLUDED(mu_);
@@ -711,7 +732,10 @@ class TaskManager : public TaskManagerInterface {
   };
 
   /// Set the task retry number to 0. If canceled is true, mark the task as
-  // canceled.
+  /// canceled and end a streaming generator's stream with TASK_CANCELLED so
+  /// eagerly-peeked, never-to-be-produced refs surface the cancellation instead
+  /// of a generic end-of-stream. Non-cancel no-retry paths do not end the stream
+  /// here; their terminal error is recorded via FailPendingTask instead.
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -796,8 +820,9 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Mark the stream is ended.
-  /// The end of the stream always contains a "sentinel object" passed
-  /// via end_of_stream_obj.
+  /// The EOF-region refs are materialized with the terminal error recorded for
+  /// the stream: END_OF_STREAMING_GENERATOR for clean completion, or the real
+  /// failure for cancellation / actor death / worker death.
   ///
   /// \param generator_id The object ref id of the streaming
   /// generator task.
@@ -805,7 +830,22 @@ class TaskManager : public TaskManagerInterface {
   /// If -1 is specified, it will mark the current last index as end of stream.
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
-  void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+  /// \param error_type The terminal error to write to the EOF-region objects
+  /// (the sentinel and any refs peeked past EOF). Defaults to
+  /// END_OF_STREAMING_GENERATOR for a clean completion; failure paths pass the
+  /// real error (TASK_CANCELLED, ACTOR_DIED, ...) so an eager consumer that
+  /// waits on a not-yet-produced ref surfaces the real reason. Recorded once
+  /// (first-writer-wins), so the first path to end the stream determines it.
+  /// \param error_info Optional rich error info for error_type. May be nullptr.
+  /// \param error_return_object Optional inlined generator completion error to
+  /// copy to EOF-region refs. Used only when task failure produced no stream
+  /// item, so eagerly peeked refs retain the task's serialized exception.
+  void MarkEndOfStream(
+      const ObjectID &generator_id,
+      int64_t end_of_stream_index,
+      rpc::ErrorType error_type = rpc::ErrorType::END_OF_STREAMING_GENERATOR,
+      const rpc::RayErrorInfo *error_info = nullptr,
+      const rpc::ReturnObject *error_return_object = nullptr)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.

@@ -725,7 +725,15 @@ def test_nested_deployment_response_error(serve_instance):
     reason="local_testing_mode doesn't support _to_object_ref",
 )
 def test_convert_to_object_ref(serve_instance):
-    """Test converting deployment handle refs to Ray object refs."""
+    """Test converting deployment handle refs to Ray object refs.
+
+    Converting a deployment handle ref to a Ray object ref should be async and
+    *not* block until the downstream result has been produced. This test enforces
+    the behavior by blocking the downstream tasks using a signal actor until after
+    the object refs have been produced.
+    """
+
+    signal = SignalActor.remote()
 
     @ray.remote
     def identity_task(inp: Any):
@@ -733,6 +741,7 @@ def test_convert_to_object_ref(serve_instance):
 
     @serve.deployment
     def downstream():
+        ray.get(signal.wait.remote())
         return "hello"
 
     @serve.deployment
@@ -741,13 +750,15 @@ def test_convert_to_object_ref(serve_instance):
             self._handle = handle
 
         async def __call__(self):
-            ref = self._handle.remote()
-            return await identity_task.remote(await ref._to_object_ref())
+            obj_ref = await self._handle.remote()._to_object_ref()
+            await signal.wait.remote()
+            return await identity_task.remote(obj_ref)
 
     handle = serve.run(Deployment.bind(downstream.bind()))
 
-    ref = handle.remote()
-    assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
+    obj_ref = handle.remote()._to_object_ref_sync()
+    ray.get(signal.send.remote())
+    assert ray.get(identity_task.remote(obj_ref)) == "hello"
 
 
 def test_generators(serve_instance):

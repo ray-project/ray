@@ -200,6 +200,19 @@ class ObjectRefGenerator:
         The returned refs are not consumed; wait for the last one to become ready
         before calling ``_consume_next_ref_n`` to advance the stream.
 
+        If ``num_refs`` overshoots the end of the stream, the extra refs are
+        positions the generator will never produce. ``ray.get`` on such a ref
+        raises ``ObjectRefStreamEndOfStreamError`` when the stream ended cleanly.
+        If the stream is ended by owner-side task termination before those
+        positions can be produced -- for example task cancellation, actor death,
+        or worker death -- the ref surfaces that terminal error instead. Python
+        generator application exceptions are normally reported as a stream item;
+        positions after that reported exception may still be clean
+        end-of-stream. A task that fails before the generator executor starts,
+        such as one with a failed by-reference dependency, has no streamed
+        exception item; its EOF-region refs preserve the serialized error from
+        the generator completion object instead.
+
         Args:
             num_refs: The number of references to return, starting from the
                 current head of the stream. Must be positive.
@@ -226,9 +239,9 @@ class ObjectRefGenerator:
         (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
         of silently advancing past unwritten objects.
 
-        If fewer than num_refs references remain before the end of the stream,
-        only the remaining references are consumed and the call returns
-        without raising.
+        If the requested range crosses the end of the stream, EOF/error refs in
+        the range are also consumed so a later peek starts after this returned
+        batch.
 
         Args:
             num_refs: The number of references to consume, starting from the
