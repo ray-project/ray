@@ -3681,8 +3681,8 @@ class DeploymentState:
     def _rescale_to(self, num_replicas: int) -> None:
         """Set the target replica count, keeping the current code version.
 
-        A pure rescale: re-uses the code version so it doesn't mint a new
-        DeploymentVersion that would restart every replica, and records the
+        Re-using the code version keeps this a pure rescale that does not mint a
+        new DeploymentVersion or restart replicas, and it records the
         UPSCALING/DOWNSCALING status transition.
         """
         old_num = self._target_state.target_num_replicas
