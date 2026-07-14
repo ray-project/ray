@@ -92,7 +92,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # -- External-shuffle-specific below --
         pool_budget_bytes: Optional[int] = None,
         fsync_on_close: bool = True,
-        base_dir: Optional[str] = None,
     ):
         super().__init__(
             name=name,
@@ -155,8 +154,8 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # is the last-resort fallback since ``base_dir`` sits under ``$TMPDIR``.
         self._token: str = secrets.token_hex(16)
         self._shuffle_id: str = secrets.token_hex(8)
-        self._base_dir: str = base_dir or os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
+        self._base_dir: str = os.path.join(
+            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}_map"
         )
 
         # -- Partition-wrapper emission state --------------------------------
@@ -272,7 +271,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             token=self._token,
-            map_op_name=self.name,
             pool_budget_bytes=pool_budget_bytes,
             compression=compression,
             fsync_on_close=self._fsync_on_close,

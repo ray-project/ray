@@ -408,7 +408,6 @@ class FuseOperators(Rule):
                 # External-only knobs:
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
                 fetch_threads=up_op._fetch_threads,
-                reduce_prefetch_dir=up_op._reduce_prefetch_dir,
             )
         else:  # in-memory ShuffleReduceOp (may be multi-input for Join)
             fused_op = ShuffleReduceOp(

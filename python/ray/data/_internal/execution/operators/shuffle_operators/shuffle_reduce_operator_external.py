@@ -94,7 +94,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- External-shuffle-specific below --
         max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
         fetch_threads: int = _DEFAULT_FETCH_THREADS,
-        reduce_prefetch_dir: Optional[str] = None,
     ):
         super().__init__(
             name=name,
@@ -136,10 +135,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # _external_shuffle_reduce_task behavior knobs:
         # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
         # - ``fetch_threads``: concurrent per-source-node fetch threads
-        # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
         self._max_bytes_per_fetch: int = max_bytes_per_fetch
         self._fetch_threads: int = fetch_threads
-        self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -225,7 +222,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             handles_ref,
             partition_id,
             self._reduce_fn,
-            self._reduce_prefetch_dir,
             self._max_bytes_per_fetch,
             self._fetch_threads,
             target_max_block_size,

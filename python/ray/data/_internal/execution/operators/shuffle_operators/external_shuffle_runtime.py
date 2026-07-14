@@ -325,7 +325,6 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                     # Drop these pages from the page cache: hash-shuffle
                     # ranges are typically read once per reducer.
                     _drop_pagecache(fd, off, length)
-                    srv.bytes_served += length
         finally:
             for f in files:
                 f.close()
@@ -403,19 +402,12 @@ class ShuffleManager:
         self._server = _ThreadingServer((ip, 0), _FetchHandler)
         self._server.token = token
         self._server.base_dir = self.base_dir
-        self._server.bytes_served = 0
         self._host, self._port = self._server.server_address
         t = threading.Thread(target=self._server.serve_forever, daemon=True)
         t.start()
 
     def endpoint(self) -> Tuple[str, int]:
         return (self._host, self._port)
-
-    def base(self) -> str:
-        return self.base_dir
-
-    def bytes_served(self) -> int:
-        return self._server.bytes_served
 
 
 # Import ``shutil`` lazily in the remote task body — module-level import
@@ -959,7 +951,7 @@ def _handle_transient_fetch_error(
     # Disk exhausted is terminal — no amount of retry frees space.
     if _is_disk_exhausted(exc):
         raise ShuffleDiskError(
-            f"Disk exhausted while writing prefetch.bin for node "
+            f"Disk exhausted while writing the prefetch file for node "
             f"{node_id} (sources={len(members)}): {exc}"
         ) from exc
 
@@ -1181,7 +1173,7 @@ def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
 def _compute_prefetch_layout(
     groups: List[_NodeGroup],
 ) -> Tuple[int, List[int], List[int]]:
-    """Assign each group a contiguous byte region in the shared prefetch.bin.
+    """Assign each group a contiguous byte region in the reducer's prefetch file.
 
     Returns ``(total_size, base_offsets, per_group_sizes)`` — sizes are the
     ``4 + length`` framed byte totals (u32 len prefix + IPC bytes per range),

@@ -191,7 +191,6 @@ def _external_shuffle_map_task(
     map_id: int,
     shuffle_id: str,
     token: str,
-    map_op_name: str = "ExternalHashShuffleMap",
     pool_budget_bytes: int = 16 * 1024 * 1024,
     compression: Optional[str] = None,
     fsync_on_close: bool = True,
@@ -219,7 +218,6 @@ def _external_shuffle_map_task(
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the manager's actor name.
         token: Per-shuffle auth token stamped into the handle.
-        map_op_name: Operator name for telemetry / logs.
         pool_budget_bytes: Staging pool budget; also bounds row-batch size.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
         fsync_on_close: If True, ``fsync`` before rename for durability.
@@ -343,7 +341,6 @@ def _external_shuffle_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
-    prefetch_dir: Optional[str] = None,
     max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
     fetch_threads: int = _DEFAULT_FETCH_THREADS,
     target_max_block_size: Optional[int] = None,
@@ -356,8 +353,9 @@ def _external_shuffle_reduce_task(
     reducer's user-space accumulator, never entering the Ray object store.
 
     Fetch + decode are pipelined: one thread per ShuffleManager pwrites
-    response frames into a shared ``prefetch.bin`` at pre-assigned offsets,
-    and this generator mmap-decodes each region as its future completes.
+    response frames into this partition's ``reduce_p{partition_id}.bin`` at
+    pre-assigned offsets, and this generator mmap-decodes each region as
+    its future completes.
 
     Always blocking-mode: accumulate the whole partition, reduce once, then
     finalize. Repartition semantics ("one partition = one block") make
@@ -368,7 +366,6 @@ def _external_shuffle_reduce_task(
         handles: One ``ShuffleHandle`` per mapper (single upstream input).
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
-        prefetch_dir: Directory for the ``prefetch.bin`` sink (None → temp).
         max_bytes_per_fetch: Per-FETCH-frame payload cap.
         fetch_threads: Concurrent per-manager fetch threads.
         target_max_block_size: Output block size cap. None emits as-is.
@@ -422,22 +419,20 @@ def _external_shuffle_reduce_task(
             yield from _emit(block)
         return
 
-    # Decide where the prefetch file lives, and whether we own the cleanup.
-    owns_dir = prefetch_dir is None
-    if owns_dir:
-        prefetch_dir = tempfile.mkdtemp(prefix=f"ray_shuffle_p{partition_id}_")
-    else:
-        os.makedirs(prefetch_dir, exist_ok=True)
-    assert prefetch_dir is not None
-    staging_dir: str = prefetch_dir
-    prefetch_file = os.path.join(staging_dir, "prefetch.bin")
+    # Shared per-shuffle staging dir; partition_id lives on the file.
+    shuffle_id = sources[0].shuffle_id
+    staging_dir = os.path.join(
+        tempfile.gettempdir(), f"ray_shuffle_external_{shuffle_id}_reduce"
+    )
+    os.makedirs(staging_dir, exist_ok=True)
+    prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
 
     groups = _group_by_manager(sources)
 
     try:
         # Fetch each source region in parallel, pwrite at pre-assigned offsets
-        # into one prefetch.bin (disjoint → lock-free). Buffered pwrite lands
-        # in page cache so the decode-side mmap reads hit cache.
+        # into this partition's prefetch file (disjoint → lock-free). Buffered
+        # pwrite lands in page cache so the decode-side mmap reads hit cache.
         total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
 
         # Accumulator for the final reduce.
@@ -484,7 +479,7 @@ def _external_shuffle_reduce_task(
                     if _is_disk_exhausted(e):
                         raise ShuffleDiskError(
                             f"Disk exhausted pre-allocating {total_size} "
-                            f"bytes for prefetch.bin: {e}"
+                            f"bytes for {prefetch_file}: {e}"
                         ) from e
                     raise
 
@@ -540,7 +535,6 @@ def _external_shuffle_reduce_task(
             # Drain the accumulator tail.
             if accum_tables:
                 yield from _flush(accum_tables)
-                accum_tables = []
             if output_buffer is not None:
                 output_buffer.finalize()
                 while output_buffer.has_next():
@@ -548,13 +542,13 @@ def _external_shuffle_reduce_task(
         finally:
             os.close(fd)
     finally:
-        # One file, one unlink. Idempotent on partial-failure paths.
+        # ``rmdir`` only succeeds for the last reducer out; earlier ones fail
+        # cleanly since the dir is shared.
         try:
             os.unlink(prefetch_file)
         except OSError:
             pass
-        if owns_dir:
-            try:
-                os.rmdir(prefetch_dir)
-            except OSError:
-                pass
+        try:
+            os.rmdir(staging_dir)
+        except OSError:
+            pass
