@@ -420,14 +420,17 @@ def _external_shuffle_reduce_task(
             ):
                 yield from _yield_with_stats(out_block)
 
-    # Empty-input shortcut: no shards for this partition, hand [] to
-    # reduce_fn and emit whatever it yields (may be nothing). Wrap in a
-    # 1-element list to match reduce_fn's tables_by_input signature — we
-    # are single-input (external mirrors ShuffleMap→ShuffleReduce, no
-    # multi-input joins today).
+    # No shards for this partition. Without a fused map, reduce_fn on ``[]``
+    # yields nothing and the operator's fast path already produced this
+    # partition's empty block. With a fused map (e.g. Write), the map still
+    # needs to run so the sink lays down an empty artifact
     if not sources:
-        for block in reduce_fn(partition_id, [[]]):
-            yield from _emit(block)
+        if map_transformer is not None:
+            assert output_schema is not None
+            yield from _emit(output_schema.empty_table())
+        else:
+            for block in reduce_fn(partition_id, [[]]):
+                yield from _emit(block)
         return
 
     # Shared per-shuffle staging dir; partition_id lives on the file.
