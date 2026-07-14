@@ -63,6 +63,11 @@ def create_gpu_actor_group(
     ray.get(pg.ready())
     actors = [
         actor_cls.options(
+            # Match the bundle so the actor owns what the PG reserved — and so
+            # Ray sets OMP_NUM_THREADS=num_cpus, keeping PyTorch's CPU thread
+            # pool consistent with what the config requested (and symmetric
+            # with the ray_train launcher's resources_per_worker).
+            num_cpus=cpus_per_worker,
             num_gpus=gpus_per_worker,
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=i
