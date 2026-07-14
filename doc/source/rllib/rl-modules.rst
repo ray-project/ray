@@ -88,16 +88,16 @@ image observations (``[width] x [height] x [channels]``).
 Furthermore, all default models offer configurable architecture choices with respect to the number
 and size of the layers used (``Dense`` or ``Conv2D``), their activations and initializations, and automatic LSTM-wrapping behavior.
 
-Use the :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` datadict class to configure
+Use the :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` dataclass to configure
 any default model in RLlib. Note that you should only use this class for configuring default models.
-When writing your own custom RLModules, use plain python dicts to define the model configurations.
+When writing your own custom RLModules, use plain Python dicts to define the model configurations.
 For how to write and configure your custom RLModules, see :ref:`Implementing custom RLModules <rllib-implementing-custom-rl-modules>`.
 
 
 Configuring default MLP nets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To train a simple multi layer perceptron (MLP) policy, which only contains dense layers,
+To train a simple multi-layer perceptron (MLP) policy, which only contains dense layers,
 with PPO and the default RLModule, configure your experiment as follows:
 
 .. testcode::
@@ -120,12 +120,15 @@ with PPO and the default RLModule, configure your experiment as follows:
 .. testcode::
     :hide:
 
+    config.env_runners(num_env_runners=0)
+    config.learners(num_learners=0)
+    config.training(train_batch_size_per_learner=32, minibatch_size=32, num_epochs=1)
     test = config.build()
     test.train()
     test.stop()
 
 
-The following is the compete list of all supported ``fcnet_..`` options:
+The following is the complete list of all supported ``fcnet_..`` options:
 
 .. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
@@ -186,34 +189,23 @@ applies up to 30 "noop" actions after a reset, which aren't part of the episode:
 .. testcode::
     :hide:
 
+    config.env_runners(num_env_runners=0)
+    config.learners(num_learners=0)
+    config.training(train_batch_size_per_learner=32, minibatch_size=32, num_epochs=1)
     test = config.build()
     test.train()
     test.stop()
 
-The following is the compete list of all supported ``conv_..`` options:
-
-.. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
-        :language: python
-        :start-after: __sphinx_doc_default_model_config_conv_begin__
-        :end-before: __sphinx_doc_default_model_config_conv_end__
-
-
-Other default model settings
+Configuring LSTM
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For LSTM-based configurations and specific settings for continuous action output layers,
-see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
 
-.. note::
-
-    To auto-wrap your default encoder with an extra LSTM layer and allow your model to learn in
-    non-Markovian, partially observable environments, you can try the convenience
-    ``DefaultModelConfig.use_lstm`` setting in combination with the
-    ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
-    See here for a tuned
-    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
-
-.. TODO: mention attention example once done
+To auto-wrap your default encoder with an extra LSTM layer and allow your model to learn in
+non-Markovian, partially observable environments, you can try the convenience
+``DefaultModelConfig.use_lstm`` setting in combination with the
+``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
+See here for a tuned
+`example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
 
 
 Constructing RLModule instances
@@ -249,7 +241,7 @@ The most direct way to construct your :py:class:`~ray.rllib.core.rl_module.rl_mo
 
 
 .. note::
-    If you have a checkpoint of an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
+    If you have a checkpoint of an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
     see :ref:`Creating instances with from_checkpoint <rllib-checkpoints-from-checkpoint>` for how to recreate your
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from disk.
@@ -360,7 +352,7 @@ tell RLlib to use the particular module class and constructor arguments:
             print(ppo.get_module())
 
         .. note::
-            Often when creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` , you don't have to define attributes
+            Often when creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec`, you don't have to define attributes
             like ``observation_space`` or ``action_space``
             because RLlib automatically infers these attributes based on the used
             environment or other configuration parameters.
@@ -523,8 +515,8 @@ If you return the ``actions`` key from your forward method:
 
 - RLlib uses the provided actions as-is.
 - In case you also return the ``action_dist_inputs`` key, RLlib creates a :py:class:`~ray.rllib.models.distributions.Distribution`
-  instance from the parameters under that key. In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, RLlib also creates
-  compute action probabilities and log probabilities for the given actions automatically.
+  instance from the parameters under that key. In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, RLlib also computes
+  action probabilities and log probabilities for the given actions automatically.
   See :ref:`Custom action distributions <rllib-rl-module-w-custom-action-dists>` for more information on custom action distribution classes.
 
 If you don't return the ``actions`` key from your forward method:
@@ -532,7 +524,7 @@ If you don't return the ``actions`` key from your forward method:
 - You must return the ``action_dist_inputs`` key from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`
   and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference` methods.
 - RLlib creates a :py:class:`~ray.rllib.models.distributions.Distribution` instance from the parameters under that key and
-  sample actions from that distribution. See :ref:`here for more information on custom action distribution classes <rllib-rl-module-w-custom-action-dists>`.
+  samples actions from that distribution. See :ref:`here for more information on custom action distribution classes <rllib-rl-module-w-custom-action-dists>`.
 - For :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, RLlib also computes action probability and
   log probability values from the sampled actions automatically.
 
@@ -600,7 +592,7 @@ If you don't return the ``actions`` key from your forward method:
                     }
 
 
-Never override the constructor (``__init__``), however, note that the
+Never override the constructor (``__init__``). However, note that the
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constructor requires the following arguments
 and also receives these properly when you call a spec's ``build()`` method:
 
@@ -620,9 +612,9 @@ Algorithm-specific RLModule APIs
 The algorithm that you choose to use with your RLModule affects to some
 extent the structure of the final custom module.
 Each Algorithm class has a fixed set of APIs that all RLModules trained
-by that algorithm, need to implement.
+by that algorithm need to implement.
 
-To find out, what APIs your Algorithms require, do the following:
+To find out what APIs your Algorithms require, do the following:
 
 .. testcode::
 
@@ -659,9 +651,9 @@ passing it the outputs of the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLMo
 See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
 Losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html>`__.
 Note that you may want to set the :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to ``True`` in your custom
-:py:class:`~ray.rllib.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your
-:py:class:`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case make sure your
-:py:class:`~ray.rllib.rl_module.rl_module.RLModule` receives data to learn.
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case to make sure your
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` receives data to learn.
 
 
 End-to-end example
@@ -720,7 +712,7 @@ See an `example for a "correlated actions" environment <https://github.com/ray-p
 To write a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that samples the various
 action components as previously described, you need to carefully implement its forward logic.
 
-Find an `example of such a autoregressive action model <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py>`__ here.
+Find an `example of such an autoregressive action model <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py>`__ here.
 
 You implement the main action sampling logic in the ``_forward_...()`` methods:
 
@@ -793,7 +785,7 @@ Implementing custom MultiRLModules
 ----------------------------------
 
 For multi-module setups, RLlib provides the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` class,
-whose default implementation is a dictionary of individual :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects.
+whose default implementation is a dictionary of individual :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects,
 one for each submodule and identified by a ``ModuleID``.
 
 The base-class :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` implementation works for most of the
@@ -871,7 +863,7 @@ model hyper-parameters:
 Checkpointing RLModules
 -----------------------
 
-You can checkpoint :py:class:`~ray.rllib.core.rl_module.rl_module.RLModules` instances with their
+You can checkpoint :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances with their
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` method.
 If you already have an instantiated RLModule and would like to load new model weights into it from an existing
 checkpoint, use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.restore_from_path` method.

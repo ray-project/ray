@@ -431,6 +431,10 @@ TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
+
+  // cleanup the registered_actor so that the destructor can be called to update the
+  // count
+  registered_actor.reset();
   gcs_actor_manager_->RecordMetrics();
   auto gcs_actor_tag_to_value = fake_gcs_actor_by_state_gauge_.GetTagToValue();
   // 5 states: REGISTERED, CREATED, DESTROYED, UNRESOLVED, PENDING
@@ -438,6 +442,27 @@ TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
   // 3 states: DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE
   auto tag_to_value = fake_actor_by_state_gauge_.GetTagToValue();
   ASSERT_EQ(tag_to_value.size(), 3);
+
+  // Returns the actors gauge value for the given State tag, or -1 if absent.
+  auto value_for_state = [this](const std::string &state) -> double {
+    for (const auto &[tags, value] : fake_actor_by_state_gauge_.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+  // Only ALIVE is live; the states the actor passed through are retracted to 0.
+  ASSERT_EQ(value_for_state("ALIVE"), 1);
+  ASSERT_EQ(value_for_state("PENDING_CREATION"), 0);
+  ASSERT_EQ(value_for_state("DEPENDENCIES_UNREADY"), 0);
+
+  // With no transition, the ALIVE actor must still be re-asserted on the next tick
+  // (the metrics backend clears gauge observations after each export, #56405).
+  fake_actor_by_state_gauge_.Clear();
+  gcs_actor_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("ALIVE"), 1)
+      << "alive actor must persist without a transition";
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {

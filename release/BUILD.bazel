@@ -890,6 +890,9 @@ py_test(
     name = "test_state_machine",
     size = "small",
     srcs = ["ray_release/tests/test_state_machine.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "release_unit",
