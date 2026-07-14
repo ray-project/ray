@@ -71,12 +71,12 @@ class _FakeHAProxyApi:
             'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
-                intended_server="replica-1",
-                actual_server="replica-1",
-                router_latency_us=1234,
-                body_truncated_full_length=None,
-                via_router=True,
-                failed=None,
+                ingress_request_intended_server="replica-1",
+                ingress_request_actual_server="replica-1",
+                ingress_request_router_latency_us=1234,
+                ingress_request_body_truncated_full_length=None,
+                ingress_request_via_router=True,
+                ingress_request_failed=None,
             ),
             id="success-path-matched-pin",
         ),
@@ -86,12 +86,12 @@ class _FakeHAProxyApi:
             'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
-                intended_server="replica-1",
-                actual_server="replica-2",
-                router_latency_us=9000,
-                body_truncated_full_length=None,
-                via_router=True,
-                failed=None,
+                ingress_request_intended_server="replica-1",
+                ingress_request_actual_server="replica-2",
+                ingress_request_router_latency_us=9000,
+                ingress_request_body_truncated_full_length=None,
+                ingress_request_via_router=True,
+                ingress_request_failed=None,
             ),
             id="mismatch-redispatch",
         ),
@@ -101,12 +101,12 @@ class _FakeHAProxyApi:
             'via_router="1" failed=""',
             ParsedMetrics(
                 app="llm",
-                intended_server="replica-1",
-                actual_server="replica-1",
-                router_latency_us=2000,
-                body_truncated_full_length=500000,
-                via_router=True,
-                failed=None,
+                ingress_request_intended_server="replica-1",
+                ingress_request_actual_server="replica-1",
+                ingress_request_router_latency_us=2000,
+                ingress_request_body_truncated_full_length=500000,
+                ingress_request_via_router=True,
+                ingress_request_failed=None,
             ),
             id="truncated-body",
         ),
@@ -116,12 +116,12 @@ class _FakeHAProxyApi:
             'via_router="" failed="router_unreachable"',
             ParsedMetrics(
                 app="llm",
-                intended_server=None,
-                actual_server="<NOSRV>",
-                router_latency_us=None,
-                body_truncated_full_length=None,
-                via_router=False,
-                failed="router_unreachable",
+                ingress_request_intended_server=None,
+                ingress_request_actual_server="<NOSRV>",
+                ingress_request_router_latency_us=None,
+                ingress_request_body_truncated_full_length=None,
+                ingress_request_via_router=False,
+                ingress_request_failed="router_unreachable",
             ),
             id="failure-router-unreachable",
         ),
@@ -130,12 +130,12 @@ class _FakeHAProxyApi:
             'body_truncated_full_length="" via_router="" failed=""',
             ParsedMetrics(
                 app=None,
-                intended_server=None,
-                actual_server="<NOSRV>",
-                router_latency_us=None,
-                body_truncated_full_length=None,
-                via_router=False,
-                failed=None,
+                ingress_request_intended_server=None,
+                ingress_request_actual_server="<NOSRV>",
+                ingress_request_router_latency_us=None,
+                ingress_request_body_truncated_full_length=None,
+                ingress_request_via_router=False,
+                ingress_request_failed=None,
             ),
             id="all-unset-not-routed",
         ),
@@ -176,7 +176,57 @@ def test_parse_line_handles_unknown_int_value() -> None:
     )
     parsed = HAProxyMetricsCollector.parse_line(line)
     assert parsed is not None
-    assert parsed.router_latency_us is None
+    assert parsed.ingress_request_router_latency_us is None
+
+
+def test_parse_line_extracts_general_http_fields() -> None:
+    """A real HAProxy line carries the general request fields with %ST/%Ta
+    rendered unquoted (bare), alongside the quoted var-based fields."""
+    line = _line(
+        'app="llm" route="/llm" method="POST" status=200 latency_ms=42 '
+        'deployment="LLMDeployment" term_state=--'
+    )
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed.app == "llm"
+    assert parsed.route == "/llm"
+    assert parsed.method == "POST"
+    assert parsed.status_code == "200"
+    assert parsed.latency_ms == 42
+    assert parsed.deployment == "LLMDeployment"
+    # %ts renders unquoted, like %ST/%Ta.
+    assert parsed.termination_state == "--"
+    # Router fields are absent on a non-router line.
+    assert parsed.ingress_request_via_router is False
+    assert parsed.ingress_request_router_latency_us is None
+
+
+def test_parse_line_unescapes_plus_e_escaping() -> None:
+    """HAProxy's `+E` log-format flag escapes `"`, `\\` and `]` inside a quoted
+    value. The parser undoes that so the metric tag holds the original name --
+    and a value containing `]` must not truncate the SD section at the wrong
+    bracket."""
+    # deployment name `a]b"c\d` -> on the wire: a\]b\"c\\d
+    line = _line(
+        'app="app" route="/" method="GET" status=200 latency_ms=1 '
+        'deployment="a\\]b\\"c\\\\d" term_state=--'
+    )
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed is not None
+    # Section wasn't truncated at the escaped `]`; status still parsed.
+    assert parsed.status_code == "200"
+    assert parsed.deployment == 'a]b"c\\d'
+
+
+def test_parse_line_general_fields_empty_for_system_endpoints() -> None:
+    """A 404 / system-endpoint line has empty app & deployment (-> None) but a
+    real status; the route may be empty (404) or the system path."""
+    line = _line('app="" route="" method="GET" status=404 latency_ms=3 deployment=""')
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed.app is None
+    assert parsed.route is None
+    assert parsed.status_code == "404"
+    assert parsed.latency_ms == 3
+    assert parsed.deployment is None
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +251,16 @@ class _RecordingMetric:
         self.calls.append(("observe", dict(tags or {}), value))
 
 
+class _RecordingIngressMetrics:
+    """Stub for RequestIngressMetrics that captures record_request kwargs."""
+
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def record_request(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+
+
 @pytest.fixture
 def collector() -> HAProxyMetricsCollector:
     """Build a collector with real metric constructors but stubbed inc/observe.
@@ -214,6 +274,7 @@ def collector() -> HAProxyMetricsCollector:
     c.replica_mismatches_counter = _RecordingMetric()
     c.failures_counter = _RecordingMetric()
     c.requests_counter = _RecordingMetric()
+    c.request_ingress_metrics = _RecordingIngressMetrics()
     return c
 
 
@@ -227,12 +288,12 @@ def _ok(
 ) -> ParsedMetrics:
     return ParsedMetrics(
         app=app,
-        intended_server=intended,
-        actual_server=actual,
-        router_latency_us=latency_us,
-        body_truncated_full_length=truncated,
-        via_router=True,
-        failed=None,
+        ingress_request_intended_server=intended,
+        ingress_request_actual_server=actual,
+        ingress_request_router_latency_us=latency_us,
+        ingress_request_body_truncated_full_length=truncated,
+        ingress_request_via_router=True,
+        ingress_request_failed=None,
     )
 
 
@@ -292,12 +353,12 @@ def test_record_failure_increments_failures_counter_with_reason(
 ) -> None:
     parsed = ParsedMetrics(
         app="llm",
-        intended_server=None,
-        actual_server="<NOSRV>",
-        router_latency_us=None,
-        body_truncated_full_length=None,
-        via_router=False,
-        failed=reason,
+        ingress_request_intended_server=None,
+        ingress_request_actual_server="<NOSRV>",
+        ingress_request_router_latency_us=None,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=False,
+        ingress_request_failed=reason,
     )
     collector.record(parsed)
     assert collector.failures_counter.calls == [
@@ -329,12 +390,12 @@ def test_record_failure_with_latency_observes_outcome_failure(
     `outcome="failure"` so success vs failure latency can be split in PromQL."""
     parsed = ParsedMetrics(
         app="llm",
-        intended_server=None,
-        actual_server="<NOSRV>",
-        router_latency_us=4200,
-        body_truncated_full_length=None,
-        via_router=False,
-        failed=reason,
+        ingress_request_intended_server=None,
+        ingress_request_actual_server="<NOSRV>",
+        ingress_request_router_latency_us=4200,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=False,
+        ingress_request_failed=reason,
     )
     collector.record(parsed)
     assert collector.latency_histogram.calls == [
@@ -352,12 +413,12 @@ def test_record_skips_when_not_via_router_and_not_failed(collector) -> None:
     router state not yet pushed). Nothing should be recorded."""
     parsed = ParsedMetrics(
         app=None,
-        intended_server=None,
-        actual_server="<NOSRV>",
-        router_latency_us=None,
-        body_truncated_full_length=None,
-        via_router=False,
-        failed=None,
+        ingress_request_intended_server=None,
+        ingress_request_actual_server="<NOSRV>",
+        ingress_request_router_latency_us=None,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=False,
+        ingress_request_failed=None,
     )
     collector.record(parsed)
     assert collector.failures_counter.calls == []
@@ -389,12 +450,12 @@ def test_record_failure_increments_requests_counter(collector, reason) -> None:
     the failure ratio."""
     parsed = ParsedMetrics(
         app="llm",
-        intended_server=None,
-        actual_server="<NOSRV>",
-        router_latency_us=None,
-        body_truncated_full_length=None,
-        via_router=False,
-        failed=reason,
+        ingress_request_intended_server=None,
+        ingress_request_actual_server="<NOSRV>",
+        ingress_request_router_latency_us=None,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=False,
+        ingress_request_failed=reason,
     )
     collector.record(parsed)
     assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
@@ -407,12 +468,12 @@ def test_record_requests_counter_uses_unknown_app_tag_when_app_missing(
     observation, matching the rest of the record() paths."""
     parsed = ParsedMetrics(
         app=None,
-        intended_server="replica-A",
-        actual_server="replica-A",
-        router_latency_us=1000,
-        body_truncated_full_length=None,
-        via_router=True,
-        failed=None,
+        ingress_request_intended_server="replica-A",
+        ingress_request_actual_server="replica-A",
+        ingress_request_router_latency_us=1000,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=True,
+        ingress_request_failed=None,
     )
     collector.record(parsed)
     assert collector.requests_counter.calls == [
@@ -425,17 +486,118 @@ def test_record_uses_unknown_app_tag_when_app_missing(collector) -> None:
     dropping the observation. Misconfigured frontends should still surface."""
     parsed = ParsedMetrics(
         app=None,
-        intended_server="replica-A",
-        actual_server="replica-B",
-        router_latency_us=1000,
-        body_truncated_full_length=None,
-        via_router=True,
-        failed=None,
+        ingress_request_intended_server="replica-A",
+        ingress_request_actual_server="replica-B",
+        ingress_request_router_latency_us=1000,
+        ingress_request_body_truncated_full_length=None,
+        ingress_request_via_router=True,
+        ingress_request_failed=None,
     )
     collector.record(parsed)
     assert collector.replica_mismatches_counter.calls == [
         ("inc", {"application": "unknown"}, 1.0)
     ]
+
+
+# ---------------------------------------------------------------------------
+# record: RequestIngressMetrics (serve_num_http_*) path
+# ---------------------------------------------------------------------------
+
+
+def _http(
+    *,
+    app: Optional[str] = "llm",
+    route: Optional[str] = "/llm",
+    method: Optional[str] = "GET",
+    status: Optional[str] = "200",
+    latency_ms: Optional[int] = 42,
+    deployment: Optional[str] = "D",
+    via_router: bool = False,
+    termination_state: Optional[str] = None,
+) -> ParsedMetrics:
+    return ParsedMetrics(
+        app=app,
+        ingress_request_via_router=via_router,
+        route=route,
+        method=method,
+        status_code=status,
+        latency_ms=latency_ms,
+        deployment=deployment,
+        termination_state=termination_state,
+    )
+
+
+def test_record_emits_http_ingress_metrics(collector) -> None:
+    collector.record(_http())
+    assert collector.request_ingress_metrics.calls == [
+        {
+            "route": "/llm",
+            "method": "GET",
+            "application": "llm",
+            "status_code": "200",
+            "latency_ms": 42.0,
+            "is_error": False,
+            "deployment_name": "D",
+        }
+    ]
+
+
+def test_record_http_ingress_marks_4xx_5xx_as_error(collector) -> None:
+    collector.record(_http(status="503"))
+    assert collector.request_ingress_metrics.calls[0]["is_error"] is True
+    collector.record(_http(status="404"))
+    assert collector.request_ingress_metrics.calls[1]["is_error"] is True
+
+
+def test_record_http_ingress_empty_app_for_system_endpoints(collector) -> None:
+    """404 / health / routes carry no app context (parsed as None); they are
+    still recorded, with empty application/route/deployment -- matching the
+    proxy, which records them with empty tags."""
+    collector.record(_http(app=None, route="", deployment=None, status="404"))
+    call = collector.request_ingress_metrics.calls[0]
+    assert call["application"] == ""
+    assert call["route"] == ""
+    assert call["deployment_name"] == ""
+    assert call["is_error"] is True
+
+
+def test_record_http_ingress_client_abort_recorded_as_499(collector) -> None:
+    """A client abort (HAProxy term_state starting with "C") is recorded as
+    status 499, matching the Python proxy's client-disconnect convention -- even
+    though HAProxy logged its own status (here 400)."""
+    collector.record(_http(status="400", termination_state="CH"))
+    call = collector.request_ingress_metrics.calls[0]
+    assert call["status_code"] == "499"
+    assert call["is_error"] is True
+
+
+def test_record_http_ingress_non_client_term_state_keeps_status(collector) -> None:
+    """A genuine 400 (no client abort) keeps its status; only leading-"C"
+    termination states are remapped to 499."""
+    collector.record(_http(status="400", termination_state="--"))
+    assert collector.request_ingress_metrics.calls[0]["status_code"] == "400"
+    # Server-side termination ("S...") is also left untouched.
+    collector.record(_http(status="502", termination_state="SH"))
+    assert collector.request_ingress_metrics.calls[1]["status_code"] == "502"
+
+
+def test_record_http_ingress_skipped_without_status(collector) -> None:
+    """A router-only line (no status) is not a per-request HTTP observation."""
+    collector.record(_ok())  # status_code defaults to None
+    assert collector.request_ingress_metrics.calls == []
+
+
+def test_record_http_ingress_recorded_even_via_router(collector) -> None:
+    """A router request is still an HTTP request: both the ingress metric and
+    the router requests counter fire."""
+    collector.record(_http(via_router=True))
+    assert len(collector.request_ingress_metrics.calls) == 1
+    assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
+
+
+def test_record_http_ingress_defaults_missing_latency_to_zero(collector) -> None:
+    collector.record(_http(latency_ms=None))
+    assert collector.request_ingress_metrics.calls[0]["latency_ms"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -626,36 +788,73 @@ def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
         assert asyncio.run(api.compute_target_mismatch()) == 0
 
 
+def test_count_ongoing_http_requests_sums_http_backend_scur() -> None:
+    """num_ongoing is sampled from each HTTP backend's aggregate `scur`,
+    including the `-via-ingress-request-router` backend; gRPC and internal
+    backends are excluded."""
+    from ray.serve._private.common import RequestProtocol
+    from ray.serve._private.haproxy import BackendConfig, HAProxyApi, HAProxyConfig
+
+    # `show stat` CSV: an HTTP app backend, its via-router variant, a gRPC app
+    # backend, and internal rows (frontend / stats). scur is what's summed.
+    show_stat = (
+        "# pxname,svname,scur,qcur,status\n"
+        "http_frontend,FRONTEND,9,0,OPEN\n"
+        "http-app,s1,3,0,UP\n"
+        "http-app,s2,2,0,UP\n"
+        "http-app,BACKEND,5,0,UP\n"
+        "http-app-via-ingress-request-router,r1,2,0,UP\n"
+        "http-app-via-ingress-request-router,BACKEND,2,0,UP\n"
+        "grpc-app,g1,3,0,UP\n"
+        "grpc-app,BACKEND,3,0,UP\n"
+        "stats,BACKEND,1,0,UP\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(td, "admin.sock")),
+            backend_configs={
+                "http-app": BackendConfig(
+                    name="http-app", path_prefix="/", protocol=RequestProtocol.HTTP
+                ),
+                "grpc-app": BackendConfig(
+                    name="grpc-app", path_prefix="/", protocol=RequestProtocol.GRPC
+                ),
+            },
+            config_file_path=os.path.join(td, "haproxy.cfg"),
+        )
+
+        async def fake_send(command):
+            assert command == "show stat"
+            return show_stat
+
+        api._send_socket_command = fake_send
+        # http-app BACKEND (5) + via-router BACKEND (2); gRPC (3) and the stats
+        # listener are excluded.
+        assert asyncio.run(api.count_ongoing_http_requests()) == 7
+
+
 @pytest.mark.asyncio
-async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
-    """start() always begins node polling; the dgram reader (and its task) is
-    only created when ingress-router metrics are enabled."""
+async def test_start_polls_and_binds_dgram_reader(tmp_path) -> None:
+    """start() begins node polling and always binds the per-request dgram
+    reader, creating the socket's parent directory and returning its bind
+    task."""
     api = _FakeHAProxyApi(backend_configs={}, stats={})
     loop = asyncio.get_event_loop()
 
-    disabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
-    attach_task = disabled.start(
-        loop, poll_interval_s=10.0, enable_ingress_router_metrics=False
-    )
-    assert attach_task is None
-    assert disabled._node_metrics_task is not None
-    disabled.close()
-
     sock_path = tmp_path / "subdir" / "metrics.sock"
-    enabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
-    attach_task = enabled.start(
+    collector = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
+    attach_task = collector.start(
         loop,
         poll_interval_s=10.0,
-        enable_ingress_router_metrics=True,
         metrics_socket_path=str(sock_path),
     )
     try:
         assert attach_task is not None
         await attach_task  # bind completes; makedirs created the parent dir
         assert sock_path.exists()
-        assert enabled._node_metrics_task is not None
+        assert collector._node_metrics_task is not None
     finally:
-        enabled.close()
+        collector.close()
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +881,11 @@ def _render_with_metrics(enabled: bool) -> str:
         cfg = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
+            # `metrics_enabled` gates the per-request SD log line + socket;
+            # `ingress_request_router_metrics_enabled` gates the router-specific
+            # fields appended to it. These tests toggle both together (all
+            # metrics on vs all off).
+            metrics_enabled=enabled,
             ingress_request_router_metrics_enabled=enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
@@ -722,7 +926,10 @@ def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     rendered = _render_with_metrics(enabled=False)
     assert "log-format-sd" not in rendered
     assert "[serve@1" not in rendered
-    assert "rfc5424" not in rendered
+    # Match the directive, not the bare token: an explanatory comment in the
+    # global block mentions "rfc5424" unconditionally; the `format rfc5424` log
+    # target is what's actually gated on metrics being enabled.
+    assert "format rfc5424" not in rendered
 
 
 def _render_lua_with_metrics(enabled: bool) -> str:

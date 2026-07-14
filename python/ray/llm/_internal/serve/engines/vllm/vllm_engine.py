@@ -182,14 +182,20 @@ def _get_vllm_engine_config(
             engine_config.hf_model_id = local_path
             logger.info(f"Resolved model from mirror to local path: {local_path}")
 
-    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-        **engine_config.get_initialization_kwargs()
-    )
     from vllm.usage.usage_lib import UsageContext
 
-    vllm_engine_config = async_engine_args.create_engine_config(
-        usage_context=UsageContext.OPENAI_API_SERVER
-    )
+    try:
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+            **engine_config.get_initialization_kwargs()
+        )
+        vllm_engine_config = async_engine_args.create_engine_config(
+            usage_context=UsageContext.OPENAI_API_SERVER
+        )
+    except Exception as e:
+        # vLLM's ModelConfig is a pydantic dataclass; its ValidationError holds an
+        # unpicklable ArgsKwargs and cannot cross the Ray task boundary. Re-raise as
+        # a plain error so the real message propagates instead of a pickling failure.
+        raise RuntimeError(f"Failed to create vLLM engine config: {e}") from None
     return async_engine_args, vllm_engine_config
 
 
@@ -317,7 +323,14 @@ class VLLMEngine(LLMEngine):
         if hasattr(self._engine_client, "get_supported_tasks"):
             supported_tasks = await self._engine_client.get_supported_tasks()
 
-        app = build_app(self._vllm_args, supported_tasks=supported_tasks)
+        # Pass model_config so vLLM mounts the pooling routers (/pooling, /classify,
+        # /embed, /score) on the native ASGI app to enable direct streaming for pooling
+        # classify, embed, and score.
+        app = build_app(
+            self._vllm_args,
+            supported_tasks=supported_tasks,
+            model_config=self._engine_client.model_config,
+        )
         await init_app_state(
             self._engine_client,
             app.state,

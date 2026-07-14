@@ -39,6 +39,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_LOG_TO_STDERR,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -157,6 +158,7 @@ class ServeController:
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
@@ -200,6 +202,8 @@ class ServeController:
 
         self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        # Last full set of ingress-port tuples fed to update_ports (for the per-tick set-diff).
+        self._last_ingress_port_tuples: set = set()
         if self._ha_proxy_enabled:
             logger.info(
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
@@ -219,7 +223,8 @@ class ServeController:
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-            http_options.location = ProxyLocation.HeadOnly
+            proxy_location = ProxyLocation.HeadOnly
+            http_options = http_options.model_copy(update={"location": None})
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
@@ -228,6 +233,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
+            proxy_location=proxy_location,
             proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
@@ -320,6 +326,8 @@ class ServeController:
             msg += "  • Router running in main thread (not separate)\n"
         if not RAY_SERVE_LOG_TO_STDERR:
             msg += "  • Log to stderr disabled\n"
+        if RAY_SERVE_FREEZE_GC_ON_STARTUP:
+            msg += "  • Garbage collector is frozen on startup\n"
         msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
         logger.info(msg)
 
@@ -689,7 +697,14 @@ class ServeController:
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
 
-            NodePortManager.update_ports(ingress_replicas_info_list)
+            # update_port_if_missing is additive and idempotent, so we send update_ports
+            # only the tuples added since the last tick (the set difference) instead of
+            # the full set every tick -- work proportional to what changed rather than to
+            # the replica count. The full set is recomputed and cached each tick, so after
+            # a controller restart the empty cache re-sends everything on the first tick.
+            fresh = set(ingress_replicas_info_list)
+            NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
+            self._last_ingress_port_tuples = fresh
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.
@@ -926,6 +941,12 @@ class ServeController:
             return HTTPOptions()
         return self.proxy_state_manager.get_config()
 
+    def get_proxy_location(self) -> Optional[ProxyLocation]:
+        """Return the resolved proxy placement (the ingress placement authority)."""
+        if self.proxy_state_manager is None:
+            return None
+        return self.proxy_state_manager.get_proxy_location()
+
     def get_grpc_config(self) -> gRPCOptions:
         """Return the gRPC proxy configuration."""
         if self.proxy_state_manager is None:
@@ -1102,6 +1123,7 @@ class ServeController:
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
+                        "uses_multiplexing": args.uses_multiplexing,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1371,7 +1393,11 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=http_config.location,
+            proxy_location=(
+                self.proxy_state_manager.get_proxy_location()
+                if self.proxy_state_manager
+                else None
+            ),
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=(
@@ -1399,6 +1425,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_deployment_name="",
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1411,6 +1438,7 @@ class ServeController:
                         ),
                         app_name="",
                         ingress_request_router_targets=[],
+                        ingress_deployment_name="",
                     )
                 )
         return target_groups
@@ -1544,6 +1572,11 @@ class ServeController:
                 app_name
             )
         )
+        # Ingress deployment name, threaded into the target groups so HAProxy can
+        # tag per-request ingress metrics with it (matching the Python proxy).
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1577,6 +1610,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
 
@@ -1593,6 +1627,7 @@ class ServeController:
                         targets=grpc_targets,
                         app_name=app_name,
                         ingress_request_router_targets=[],
+                        ingress_deployment_name=ingress_deployment_name,
                     )
                 )
 
@@ -1606,6 +1641,12 @@ class ServeController:
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
+        # Ingress deployment name, threaded into the target groups so HAProxy can
+        # tag per-request ingress metrics with it (matching the Python proxy).
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
+
         if self._ha_proxy_enabled:
             http_targets = []
             grpc_targets = []
@@ -1626,6 +1667,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
         if include_grpc:
@@ -1636,6 +1678,7 @@ class ServeController:
                     targets=grpc_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
 

@@ -1,3 +1,21 @@
+# ---------------------------------------------------------------------------
+# Notebooks intentionally NOT tested in CI.
+#
+# These example notebooks live in subdirectories with no
+# py_test_run_all_notebooks target. They are deliberately left untested because
+# they need hardware or scale that CI doesn't provide. They're recorded here so
+# the gap is explicit rather than a silent glob miss -- and stated plainly rather
+# than wired as `manual` tests, which aren't run in practice:
+#
+#   intel_gaudi/{bert,llama,llama_pretrain,resnet,sd}.ipynb
+#       Require Intel Gaudi (HPU) accelerators (resources={"HPU": ...}).
+#   jax/intro_to_jax_trainer/README.ipynb
+#       Multi-GPU JAX/Flax training (ScalingConfig(num_workers=2, use_gpu=True)).
+#
+# deepspeed/gptj_deepspeed_fine_tuning.ipynb is not listed here: it is covered by
+# the air_example_gptj_deepspeed_fine_tuning entry in release/release_tests.yaml.
+# ---------------------------------------------------------------------------
+
 filegroup(
     name = "train_examples_ci_configs",
     srcs = glob([
