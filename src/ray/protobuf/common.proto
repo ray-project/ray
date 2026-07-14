@@ -278,6 +278,8 @@ enum ErrorType {
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 32;
   // Indicates that the worker failed to startup after multiple retry attempts.
   WORKER_STARTUP_FAILED = 33;
+  // The object cannot be reconstructed because its task uses RDT.
+  OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY = 34;
 }
 
 // The user error information.

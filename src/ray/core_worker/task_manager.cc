@@ -464,6 +464,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
       return std::nullopt;
+    } else if (task_entry.spec_.UsesTensorTransport()) {
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY;
     } else {
       // Going to resubmit the task now.
       SetupTaskEntryForResubmit(task_entry);

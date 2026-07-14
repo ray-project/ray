@@ -1090,17 +1090,19 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
         ray.get(actors[0].recv.remote(1))
 
 
-@pytest.mark.skip(
-    "Lineage Reconstruction currently results in a check failure with RDT"
-)
-def test_rdt_lineage_reconstruction(ray_start_cluster):
+def test_erroring_on_rdt_lineage_reconstruction(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1)
     worker_to_kill = cluster.add_node(num_cpus=1, resources={"to_restart": 1})
 
-    @ray.remote(max_restarts=1, max_task_retries=1, resources={"to_restart": 1})
+    @ray.remote(
+        max_restarts=1,
+        max_task_retries=1,
+        resources={"to_restart": 1},
+        enable_tensor_transport=True,
+    )
     class RecvRestartableActor:
         def recv(self, obj):
             return obj
@@ -1110,11 +1112,16 @@ def test_rdt_lineage_reconstruction(ray_start_cluster):
     create_collective_group([send_actor, recv_actor], backend="gloo")
 
     one_mb_tensor = torch.randn((1024 * 1024,))
-    ref = recv_actor.recv.remote(send_actor.echo.remote(one_mb_tensor))
+    echo_ref = send_actor.echo.remote(one_mb_tensor)
+    ref = recv_actor.recv.remote(echo_ref)
     ray.wait([ref], fetch_local=False)
     cluster.remove_node(worker_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, resources={"to_restart": 1})
-    assert ray.get(ref).nbytes >= (1024 * 1024)
+    with pytest.raises(
+        ray.exceptions.ObjectReconstructionFailedError,
+        match="OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY",
+    ):
+        ray.get(ref)
 
 
 if __name__ == "__main__":

@@ -328,6 +328,25 @@ std::optional<std::string> TaskSpecification::ArgTensorTransport(size_t arg_inde
   return std::nullopt;
 }
 
+bool TaskSpecification::UsesTensorTransport() const {
+  if (message_->has_tensor_transport() && !message_->tensor_transport().empty()) {
+    return true;
+  }
+  for (const auto &arg : message_->args()) {
+    if ((arg.has_tensor_transport() && !arg.tensor_transport().empty()) ||
+        (arg.has_object_ref() && arg.object_ref().has_tensor_transport() &&
+         !arg.object_ref().tensor_transport().empty())) {
+      return true;
+    }
+    for (const auto &nested_ref : arg.nested_inlined_refs()) {
+      if (nested_ref.has_tensor_transport() && !nested_ref.tensor_transport().empty()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }

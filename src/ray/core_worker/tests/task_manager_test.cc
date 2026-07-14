@@ -1301,6 +1301,51 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(TaskManagerLineageTest, TestResubmitTaskWithTensorTransportFails) {
+  rpc::Address caller_address;
+  ObjectID dep = ObjectID::FromRandom();
+
+  auto assert_resubmit_fails = [&](TaskSpecification spec) {
+    ASSERT_TRUE(spec.UsesTensorTransport());
+    auto return_id = spec.ReturnId(0);
+    manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/3);
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+    rpc::PushTaskReply reply;
+    auto return_object = reply.add_return_objects();
+    return_object->set_object_id(return_id.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object->set_data(data->Data(), data->Size());
+    return_object->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+    std::vector<ObjectID> resubmitted_task_deps;
+    ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps),
+              rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY);
+    ASSERT_TRUE(resubmitted_task_deps.empty());
+    ASSERT_EQ(num_retries_, 0);
+    reference_counter_->RemoveLocalReference(return_id, nullptr);
+  };
+
+  auto spec_with_rdt_ref_arg = CreateTaskHelper(/*num_returns=*/1, {dep});
+  spec_with_rdt_ref_arg.GetMutableMessage()
+      .mutable_args(0)
+      ->mutable_object_ref()
+      ->set_tensor_transport("random transport");
+  assert_resubmit_fails(spec_with_rdt_ref_arg);
+
+  auto spec_with_inlined_rdt_arg = CreateTaskHelper(/*num_returns=*/1, {dep});
+  spec_with_inlined_rdt_arg.GetMutableMessage().mutable_args(0)->set_tensor_transport(
+      "random transport");
+  assert_resubmit_fails(spec_with_inlined_rdt_arg);
+
+  auto spec_with_rdt_return = CreateTaskHelper(/*num_returns=*/1, {});
+  spec_with_rdt_return.GetMutableMessage().set_tensor_transport("random transport");
+  assert_resubmit_fails(spec_with_rdt_return);
+}
+
 // Test resubmission for a task that was successfully executed once and stored
 // its return values in plasma. On re-execution, the task's return values
 // should be stored in plasma again, even if the worker returns its values

@@ -120,6 +120,7 @@ ERROR_TYPE = [
     "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
     "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
     "WORKER_STARTUP_FAILED",
+    "OBJECT_UNRECONSTRUCTABLE_RDT_DEPENDENCY",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
