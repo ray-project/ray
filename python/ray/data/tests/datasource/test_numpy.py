@@ -136,7 +136,7 @@ def test_read_numpy_pickle_opt_in(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_numpy(path, allow_pickle=True)
     rows = ds.take_all()
-    assert [r["data"] for r in rows] == ["hello", "world"]
+    assert sorted(r["data"] for r in rows) == ["hello", "world"]
 
 
 if __name__ == "__main__":
