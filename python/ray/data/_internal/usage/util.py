@@ -27,8 +27,8 @@ _recorded_operators_lock = threading.Lock()
 # Bounded timeout for the Prometheus counter HTTP queries
 _PROMETHEUS_QUERY_TIMEOUT_S = 1.0
 # Timeout for join_metric_sample: how long the callback waits for a background
-# cluster sample before giving up. Kept >= every reader's own internal timeout
-_SAMPLE_JOIN_TIMEOUT_S = 5.0
+# cluster sample before giving up.
+_SAMPLE_JOIN_TIMEOUT_S = 1.0
 
 
 def _prometheus_host() -> str:

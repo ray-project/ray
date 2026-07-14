@@ -45,8 +45,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bounded timeout for the GCS RPC calls
-_GCS_RPC_TIMEOUT_S = 5.0
+# Bounded timeout for the GCS RPC calls.
+_GCS_RPC_TIMEOUT_S = 1.0
 # Cumulative raylet worker-kill counters (Prometheus metric names). Scoped to
 # the current session at query time via ``_worker_kill_query``.
 _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
