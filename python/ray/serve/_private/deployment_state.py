@@ -2142,6 +2142,9 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
         self._on_replica_state_change = on_replica_state_change
+        # Incremental (state, version) counts for O(1) version-filtered count()
+        # (maintained on add/pop/remove) -> replaces the per-tick O(N) version scan.
+        self._sv_counts: Dict[tuple, int] = defaultdict(int)
 
     def __getstate__(self):
         # Exclude the callback to keep the container picklable (the callback
@@ -2164,6 +2167,7 @@ class ReplicaStateContainer:
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        self._sv_counts[(state, replica.version)] += 1
         if self._on_replica_state_change and state != old_state:
             self._on_replica_state_change(old_state, state)
 
@@ -2245,6 +2249,8 @@ class ReplicaStateContainer:
 
             self._replicas[state] = remaining
             replicas.extend(popped)
+            for _r in popped:
+                self._sv_counts[(state, _r.version)] -= 1
 
         for replica in replicas:
             self._replica_id_index.pop(replica.replica_id, None)
@@ -2278,13 +2284,11 @@ class ReplicaStateContainer:
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
-            return sum(
-                sum(1 for r in self._replicas[state] if r.version == version)
-                for state in states
-            )
+            return sum(self._sv_counts.get((state, version), 0) for state in states)
         elif exclude_version is not None and version is None:
             return sum(
-                sum(1 for r in self._replicas[state] if r.version != exclude_version)
+                len(self._replicas[state])
+                - self._sv_counts.get((state, exclude_version), 0)
                 for state in states
             )
         else:
@@ -2316,6 +2320,8 @@ class ReplicaStateContainer:
             for replica in self._replicas[state]:
                 if remaining_to_find > 0 and replica.replica_id in replica_ids:
                     removed.append(replica)
+                    self._sv_counts[(state, replica.version)] -= 1
+                    self._replica_id_index.pop(replica.replica_id, None)
                     remaining_to_find -= 1
                     found_any = True
                 else:
@@ -3016,6 +3022,10 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        # Set when an ingress replica is permanently removed, so the ingress port
+        # version advances and its port is reclaimed on the next reconcile. See
+        # consume_ingress_membership_removed.
+        self._ingress_membership_removed: bool = False
         self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config = None
 
@@ -3322,7 +3332,16 @@ class DeploymentState:
     def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
         return list(self._recent_dead_replicas)
 
-    def broadcast_running_replicas_if_changed(self) -> None:
+    def consume_ingress_membership_removed(self) -> bool:
+        """Return whether an ingress replica was permanently removed from the
+        container since the last call, then clear the flag. Paired with the
+        running-set-change signal to advance the ingress port version on removals
+        (which the running-set comparison misses). See _ingress_membership_removed."""
+        removed = self._ingress_membership_removed
+        self._ingress_membership_removed = False
+        return removed
+
+    def broadcast_running_replicas_if_changed(self) -> bool:
         """Broadcasts the set of running replicas over long poll if it has changed.
 
         Keeps an in-memory record of the last set of running replicas that was broadcast
@@ -3335,26 +3354,39 @@ class DeploymentState:
         when no replicas have transitioned and no routing info has been updated.
         RunningReplicaInfo objects are only constructed when a broadcast may
         actually be needed.
+
+        Returns:
+            True if the set of running replicas *changed* since the last broadcast
+            (i.e. membership changed), else False. The controller pairs this with
+            ``consume_ingress_membership_removed`` to advance the ingress-port
+            membership version, so it deliberately reflects membership change --
+            NOT "a broadcast was sent": a routing-info-only change still broadcasts
+            but returns False (ports are unaffected), and while any replica is
+            RECOVERING it returns True conservatively so the ingress-port reconcile
+            does not skip on a possibly-stale running set.
         """
         # Fast path: nothing could have changed, skip entirely.
         if (
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
-            return
+            return False
 
         # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
         # partial or empty routable set.
         if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
-            return
+            # Membership may have changed, but we hold off broadcasting; report changed
+            # so the ingress-port reconcile does not skip while recovering.
+            return True
 
         running_replica_infos = self.get_running_replica_infos()
         is_available = not self._terminally_failed()
 
+        running_set_changed = set(self._last_broadcasted_running_replica_infos) != set(
+            running_replica_infos
+        )
         running_broadcasted_replicas_set_changed = (
-            set(self._last_broadcasted_running_replica_infos)
-            != set(running_replica_infos)
-            or self._request_routing_info_updated
+            running_set_changed or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
 
@@ -3362,7 +3394,7 @@ class DeploymentState:
         self._broadcasted_replicas_set_changed = False
 
         if not running_broadcasted_replicas_set_changed and not availability_changed:
-            return
+            return running_set_changed
 
         deployment_metadata = DeploymentTargetInfo(
             is_available=is_available,
@@ -3387,6 +3419,7 @@ class DeploymentState:
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._last_broadcasted_availability = is_available
         self._request_routing_info_updated = False
+        return running_set_changed
 
     def broadcast_deployment_config_if_changed(self) -> None:
         """Broadcasts the deployment config over long poll if it has changed.
@@ -3667,6 +3700,23 @@ class DeploymentState:
         Returns:
             Whether any replicas were stopped or reconfigured.
         """
+        # Fast path: if no replica in these states is on an outdated version there
+        # is nothing to stop or reconfigure, so skip the O(N) version-partition pop
+        # that otherwise runs every tick on a single-version deployment. O(#states)
+        # via the incremental _sv_counts (see ReplicaStateContainer.count).
+        if (
+            self._replicas.count(
+                exclude_version=self._target_state.version,
+                states=[
+                    ReplicaState.STARTING,
+                    ReplicaState.PENDING_MIGRATION,
+                    ReplicaState.RUNNING,
+                ],
+            )
+            == 0
+        ):
+            return False
+
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
             states=[
@@ -4853,6 +4903,13 @@ class DeploymentState:
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
 
+                # This replica is permanently leaving the container. Record
+                # the removal so the ingress port version advances and the
+                # direct-ingress port reconcile/prune runs to reclaim its port
+                # (the running-replica-set comparison won't flag this).
+                if self.owns_direct_ingress_ports():
+                    self._ingress_membership_removed = True
+
                 # Retain replicas that allocated a log file so the dashboard can
                 # still show their logs after the actor is gone.
                 if replica.actor_details.log_file_path is not None:
@@ -5183,6 +5240,13 @@ class DeploymentState:
     def is_ingress_request_router(self) -> bool:
         return self._target_state.info.ingress_request_router
 
+    def owns_direct_ingress_ports(self) -> bool:
+        """Whether this deployment owns direct-ingress ports -- i.e. it is an
+        ingress deployment or an ingress request router. These are exactly the
+        deployments the direct-ingress port reconcile (and its membership-version
+        gate) manages."""
+        return self.is_ingress() or self.is_ingress_request_router()
+
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
 
@@ -5463,6 +5527,10 @@ class DeploymentStateManager:
         self._shutting_down = False
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        # Monotonic counter bumped whenever an ingress deployment's running-replica
+        # set (node/ports included) changes; the controller gates the direct-ingress port
+        # reconcile on it, skipping the O(replicas) pass on ticks with no change.
+        self._ingress_membership_version: int = 0
         self._app_deployment_mapping: Dict[str, Set[str]] = defaultdict(set)
 
         # Metric for tracking deployment status
@@ -5981,7 +6049,16 @@ class DeploymentStateManager:
 
         # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
-            deployment_state.broadcast_running_replicas_if_changed()
+            running_set_changed = (
+                deployment_state.broadcast_running_replicas_if_changed()
+            )
+            ingress_replica_removed = (
+                deployment_state.consume_ingress_membership_removed()
+            )
+            if (
+                running_set_changed or ingress_replica_removed
+            ) and deployment_state.owns_direct_ingress_ports():
+                self._ingress_membership_version += 1
             deployment_state.broadcast_deployment_config_if_changed()
             if deployment_state.should_autoscale():
                 self._autoscaling_state_manager.update_running_replica_ids(
@@ -6209,6 +6286,12 @@ class DeploymentStateManager:
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 
+    def get_ingress_membership_version(self) -> int:
+        """Monotonic counter of ingress running-replica-set changes (node/ports
+        included). The controller skips the direct-ingress port reconcile on ticks where
+        this is unchanged. See _ingress_membership_version."""
+        return self._ingress_membership_version
+
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         """Get replicas that own direct-ingress ports.
 
@@ -6217,8 +6300,7 @@ class DeploymentStateManager:
         ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
-            if deployment_state.is_ingress()
-            or deployment_state.is_ingress_request_router()
+            if deployment_state.owns_direct_ingress_ports()
         ]
 
         ingress_replicas_info = []
