@@ -372,12 +372,20 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
         data_iter = iter(dataloader)
         step = 0
+        epoch = 0
         last_loss = None
         while step < num_steps:
             with collector.data_timer.timer():
                 try:
                     batch = next(data_iter)
                 except StopIteration:
+                    # New pass over the data: advance the DistributedSampler
+                    # epoch so it reshuffles — otherwise every pass repeats
+                    # the epoch-0 order.
+                    epoch += 1
+                    sampler = getattr(dataloader, "sampler", None)
+                    if hasattr(sampler, "set_epoch"):
+                        sampler.set_epoch(epoch)
                     data_iter = iter(dataloader)
                     batch = next(data_iter)
 
