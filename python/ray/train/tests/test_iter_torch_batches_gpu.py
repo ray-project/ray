@@ -265,13 +265,6 @@ def test_custom_batch_collate_fn(
     if pin_memory and not torch.cuda.is_available():
         pytest.skip("pin_memory is set to True, but CUDA is not available.")
 
-    # Skip tests if pin_memory is set to True and the collate function is not the
-    # DefaultCollateFn.
-    if pin_memory and not (collate_batch_type == "arrow" and return_type == "default"):
-        pytest.skip(
-            "pin_memory is set to True, but the collate function is not the DefaultCollateFn."
-        )
-
     collate_fn = collate_fn_map[collate_batch_type].get(return_type)
     if collate_fn is None:
         pytest.skip(
@@ -304,7 +297,9 @@ def test_custom_batch_collate_fn(
             assert sorted(batch["value"].tolist()) == list(range(5))
             assert batch["id"].device == device
             assert batch["value"].device == device
-            if pin_memory and device.type == "cpu":
+            # Chunked tensors are concatenated into freshly-allocated tensors
+            # during finalize, so the concatenated result isn't pinned.
+            if pin_memory and device.type == "cpu" and return_type == "dict":
                 assert batch["id"].is_pinned()
                 assert batch["value"].is_pinned()
         else:  # tuple or list

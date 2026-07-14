@@ -10,10 +10,12 @@ import requests
 from ci.ray_ci.automation.crane_lib import (
     CraneError,
     _crane_binary,
+    _read_member_from_tar,
     call_crane_copy,
     call_crane_export,
     call_crane_index,
     call_crane_manifest,
+    read_file_from_image,
 )
 from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401, F811
 
@@ -151,6 +153,129 @@ class TestCraneExportIntegration:
             assert os.path.lexists(
                 os.path.join(out_dir, "bin", "sh")
             ) or os.path.lexists(os.path.join(out_dir, "bin", "ash"))
+
+
+class TestReadFileFromImage:
+    """Tests for reading a single file out of an image tar."""
+
+    def _write_tar_with_hardlink(self, tar_path, freeze_content=b"ray==2.56.0\n"):
+        """
+        Build a tar shaped like a `crane export` archive: the pip-freeze file
+        plus a pair of identical files deduplicated into a hardlink. A full
+        tarfile extraction of this trips the "linkname ... not found" failure
+        we saw on CI; reading a single member must not.
+        """
+        import io
+        import tarfile
+
+        with tarfile.open(tar_path, mode="w") as tf:
+            # Canonical regular file that the hardlink target points at, but
+            # placed AFTER the hardlink so streaming link resolution fails.
+            link_name = "home/ray/anaconda3/pkg_b/INSTALLER"
+            link_target = "home/ray/anaconda3/pkg_a/INSTALLER"
+
+            hardlink = tarfile.TarInfo(link_name)
+            hardlink.type = tarfile.LNKTYPE
+            hardlink.linkname = link_target
+            tf.addfile(hardlink)
+
+            freeze = tarfile.TarInfo("home/ray/pip-freeze.txt")
+            freeze.size = len(freeze_content)
+            tf.addfile(freeze, io.BytesIO(freeze_content))
+
+            installer = b"pip\n"
+            target = tarfile.TarInfo(link_target)
+            target.size = len(installer)
+            tf.addfile(target, io.BytesIO(installer))
+
+    def test_read_member_survives_unextractable_hardlinks(self):
+        from ci.ray_ci.automation.crane_lib import _extract_tar_to_dir
+
+        freeze = b"ray==2.56.0\nnumpy==1.26.4\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar_path = os.path.join(tmpdir, "image.tar")
+            self._write_tar_with_hardlink(tar_path, freeze)
+
+            # Sanity check: a full extraction of this tar reproduces the CI
+            # failure (the whole reason for reading a single member instead).
+            with pytest.raises(Exception, match="linkname"):
+                _extract_tar_to_dir(tar_path, os.path.join(tmpdir, "full"))
+
+            content = _read_member_from_tar(tar_path, "home/ray/pip-freeze.txt")
+            assert content == freeze
+
+    def test_read_member_absent_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar_path = os.path.join(tmpdir, "image.tar")
+            self._write_tar_with_hardlink(tar_path)
+
+            assert _read_member_from_tar(tar_path, "home/ray/missing.txt") is None
+
+    def _write_tar_with_files(self, tar_path, files):
+        """Write a tar with the given {member_name: bytes} contents."""
+        import io
+        import tarfile
+
+        with tarfile.open(tar_path, mode="w") as tf:
+            for name, content in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(content)
+                tf.addfile(info, io.BytesIO(content))
+
+    def test_read_member_matches_dot_slash_prefixed_name(self):
+        # crane/tar archives sometimes store members as "./path"; a request for
+        # "path" must still find it via the normalization fallback.
+        want = b"ray==2.56.0\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar_path = os.path.join(tmpdir, "image.tar")
+            self._write_tar_with_files(tar_path, {"./home/ray/pip-freeze.txt": want})
+
+            assert _read_member_from_tar(tar_path, "home/ray/pip-freeze.txt") == want
+
+    def test_read_member_does_not_conflate_leading_dot_names(self):
+        # ".home/ray/x" and "home/ray/x" are DISTINCT members; the old
+        # lstrip("./") normalization wrongly collapsed them. Requesting the
+        # dotless name must not return the leading-dot member's bytes.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar_path = os.path.join(tmpdir, "image.tar")
+            self._write_tar_with_files(
+                tar_path, {".home/ray/x": b"dot-file-contents\n"}
+            )
+
+            assert _read_member_from_tar(tar_path, "home/ray/x") is None
+
+    @mock.patch("ci.ray_ci.automation.crane_lib.subprocess.check_call")
+    @mock.patch("ci.ray_ci.automation.crane_lib._crane_binary")
+    def test_read_file_from_image_exports_then_reads(self, mock_bin, mock_check_call):
+        mock_bin.return_value = "/usr/bin/crane"
+        freeze = b"ray==2.56.0\n"
+
+        # Stand in for `crane export <tag> <tar_path>` by writing the tar the
+        # command's 4th arg points at.
+        def fake_export(cmd, env=None):
+            self._write_tar_with_hardlink(cmd[3], freeze)
+
+        mock_check_call.side_effect = fake_export
+
+        content = read_file_from_image("some-repo:tag", "home/ray/pip-freeze.txt")
+        assert content == freeze
+        assert mock_check_call.call_count == 1
+        assert mock_check_call.call_args[0][0][:3] == [
+            "/usr/bin/crane",
+            "export",
+            "some-repo:tag",
+        ]
+
+    @mock.patch("ci.ray_ci.automation.crane_lib.subprocess.check_call")
+    @mock.patch("ci.ray_ci.automation.crane_lib._crane_binary")
+    def test_read_file_from_image_wraps_export_failure(self, mock_bin, mock_check_call):
+        import subprocess
+
+        mock_bin.return_value = "/usr/bin/crane"
+        mock_check_call.side_effect = subprocess.CalledProcessError(1, "crane")
+
+        with pytest.raises(CraneError, match="crane export failed"):
+            read_file_from_image("some-repo:tag", "home/ray/pip-freeze.txt")
 
 
 if __name__ == "__main__":
