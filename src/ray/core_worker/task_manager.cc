@@ -1008,16 +1008,18 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
   }
+  // Whether the caller has dropped the generator. Once dropped, it reads no
+  // further, so any index it has not already consumed is unwanted; only
+  // already-consumed indices reported here are lineage-reconstruction retries of
+  // still-referenced returns and must still be handled.
+  const bool caller_deleted = stream_it->second.IsCallerDeleted();
   if (backpressure_threshold != -1) {
-    // The stream is still present (found above), but the caller may have already
-    // requested its deletion. Only release the executor for a report the caller
-    // can never consume: a caller that dropped its generator reads no further, so
-    // an UNCONSUMED index is unwanted and we tell the executor to stop
-    // backpressuring. But an ALREADY-CONSUMED index reported here is a lineage-
-    // reconstruction retry of a still-referenced return and MUST be handled to
-    // re-materialize its value (whether or not the generator ever wrote EOF).
-    if (stream_it->second.IsCallerDeleted() &&
-        !stream_it->second.IsObjectConsumed(item_index)) {
+    // If the whole batch is unconsumed (its lowest index is unconsumed, and a
+    // batch is contiguous), tell the executor the stream is deleted so it stops
+    // backpressuring - there is no consumer left. A batch whose lowest index is
+    // already consumed is handled below; its unconsumed tail, if any, is skipped
+    // per-object.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(item_index)) {
       execution_signal_callback(Status::NotFound("Stream is deleted."));
       return false;
     }
@@ -1032,6 +1034,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReturnObject &returned_object = request.returned_objects(i);
     const auto object_id = ObjectID::FromBinary(returned_object.object_id());
     const auto object_index = item_index + i;
+
+    // A single report can batch multiple yields that straddle the consumed
+    // boundary (a consumed prefix followed by an unconsumed tail). If the caller
+    // has dropped the generator, skip storing the unconsumed tail: those refs
+    // would never be read and only need cleanup later. The consumed prefix is
+    // still handled below to re-materialize referenced returns.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
+      continue;
+    }
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;

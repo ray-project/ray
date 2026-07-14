@@ -3489,6 +3489,93 @@ TEST_F(TaskManagerLineageTest,
   ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
+TEST_F(TaskManagerLineageTest,
+       TestBackpressureStraddlingBatchSkipsUnconsumedTailAfterCallerDelete) {
+  // Models _num_objects_per_yield = 2: each yield is reported as ONE request
+  // carrying two objects at consecutive stream indices. A caller reading one ref
+  // at a time (the default ObjectRefGenerator.__next__) can leave next_index_
+  // mid-batch, so a reconstruction retry of such a batch straddles the consumed
+  // boundary. Its already-consumed prefix must be handled (re-materialized) while
+  // its unconsumed tail must NOT be written to the stream since nobody reads it.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 4);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+
+  // Raw ObjectID index = stream index + 2 (return 1 is the generator handle).
+  auto id_at = [&](int64_t stream_index) {
+    return ObjectID::FromIndex(spec.TaskId(), stream_index + 2);
+  };
+  // Report one yield of two objects starting at stream index `base`.
+  auto report_yield = [&](int64_t base, const ExecutionSignalCallback &signal) {
+    rpc::ReportGeneratorItemReturnsRequest req;
+    req.mutable_worker_addr()->CopyFrom(rpc::Address());
+    req.set_item_index(base);
+    req.set_generator_id(generator_id.Binary());
+    for (int64_t i = 0; i < 2; i++) {
+      auto *returned_object = req.add_returned_objects();
+      returned_object->set_object_id(id_at(base + i).Binary());
+      auto batch_data = GenerateRandomBuffer();
+      returned_object->set_data(batch_data->Data(), batch_data->Size());
+      returned_object->set_in_plasma(true);
+    }
+    return manager_.HandleReportGeneratorItemReturns(
+        req, signal, noop_consumption_update);
+  };
+
+  // Two yields of two objects each: stream indices [0,1] and [2,3].
+  ASSERT_TRUE(report_yield(0, [](Status s) { ASSERT_TRUE(s.ok()); }));
+  ASSERT_TRUE(report_yield(2, [](Status s) { ASSERT_TRUE(s.ok()); }));
+
+  // Consume three refs one at a time, leaving next_index_ = 3 (mid second yield).
+  for (int i = 0; i < 3; i++) {
+    ObjectID read;
+    ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &read).ok());
+    ASSERT_EQ(read, id_at(i));
+  }
+
+  // Caller drops the still-running generator: stream retained + caller-deleted,
+  // and the unconsumed tail (index 3) is released from the stream.
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+
+  // Reconstruction retry re-reports the second yield's batch [2,3]. Index 2 is
+  // already consumed (must handle); index 3 is unconsumed (must skip).
+  bool signalled = false;
+  Status signal_status;
+  ASSERT_FALSE(report_yield(2, [&signalled, &signal_status](Status status) {
+    signalled = true;
+    signal_status = status;
+  }));
+  ASSERT_TRUE(signalled);
+  ASSERT_TRUE(signal_status.ok());  // consumed prefix handled, batch not dropped
+
+  // The unconsumed tail (index 3) must NOT have been written back to the stream.
+  ObjectID next;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &next).ok());
+  ASSERT_TRUE(next.IsNil());
+  ASSERT_FALSE(reference_counter_->HasReference(id_at(3)));
+
+  // Cleanup. Complete without pinning lineage (set_in_plasma=false) so the task
+  // is not retained: the unconsumed tail id_at(3) is already out of scope, so
+  // marking it reconstructable here would leak the task metadata (see the known
+  // issue noted in CompletePendingTask).
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/4,
+                               /*set_in_plasma=*/false);
+  for (int i = 0; i < 3; i++) {
+    reference_counter_->RemoveLocalReference(id_at(i), nullptr);
+  }
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
 TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumption) {
   // Actor-wide backpressure acknowledges report visibility immediately while consumed
   // progress is delivered through the separate consumption callback.
