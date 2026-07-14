@@ -58,7 +58,7 @@ from ray.data._internal.execution.operators.map_operator import (
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.execution.util import locality_string
+from ray.data._internal.execution.util import locality_string, merge_label_selector
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data._internal.utils.heapdict import heapdict
 from ray.data.block import Block, BlockMetadata
@@ -115,6 +115,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        default_logical_memory_enabled: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -146,6 +147,9 @@ class ActorPoolMapOperator(MapOperator):
                 include in an output block.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
+            default_logical_memory_enabled: If ``True``, the operator launches actors
+                with a default logical ``memory``. The method for choosing the
+                default is an implementation detail.
         """
         super().__init__(
             map_transformer,
@@ -160,6 +164,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            default_logical_memory_enabled,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -394,7 +399,7 @@ class ActorPoolMapOperator(MapOperator):
             self._bundle_queue.remove(bundle)
 
             self._metrics.on_input_dequeued(bundle, input_index=0)
-            input_blocks = [block for block, _ in bundle.blocks]
+            input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
             ctx = TaskContext(
@@ -450,6 +455,9 @@ class ActorPoolMapOperator(MapOperator):
         remote_args = self._ray_remote_args.copy()
         if self._ray_remote_args_fn:
             remote_args.update(self._ray_remote_args_fn())
+        remote_args = merge_label_selector(
+            remote_args, self.data_context.execution_options.label_selector
+        )
         return remote_args
 
     def has_next(self) -> bool:

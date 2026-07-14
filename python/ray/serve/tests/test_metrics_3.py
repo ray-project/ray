@@ -198,7 +198,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
 def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
     """Test that replica reconfigure latency metrics are recorded when user_config changes."""
 
-    @serve.deployment(version="1")
+    @serve.deployment
     class Configurable:
         def __init__(self):
             self.config = None
@@ -210,7 +210,8 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
         def __call__(self):
             return self.config
 
-    # Initial deployment with version specified to enable in-place reconfigure
+    # Use an internal code version to exercise in-place reconfigure.
+    Configurable = Configurable.options(_internal=True, version="1")
     serve.run(
         Configurable.options(user_config={"version": 1}).bind(),
         name="app",
@@ -496,9 +497,9 @@ def test_autoscaling_metrics(metrics_start_shutdown):
         requests per replica
         Tags: deployment, application
     - ray_serve_autoscaling_replica_metrics_delay_ms: Replica metrics delay
-        Tags: deployment, application, replica
+        Tags: deployment, application
     - ray_serve_autoscaling_handle_metrics_delay_ms: Handle metrics delay
-        Tags: deployment, application, handle
+        Tags: deployment, application
     """
     signal = SignalActor.remote()
 
@@ -588,18 +589,17 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     )
     print("Target ongoing requests metric verified.")
 
-    # Test 6: Check that metrics delay gauges are emitted with proper tags
+    # Test 6: Check that the metrics delay histograms are emitted. These are
+    # aggregated by Prometheus across all sources, so they carry no
+    # per-replica/handle tag.
     def check_metrics_delay_metrics():
-        # Check for handle metrics delay (depends on where metrics are collected)
-        value = get_metric_float(
-            "ray_serve_autoscaling_handle_metrics_delay_ms",
-            expected_tags=base_tags,
-            timeseries=timeseries,
-        )
-        if value >= 0:
-            # Verify handle tag exists by checking metric dictionaries
+        found = False
+        for metric_name in (
+            "ray_serve_autoscaling_handle_metrics_delay_ms_count",
+            "ray_serve_autoscaling_replica_metrics_delay_ms_count",
+        ):
             metrics_dicts = get_metric_dictionaries(
-                "ray_serve_autoscaling_handle_metrics_delay_ms",
+                metric_name,
                 timeout=5,
                 timeseries=timeseries,
                 wait=False,
@@ -609,37 +609,10 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                     m.get("deployment") == "AutoscalingDeployment"
                     and m.get("application") == "autoscaling_app"
                 ):
-                    assert m.get("handle") is not None
-                    print(
-                        f"Handle delay metric verified with handle tag: {m.get('handle')}"
-                    )
-                    return True
-
-        # Fallback: Check for replica metrics delay
-        value = get_metric_float(
-            "ray_serve_autoscaling_replica_metrics_delay_ms",
-            expected_tags=base_tags,
-            timeseries=timeseries,
-        )
-        if value >= 0:
-            metrics_dicts = get_metric_dictionaries(
-                "ray_serve_autoscaling_replica_metrics_delay_ms",
-                timeout=5,
-                timeseries=timeseries,
-                wait=False,
-            )
-            for m in metrics_dicts:
-                if (
-                    m.get("deployment") == "AutoscalingDeployment"
-                    and m.get("application") == "autoscaling_app"
-                ):
-                    assert m.get("replica") is not None
-                    print(
-                        f"Replica delay metric verified with replica tag: {m.get('replica')}"
-                    )
-                    return True
-
-        return False
+                    assert "replica" not in m
+                    assert "handle" not in m
+                    found = True
+        return found
 
     wait_for_condition(check_metrics_delay_metrics, timeout=15)
     print("Metrics delay metrics verified.")
@@ -965,6 +938,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         host_actor=host,
         key_listeners={"test_key": on_update},
         call_in_event_loop=loop,
+        client_id="test_metrics_client",
     )
 
     # Wait for initial update (client starts with snapshot_id -1)

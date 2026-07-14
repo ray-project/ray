@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import random
 import time
@@ -28,7 +27,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
@@ -256,6 +254,11 @@ class ServeControllerClient:
     def _wait_for_application_running(self, name: str, timeout_s: int = -1):
         """Waits for the named application to enter "RUNNING" status.
 
+        Args:
+            name: the application name to wait on.
+            timeout_s: maximum time to wait, in seconds. A negative value waits
+                indefinitely.
+
         Raises:
             RuntimeError: if the application enters the "DEPLOY_FAILED" status instead.
             TimeoutError: if this doesn't happen before timeout_s.
@@ -339,14 +342,23 @@ class ServeControllerClient:
         name_to_application_args = {}
         for app in built_apps:
             deployment_args_list = []
-            for deployment in app.deployments:
+            deployments_to_deploy = list(app.deployments)
+            if app.ingress_request_router_deployment is not None:
+                deployments_to_deploy.append(app.ingress_request_router_deployment)
+
+            for deployment in deployments_to_deploy:
                 if deployment.logging_config is None and app.logging_config:
                     deployment = deployment.options(logging_config=app.logging_config)
 
                 is_ingress = deployment.name == app.ingress_deployment_name
+                is_ingress_request_router = (
+                    app.ingress_request_router_deployment is not None
+                    and deployment.name == app.ingress_request_router_deployment.name
+                )
                 deployment_args = get_deploy_args(
                     deployment.name,
                     ingress=is_ingress,
+                    ingress_request_router=is_ingress_request_router,
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -369,6 +381,9 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
+                deployment_args_proto.ingress_request_router = deployment_args[
+                    "ingress_request_router"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -390,6 +405,7 @@ class ServeControllerClient:
         )
 
         handles = []
+        ready_apps = []
         for app in built_apps:
             # The deployment state is not guaranteed to be created after
             # deploy_application returns; the application state manager will
@@ -399,17 +415,27 @@ class ServeControllerClient:
 
             if wait_for_applications_running:
                 self._wait_for_application_running(app.name)
-                if app.route_prefix is not None:
-                    url_part = " at " + self._root_url + app.route_prefix
-                else:
-                    url_part = ""
-                logger.info(f"Application '{app.name}' is ready{url_part}.")
+                ready_apps.append(app)
 
             handles.append(
                 self.get_handle(
                     app.ingress_deployment_name, app.name, check_exists=False
                 )
             )
+
+        # Wait for the proxies to be serving before declaring the applications
+        # ready, so the "is ready" log line only prints once requests can
+        # actually be routed to the applications.
+        self.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+
+        for app in ready_apps:
+            if app.route_prefix is not None:
+                url_part = " at " + self._root_url + app.route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{app.name}' is ready{url_part}.")
 
         return handles
 
@@ -471,19 +497,7 @@ class ServeControllerClient:
             is found among deployments in any single application.
         """
         for app in built_apps:
-            num_ingress_deployments = 0
-            for deployment in app.deployments:
-                if inspect.isclass(deployment.func_or_class) and issubclass(
-                    deployment.func_or_class, ASGIAppReplicaWrapper
-                ):
-                    num_ingress_deployments += 1
-
-            if num_ingress_deployments > 1:
-                raise RayServeException(
-                    f'Found multiple FastAPI deployments in application "{app.name}".'
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                )
+            app.validate_single_fastapi_ingress()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):

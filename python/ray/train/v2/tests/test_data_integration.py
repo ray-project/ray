@@ -132,10 +132,10 @@ def test_datasets_callback(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
@@ -618,10 +618,20 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypatch):
-    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
+@pytest.fixture()
+def ray_start_4_cpus_v1_autoscaler(monkeypatch):
+    # `RAY_DATA_CLUSTER_AUTOSCALER` is read inside the `DatasetManager` actor's
+    # worker process, which snapshots `os.environ` at `ray.init` time. Setting
+    # the env var after `ray.init` doesn't reach already-forked workers, so we
+    # set it here before starting Ray.
     monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V1")
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
 
+
+def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus_v1_autoscaler):
+    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
     NUM_WORKERS = 2
 
     train_ds = ray.data.range(1000)
@@ -658,10 +668,10 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
@@ -720,10 +730,10 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     # Under the V2 cluster autoscaler (default), exclude_resources should be
@@ -738,10 +748,34 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     )
 
 
-def test_fixed_scaling_policy_coordinator_lifecycle():
+@pytest.mark.parametrize(
+    "label_selector, expected_label_selectors",
+    [
+        # No label_selector — passed through as None; the coordinator
+        # auto-fills to a list of empty dicts internally.
+        (None, None),
+        # Single dict — replicated per worker.
+        (
+            {"instance-type": "m6i.xlarge"},
+            [{"instance-type": "m6i.xlarge"}, {"instance-type": "m6i.xlarge"}],
+        ),
+        # Per-worker list — passed through unchanged.
+        (
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+        ),
+    ],
+)
+def test_fixed_scaling_policy_coordinator_lifecycle(
+    label_selector, expected_label_selectors
+):
     """Test that FixedScalingPolicy registers training resources with the
     AutoscalingCoordinator on start, periodically re-requests to keep
-    the reservation alive, and cancels on shutdown/abort."""
+    the reservation alive, and cancels on shutdown/abort.
+
+    Parametrized to cover the three `ScalingConfig.label_selector` shapes
+    (None / Dict / List) end-to-end through the controller→coordinator path
+    (regression test for #63241)."""
     from unittest.mock import patch
 
     from freezegun import freeze_time
@@ -763,12 +797,14 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
         num_workers=num_workers,
         use_gpu=True,
         resources_per_worker=resources_per_worker,
+        label_selector=label_selector,
     )
 
     mock_coordinator = MagicMock()
     expected_request_kwargs = dict(
         requester_id="train-test-run-123",
         resources=[resources_per_worker] * num_workers,
+        label_selectors=expected_label_selectors,
         expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         priority=ResourceRequestPriority.HIGH,
     )

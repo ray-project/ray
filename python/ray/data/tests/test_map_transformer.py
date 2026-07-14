@@ -68,10 +68,11 @@ def test_chained_transforms_release_intermediates_between_batches():
         assert result is not None
 
         # apply_transform returns Arrow blocks, convert to pandas to test the correctness of the result
-        pd.testing.assert_frame_equal(
-            BlockAccessor.for_block(result).to_pandas(),
-            pd.DataFrame({"id": [(i + 1) * 2**NUM_CHAINED_TRANSFORMS]}),
-        )
+        result_df = BlockAccessor.for_block(result).to_pandas()
+        expected_df = pd.DataFrame(
+            {"id": [(i + 1) * 2**NUM_CHAINED_TRANSFORMS]}
+        ).astype(result_df.dtypes.to_dict())
+        pd.testing.assert_frame_equal(result_df, expected_df)
 
         # Trigger GC
         gc.collect()

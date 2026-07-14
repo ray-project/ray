@@ -83,10 +83,12 @@ docker/Dockerfile.ray: docker linux_wheels
 
 doc/code.py: doc
 doc/example.ipynb: doc
-doc/tutorial.rst: doc
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
+doc/requirements-doc.txt: doc
+python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
+ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
 
 # === Release ===
 
@@ -99,6 +101,9 @@ release/release_tests.yaml: tools
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
 ci/ci.sh: tools
+# Windows CI driver scripts trigger the Windows test steps, not just tools.
+ci/ray_ci/windows/build_base.sh: windows tools
+ci/ray_ci/windows/install_tools.sh: windows tools
 
 # === Build Scripts ===
 

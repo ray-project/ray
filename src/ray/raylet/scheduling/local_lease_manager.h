@@ -32,6 +32,7 @@
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace raylet {
@@ -71,7 +72,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// \param get_lease_arguments: A callback for getting a leases' arguments by
   ///                            their ids.
   /// \param max_pinned_lease_arguments_bytes: The cap on pinned arguments.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
+  /// \param clock: Clock used to read the current time.
   /// \param sched_cls_cap_interval_ms: The time before we increase the cap
   ///                                   on the number of leases that can run per
   ///                                   scheduling class. If set to 0, there is no
@@ -88,8 +89,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
           get_lease_arguments,
       size_t max_pinned_lease_arguments_bytes,
       SchedulerMetrics &scheduler_metrics,
-      std::function<int64_t(void)> get_time_ms =
-          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
+      ClockInterface &clock,
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -368,8 +368,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   mutable SchedulerMetrics scheduler_metrics_;
 
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
 
   /// Whether or not to enable the worker process cap.
   const bool sched_cls_cap_enabled_;

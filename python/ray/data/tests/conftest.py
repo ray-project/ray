@@ -487,7 +487,6 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -507,7 +506,6 @@ def op_two_block():
             cpu_time_s=block_params["cpu_time"][i],
             udf_time_s=block_params["udf_time"][i],
             node_id=block_params["node_id"][i],
-            max_uss_bytes=block_params["uss_bytes"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(

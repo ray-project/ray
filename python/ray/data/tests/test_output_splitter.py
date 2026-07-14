@@ -116,7 +116,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
             return "node2"
 
     def get_bundle_loc(bundle):
-        block = ray.get(bundle.blocks[0][0])
+        block = ray.get(bundle.blocks[0].ref)
         fval = list(block["id"])[0]
         return [get_fake_loc(fval)]
 

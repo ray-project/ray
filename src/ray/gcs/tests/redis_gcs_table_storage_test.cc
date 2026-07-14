@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/tests/gcs_table_storage_test_base.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -32,10 +33,12 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     auto &io_service = *io_service_pool_->Get();
     gcs::RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(
-        std::make_unique<gcs::RedisStoreClient>(io_service, options));
+        std::make_unique<gcs::RedisStoreClient>(io_service, options, clock_));
   }
 
   void TearDown() override {}
+
+  Clock clock_;
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }

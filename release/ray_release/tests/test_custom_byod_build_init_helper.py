@@ -18,7 +18,10 @@ from ray_release.custom_byod_build_init_helper import (
     get_prerequisite_step,
 )
 from ray_release.test import Test
-from ray_release.util import AZURE_REGISTRY_NAME
+
+# AZURE_REGISTRY_NAME import temporarily commented out: the Azure ACR login
+# step it was used to verify is disabled due to CI issues.
+# from ray_release.util import AZURE_REGISTRY_NAME
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 _GPU_MAP = build_short_gpu_map(bazel_runfile("ray-images.json"))
@@ -162,29 +165,34 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 content["steps"][0]["commands"][1]
                 == f"bash release/gcloud_docker_login.sh {config['aws2gce_credentials']}"
             )
-            assert content["steps"][0]["commands"][4].startswith(
-                "az acr login"
-            ) and content["steps"][0]["commands"][4].endswith(AZURE_REGISTRY_NAME)
+            # Azure ACR login step is replaced by a placeholder echo while
+            # Azure image push is disabled due to CI issues. Verify the
+            # placeholder is present at the expected index instead of an
+            # `az acr login --name <AZURE_REGISTRY_NAME>` command.
+            assert "Skipping Azure ACR login" in content["steps"][0]["commands"][3]
             assert (
                 f"--region {config['byod_ecr_region']}"
-                in content["steps"][0]["commands"][5]
+                in content["steps"][0]["commands"][4]
             )
-            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][5]
+            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][4]
             assert (
                 f"--image-name {custom_byod_images[0][0]}"
-                in content["steps"][0]["commands"][6]
+                in content["steps"][0]["commands"][5]
             )
             assert (
                 f"--image-name {custom_byod_images[2][0]}"
-                in content["steps"][1]["commands"][6]
+                in content["steps"][1]["commands"][5]
             )
             assert (
                 f"--image-name {custom_byod_images[3][0]}"
-                in content["steps"][2]["commands"][6]
+                in content["steps"][2]["commands"][5]
             )
             assert content["steps"][3]["depends_on"] == "forge"
-            # Verify env-only image step has --env flags
-            env_only_cmd = content["steps"][4]["commands"][6]
+            # Verify env-only image step has --env flags. Command index
+            # decremented from 6 to 5 because the Azure ACR login command was
+            # collapsed into a single placeholder echo while Azure image push
+            # is disabled due to CI issues.
+            env_only_cmd = content["steps"][4]["commands"][5]
             assert f"--image-name {custom_byod_images[5][0]}" in env_only_cmd
             assert "--env MY_ENV=my_value" in env_only_cmd
             assert "--env OTHER_ENV=other_value" in env_only_cmd

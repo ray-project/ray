@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionOptions,
     RefBundle,
 )
@@ -205,7 +206,9 @@ def test_input_data_buffer_does_not_free_inputs():
     op = InputDataBuffer(
         DataContext.get_current(),
         input_data=[
-            RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+            RefBundle(
+                [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+            )
         ],
     )
 

@@ -9,7 +9,9 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Project,
     Read,
+    ReadFiles,
     Union,
 )
 
@@ -46,11 +48,14 @@ class LimitPushdownRule(Rule):
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
                 # First, try to fuse with upstream Limit if possible (reuse fusion logic)
-                upstream_op = node.input_dependency
+                upstream_op = node.input_dependencies[0]
                 if isinstance(upstream_op, Limit):
                     # Fuse consecutive Limits: Limit[n] -> Limit[m] becomes Limit[min(n,m)]
                     new_limit = min(node.limit, upstream_op.limit)
-                    return Limit(upstream_op.input_dependency, new_limit)
+                    return Limit(
+                        new_limit,
+                        input_dependencies=[upstream_op.input_dependencies[0]],
+                    )
 
                 # If no fusion, apply pushdown logic
                 if isinstance(upstream_op, Union):
@@ -73,7 +78,7 @@ class LimitPushdownRule(Rule):
 
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
-                if isinstance(node.input_dependency, Union):
+                if isinstance(node.input_dependencies[0], Union):
                     return self._push_limit_into_union(node)
                 return self._push_limit_down(node)
             return node
@@ -101,7 +106,7 @@ class LimitPushdownRule(Rule):
             after:
                 child -> Limit(n) -> Union -> Limit(n)   (no extra branch limit inserted)
         """
-        union_op = limit_op.input_dependency
+        union_op = limit_op.input_dependencies[0]
         assert isinstance(union_op, Union)
 
         def _branch_has_limit(op: LogicalOperator, limit: int) -> bool:
@@ -113,8 +118,8 @@ class LimitPushdownRule(Rule):
             ):
                 if isinstance(current, Limit):
                     return current.limit == limit
-                # Safe to use input_dependency: current is an AbstractOneToOne here.
-                current = current.input_dependency
+                # Safe to use the first dependency: current is one-to-one here.
+                current = current.input_dependencies[0]
 
             return isinstance(current, Limit) and current.limit == limit
 
@@ -126,9 +131,9 @@ class LimitPushdownRule(Rule):
             if _branch_has_limit(child, limit_op.limit):
                 branch_tails.append(child)
                 continue
-            raw_limit = Limit(child, limit_op.limit)  # child → limit
+            raw_limit = Limit(limit_op.limit, input_dependencies=[child])
 
-            if isinstance(raw_limit.input_dependency, Union):
+            if isinstance(raw_limit.input_dependencies[0], Union):
                 # This represents the limit operator appended after the union.
                 pushed_tail = self._push_limit_into_union(raw_limit)
             else:
@@ -136,8 +141,8 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_union = Union(*branch_tails)
-        return Limit(new_union, limit_op.limit)
+        new_union = Union(branch_tails)
+        return Limit(limit_op.limit, input_dependencies=[new_union])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
@@ -146,12 +151,18 @@ class LimitPushdownRule(Rule):
         """
         # Traverse up the DAG until we reach the first operator that meets
         # one of the stopping conditions
-        current_op = limit_op.input_dependency
+        current_op = limit_op.input_dependencies[0]
         num_rows_preserving_ops: List[LogicalOperator] = []
         while (
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
+            if isinstance(current_op, Project) and not current_op.is_idempotent():
+                # Do not push the limit past a projection producing a non-idempotent
+                # column (e.g. monotonically_increasing_id): its value depends on row
+                # position / cardinality, which a reordered limit would change.
+                break
+
             if isinstance(current_op, AbstractMap):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:
@@ -162,7 +173,7 @@ class LimitPushdownRule(Rule):
                     )
                     break
             num_rows_preserving_ops.append(current_op)
-            current_op = current_op.input_dependency
+            current_op = current_op.input_dependencies[0]
 
         # If we couldn't push through any operators, return original
         if not num_rows_preserving_ops:
@@ -173,7 +184,7 @@ class LimitPushdownRule(Rule):
         )
 
         # Build the new operator chain: Chain non-preserving number of rows -> Limit -> Operators preserving number of rows
-        new_limit = Limit(limit_input, limit_op.limit)
+        new_limit = Limit(limit_op.limit, input_dependencies=[limit_input])
         result_op = new_limit
 
         # Recreate the intermediate operators and apply per-block limits
@@ -197,10 +208,21 @@ class LimitPushdownRule(Rule):
                         per_block_limit=limit,
                         num_outputs=op.num_outputs,
                     )
+                if isinstance(op, ReadFiles):
+                    from ray.data._internal.datasource_v2.logical_optimizers import (
+                        SupportsLimitPushdown,
+                    )
+
+                    if isinstance(op.scanner, SupportsLimitPushdown):
+                        return replace(
+                            op,
+                            scanner=op.scanner.push_limit(limit),
+                        )
+                    return op
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(
                     op,
-                    input_op=op.input_dependency,
+                    input_dependencies=[op.input_dependencies[0]],
                     per_block_limit=limit,
                 )
             new_op = copy.copy(op)
@@ -214,17 +236,17 @@ class LimitPushdownRule(Rule):
         """Create a new operator of the same type as original_op but with new_input as its input."""
 
         if isinstance(original_op, Limit):
-            return Limit(new_input, original_op.limit)
+            return Limit(original_op.limit, input_dependencies=[new_input])
         if isinstance(original_op, Download):
             return Download(
-                new_input,
                 uri_column_names=original_op.uri_column_names,
                 output_bytes_column_names=original_op.output_bytes_column_names,
+                input_dependencies=[new_input],
                 ray_remote_args=original_op.ray_remote_args,
                 filesystem=original_op.filesystem,
             )
         if isinstance(original_op, AbstractMap) and is_dataclass(original_op):
-            return replace(original_op, input_op=new_input)
+            return replace(original_op, input_dependencies=[new_input])
 
         # Use copy and replace input dependencies approach
         new_op = copy.copy(original_op)

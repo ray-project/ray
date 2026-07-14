@@ -22,7 +22,9 @@ def test_power_transformer():
 
     processed_col_a = [-1.5, 0]
     processed_col_b = [0, np.log(2)]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -32,7 +34,9 @@ def test_power_transformer():
     out_df = transformed.to_pandas()
     processed_col_a = [-np.log(2), 0]
     processed_col_b = [0, 1.5]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -49,7 +53,9 @@ def test_power_transformer():
 
     processed_col_a = [0, np.log(2)]
     processed_col_b = [np.log(3), np.log(4)]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -59,7 +65,9 @@ def test_power_transformer():
     out_df = transformed.to_pandas()
     processed_col_a = [0, 1.5]
     processed_col_b = [4, 7.5]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -91,7 +99,7 @@ def test_power_transformer():
             "A_transformed": processed_col_a,
             "B_transformed": processed_col_b,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 

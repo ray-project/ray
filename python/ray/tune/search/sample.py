@@ -592,6 +592,9 @@ def sample_from(func: Callable[[Dict], Any]):
 
     Arguments:
         func: An callable function to draw a sample from.
+
+    Returns:
+        A ``Function`` domain that samples values by calling ``func``.
     """
     return Function(func)
 
@@ -628,7 +631,10 @@ def loguniform(lower: float, upper: float, base: object = _MISSING):
     Args:
         lower: Lower boundary of the output interval (e.g. 1e-4)
         upper: Upper boundary of the output interval (e.g. 1e-2)
+        base: Deprecated. No longer used.
 
+    Returns:
+        A ``Float`` domain that samples log-uniformly between ``lower`` and ``upper``.
     """
     if base is not _MISSING:
         _warn_for_base()
@@ -648,7 +654,10 @@ def qloguniform(lower: float, upper: float, q: float, base: object = _MISSING):
         upper: Upper boundary of the output interval (e.g. 1e-2)
         q: Quantization number. The result will be rounded to an
             integer increment of this value.
+        base: Deprecated. No longer used.
 
+    Returns:
+        A ``Float`` domain that samples log-uniformly and quantizes by ``q``.
     """
     if base is not _MISSING:
         _warn_for_base()
@@ -747,6 +756,8 @@ def randn(mean: float = 0.0, sd: float = 1.0):
         mean: Mean of the normal distribution. Defaults to 0.
         sd: SD of the normal distribution. Defaults to 1.
 
+    Returns:
+        A ``Float`` domain that samples from a normal distribution.
     """
     return Float(None, None).normal(mean, sd)
 
@@ -763,5 +774,7 @@ def qrandn(mean: float, sd: float, q: float):
         q: Quantization number. The result will be rounded to an
             integer increment of this value.
 
+    Returns:
+        A ``Float`` domain that samples normally and quantizes by ``q``.
     """
     return Float(None, None).normal(mean, sd).quantized(q)

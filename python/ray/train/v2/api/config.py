@@ -154,6 +154,24 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
+
+        - ``None`` -> ``None`` (no constraint; downstream consumers — the
+          placement-group path and the autoscaling coordinator — both
+          accept ``None`` and treat it as "no label requirement").
+        - ``Dict`` -> the same dict replicated for each worker
+        - ``List`` -> the first ``num_workers`` entries (validated to be
+          ``max_workers`` long in ``__post_init__``)
+        """
+        if isinstance(self.label_selector, list):
+            return [s.copy() for s in self.label_selector[:num_workers]]
+        if isinstance(self.label_selector, dict):
+            return [self.label_selector.copy() for _ in range(num_workers)]
+        return None
+
     @property
     def total_resources(self):
         """Map of total resources required for training.

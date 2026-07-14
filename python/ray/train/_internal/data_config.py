@@ -98,7 +98,7 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
-            kwargs: Forwards compatibility placeholder.
+            **kwargs: Forwards compatibility placeholder.
 
         Returns:
             A list of dataset splits for each worker. The size of the list must be

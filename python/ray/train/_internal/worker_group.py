@@ -26,7 +26,11 @@ class RayTrainWorker:
 
         Args:
             func: The function to execute.
-            args, kwargs: The arguments to pass into func.
+            *args: Positional arguments to pass into ``func``.
+            **kwargs: Keyword arguments to pass into ``func``.
+
+        Returns:
+            The result of calling ``func`` with the provided arguments.
         """
         try:
             return func(*args, **kwargs)
@@ -114,14 +118,14 @@ class WorkerGroup(BaseWorkerGroup):
     Args:
         num_workers: The number of workers (Ray actors) to launch.
             Defaults to 1.
-        resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_worker: Dictionary specifying the resources that will be
             requested for each worker. Defaults to {"CPU": 1}.
-        actor_cls (Optional[Type]): If specified use this class as the
-            remote actors.
-        remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
-            these args will be used for the worker initialization.
-        placement_group (PlacementGroup|str): The placement group that workers
+        actor_cls: If specified use this class as the remote actors.
+        actor_cls_args: If ``actor_cls`` is provided, these positional args will
+            be used for the worker initialization.
+        actor_cls_kwargs: If ``actor_cls`` is provided, these keyword args will
+            be used for the worker initialization.
+        placement_group: The placement group that workers
             should be created in. Defaults to "default" which will inherit the
             parent placement group (if child tasks should be captured).
 
@@ -240,7 +244,8 @@ class WorkerGroup(BaseWorkerGroup):
 
         Args:
             func: A function to call on each worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (List[ObjectRef]) A list of ``ObjectRef`` representing the
@@ -267,7 +272,8 @@ class WorkerGroup(BaseWorkerGroup):
 
         Args:
             func: A function to call on each worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (List[T]) A list containing the output of ``func`` from each
@@ -286,7 +292,8 @@ class WorkerGroup(BaseWorkerGroup):
         Args:
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (ObjectRef) An ObjectRef representing the output of func.
@@ -313,7 +320,8 @@ class WorkerGroup(BaseWorkerGroup):
         Args:
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (T) The output of func.
@@ -329,7 +337,7 @@ class WorkerGroup(BaseWorkerGroup):
         will be terminated.
 
         Args:
-            worker_indexes (List[int]): The indexes of the workers to remove.
+            worker_indexes: The indexes of the workers to remove.
         """
         new_workers = []
         for i in range(len(self.workers)):

@@ -47,7 +47,9 @@ _DEPRECATED_VALUE = "DEPRECATED"
 logger = logging.getLogger(__name__)
 
 
-def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
+def _repr_dataclass(
+    obj: Any, *, default_values: Optional[Dict[str, Any]] = None
+) -> str:
     """A utility function to elegantly represent dataclasses.
 
     In contrast to the default dataclass `__repr__`, which shows all parameters, this

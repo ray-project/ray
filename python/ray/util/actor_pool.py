@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -171,7 +171,7 @@ class ActorPool:
 
         return get_generator()
 
-    def submit(self, fn, value):
+    def submit(self, fn: Callable[["ray.actor.ActorHandle", V], Any], value: V):
         """Schedule a single task to run in the pool.
 
         This has the same argument semantics as map(), but takes on a single
@@ -247,11 +247,22 @@ class ActorPool:
         """
         return bool(self._future_to_actor)
 
-    def get_next(self, timeout=None, ignore_if_timedout=False):
+    def get_next(
+        self,
+        timeout: Optional[float] = None,
+        ignore_if_timedout: bool = False,
+    ):
         """Returns the next pending result in order.
 
         This returns the next result produced by submit(), blocking for up to
         the specified timeout until it is available.
+
+        Arguments:
+            timeout: Max seconds to wait for the next result. ``None`` waits
+                indefinitely.
+            ignore_if_timedout: When True, drop the timed-out task and raise
+                ``TimeoutError`` after advancing past it instead of leaving it
+                in place.
 
         Returns:
             The next result.
@@ -308,13 +319,24 @@ class ActorPool:
             )
         return ray.get(future)
 
-    def get_next_unordered(self, timeout=None, ignore_if_timedout=False):
+    def get_next_unordered(
+        self,
+        timeout: Optional[float] = None,
+        ignore_if_timedout: bool = False,
+    ):
         """Returns any of the next pending results.
 
         This returns some result produced by submit(), blocking for up to
         the specified timeout until it is available. Unlike get_next(), the
         results are not always returned in same order as submitted, which can
         improve performance.
+
+        Arguments:
+            timeout: Max seconds to wait for the next result. ``None`` waits
+                indefinitely.
+            ignore_if_timedout: When True, drop the timed-out task and raise
+                ``TimeoutError`` after advancing past it instead of leaving it
+                in place.
 
         Returns:
             The next result.
@@ -436,8 +458,11 @@ class ActorPool:
             return self._idle_actors.pop()
         return None
 
-    def push(self, actor):
+    def push(self, actor: "ray.actor.ActorHandle"):
         """Pushes a new actor into the current list of idle actors.
+
+        Arguments:
+            actor: The Ray actor handle to add to the pool's idle set.
 
         Examples:
             .. testcode::

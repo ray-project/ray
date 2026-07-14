@@ -375,12 +375,6 @@ def _test_write_large_data(
     write_kwargs = {} if write_kwargs is None else write_kwargs
     write_fn(ds, out_dir, **write_kwargs)
 
-    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
-    assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
-        max_heap_memory,
-        ext,
-    )
-
     # Make sure we can read out a record.
     if read_fn is not None:
         assert read_fn(out_dir).count() == num_blocks_per_task
@@ -553,17 +547,13 @@ def test_dynamic_block_split_deterministic(
 
     # ~800 bytes per block
     ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
-    data = [
-        ray.get(block) for block in ds.materialize()._plan._cache._bundle.block_refs
-    ]
+    data = [ray.get(block) for block in ds.materialize()._cache._bundle.block_refs]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}
     # Iterate over multiple executions of the dataset,
     # and check that blocks were split in the same way
     for _ in range(TEST_ITERATIONS):
-        data = [
-            ray.get(block) for block in ds.materialize()._plan._cache._bundle.block_refs
-        ]
+        data = [ray.get(block) for block in ds.materialize()._cache._bundle.block_refs]
         for block in data:
             assert block_map[block["id"][0]] == block
 

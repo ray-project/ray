@@ -54,7 +54,8 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
-
+        **kwargs: Additional keyword arguments forwarded to
+            ``pyarrow.fs.LocalFileSystem``.
     """
 
     def __init__(self, root_path: Path, exclude: List[str], **kwargs):
@@ -259,6 +260,13 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Checks if (fs, fs_path) is a directory or a file.
 
+    Args:
+        fs: The filesystem to query.
+        fs_path: The path on the filesystem.
+
+    Returns:
+        ``True`` if the path is a directory, ``False`` if it is a file.
+
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
@@ -299,6 +307,9 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
+
+    Returns:
+        A ``(filesystem, path)`` tuple.
     """
     storage_path = str(storage_path)
 
@@ -448,6 +459,8 @@ class StorageContext:
         Args:
             checkpoint: The checkpoint to persist to
                 (fs, experiment_fs_path / checkpoint_dir_name).
+            checkpoint_dir_name: Name of the destination directory for the
+                checkpoint, relative to ``experiment_fs_path``.
 
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.

@@ -17,8 +17,15 @@
 ! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc python_dependencies min_build tools
+! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
 ! release_tests spark_on_ray
+
+# NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
+# from blocking premerge for these changes. We can remove this pass block once effort concludes,
+# or earlier should regressions become an issue.
+doc/*.rst
+# pass
+;
 
 python/ray/air/
 @ ml train train_gpu tune data linux_wheels
@@ -97,6 +104,12 @@ python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
 ;
 
+# Short-circuit deps handling for docs-specific.
+python/deplocks/docs/*.lock
+ci/raydepsets/configs/docs.depsets.yaml
+@ doc python_dependencies
+;
+
 # Raydepsets-generated lock files and raydepsets configs that drive
 # their generation. These do NOT affect the macOS smoke test (which
 # only consumes macos_depset_py*, handled above), so we deliberately
@@ -120,11 +133,14 @@ python/requirements/
 @ python_dependencies
 ;
 
+# Things that need to execute on GPU's
 python/ray/dag/
 python/ray/experimental/channel/
 python/ray/experimental/rdt/
 python/ray/experimental/collective/
 python/ray/tests/rdt/
+python/ray/dashboard/modules/reporter/gpu_providers.py
+python/ray/tests/test_gpu_provider_on_gpu.py
 @ python cgraphs_direct_transport
 ;
 
@@ -181,6 +197,7 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+doc/requirements-doc.txt
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml
@@ -234,6 +251,15 @@ ci/raydepsets/
 ci/ray_ci/macos/macos_ci.sh
 ci/ray_ci/macos/macos_ci_build.sh
 @ macos_wheels
+;
+
+# Windows CI driver scripts (base image build, tool install, cleanup) feed the
+# windowsbuild image that every Windows test consumes. Emit 'windows' so the
+# Windows test steps (tagged 'windows') run, not just the image rebuild. Must
+# precede the general ci/ray_ci/ rule below, which would otherwise swallow
+# these into 'tools' only.
+ci/ray_ci/windows/
+@ windows tools
 ;
 
 ci/pipeline/

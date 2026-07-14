@@ -16,7 +16,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
-from ray.serve.config import DeploymentMode, HTTPOptions
+from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig, ProxyStatus
 
 HEAD_NODE_ID = "node_id-index-head"
@@ -168,28 +168,28 @@ def test_node_selection(all_nodes):
     all_node_ids = {node_id for node_id, _, _ in all_nodes}
     # Test NoServer
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.NoServer)
+        HTTPOptions(location=ProxyLocation.Disabled)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == []
 
     # Test HeadOnly
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.HeadOnly)
+        HTTPOptions(location=ProxyLocation.HeadOnly)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes[:1]
 
     # Test EveryNode
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes
 
     # Test specific nodes
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes({HEAD_NODE_ID}) == [
@@ -409,7 +409,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     be healthy.
     """
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -505,7 +505,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     timer = MockTimer(start_time=0)
 
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode),
+        HTTPOptions(location=ProxyLocation.EveryNode),
         timer=timer,
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -572,7 +572,7 @@ def test_is_ready_for_shutdown(all_nodes):
     should return true.
     """
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -608,7 +608,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
     """
     fake_time = MockTimer()
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        http_options=HTTPOptions(location=DeploymentMode.EveryNode),
+        http_options=HTTPOptions(location=ProxyLocation.EveryNode),
         timer=fake_time,
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -673,7 +673,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
 def test_proxy_state_manager_get_targets(all_nodes):
     """Test the get_targets method on ProxyStateManager."""
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -711,7 +711,7 @@ class TestFallbackProxy:
         cache = MockClusterNodeInfoCache()
         cache.alive_nodes = [self.HEAD_NODE, self.WORKER_NODE]
         manager, cluster_node_info_cache = _create_proxy_state_manager(
-            http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
             cluster_node_info_cache=cache,
             running_native_proxies=True,
             timer=timer,
@@ -736,7 +736,7 @@ class TestFallbackProxy:
         cache = MockClusterNodeInfoCache()
         cache.alive_nodes = [self.HEAD_NODE]
         manager, _ = _create_proxy_state_manager(
-            http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
             cluster_node_info_cache=cache,
             running_native_proxies=False,
         )
@@ -751,7 +751,7 @@ class TestFallbackProxy:
         cache = MockClusterNodeInfoCache()
         cache.alive_nodes = [self.HEAD_NODE, self.WORKER_NODE]
         manager, _ = _create_proxy_state_manager(
-            http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
             cluster_node_info_cache=cache,
             running_native_proxies=True,
         )

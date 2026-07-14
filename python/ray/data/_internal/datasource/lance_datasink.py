@@ -16,6 +16,9 @@ from typing import (
 import pyarrow as pa
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.datasource.lance_utils import (
     create_storage_options_provider,
     get_or_create_namespace,
@@ -28,6 +31,7 @@ from ray.data.datasource.datasink import Datasink
 
 if TYPE_CHECKING:
     import pandas as pd
+    from lance import LanceDataset
     from lance.fragment import FragmentMetadata
 
 
@@ -121,6 +125,9 @@ def _write_fragment(
     def record_batch_converter(block_stream):
         for block in block_stream:
             tbl = BlockAccessor.for_block(block).to_arrow()
+            # `RecordBatchReader.from_batches(schema, ...)` is positional.
+            if schema is not None:
+                tbl = reorder_columns_by_schema(tbl, schema)
             yield from tbl.to_batches()
 
     max_bytes_per_file = (
@@ -238,17 +245,55 @@ class _BaseLanceDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
+    def _open_dataset(self) -> "LanceDataset":
+        """Open the Lance dataset at ``self.uri``.
+
+        Raises whatever Lance raises if the dataset can't be opened (missing,
+        bad ``storage_options``, etc.). Opening natively honors
+        ``storage_options``/``storage_options_provider``.
+        """
+        import lance
+
+        return lance.LanceDataset(
+            self.uri,
+            storage_options=self.storage_options,
+            storage_options_provider=self.storage_options_provider,
+        )
+
+    def _dataset_exists(self) -> bool:
+        """Whether a Lance dataset already exists at ``self.uri``.
+
+        A *successful open* is the authoritative existence signal, and it honors
+        ``storage_options`` for every backend. We intentionally do not try to
+        classify failures (e.g. by matching Lance error strings, which drift
+        across versions): if the dataset can't be opened we report it as
+        not-existing and let the subsequent write surface any real error (such
+        as invalid ``storage_options``) with Lance's own message.
+        """
+        try:
+            self._open_dataset()
+            return True
+        except Exception:
+            return False
+
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         _check_import(self, module="lance", package="pylance")
 
-        import lance
-
-        if self.mode == SaveMode.APPEND:
-            ds = lance.LanceDataset(
-                self.uri,
-                storage_options=self.storage_options,
-                storage_options_provider=self.storage_options_provider,
-            )
+        if self.mode == SaveMode.CREATE:
+            # CREATE must not clobber an existing dataset. Users who want to
+            # replace existing data should use SaveMode.OVERWRITE. Namespace
+            # writes manage table creation separately (the table location is
+            # declared/created up front), so skip the check in that case.
+            if self.table_id is None and self._dataset_exists():
+                raise ValueError(
+                    f"Dataset at {self.uri} already exists. "
+                    "Use mode=SaveMode.OVERWRITE to replace it, or "
+                    "mode=SaveMode.APPEND to add to it."
+                )
+        elif self.mode == SaveMode.APPEND:
+            # APPEND needs the existing dataset's version/schema. Let Lance
+            # raise its own error (e.g. dataset not found) if it can't open.
+            ds = self._open_dataset()
             self.read_version = ds.version
             if self.schema is None:
                 self.schema = ds.schema

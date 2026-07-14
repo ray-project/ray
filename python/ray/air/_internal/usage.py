@@ -71,7 +71,7 @@ class AirEntrypoint(Enum):
     TUNE_RUN_EXPERIMENTS = "tune.run_experiments"
 
 
-def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
+def _find_class_name(obj: object, allowed_module_path_prefix: str, whitelist: Set[str]):
     """Find the class name of the object. If the object is not
     under `allowed_module_path_prefix` or if its class is not in the whitelist,
     return "Custom".
@@ -195,6 +195,9 @@ def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
     nor its implementation.
 
     This will NOT report telemetry if no callbacks are provided by the user.
+
+    Args:
+        callbacks: List of callbacks supplied by the user. May be ``None``.
 
     Returns:
         bool: True if usage was recorded, False otherwise.

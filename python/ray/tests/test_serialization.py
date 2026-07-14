@@ -33,7 +33,7 @@ def test_simple_serialization(ray_start_regular):
         b"a",
         "a",
         string.printable,
-        "\u262F",
+        "\u262f",
         "hello world",
         "\xff\xfe\x9c\x001\x000\x00",
         None,
@@ -151,7 +151,7 @@ def test_complex_serialization(ray_start_regular):
         [1 << 100, [1 << 100]],
         "a",
         string.printable,
-        "\u262F",
+        "\u262f",
         "hello world",
         "\xff\xfe\x9c\x001\x000\x00",
         None,
@@ -344,6 +344,21 @@ def test_inspect_serialization(enable_pickle_debug):
 
     results = inspect_serializability(test_class)
     assert list(results[1])[0].obj == lock, results
+
+    # Test path tracking
+    results = inspect_serializability(test_func, name="my_func")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_func" in path
+    assert "lock" in path
+
+    results = inspect_serializability(test_class, name="my_class")
+    failures = list(results[1])
+    assert len(failures) == 1
+    path = failures[0].path
+    assert "my_class" in path
+    assert "lock" in path
 
 
 def test_serialization_final_fallback(ray_start_regular):
@@ -758,6 +773,68 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
     # It should pass.
     ray.get(test.remote())
+
+
+def test_inspect_serializability_warning_message_is_actionable():
+    """Regression test: WARNING message should include actionable guidance,
+    not just say 'this may be an oversight'."""
+    from ray.util.check_serialize import inspect_serializability
+
+    # A custom __reduce__ that lies to cloudpickle but trips
+    # the traversal — produces the WARNING branch.
+    class Tricky:
+        def __reduce__(self):
+            raise TypeError("cannot pickle 'Tricky' object")
+
+        def method(self):
+            pass
+
+    output = io.StringIO()
+    inspect_serializability(Tricky(), print_file=output)
+    result = output.getvalue()
+
+    # The warning must exist (Tricky trips the warning branch)
+    assert "WARNING" in result
+    # It must now contain actionable guidance, not the old dead-end message
+    assert "inspect_serializability" in result
+    assert "This may be an oversight" not in result
+
+
+def test_inspect_func_serialization_prints_qualname():
+    """Regression test for https://github.com/ray-project/ray/issues/48759.
+
+    The qualified function name should appear in traversal output when
+    inspecting a closure that captures a non-serializable object.
+    Uses a two-level nested function to showcase the context printed
+    at each closure boundary.
+    """
+    import io
+    import threading
+
+    from ray.util.check_serialize import inspect_serializability
+
+    def make_task():
+        lock = threading.Lock()
+
+        def inner():
+            return lock
+
+        def middle():
+            return inner()
+
+        return middle
+
+    out = io.StringIO()
+    serializable, _ = inspect_serializability(make_task(), print_file=out)
+    output = out.getvalue()
+
+    assert not serializable
+    assert (
+        "make_task.<locals>.middle':" in output
+    ), f"Expected middle closure qualname in output, got:\n{output}"
+    assert (
+        "make_task.<locals>.inner':" in output
+    ), f"Expected inner closure qualname in output, got:\n{output}"
 
 
 if __name__ == "__main__":

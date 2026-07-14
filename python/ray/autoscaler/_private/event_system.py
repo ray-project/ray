@@ -60,7 +60,7 @@ class _EventSystem:
             event: Event that callback should be called on. See
                 CreateClusterEvent for details on the events available to be
                 registered against.
-            callback (Callable[[Dict], None]): Callable object that is invoked
+            callback: Callable object that is invoked
                 when specified event occurs.
         """
         if event not in CreateClusterEvent.__members__.values():
@@ -81,7 +81,7 @@ class _EventSystem:
         Args:
             event: Event that is invoked. See CreateClusterEvent
                 for details on the available events.
-            event_data (Dict[str, Any]): Argument that is passed to each
+            event_data: Argument that is passed to each
                 callable object stored for this particular event.
         """
         if event_data is None:
