@@ -414,11 +414,12 @@ class ShuffleManager:
 # would drag it into every driver / worker process that touches this
 # module, and it's only needed here.
 @ray.remote(num_cpus=0)
-def _cleanup_shuffle_dir(base_dir: str) -> None:
-    """Best-effort ``rmtree`` of a per-shuffle ``base_dir`` on the target
-    node. Driver submits one of these per source node at end-of-shuffle
-    via NodeAffinity, decoupling file cleanup from actor lifetime.
-    Failure never propagates — OS tmpwatch is the fallback."""
+def _cleanup_shuffle_dir(base_dir: str, expected_node_id: str) -> None:
+    """Best-effort ``rmtree`` of a per-shuffle ``base_dir``. Submitted with
+    ``NodeAffinity(soft=True)``, so we might land off-target; no-op in that
+    case. Failure never propagates — OS tmpwatch is the fallback."""
+    if ray.get_runtime_context().get_node_id() != expected_node_id:
+        return
     import shutil
     shutil.rmtree(base_dir, ignore_errors=True)
 

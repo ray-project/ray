@@ -33,6 +33,8 @@ from typing import (
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data.context import DataContext
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
 )
@@ -345,7 +347,8 @@ def _external_shuffle_reduce_task(
     fetch_threads: int = _DEFAULT_FETCH_THREADS,
     target_max_block_size: Optional[int] = None,
     map_transformer: Optional[Any] = None,
-    map_task_context: Optional[Any] = None,
+    map_task_context: Optional["TaskContext"] = None,
+    data_context: Optional["DataContext"] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch this partition's shards from every mapper via TCP,
     run ``reduce_fn`` on the accumulated tables, and yield ``(block, pickled
@@ -372,6 +375,7 @@ def _external_shuffle_reduce_task(
         map_transformer: Fused downstream map (typically Write) applied to
             each output block before yielding, or None.
         map_task_context: TaskContext for the fused map, or None.
+        data_context: DataContext to install for the fused map, or None.
     """
     start_time_s = time.perf_counter()
 
@@ -404,10 +408,17 @@ def _external_shuffle_reduce_task(
         if map_transformer is None:
             yield from _yield_with_stats(block)
             return
-        for out_block in map_transformer.apply_transform(
-            iter([block]), map_task_context
+        assert map_task_context is not None and data_context is not None
+        with DataContext.current(data_context), TaskContext.current(
+            map_task_context
         ):
-            yield from _yield_with_stats(out_block)
+            map_transformer.override_target_max_block_size(
+                map_task_context.target_max_block_size_override
+            )
+            for out_block in map_transformer.apply_transform(
+                iter([block]), map_task_context
+            ):
+                yield from _yield_with_stats(out_block)
 
     # Empty-input shortcut: no shards for this partition, hand [] to
     # reduce_fn and emit whatever it yields (may be nothing). Wrap in a

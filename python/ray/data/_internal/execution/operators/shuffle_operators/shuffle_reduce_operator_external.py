@@ -227,6 +227,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             target_max_block_size,
             self._fused_output_map_transformer,
             map_task_context,
+            self.data_context,
         )
 
         data_task = DataOpTask(

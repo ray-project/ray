@@ -524,7 +524,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
                         scheduling_strategy=NodeAffinitySchedulingStrategy(
                             node_id, soft=True
                         ),
-                    ).remote(self._base_dir)
+                    ).remote(self._base_dir, node_id)
                 )
             except Exception:
                 pass
