@@ -1042,7 +1042,7 @@ class ActorReplicaWrapper:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
-            target_node_id: Pin this replica to a node (per-proxy-node placement).
+            target_node_id: If set, pin this replica to this node.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -1790,7 +1790,6 @@ class DeploymentReplica:
     ):
         self._replica_id = replica_id
         self._actor = ActorReplicaWrapper(replica_id, version)
-        # Node this replica is pinned to (per-proxy-node deployments); None otherwise.
         self._target_node_id: Optional[str] = None
         self._start_time = None
         self._shutdown_start_time: Optional[float] = None
@@ -1951,7 +1950,7 @@ class DeploymentReplica:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
-            target_node_id: Pin this replica to a node (per-proxy-node placement).
+            target_node_id: If set, pin this replica to this node.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -3529,9 +3528,9 @@ class DeploymentState:
         )
 
         if deployment_info.ingress_request_router:
-            # The ingress request router runs one replica per proxy node.
-            # reconcile_per_proxy_node drives the count and placement from the
-            # live proxy-node set each control loop.
+            # The ingress request router gets one replica per proxy node, driven
+            # by scale_deployment_replicas from the live proxy-node set each
+            # control loop. Start at 0; it is not autoscaled.
             self._autoscaling_state_manager.deregister_deployment(self._id)
             target_num_replicas = 0
         elif deployment_info.deployment_config.autoscaling_config:
@@ -3679,51 +3678,36 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    @property
-    def uses_per_proxy_node(self) -> bool:
-        """Whether this deployment runs one replica per proxy node.
+    def _rescale_to(self, num_replicas: int) -> None:
+        """Set the target replica count, keeping the current code version.
 
-        The ingress request router is the only such deployment: it must
-        co-locate with every proxy so each node's HAProxy routes on-node.
+        A pure rescale: re-uses the code version so it doesn't mint a new
+        DeploymentVersion that would restart every replica, and records the
+        UPSCALING/DOWNSCALING status transition.
         """
-        info = self._target_state.info
-        return info is not None and info.ingress_request_router
+        old_num = self._target_state.target_num_replicas
+        if num_replicas == old_num:
+            return
+        new_info = copy(self._target_state.info)
+        new_info.version = self._target_state.version.code_version
+        self._set_target_state(new_info, num_replicas)
+        self._record_scaling_status_transition(old_num, num_replicas)
 
-    def reconcile_per_proxy_node(
-        self, proxy_nodes: Set[str]
-    ) -> List[ReplicaSchedulingRequest]:
-        """Keep one replica pinned to each proxy node.
+    def _reconcile_ingress_request_router(self, proxy_nodes: Set[str]) -> List[str]:
+        """Target one replica per proxy node for the ingress request router.
 
-        Pins a new replica to every proxy node that lacks one and stops the
-        replica on every node that no longer runs a proxy, recomputed each
-        control loop. Returns scheduling requests for the new replicas. No-op
-        unless the deployment uses per-proxy-node placement and isn't deleting.
+        Stops any replica whose node no longer runs a proxy and sets the target
+        count to the number of proxy nodes. Returns the proxy nodes that still
+        need a replica so the scale-up path can pin one to each. The normal
+        scale_deployment_replicas flow then owns version reconcile and status.
         """
-        if self._target_state.deleting or not self.uses_per_proxy_node:
+        if self._target_state.deleting:
             return []
 
-        # Keep the target count in sync with the proxy-node count for status.
-        old_num = self._target_state.target_num_replicas
-        if old_num != len(proxy_nodes):
-            # Pin the code version so re-setting the target is a pure rescale
-            # and doesn't mint a new version that would restart replicas.
-            new_info = copy(self._target_state.info)
-            new_info.version = self._target_state.version.code_version
-            self._set_target_state(new_info, len(proxy_nodes))
-            self._record_scaling_status_transition(old_num, len(proxy_nodes))
-
-        # Stop replicas at outdated versions so they are re-pinned at the target
-        # version below.
-        self._check_and_stop_outdated_version_replicas()
-
-        # node -> target-version replica that covers it.
+        # Map each node to the target-version replica already on it.
         covered: Dict[str, DeploymentReplica] = {}
         for replica in self._replicas.get(
-            states=[
-                ReplicaState.STARTING,
-                ReplicaState.UPDATING,
-                ReplicaState.RUNNING,
-            ]
+            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.version != self._target_state.version:
                 continue
@@ -3739,33 +3723,13 @@ class DeploymentState:
         if stale:
             self.stop_replicas(stale)
 
-        missing = [node for node in proxy_nodes if node not in covered]
-        if stale or missing:
+        self._rescale_to(len(proxy_nodes))
+        uncovered = [node for node in proxy_nodes if node not in covered]
+        # A node swap can leave the count unchanged, so force reconcile when
+        # replicas were stopped or nodes still need one.
+        if stale or uncovered:
             self._in_transition = True
-        return self._add_pinned_replicas(missing)
-
-    def _add_pinned_replicas(
-        self, target_nodes: List[str]
-    ) -> List[ReplicaSchedulingRequest]:
-        """Start one replica pinned to each of the given nodes."""
-        if not target_nodes:
-            return []
-        logger.info(
-            f"Adding {len(target_nodes)} replica(s) to {self._id}, "
-            "one per uncovered proxy node."
-        )
-        upscale = []
-        for node_id in target_nodes:
-            replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
-            replica = DeploymentReplica(replica_id, self._target_state.version)
-            scheduling_request = replica.start(
-                self._target_state.info,
-                assign_rank_callback=self._rank_manager.assign_rank,
-                target_node_id=node_id,
-            )
-            upscale.append(scheduling_request)
-            self._replicas.add(ReplicaState.STARTING, replica)
-        return upscale
+        return uncovered
 
     def _stop_or_update_outdated_version_replicas(
         self, max_to_stop: float = math.inf
@@ -3967,6 +3931,7 @@ class DeploymentState:
         gang_placement_groups: Optional[
             Dict[DeploymentID, GangReservationResult]
         ] = None,
+        proxy_nodes: Optional[Set[str]] = None,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas.
 
@@ -3974,11 +3939,20 @@ class DeploymentState:
             gang_placement_groups: Reserved gang placement groups.
                 If this deployment uses gang scheduling and PGs were reserved,
                 replicas will be scheduled onto these PGs.
+            proxy_nodes: Nodes that run a proxy. The ingress request router
+                targets one replica per proxy node.
 
         Returns:
             Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
                 The scheduling requests for the new replicas and the downscale request.
         """
+
+        # The ingress request router targets one replica per proxy node: stop
+        # replicas on nodes that no longer run a proxy, set the target count,
+        # and collect the nodes each new replica should pin to.
+        pinned_nodes: Optional[List[str]] = None
+        if self.is_ingress_request_router():
+            pinned_nodes = self._reconcile_ingress_request_router(proxy_nodes or set())
 
         # Fast path: already at target count with all replicas at target
         # version — no scaling or version updates needed.
@@ -4011,7 +3985,9 @@ class DeploymentState:
         elif delta_replicas > 0:
             to_add = delta_replicas
             upscale = self._get_upscale_replicas(
-                to_add=to_add, gang_placement_groups=gang_placement_groups
+                to_add=to_add,
+                gang_placement_groups=gang_placement_groups,
+                target_node_ids=pinned_nodes,
             )
 
         elif delta_replicas < 0:
@@ -4043,6 +4019,7 @@ class DeploymentState:
         gang_placement_groups: Optional[
             Dict[DeploymentID, GangReservationResult]
         ] = None,
+        target_node_ids: Optional[List[str]] = None,
     ) -> List[ReplicaSchedulingRequest]:
         """Add replicas for this deployment, using gang scheduling when configured."""
         upscale = []
@@ -4050,7 +4027,7 @@ class DeploymentState:
             return upscale
 
         if not self._is_gang_deployment:
-            return self._add_upscale_replicas(to_add)
+            return self._add_upscale_replicas(to_add, target_node_ids=target_node_ids)
 
         gang_reservation_result = (
             gang_placement_groups.get(self._id) if gang_placement_groups else None
@@ -4059,20 +4036,32 @@ class DeploymentState:
             self.get_gang_config(), gang_reservation_result
         )
 
-    def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
-        """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
+    def _add_upscale_replicas(
+        self, to_add: int, target_node_ids: Optional[List[str]] = None
+    ) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for deployments that adopt single-replica (non-gang) scheduling.
+
+        target_node_ids, when given, pins new replica i to node i (the ingress
+        request router uses this to co-locate with each proxy).
+        """
         upscale = []
         logger.info(f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}.")
-        for _ in range(to_add):
+        for i in range(to_add):
             replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
             new_deployment_replica = DeploymentReplica(
                 replica_id,
                 self._target_state.version,
             )
+            target_node_id = (
+                target_node_ids[i]
+                if target_node_ids and i < len(target_node_ids)
+                else None
+            )
             scheduling_request = new_deployment_replica.start(
                 self._target_state.info,
                 assign_rank_callback=self._rank_manager.assign_rank,
+                target_node_id=target_node_id,
             )
             upscale.append(scheduling_request)
 
@@ -6076,15 +6065,10 @@ class DeploymentStateManager:
 
         # STEP 5: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
-            if deployment_state.uses_per_proxy_node:
-                # One replica per proxy node, pinned; also stops replicas on
-                # nodes that no longer run a proxy.
-                upscale = deployment_state.reconcile_per_proxy_node(proxy_nodes)
-                downscale = None
-            else:
-                upscale, downscale = deployment_state.scale_deployment_replicas(
-                    gang_placement_groups=gang_placement_groups,
-                )
+            upscale, downscale = deployment_state.scale_deployment_replicas(
+                gang_placement_groups=gang_placement_groups,
+                proxy_nodes=proxy_nodes,
+            )
 
             if upscale:
                 upscales[deployment_id] = upscale

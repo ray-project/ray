@@ -4391,12 +4391,14 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
-def _per_node_target_ids(ds) -> set:
+def _pinned_target_node_ids(ds) -> set:
     return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
 
 
-def test_per_proxy_node_pins_one_replica_per_proxy_node(mock_deployment_state_manager):
-    """A per-proxy-node deployment pins one replica to each proxy node."""
+def test_ingress_request_router_pins_one_replica_per_proxy_node(
+    mock_deployment_state_manager,
+):
+    """The ingress request router pins one replica to each proxy node."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
     n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
@@ -4407,14 +4409,14 @@ def test_per_proxy_node_pins_one_replica_per_proxy_node(mock_deployment_state_ma
     dsm.update(proxy_nodes={n1, n2})
     check_counts(ds, total=2)
     assert ds.target_num_replicas == 2
-    assert _per_node_target_ids(ds) == {n1, n2}
+    assert _pinned_target_node_ids(ds) == {n1, n2}
 
     # Idempotent: the same proxy-node set adds nothing.
     dsm.update(proxy_nodes={n1, n2})
     check_counts(ds, total=2)
 
 
-def test_per_proxy_node_tracks_node_set(mock_deployment_state_manager):
+def test_ingress_request_router_tracks_proxy_node_set(mock_deployment_state_manager):
     """Replicas follow proxy nodes as they join and leave."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -4423,21 +4425,21 @@ def test_per_proxy_node_tracks_node_set(mock_deployment_state_manager):
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     dsm.update(proxy_nodes={n1, n2})
-    assert _per_node_target_ids(ds) == {n1, n2}
+    assert _pinned_target_node_ids(ds) == {n1, n2}
 
     # A proxy node joins: a replica is pinned to it.
     dsm.update(proxy_nodes={n1, n2, n3})
     assert ds.target_num_replicas == 3
-    assert _per_node_target_ids(ds) == {n1, n2, n3}
+    assert _pinned_target_node_ids(ds) == {n1, n2, n3}
 
     # A proxy node leaves: its replica is stopped, the rest stay pinned.
     dsm.update(proxy_nodes={n1, n3})
     assert ds.target_num_replicas == 2
-    assert _per_node_target_ids(ds) == {n1, n3}
+    assert _pinned_target_node_ids(ds) == {n1, n3}
     assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
 
 
-def test_per_proxy_node_status_reflects_scaling(mock_deployment_state_manager):
+def test_ingress_request_router_status_reflects_scaling(mock_deployment_state_manager):
     """A proxy node joining/leaving surfaces UPSCALING/DOWNSCALING, then HEALTHY."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -4465,10 +4467,10 @@ def test_per_proxy_node_status_reflects_scaling(mock_deployment_state_manager):
     assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
 
 
-def test_per_proxy_node_only_affects_per_proxy_node_deployments(
+def test_ingress_request_router_scaling_only_affects_router(
     mock_deployment_state_manager,
 ):
-    """A fixed-num_replicas deployment ignores the proxy-node set."""
+    """A non-router deployment ignores the proxy-node set."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
     nodes = {NodeID.from_random().hex() for _ in range(3)}
