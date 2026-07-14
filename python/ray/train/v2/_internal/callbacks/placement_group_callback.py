@@ -57,12 +57,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
         core_context = ray.runtime_context.get_runtime_context()
         self._controller_actor_id = core_context.get_actor_id()
         try:
-            # Launch the cleaner as a detached actor so it survives controller death.
-            # Pin it to the head node (which is never scaled down) so this
-            # lightweight, zero-CPU actor does not keep an otherwise-idle worker
-            # node alive and block autoscaler scale-down. "DEFAULT" scheduling
-            # escapes the training placement group, which the cleaner is
-            # responsible for removing. This mirrors the TrainStateActor.
+            # Launch the cleaner as a detached actor so it survives controller death
             cleaner_actor_cls = ray.remote(num_cpus=0)(PlacementGroupCleaner)
             self._cleaner = cleaner_actor_cls.options(
                 lifetime="detached",
