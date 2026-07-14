@@ -2790,6 +2790,61 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesProducedRefAfterCance
 }
 
 TEST_F(TaskManagerTest,
+       TestObjectRefStreamEagerPeekPropagatesUnreportedApplicationError) {
+  // A task can fail before its generator executor starts, such as when a
+  // by-reference dependency already contains an error. No stream item is
+  // reported in that case, but an eager peek must receive the serialized task
+  // error rather than a clean EOF marker.
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  const ObjectID generator_id = spec.ReturnId(0);
+  const ObjectID first_ref_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  const ObjectID past_eof_ref_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  std::vector<std::pair<ObjectID, bool>> peeked =
+      manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_ref_id);
+  ASSERT_EQ(peeked[1].first, past_eof_ref_id);
+
+  const std::string error_data = "serialized task error";
+  const std::string error_metadata =
+      std::to_string(static_cast<int>(rpc::ErrorType::TASK_EXECUTION_EXCEPTION));
+  rpc::PushTaskReply reply;
+  rpc::ReturnObject *task_error = reply.add_return_objects();
+  task_error->set_object_id(generator_id.Binary());
+  task_error->set_data(error_data);
+  task_error->set_metadata(error_metadata);
+  task_error->set_size(error_data.size() + error_metadata.size());
+  reply.set_task_execution_error("User exception: dependency failed");
+  manager_.CompletePendingTask(
+      spec.TaskId(), reply, caller_address, /*is_application_error=*/true);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({first_ref_id, past_eof_ref_id}, 2, 1, ctx, &results));
+  ASSERT_EQ(results.size(), 2UL);
+  for (const std::shared_ptr<RayObject> &result : results) {
+    ASSERT_NE(result->GetData(), nullptr);
+    ASSERT_NE(result->GetMetadata(), nullptr);
+    const std::string result_data(
+        reinterpret_cast<const char *>(result->GetData()->Data()),
+        result->GetData()->Size());
+    const std::string result_metadata(
+        reinterpret_cast<const char *>(result->GetMetadata()->Data()),
+        result->GetMetadata()->Size());
+    ASSERT_EQ(result_data, error_data);
+    ASSERT_EQ(result_metadata, error_metadata);
+  }
+
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest,
        TestObjectRefStreamBulkReadCountsProducedRefAtEofForBackpressure) {
   // Cancellation can set EOF at an index that already holds a produced value.
   // Bulk-consuming that value must still count it as consumed and notify the

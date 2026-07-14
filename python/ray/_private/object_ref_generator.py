@@ -208,7 +208,10 @@ class ObjectRefGenerator:
         or worker death -- the ref surfaces that terminal error instead. Python
         generator application exceptions are normally reported as a stream item;
         positions after that reported exception may still be clean
-        end-of-stream.
+        end-of-stream. A task that fails before the generator executor starts,
+        such as one with a failed by-reference dependency, has no streamed
+        exception item; its EOF-region refs preserve the serialized error from
+        the generator completion object instead.
 
         Args:
             num_refs: The number of references to return, starting from the
