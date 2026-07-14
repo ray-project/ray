@@ -172,9 +172,8 @@ point to files or directories.
 
 .. warning::
 
-    Ray Data deprecates the ``local://`` scheme and plans to remove it in a
-    future release. Use cloud storage or a shared filesystem path that's
-    available on every Ray node instead.
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 

@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
@@ -19,7 +20,7 @@ def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
 )
 def test_scheduling_config_emits_deprecation_warning(attr, value):
     ctx = ray.data.DataContext()
-    with pytest.warns(DeprecationWarning, match=rf"DataContext\.{attr}"):
+    with pytest.warns(RayDeprecationWarning, match=rf"DataContext\.{attr}"):
         setattr(ctx, attr, value)
 
 

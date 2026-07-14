@@ -13,6 +13,7 @@ from ray.data.datasource.path_util import (
     _is_local_windows_path,
     _resolve_paths_and_filesystem,
 )
+from ray.util.annotations import RayDeprecationWarning
 
 
 @pytest.mark.parametrize(
@@ -85,7 +86,7 @@ def test_resolve_local_scheme_emits_deprecation_warning(tmp_path, prefix):
     path = tmp_path / "data.txt"
     path.write_text("")
 
-    with pytest.warns(DeprecationWarning, match="local://"):
+    with pytest.warns(RayDeprecationWarning, match="local://"):
         _resolve_paths_and_filesystem(f"{prefix}{path}")
 
 

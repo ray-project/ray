@@ -27,9 +27,8 @@ mounted directory.
 
 .. warning::
 
-    Ray Data deprecates the ``local://`` scheme and plans to remove it in a
-    future release. Use cloud storage or a shared filesystem path that's
-    available on every Ray node instead.
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 .. testcode::
     :skipif: True

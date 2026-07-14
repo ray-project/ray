@@ -257,7 +257,7 @@ following conditions:
 
 * The operator has inputs.
 * There are adequate resources available.
-* The operator isn't under back pressure.
+* The operator isn’t backpressured.
 
 If there are multiple viable operators, the executor chooses the operator with the
 smallest out queue.
@@ -268,21 +268,9 @@ Scheduling
 Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
 * The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
-* Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 * Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50 MB; otherwise, they use the ``DEFAULT`` scheduling strategy.
 * Read operations use the ``SPREAD`` scheduling strategy.
 * All other operations, such as split, sort, and shuffle, use the ``DEFAULT`` scheduling strategy.
-
-.. _datasets_pg:
-
-Ray Data and placement groups
------------------------------
-
-By default, Ray Data manages task and actor scheduling internally. Ray Data
-deprecates the ``DataContext.scheduling_strategy`` override and plans to remove
-it in a future release.
-
-The general recommendation is to let Ray Data manage placement group behavior.
 
 .. _datasets_tune:
 

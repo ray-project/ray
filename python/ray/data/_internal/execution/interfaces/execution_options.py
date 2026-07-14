@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 
 
 class ExecutionResources:
@@ -423,11 +423,13 @@ class ExecutionOptions:
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
         self.resource_limits = resource_limits
-        if exclude_resources is None:
-            exclude_resources = ExecutionResources.zero()
-        self.exclude_resources = exclude_resources
+        self._exclude_resources = ExecutionResources.zero()
+        if exclude_resources is not None:
+            self.exclude_resources = exclude_resources
         self.preserve_order = preserve_order
-        self.actor_locality_enabled = actor_locality_enabled
+        self._actor_locality_enabled = True
+        if actor_locality_enabled is not True:
+            self.actor_locality_enabled = actor_locality_enabled
         if verbose_progress is None:
             verbose_progress = bool(
                 int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1"))
@@ -467,17 +469,17 @@ class ExecutionOptions:
         if value is None:
             value = ExecutionResources.zero()
 
-        if hasattr(self, "_exclude_resources") or value != ExecutionResources.zero():
-            warnings.warn(
-                "`ExecutionOptions.exclude_resources` is deprecated and will be "
-                "removed in a future release. Use `ExecutionOptions.label_selector` "
-                "to constrain Ray Data work to labeled nodes.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        warnings.warn(
+            "`ExecutionOptions.exclude_resources` is deprecated and will be "
+            "removed after January 2027. Use `ExecutionOptions.label_selector` "
+            "to constrain Ray Data work to labeled nodes.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         self._set_exclude_resources(value)
 
     def _set_exclude_resources(self, value: Optional[ExecutionResources]) -> None:
+        """Set resources internally for Train v1 without warning users."""
         if value is None:
             value = ExecutionResources.zero()
         self._exclude_resources = value
@@ -488,14 +490,13 @@ class ExecutionOptions:
 
     @actor_locality_enabled.setter
     def actor_locality_enabled(self, value: bool) -> None:
-        if hasattr(self, "_actor_locality_enabled") or value is not True:
-            warnings.warn(
-                "`ExecutionOptions.actor_locality_enabled` is deprecated and will "
-                "be removed in a future release. Ray Data manages actor locality "
-                "internally.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        warnings.warn(
+            "`ExecutionOptions.actor_locality_enabled` is deprecated and will "
+            "be removed after January 2027. Ray Data manages actor locality "
+            "internally.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         self._actor_locality_enabled = value
 
     def is_resource_limits_default(self):

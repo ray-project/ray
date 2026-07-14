@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -932,8 +932,8 @@ class DataContext:
         ):
             warnings.warn(
                 "`DataContext.scheduling_strategy` is deprecated and will be removed "
-                "in a future release. Ray Data manages scheduling internally.",
-                DeprecationWarning,
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
                 stacklevel=2,
             )
 
@@ -942,9 +942,9 @@ class DataContext:
         ):
             warnings.warn(
                 "`DataContext.scheduling_strategy_large_args` is deprecated and will "
-                "be removed in a future release. Ray Data manages scheduling "
+                "be removed after January 2027. Ray Data manages scheduling "
                 "internally.",
-                DeprecationWarning,
+                RayDeprecationWarning,
                 stacklevel=2,
             )
 
@@ -953,8 +953,8 @@ class DataContext:
         ):
             warnings.warn(
                 "`DataContext.large_args_threshold` is deprecated and will be removed "
-                "in a future release. Ray Data manages scheduling internally.",
-                DeprecationWarning,
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
                 stacklevel=2,
             )
 

@@ -10,6 +10,7 @@ from ray.data._internal.util import (
     _normalize_paths_to_strings,
     _resolve_custom_scheme,
 )
+from ray.util.annotations import RayDeprecationWarning
 
 logger = logging.getLogger(__name__)
 
@@ -364,9 +365,9 @@ def _resolve_paths_and_filesystem(
     paths = _normalize_paths_to_strings(paths)
     if any(path.lower().startswith("local:") for path in paths):
         warnings.warn(
-            "`local://` paths in Ray Data are deprecated and will be removed in a "
-            "future release. Use shared or cloud storage for distributed execution.",
-            DeprecationWarning,
+            "`local://` paths in Ray Data are deprecated and will be removed after "
+            "January 2027. Use shared or cloud storage for distributed execution.",
+            RayDeprecationWarning,
             stacklevel=3,
         )
 
