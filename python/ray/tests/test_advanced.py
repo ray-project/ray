@@ -5,7 +5,6 @@ import os
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray._private.profiling as profiling
@@ -13,13 +12,11 @@ import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import (
     get_local_ongoing_lineage_reconstruction_tasks,
-    memory_summary,
 )
 from ray._private.test_utils import (
     client_test_enabled,
 )
 from ray.core.generated import common_pb2
-from ray.exceptions import ObjectFreedError
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -27,96 +24,6 @@ else:
     import ray
 
 logger = logging.getLogger(__name__)
-
-
-# issue https://github.com/ray-project/ray/issues/7105
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_internal_free(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    class Sampler:
-        def sample(self):
-            return [1, 2, 3, 4, 5]
-
-        def sample_big(self):
-            return np.zeros(1024 * 1024)
-
-    sampler = Sampler.remote()
-
-    # Free deletes from in-memory store.
-    obj_ref = sampler.sample.remote()
-    ray.get(obj_ref)
-    ray._private.internal_api.free(obj_ref)
-    with pytest.raises(ObjectFreedError):
-        ray.get(obj_ref)
-
-    # Free deletes big objects from plasma store.
-    big_id = sampler.sample_big.remote()
-    ray.get(big_id)
-    ray._private.internal_api.free(big_id)
-    with pytest.raises(ObjectFreedError):
-        ray.get(big_id)
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_internal_free_non_owned(shutdown_only):
-    info = ray.init(num_cpus=1)
-
-    @ray.remote
-    def gen_data():
-        return ray.put(np.zeros(1024 * 1024))
-
-    @ray.remote
-    def do_free(ref_list):
-        ray._private.internal_api.free(ref_list, local_only=False)
-        for ref in ref_list:
-            with pytest.raises(ObjectFreedError):
-                ray.get(ref)
-
-    # Can free locally owned objects from remote worker.
-    ref_1 = ray.put(np.zeros(1024 * 1024))
-    ref_2 = ray.put(np.zeros(1024 * 1024))
-    ray.get(do_free.remote([ref_1, ref_2]))
-
-    # Can free remotely owned objects from local worker.
-    ref_3 = ray.get(gen_data.remote())
-    ref_4 = ray.get(gen_data.remote())
-    ray._private.internal_api.free([ref_3, ref_4], local_only=False)
-    for ref in [ref_3, ref_4]:
-        with pytest.raises(ObjectFreedError):
-            ray.get(ref)
-
-    # Memory was really freed.
-    info = memory_summary(info.address_info["address"])
-    assert "Plasma memory usage 0 MiB, 0 objects" in info, info
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_internal_free_edge_case(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            "fetch_fail_timeout_milliseconds": 200,
-        },
-    )
-
-    @ray.remote
-    def gen():
-        return ray.put(np.ones(1024 * 1024 * 100))
-
-    @ray.remote
-    def free(x):
-        ray._private.internal_api.free(x[0], local_only=False)
-
-    x = ray.get(gen.remote())
-    ray.get(x)
-    ray.get(free.remote([x]))
-
-    # This currently hangs, since as a borrower we never subscribe for
-    # object deletion events. Check that we at least hit the fetch timeout.
-    with pytest.raises(ray.exceptions.ObjectFetchTimedOutError):
-        ray.get(x)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")

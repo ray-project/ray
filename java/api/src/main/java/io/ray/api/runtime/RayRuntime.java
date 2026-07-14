@@ -97,14 +97,6 @@ public interface RayRuntime {
   <T> WaitResult<T> wait(
       List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal);
 
-  /**
-   * Free a list of objects from Plasma Store.
-   *
-   * @param objectRefs The object references to free.
-   * @param localOnly Whether only free objects for local object store or not.
-   */
-  void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
-
   <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
   /**
