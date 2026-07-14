@@ -466,7 +466,7 @@ class ParquetFileReader(FileReader):
         for batch in pf.iter_batches(
             batch_size=fallback_batch_size,
             columns=read_columns,
-            use_threads=False,
+            use_threads=True,
             row_groups=row_groups,
         ):
             table = pa.Table.from_batches([batch])
