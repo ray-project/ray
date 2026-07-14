@@ -462,9 +462,9 @@ TRAIN_GRAFANA_ROWS = [
         ],
         collapsed=True,
     ),
-    # Data Loading Row
+    # Data Ingestion Row
     Row(
-        title="Data Loading",
+        title="Data Ingestion",
         id=21,
         panels=[
             DATA_LOADING_RATIO_PANEL,
