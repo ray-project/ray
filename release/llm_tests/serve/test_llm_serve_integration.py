@@ -448,6 +448,8 @@ def test_prometheus_autoscaling():
     end-to-end: deploy with 1 replica, send traffic so p99 TTFT exceeds a
     trivially low threshold, and verify scale-up to 2 replicas."""
     import os
+    import threading
+
     from openai import OpenAI
     from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
     from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy, P99_TTFT_QUERY
@@ -481,42 +483,55 @@ def test_prometheus_autoscaling():
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
 
-    # Wait for the server to actually handle requests
     client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-    for _ in range(30):
-        try:
-            client.completions.create(
-                model=model_id, prompt="test", max_tokens=5, temperature=0
-            )
-            break
-        except Exception:
-            time.sleep(2)
 
-    # Send traffic to generate TTFT metrics (any real TTFT > 0.001s)
-    for i in range(10):
-        try:
-            client.completions.create(
-                model=model_id,
-                prompt=f"Write a story about topic {i}. " * 10,
-                max_tokens=30,
-                temperature=0.8,
-            )
-        except Exception:
-            pass
+    def server_ready():
+        client.completions.create(
+            model=model_id, prompt="test", max_tokens=5, temperature=0
+        )
+        return True
 
-    # Wait for scale-up: policy threshold is 0.001s, any real TTFT triggers it
-    def scaled_to_two():
-        status = serve.status()
-        for app_status in status.applications.values():
-            for name, dep in app_status.deployments.items():
-                if "LLMServer" in name:
-                    running = dep.replica_states.get("RUNNING", 0)
-                    print(f"  {name}: {running} running replicas")
-                    return running >= 2
-        return False
+    wait_for_condition(server_ready, timeout=120, retry_interval_ms=2000)
 
-    wait_for_condition(scaled_to_two, timeout=120, retry_interval_ms=5000)
-    print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")
+    # The p99 TTFT signal is rate()-based, so it needs continuous traffic to
+    # stay non-NaN. Drive sustained load in the background while the autoscaler
+    # reacts; a one-shot burst decays to NaN before scale-up happens.
+    stop = threading.Event()
+
+    def generate_load():
+        while not stop.is_set():
+            try:
+                client.completions.create(
+                    model=model_id,
+                    prompt="Write a detailed story. " * 20,
+                    max_tokens=64,
+                    temperature=0.8,
+                )
+            except Exception:
+                pass
+
+    loaders = [threading.Thread(target=generate_load, daemon=True) for _ in range(4)]
+    for loader in loaders:
+        loader.start()
+
+    try:
+        # Policy threshold is 0.001s; a real p99 TTFT (~40ms) triggers scale-up.
+        def scaled_to_two():
+            status = serve.status()
+            for app_status in status.applications.values():
+                for name, dep in app_status.deployments.items():
+                    if "LLMServer" in name:
+                        running = dep.replica_states.get("RUNNING", 0)
+                        print(f"  {name}: {running} running replicas")
+                        return running >= 2
+            return False
+
+        # Metric appears ~10s after traffic starts, the p99 query goes finite
+        # ~20s in, plus the upscale delay and Prometheus scrape lag.
+        wait_for_condition(scaled_to_two, timeout=240, retry_interval_ms=5000)
+        print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")
+    finally:
+        stop.set()
 
     serve.shutdown()
     time.sleep(1)
