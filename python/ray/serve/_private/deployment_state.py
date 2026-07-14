@@ -3528,9 +3528,10 @@ class DeploymentState:
             f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
         )
 
-        if deployment_info.deployment_config.num_replicas_per_node:
-            # One replica per proxy node. reconcile_per_proxy_node drives the
-            # count and placement from the live proxy-node set each control loop.
+        if deployment_info.ingress_request_router:
+            # The ingress request router runs one replica per proxy node.
+            # reconcile_per_proxy_node drives the count and placement from the
+            # live proxy-node set each control loop.
             self._autoscaling_state_manager.deregister_deployment(self._id)
             target_num_replicas = 0
         elif deployment_info.deployment_config.autoscaling_config:
@@ -3680,9 +3681,13 @@ class DeploymentState:
 
     @property
     def uses_per_proxy_node(self) -> bool:
-        """Whether this deployment runs one replica per proxy node."""
+        """Whether this deployment runs one replica per proxy node.
+
+        The ingress request router is the only such deployment: it must
+        co-locate with every proxy so each node's HAProxy routes on-node.
+        """
         info = self._target_state.info
-        return info is not None and info.deployment_config.num_replicas_per_node
+        return info is not None and info.ingress_request_router
 
     def reconcile_per_proxy_node(
         self, proxy_nodes: Set[str]

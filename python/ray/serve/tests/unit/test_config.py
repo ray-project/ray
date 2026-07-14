@@ -205,13 +205,6 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError):
             b.num_replicas = -1
 
-    def test_num_replicas_per_node_internal_flag(self):
-        """num_replicas_per_node is an internal flag; it survives a proto round-trip."""
-        assert DeploymentConfig().num_replicas_per_node is False
-        dc = DeploymentConfig(num_replicas_per_node=True)
-        roundtripped = DeploymentConfig.from_proto_bytes(dc.to_proto_bytes())
-        assert roundtripped.num_replicas_per_node is True
-
     def test_from_default(self):
         """Check from_default() method behavior."""
 
