@@ -120,6 +120,10 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
           /*scheduling_failure_message*/ reply->scheduling_failure_message());
       return;
     }
+
+    // tell the raylet who's boss
+    actor->GetMutableLeaseSpec()->set_is_centrally_scheduled(true);
+
     const auto &retry_at_raylet_address = reply->retry_at_raylet_address();
     RAY_CHECK(!retry_at_raylet_address.node_id().empty());
     auto node_id = NodeID::FromBinary(retry_at_raylet_address.node_id());
@@ -320,60 +324,6 @@ void GcsActorScheduler::LeaseWorkerFromNode(
 
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_lease_spec()->CopyFrom(actor->GetLeaseSpecification().GetMessage());
-  if (RayConfig::instance().centralized_actor_scheduling()) {
-    // if this is a placement group lease, replace the bundle resources with the required
-    // resources, since the raylets no longer have the bundle information
-    const auto pg_id = actor->GetLeaseSpecification().PlacementGroupBundleId();
-    if (!pg_id.first.IsNil()) {
-      RAY_LOG(DEBUG).WithField(actor->GetActorID())
-          << "PG LEASE " << actor->GetLeaseSpecification().DebugString();
-
-      auto resources = ResourceSet();
-      for (const auto &[id, value] :
-           *request.mutable_lease_spec()->mutable_required_resources()) {
-        // do this first to avoid possible RAY_CHECK() failure
-        auto data = ParsePgFormattedResource(id, true, true);
-
-        if (data.has_value() && !absl::StartsWith(id, kBundle_ResourceLabel)) {
-          resources.Set(ResourceID(GetOriginalResourceName(id)), FixedPoint(value));
-          continue;
-        }
-
-        if (!absl::StartsWith(id, kBundle_ResourceLabel)) {
-          resources.Set(ResourceID(id), FixedPoint(value));
-        }
-      }
-      request.mutable_lease_spec()->mutable_required_resources()->clear();
-      for (const auto &[id, value] : resources.GetResourceMap()) {
-        request.mutable_lease_spec()->mutable_required_resources()->insert({id, value});
-      }
-
-      auto placement_resources = ResourceSet();
-      for (const auto &[id, value] :
-           *request.mutable_lease_spec()->mutable_required_placement_resources()) {
-        // do this first to avoid possible RAY_CHECK() failure
-        auto data = ParsePgFormattedResource(id, true, true);
-
-        if (data.has_value() && !absl::StartsWith(id, kBundle_ResourceLabel)) {
-          placement_resources.Set(ResourceID(GetOriginalResourceName(id)),
-                                  FixedPoint(value));
-          continue;
-        }
-
-        if (!absl::StartsWith(id, kBundle_ResourceLabel)) {
-          placement_resources.Set(ResourceID(id), FixedPoint(value));
-        }
-      }
-      request.mutable_lease_spec()->mutable_required_placement_resources()->clear();
-      for (const auto &[id, value] : placement_resources.GetResourceMap()) {
-        request.mutable_lease_spec()->mutable_required_placement_resources()->insert(
-            {id, value});
-      }
-
-      RAY_LOG(DEBUG).WithField(actor->GetActorID())
-          << "PG LEASE2 " << request.lease_spec().DebugString();
-    }
-  }
 
   request.set_grant_or_reject(actor->GetGrantOrReject());
   request.set_backlog_size(0);

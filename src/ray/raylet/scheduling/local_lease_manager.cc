@@ -82,16 +82,19 @@ void LocalLeaseManager::QueueAndScheduleLease(std::shared_ptr<internal::Work> wo
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
   // The local node must be feasible if the cluster lease manager decides to run the task
   // locally.
-  RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
-      self_scheduling_node_id_,
-      ResourceMapToResourceRequest(work->lease_.GetLeaseSpecification()
-                                       .GetRequiredPlacementResources()
-                                       .GetResourceMap(),
-                                   /*requires_object_store_memory=*/false)))
-      << work->lease_.GetLeaseSpecification().DebugString() << " "
-      << cluster_resource_scheduler_.GetClusterResourceManager()
-             .GetNodeResources(self_scheduling_node_id_)
-             .DebugString();
+  if (!work->lease_.GetLeaseSpecification().IsCentrallyScheduled()) {
+    RAY_CHECK(
+        cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
+            self_scheduling_node_id_,
+            ResourceMapToResourceRequest(work->lease_.GetLeaseSpecification()
+                                             .GetRequiredPlacementResources()
+                                             .GetResourceMap(),
+                                         /*requires_object_store_memory=*/false)))
+        << work->lease_.GetLeaseSpecification().DebugString() << " "
+        << cluster_resource_scheduler_.GetClusterResourceManager()
+               .GetNodeResources(self_scheduling_node_id_)
+               .DebugString();
+  }
   WaitForLeaseArgsRequests(std::move(work));
   ScheduleAndGrantLeases();
 }
@@ -358,9 +361,10 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable =
           !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
-          cluster_resource_scheduler_.GetLocalResourceManager()
-              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
-                                          allocated_instances);
+          (spec.IsCentrallyScheduled() ||
+           cluster_resource_scheduler_.GetLocalResourceManager()
+               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                           allocated_instances));
       if (!schedulable) {
         ReleaseLeaseArgs(lease_id);
         // The local node currently does not have the resources to grant the lease, so we
@@ -558,7 +562,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   const auto &lease = work->lease_;
   bool granted = false;
 
-  if (!canceled) {
+  if (!canceled && !work->lease_.GetLeaseSpecification().IsCentrallyScheduled()) {
     const auto &required_resource =
         lease.GetLeaseSpecification().GetRequiredResources().GetResourceMap();
     for (auto &entry : required_resource) {

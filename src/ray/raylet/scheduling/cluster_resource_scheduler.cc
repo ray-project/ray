@@ -324,11 +324,13 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     // If the local node is available, we should directly return it instead of
     // going through the full hybrid policy since we don't want spillback.
     if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
-        IsSchedulableOnNode(local_node_id_,
-                            lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                            label_selector,
-                            requires_object_store_memory)) {
+        (IsSchedulableOnNode(local_node_id_,
+                             lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+                             label_selector,
+                             requires_object_store_memory) ||
+         lease_spec.IsCentrallyScheduled())) {
       *is_infeasible = false;
+      RAY_LOG(INFO) << "RETURNING LOCAL NODE";
       return local_node_id_;
     }
 
