@@ -29,7 +29,10 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
-from ray.data._internal.datasource_v2.readers.supports_metadata import MetadataType
+from ray.data._internal.datasource_v2.readers.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
@@ -138,7 +141,7 @@ def _estimate_batch_size_from_metadata(
 
 
 @DeveloperAPI
-class ParquetFileReader(FileReader):
+class ParquetFileReader(FileReader, SupportsMetadata):
     """Parquet-specific file reader with adaptive batch sizing.
 
     Extends :class:`FileReader` with:
