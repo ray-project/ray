@@ -197,18 +197,17 @@ class TestDownstreamCapacityBackpressurePolicy:
         return fraction
 
     def _set_queue_ratio(self, op, op_state, rm, queue_size, downstream_capacity):
-        """Helper to set queue ratio via mocks.
+        """Helper to set output ratio via mocks.
 
         Matches _get_output_ratio logic:
-        - queue_size_bytes = output_queue_bytes() + sum(get_op_usage(ineligible).object_store_memory)
-        - downstream_capacity_size_bytes = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
-        - If downstream_capacity == 0, returns 0 (no backpressure)
-        - Else returns queue_size / downstream_capacity
+        - output_size_bytes = get_mem_op_outputs(op) (BlockRefCounter bytes)
+        - downstream_capacity = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
+        - ratio = max((output_size / downstream_capacity) - 1, 0)
 
-        Returns the calculated queue_ratio for assertions.
+        Returns the calculated ratio for assertions.
         """
-        # Set queue size via output_queue_bytes
-        op_state.output_queue_bytes.return_value = queue_size
+        # Set output size via get_mem_op_outputs (BlockRefCounter bytes)
+        rm.get_mem_op_outputs.return_value = queue_size
 
         # Set downstream capacity on the first output dependency
         if op.output_dependencies:
@@ -219,7 +218,7 @@ class TestDownstreamCapacityBackpressurePolicy:
 
         if downstream_capacity == 0:
             return 0
-        return queue_size / downstream_capacity
+        return (queue_size / downstream_capacity) - 1
 
     def test_backpressure_disabled_when_ratio_is_none(self):
         """Test that backpressure is disabled when ratio is None."""
