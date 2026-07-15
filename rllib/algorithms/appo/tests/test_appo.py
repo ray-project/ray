@@ -234,10 +234,7 @@ class TestAPPO(unittest.TestCase):
             # The global server actor exists iff the flag is enabled.
             self.assertEqual(algo._env_runner_state_server is not None, use_server)
 
-            # APPO trains asynchronously. With the EnvRunnerStateServer enabled the
-            # extra state pull adds latency, so the first iteration can return before
-            # any learner update is reported (making `results["learners"]` absent and
-            # the check below fail). Train until a learner update lands, mirroring the
+            # APPO trains asynchronously. Train until a learner update lands, mirroring the
             # warm-up loop in `test_env_runner_state_server_kill_and_recover`.
             for _ in range(20):
                 results = algo.train()
