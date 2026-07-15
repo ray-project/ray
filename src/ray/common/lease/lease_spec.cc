@@ -366,6 +366,10 @@ bool LeaseSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
+bool LeaseSpecification::IsCentrallyScheduled() const {
+  return message_->is_centrally_scheduled();
+}
+
 SchedulingClass LeaseSpecification::GetSchedulingClass() const { return sched_cls_id_; }
 
 const rpc::LeaseSpec &LeaseSpecification::GetMessage() const { return *message_; }

@@ -54,6 +54,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   const std::vector<FallbackOption> &GetFallbackStrategy() const;
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
   bool IsNodeAffinitySchedulingStrategy() const;
+  bool IsCentrallyScheduled() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
   bool GetNodeAffinitySchedulingStrategySoft() const;
   std::vector<ObjectID> GetDependencyIds() const;
