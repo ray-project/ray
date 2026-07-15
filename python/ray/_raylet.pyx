@@ -1369,6 +1369,12 @@ async def _async_reserve_actor_generator_slot(
         await event.wait()
 
 
+def _execute_streaming_generator_sync(context):
+    """Python-callable wrapper so sync generator execution can run in a
+    ThreadPoolExecutor (cdef functions are not valid executor callables)."""
+    execute_streaming_generator_sync(context)
+
+
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
@@ -2121,6 +2127,23 @@ cdef void execute_task(
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
                                 execute_streaming_generator_async(context),
+                                function_descriptor,
+                                name_of_concurrency_group_to_execute,
+                                task_id=task_id,
+                                task_name=task_name)
+                        elif core_worker.current_actor_is_asyncio():
+                            # Sync generator backpressure waits use absl::CondVar,
+                            # which would block the async actor's fiber thread.
+                            # Run on a worker thread instead (default executor,
+                            # not the single-thread report pool).
+                            async def _run_sync_gen_off():
+                                await asyncio.get_running_loop().run_in_executor(
+                                    None,
+                                    _execute_streaming_generator_sync,
+                                    context,
+                                )
+                            core_worker.run_async_func_or_coro_in_event_loop(
+                                _run_sync_gen_off(),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
                                 task_id=task_id,
