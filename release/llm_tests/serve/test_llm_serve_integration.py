@@ -516,21 +516,60 @@ def test_prometheus_autoscaling():
     for loader in loaders:
         loader.start()
 
+    # DEBUG probe: query Prometheus directly each poll and print what the policy
+    # would see, so one run distinguishes an absent series from a late or NaN
+    # one. Reuses the policy's own URL builder and query for an exact mirror.
+    import json as _json
+    import urllib.parse as _urlparse
+    import urllib.request as _urlreq
+
+    from ray.serve.autoscaling_policy import _normalize_query_url
+    from ray.serve.llm.autoscaling import _ttft_query
+
+    query_url = _normalize_query_url(prometheus_address)
+
+    def prom(query):
+        url = f"{query_url}?query={_urlparse.quote(query)}"
+        try:
+            with _urlreq.urlopen(url, timeout=10) as resp:
+                data = _json.load(resp).get("data", {})
+            return data.get("resultType"), data.get("result")
+        except Exception as e:  # noqa: BLE001
+            return f"<error: {e}>", None
+
+    scoped = f'{{model_name="{model_id}"}}'
+    probes = {
+        "ray_vllm names": 'count by (__name__)({__name__=~"ray_vllm.*"})',
+        "ttft count all labels": "ray_vllm_time_to_first_token_seconds_count",
+        "ttft count scoped": f"ray_vllm_time_to_first_token_seconds_count{scoped}",
+        "bucket rate by le": f"sum(rate(ray_vllm_time_to_first_token_seconds_bucket{scoped}[1m])) by (le)",
+        "policy p99 query": _ttft_query(model_id),
+    }
+
     try:
+        probe_start = time.monotonic()
+
         # Policy threshold is 0.001s; a real p99 TTFT (~40ms) triggers scale-up.
         def scaled_to_two():
+            elapsed = time.monotonic() - probe_start
+            for label, query in probes.items():
+                print(f"[prom-probe t={elapsed:.0f}s] {label}: {prom(query)}")
             status = serve.status()
             for app_status in status.applications.values():
                 for name, dep in app_status.deployments.items():
                     if "LLMServer" in name:
                         running = dep.replica_states.get("RUNNING", 0)
-                        print(f"  {name}: {running} running replicas")
+                        print(
+                            f"[prom-probe t={elapsed:.0f}s] {name}: {running} running"
+                        )
                         return running >= 2
             return False
 
         # Metric appears ~10s after traffic starts, the p99 query goes finite
-        # ~20s in, plus the upscale delay and Prometheus scrape lag.
-        wait_for_condition(scaled_to_two, timeout=240, retry_interval_ms=5000)
+        # ~20s in, plus the upscale delay and Prometheus scrape lag. Timeout is
+        # generous to give the Anyscale metrics pipeline room while the probe
+        # captures when each query first returns data.
+        wait_for_condition(scaled_to_two, timeout=360, retry_interval_ms=5000)
         print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")
     finally:
         stop.set()
