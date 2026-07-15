@@ -184,6 +184,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             outputs_usage
         )
         rm.get_external_consumer_bytes.return_value = external_bytes
+        rm.get_mem_op_outputs.return_value = 0
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
