@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
 _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
+# Largest integer magnitude float64 can represent exactly. Beyond this, integers
+# are not uniquely representable, so an "integral" float may not equal the
+# intended value.
+FLOAT64_MAX_INTEGER_VALUE = 2**53
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +77,13 @@ def _reconcile_arrow_backed_int_float_columns(
     the float-typed blocks hold only null / integral values, cast them back to the
     integer type so the concat stays lossless and cannot overflow. Blocks with
     genuine fractional values are left untouched (pandas promotes as usual).
+
+    Reconciliation only happens when it is provably lossless (integral values
+    within both ``+-2**53`` and the target integer type's range). When it is not
+    lossless — e.g. a column mixes true ``int64`` values above ``2**53`` with
+    fractional float values — the blocks are left as-is and the subsequent
+    ``pandas.concat`` still raises ``ArrowInvalid`` on the checked ``int64`` ->
+    ``double`` promotion, exactly as before.
 
     Only affects Arrow-backed (``pd.ArrowDtype``) columns; a no-op otherwise.
     See https://github.com/ray-project/ray/issues/64765.
@@ -117,8 +128,8 @@ def _reconcile_arrow_backed_int_float_columns(
         else:
             type_min = -(2 ** (target_type.bit_width - 1))
             type_max = 2 ** (target_type.bit_width - 1) - 1
-        lo = max(type_min, -(2**53))
-        hi = min(type_max, 2**53)
+        lo = max(type_min, -FLOAT64_MAX_INTEGER_VALUE)
+        hi = min(type_max, FLOAT64_MAX_INTEGER_VALUE)
         lossless = True
         for column_values in float_columns:
             non_null = column_values.dropna()

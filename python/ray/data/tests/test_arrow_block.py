@@ -358,6 +358,7 @@ def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
     ctx.enable_arrow_backed_pandas_conversion = True
     on = ArrowBlockAccessor(table).to_pandas()
     assert isinstance(on.dtypes["x"], pd.ArrowDtype)
+    assert on.dtypes["x"] == pd.ArrowDtype(pa.int64())
 
     ctx.enable_arrow_backed_pandas_conversion = False
     off = ArrowBlockAccessor(table).to_pandas()
