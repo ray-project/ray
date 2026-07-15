@@ -89,8 +89,6 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
-  /// The stack size of each fiber (see RayReanchorStackProtectionToCurrentFiberStack in
-  /// _raylet.pyx)
   static constexpr size_t kStackSize = 1024 * 256;
 
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,

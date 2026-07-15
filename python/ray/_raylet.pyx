@@ -435,6 +435,9 @@ cdef extern from *:
     """
 #if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
 #include <dlfcn.h>
+#ifndef RTLD_DEFAULT
+#define RTLD_DEFAULT ((void *)0)
+#endif
 #include "ray/core_worker/task_execution/fiber.h"
 
 typedef int (*_RaySetStackProtectionFn)(PyThreadState *, void *, size_t);
@@ -463,6 +466,10 @@ static int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound
         return 0;
     }
     char anchor;
+    /* used_upper_bound must be an upper bound on the fiber stack already used
+     * at the call site. Overestimating only wastes headroom (RecursionError
+     * triggers early); underestimating places the declared limit below the
+     * physical stack base and silently corrupt adjacent memory. */
     uintptr_t top = (uintptr_t)&anchor + used_upper_bound;
     size_t stack_size = ray::core::FiberState::kStackSize;
     int rc = set_stack_protection(
@@ -2601,10 +2608,13 @@ cdef CRayStatus task_execution_handler(
         # stack protection to it, or on Python 3.14+ every GC-object
         # deallocation during the task is deferred and leaked. The handler
         # entry is close to the top of the fiber stack, so a small
-        # used-stack upper bound suffices. See
-        # RayReanchorStackProtectionToCurrentFiberStack for details.
-        if CCoreWorkerProcess.GetCoreWorker().GetWorkerContext() \
-                .CurrentActorIsAsync():
+        # used-stack upper bound suffices. Actor creation tasks are excluded:
+        # they run on the regular task-execution pthread, not a fiber, even
+        # for async actors. See RayReanchorStackProtectionToCurrentFiberStack
+        # for details.
+        if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .CurrentActorIsAsync()):
             RayReanchorStackProtectionToCurrentFiberStack(32 * 1024)
 
         # Initialize job_config if it hasn't already.
