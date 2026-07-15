@@ -1768,15 +1768,6 @@ def _validate_and_resolve(
             msg += "  Use slice_placement_group() instead."
         raise ValueError(msg)
 
-    for parent_topology in parent_topologies:
-        if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
-            version, parent_topology
-        ):
-            raise ValueError(
-                f"Parent topology '{parent_topology}' is not valid for "
-                f"accelerator version '{version}'."
-            )
-
     return version, subslice_topology, parent_topologies, chips_per_vm
 
 

@@ -439,5 +439,44 @@ def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
     )
 
 
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4x4: worker grid (z,y,x)=(2,2,4); each worker owns 1 chip in x,
+        # 2 in y, 2 in z. Coords are [x, y, z].
+        # Worker 0: x=0, y in {0,1}, z in {0,1}.
+        ([[0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]], "4x4x4", 0),
+        # Worker 1: wx=1 (x=1).
+        ([[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1]], "4x4x4", 1),
+        # Worker 8: wz=1 (z in {2,3}) → linear = wz*(dy*dx) = 1*(2*4) = 8.
+        ([[0, 0, 2], [0, 1, 2], [0, 0, 3], [0, 1, 3]], "4x4x4", 8),
+    ],
+)
+def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 3D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology",
+    [
+        # 2D: x coordinate far outside the 4x4 chip grid → wx out of bounds.
+        ([[99, 0], [99, 1]], "4x4"),
+        # 3D: z coordinate outside the 4x4x4 grid → wz out of bounds.
+        ([[0, 0, 99], [1, 0, 99]], "4x4x4"),
+    ],
+)
+def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
+    """Bad/partial libtpu coordinates that map outside the worker mesh raise
+    ValueError in both the 2D and 3D branches, rather than silently producing
+    an incorrect subslice label.
+    """
+    with pytest.raises(ValueError, match="out of bounds"):
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -408,6 +408,13 @@ def _get_physical_worker_id_from_coords(
         wx = min_x // block_x
         wy = min_y // block_y
 
+        if wx >= worker_dim_x or wy >= worker_dim_y or wz >= worker_dim_z:
+            raise ValueError(
+                f"Computed worker position ({wx}, {wy}, {wz}) is out of bounds "
+                f"for parent topology '{parent_topology}' with worker dims "
+                f"({worker_dim_z}, {worker_dim_y}, {worker_dim_x})."
+            )
+
         return wz * worker_dim_y * worker_dim_x + wy * worker_dim_x + wx
 
 
