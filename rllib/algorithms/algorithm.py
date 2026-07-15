@@ -3953,6 +3953,9 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results[
                     "num_remote_worker_restarts"
                 ] = self.eval_env_runner_group.num_remote_worker_restarts()
+                eval_results[
+                    "num_env_runners_dropped_lifetime"
+                ] = self.eval_env_runner_group.num_env_runners_dropped_lifetime()
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -4081,6 +4084,9 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                     "num_remote_worker_restarts": (
                         self.env_runner_group.num_remote_worker_restarts()
+                    ),
+                    "num_env_runners_dropped_lifetime": (
+                        self.env_runner_group.num_env_runners_dropped_lifetime()
                     ),
                 }
                 results["env_runner_group"] = {
@@ -4560,6 +4566,9 @@ class Algorithm(Checkpointable, Trainable):
         results[
             "num_remote_worker_restarts"
         ] = self.env_runner_group.num_remote_worker_restarts()
+        results[
+            "num_env_runners_dropped_lifetime"
+        ] = self.env_runner_group.num_env_runners_dropped_lifetime()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [
