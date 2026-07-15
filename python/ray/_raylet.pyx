@@ -2137,8 +2137,10 @@ cdef void execute_task(
                             # Run on a worker thread instead (default executor,
                             # not the single-thread report pool).
                             async def _run_sync_gen_off():
+                                ctx = contextvars.copy_context()
                                 await asyncio.get_running_loop().run_in_executor(
                                     None,
+                                    ctx.run,
                                     _execute_streaming_generator_sync,
                                     context,
                                 )
