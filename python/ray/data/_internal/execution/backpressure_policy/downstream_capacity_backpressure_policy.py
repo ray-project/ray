@@ -169,13 +169,13 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         BlockRefCounter tracks blocks from production until freed:
 
-            output_bytes = outqueues + downstream_inqueue
-                         + downstream_pending_task_inputs + in_transit
+            output_bytes = op_output_queues + downstream_input_queue
+                         + downstream_pending_task_inputs
 
         Subtract 1 to remove the downstream_pending_task_inputs overlap:
 
             ratio = output_bytes / downstream_pending_task_inputs - 1
-                  ≈ (outqueues + downstream_inqueue + in_transit)
+                  ≈ (op_output_queues + downstream_input_queue)
                     / downstream_pending_task_inputs
         """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
