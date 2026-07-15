@@ -183,7 +183,9 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
 
-        output_size_bytes = self._resource_manager.get_mem_op_outputs(op)
+        output_size_bytes = self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
         return (output_size_bytes / downstream_capacity_size_bytes) - 1
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
