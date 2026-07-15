@@ -18,6 +18,7 @@ myst:
 development
 ci
 docs
+publishing-examples
 writing-style
 writing-code-snippets
 fake-autoscaler
