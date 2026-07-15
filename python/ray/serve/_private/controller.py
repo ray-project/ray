@@ -4,7 +4,6 @@ import os
 import pickle
 import time
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
@@ -77,7 +76,7 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
@@ -118,9 +117,6 @@ from ray.serve.schema import (
     gRPCOptionsSchema,
 )
 from ray.util import metrics
-
-if TYPE_CHECKING:
-    from ray.serve._private.long_poll import KeyType
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -240,7 +236,8 @@ class ServeController:
 
         # Configure proxy default HTTP and gRPC options.
         # `global_logging_config` was set by `reconfigure_global_logging_config`
-        # above, so it is never None past this point.
+        # above, so it is never None past this point. (A self-attribute assert
+        # in __init__ poisons mypy's inference of later attributes, so cast.)
         self.proxy_state_manager = ProxyStateManager(
             http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
@@ -480,7 +477,7 @@ class ServeController:
             deployment_id
         )
 
-    async def listen_for_change(self, keys_to_snapshot_ids: "Dict[KeyType, int]"):
+    async def listen_for_change(self, keys_to_snapshot_ids: Dict[KeyType, int]):
         """Proxy long pull client's listen request.
 
         Args:
@@ -689,13 +686,8 @@ class ServeController:
         # that may be stale for autoscaling
         if any_recovering is False:
             self.autoscaling_state_manager.drop_stale_handle_metrics(
-                # None actor_ids (STARTING replicas) are harmless here; cast to
-                # satisfy the landed set[str] signature without a behavior change.
-                cast(
-                    Set[str],
-                    self.deployment_state_manager.get_alive_replica_actor_ids()
-                    | self.proxy_state_manager.get_alive_proxy_actor_ids(),
-                )
+                self.deployment_state_manager.get_alive_replica_actor_ids()
+                | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
 
         self._maybe_update_ingress_ports()
@@ -745,14 +737,7 @@ class ServeController:
             # the replica count. The full set is recomputed and cached each tick, so after
             # a controller restart the empty cache re-sends everything on the first tick.
             fresh = set(ingress_replicas_info_list)
-            # update_ports expects fully-allocated tuples; cast to its landed
-            # signature (getter is honestly typed Optional for pending replicas).
-            NodePortManager.update_ports(
-                cast(
-                    List[Tuple[str, str, int, int]],
-                    list(fresh - self._last_ingress_port_tuples),
-                )
-            )
+            NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
             self._last_ingress_port_tuples = fresh
 
             # Clean up stale ports
@@ -828,11 +813,11 @@ class ServeController:
             ),
             tag_keys=("actor_id",),
         )
-        self.num_control_loops_gauge.set_default_tags(
-            # The controller always runs inside an actor, so the actor ID is
-            # never None here.
-            {"actor_id": cast(str, ray.get_runtime_context().get_actor_id())}
-        )
+        # The controller always runs inside an actor, so the actor ID is
+        # never None here.
+        controller_actor_id = ray.get_runtime_context().get_actor_id()
+        assert controller_actor_id is not None
+        self.num_control_loops_gauge.set_default_tags({"actor_id": controller_actor_id})
 
         # Autoscaling metrics delay gauges
         self.replica_metrics_delay_histogram = metrics.Histogram(
@@ -1571,9 +1556,8 @@ class ServeController:
         target_groups = []
         for app_name in apps:
             # `apps` was filtered above to apps with a non-None route prefix.
-            route_prefix = cast(
-                str, self.application_state_manager.get_route_prefix(app_name)
-            )
+            route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            assert route_prefix is not None
             app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
             if app_target_groups:
                 target_groups.extend(app_target_groups)
@@ -1614,10 +1598,12 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name)
         )
-        # NOTE: `ingress_deployment_name` may still be None before the app is
-        # built; the resulting DeploymentID lookup then misses and yields [].
+        # `ingress_deployment_name` may still be None before the app is built;
+        # there is no ingress deployment to look up in that case.
+        if ingress_deployment_name is None:
+            return []
         return self._get_running_replica_details_for_deployment(
-            app_name, cast(str, ingress_deployment_name)
+            app_name, ingress_deployment_name
         )
 
     def _get_target_groups_for_app(
@@ -1982,7 +1968,8 @@ class ServeController:
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.MemoryHandler):
                 # Serve's MemoryHandler always wraps a file handler.
-                log_file_path = cast(logging.FileHandler, handler.target).baseFilename
+                assert isinstance(handler.target, logging.FileHandler)
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:

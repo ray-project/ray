@@ -6,7 +6,7 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import ray
 from ray import cloudpickle
@@ -79,9 +79,6 @@ from ray.serve.schema import (
 )
 from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
-
-if TYPE_CHECKING:
-    from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -309,11 +306,11 @@ class ApplicationState:
         # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
         # on ingress deployments with fastapi.
-        # NOTE: `_ingress_deployment_name` may still be None before the app is
-        # built; the resulting DeploymentID simply misses the lookup below.
-        ingress_deployment = DeploymentID(
-            cast(str, self._ingress_deployment_name), self._name
-        )
+        # `_ingress_deployment_name` may still be None before the app is built;
+        # there is no ingress deployment to look up in that case.
+        if self._ingress_deployment_name is None:
+            return None
+        ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
         return self._deployment_state_manager.get_deployment_docs_path(
             ingress_deployment
         )
@@ -601,14 +598,10 @@ class ApplicationState:
             config = deployment_info.deployment_config
             # Try to get route_patterns from deployment state first (most up-to-date),
             # otherwise fall back to existing endpoint patterns
-            # NOTE: the deployment state manager annotates these as
-            # Optional[List[str]], but the values it stores come from
-            # `extract_route_patterns` and are actually RoutePattern objects.
-            route_patterns = cast(
-                "Optional[List[RoutePattern]]",
+            route_patterns = (
                 self._deployment_state_manager.get_deployment_route_patterns(
                     deployment_id
-                ),
+                )
             )
             self._endpoint_state.update_endpoint(
                 deployment_id,
@@ -682,10 +675,9 @@ class ApplicationState:
             try:
                 # `deployment_infos` is non-None whenever `code_version` is
                 # non-None (they are always set together in the target state).
+                assert self._target_state.deployment_infos is not None
                 overrided_infos = override_deployment_info(
-                    cast(
-                        Dict[str, DeploymentInfo], self._target_state.deployment_infos
-                    ),
+                    self._target_state.deployment_infos,
                     config,
                 )
                 self._route_prefix = self._check_routes(overrided_infos)
@@ -730,7 +722,8 @@ class ApplicationState:
             # Record telemetry for container runtime env feature
             # The target state config was just set to the (non-None) `config`
             # by `_clear_target_state_and_store_config` above.
-            stored_config = cast(ServeApplicationSchema, self._target_state.config)
+            assert self._target_state.config is not None
+            stored_config = self._target_state.config
             if stored_config.runtime_env.get(
                 "container"
             ) or stored_config.runtime_env.get("image_uri"):
@@ -1026,9 +1019,8 @@ class ApplicationState:
 
         # `deployment_infos` is non-None here: `update` only calls this method
         # after checking `self._target_state.deployment_infos is not None`.
-        deployment_infos = cast(
-            Dict[str, DeploymentInfo], self._target_state.deployment_infos
-        )
+        assert self._target_state.deployment_infos is not None
+        deployment_infos = self._target_state.deployment_infos
         # Set target state for each deployment
         for deployment_name, info in deployment_infos.items():
             deploy_info = deepcopy(info)
@@ -1132,7 +1124,8 @@ class ApplicationState:
                 target_state_changed = True
                 # A SUCCEEDED status is only returned when a build app task
                 # exists, so `_build_app_task_info` is non-None here.
-                build_app_task_info = cast(BuildAppTaskInfo, self._build_app_task_info)
+                assert self._build_app_task_info is not None
+                build_app_task_info = self._build_app_task_info
                 self._set_target_state(
                     deployment_infos=infos,
                     code_version=build_app_task_info.code_version,
@@ -1325,9 +1318,7 @@ class ApplicationStateManager:
 
             # Callers pass parallel dicts keyed by the same app names, so the
             # lookup is expected to succeed for every deployed app.
-            application_args = cast(
-                ApplicationArgsProto, name_to_application_args.get(name)
-            )
+            application_args = name_to_application_args[name]
             external_scaler_enabled = application_args.external_scaler_enabled
 
             if name not in self._application_states:

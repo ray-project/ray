@@ -671,7 +671,8 @@ class ReplicaMetricsManager:
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
         # every call site), so narrow the Optional for the type checkers.
-        autoscaling_config = cast(AutoscalingConfig, self._autoscaling_config)
+        assert self._autoscaling_config is not None
+        autoscaling_config = self._autoscaling_config
         self._metrics_pusher.start()
 
         # Push autoscaling metrics to the controller periodically.
@@ -957,9 +958,8 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> None:
         # Invariant: this task is only registered (`start_metrics_pusher`) when an
         # autoscaling config is set.
-        look_back_period = cast(
-            AutoscalingConfig, self._autoscaling_config
-        ).look_back_period_s
+        assert self._autoscaling_config is not None
+        look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
 
         new_aggregated_metrics = {}
@@ -993,9 +993,9 @@ class ReplicaMetricsManager:
     async def _fetch_custom_autoscaling_metrics(
         self,
     ) -> Optional[Dict[str, Union[int, float]]]:
-        # Invariant: only called when `_custom_metrics_enabled` is True, which
-        # requires `_record_autoscaling_stats_fn` to have been set (and it returns
-        # an awaitable here since the replica never runs in local testing mode).
+        # Only reached with `_custom_metrics_enabled`, which guarantees the fn is set.
+        # cast (not assert) also refines its return to an awaitable, which the
+        # declared attribute type does not capture.
         record_autoscaling_stats_fn = cast(
             Callable[[], Awaitable[Any]], self._record_autoscaling_stats_fn
         )
@@ -1058,8 +1058,8 @@ class ReplicaMetricsManager:
                 metrics_dict.update(custom_metrics)
 
         self._metrics_store.add_metrics_point(
-            # The store accepts `Hashable` keys; `Dict` is invariant in its key
-            # type, so the `str`-keyed dict must be cast.
+            # cast: the store accepts `Hashable` keys and `Dict` is invariant in
+            # its key type, so the `str`-keyed dict is not directly assignable.
             cast(Dict[Hashable, float], metrics_dict),
             time.time(),
         )
@@ -1099,7 +1099,8 @@ class Replica:
         self._event_loop = get_or_create_event_loop()
 
         # This always runs inside a replica actor, so the actor ID is set.
-        actor_id = cast(str, ray.get_runtime_context().get_actor_id())
+        actor_id = ray.get_runtime_context().get_actor_id()
+        assert actor_id is not None
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
             init_args,
@@ -1338,13 +1339,8 @@ class Replica:
             self._dynamically_created_handles.add(deployment_id)
 
         code_version = self._version.code_version
-        # NOTE: `context._set_internal_replica_context` annotates `servable_object`
-        # and `rank` as non-Optional, but both are legitimately None until the user
-        # callable is initialized. `world_size` comes from
-        # `DeploymentConfig.num_replicas`, which is Optional in the model but always
-        # concrete for a deployed replica. The registration callback takes a single
-        # `DeploymentID`, matching `ReplicaContext._handle_registration_callback`;
-        # the `(str, str)` annotation on the context setter is stale.
+        # The context setter's param annotations are stale (non-Optional, wrong
+        # callback arity); these values are correct at runtime, hence the ignores.
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
@@ -1672,6 +1668,7 @@ class Replica:
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Any:
+        # Returns the arbitrary user method result, hence Any.
         request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
@@ -2689,7 +2686,8 @@ class Replica:
 
         # Invariant: gRPC direct-ingress requests are only served after
         # `_maybe_start_direct_ingress_servers` populated `_grpc_options`.
-        grpc_options = cast(gRPCOptions, self._grpc_options)
+        assert self._grpc_options is not None
+        grpc_options = self._grpc_options
 
         with (
             self._wrap_request(request_metadata) as status_code_callback,
@@ -2979,7 +2977,8 @@ class Replica:
         """
         # Invariant: only called while serving direct-ingress HTTP requests, after
         # `_maybe_start_direct_ingress_servers` populated `_http_options`.
-        http_options = cast(HTTPOptions, self._http_options)
+        assert self._http_options is not None
+        http_options = self._http_options
         return parse_request_timeout_header(headers, http_options.request_timeout_s)
 
     async def _direct_ingress_asgi(
@@ -3407,6 +3406,8 @@ class ReplicaActor:
         **request_kwargs,
     ) -> Any:
         """Entrypoint for `stream=False` calls."""
+        # Returns the user result, or (grpc_context, serialized_bytes) for gRPC
+        # requests -- arbitrary either way, hence Any.
         request_metadata, request_args = self._preprocess_request_args(
             pickled_request_metadata, request_args
         )
@@ -4039,30 +4040,28 @@ class UserCallableWrapper:
 
     # NOTE: the `_call_user_*` methods below are only invoked when the
     # corresponding user-defined hook exists (checked by their `call_*`
-    # counterparts), so the Optionals are narrowed with `cast`.
+    # counterparts), so the Optionals are narrowed with `assert`.
     @_run_user_code
     async def _call_user_health_check(self):
-        await self._call_func_or_gen(cast(Callable, self._user_health_check))
+        assert self._user_health_check is not None
+        await self._call_func_or_gen(self._user_health_check)
 
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
-        result, _ = await self._call_func_or_gen(
-            cast(Callable, self._user_record_routing_stats)
-        )
+        assert self._user_record_routing_stats is not None
+        result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
         return result
 
     @_run_user_code
     async def _call_user_record_replica_metadata(self) -> Dict[str, Any]:
-        result, _ = await self._call_func_or_gen(
-            cast(Callable, self._user_record_replica_metadata)
-        )
+        assert self._user_record_replica_metadata is not None
+        result, _ = await self._call_func_or_gen(self._user_record_replica_metadata)
         return result
 
     @_run_user_code
     async def _call_user_autoscaling_stats(self) -> Dict[str, Union[int, float]]:
-        result, _ = await self._call_func_or_gen(
-            cast(Callable, self._user_autoscaling_stats)
-        )
+        assert self._user_autoscaling_stats is not None
+        result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
         return result
 
     @_run_user_code

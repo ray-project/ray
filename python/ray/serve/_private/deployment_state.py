@@ -14,7 +14,6 @@ from typing import (
     Any,
     Callable,
     Deque,
-    cast,
     Dict,
     Iterable,
     List,
@@ -23,6 +22,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
 )
 
 import ray
@@ -98,6 +98,7 @@ from ray.serve._private.deployment_scheduler import (
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
@@ -778,7 +779,7 @@ class ActorReplicaWrapper:
         self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
-        self._route_patterns: Optional[List[str]] = None
+        self._route_patterns: Optional[List[RoutePattern]] = None
         # Rank assigned to the replica. The callback takes the replica's
         # unique id and its node id and returns the assigned rank (see
         # `DeploymentRankManager.assign_rank`).
@@ -952,7 +953,7 @@ class ActorReplicaWrapper:
         return self._docs_path
 
     @property
-    def route_patterns(self) -> Optional[List[str]]:
+    def route_patterns(self) -> Optional[List[RoutePattern]]:
         return self._route_patterns
 
     @property
@@ -1963,7 +1964,7 @@ class DeploymentReplica:
         return self._actor.docs_path
 
     @property
-    def route_patterns(self) -> Optional[List[str]]:
+    def route_patterns(self) -> Optional[List[RoutePattern]]:
         return self._actor.route_patterns
 
     @property
@@ -3165,7 +3166,7 @@ class DeploymentState:
         self._last_broadcasted_deployment_config: Optional[DeploymentConfig] = None
 
         self._docs_path: Optional[str] = None
-        self._route_patterns: Optional[List[str]] = None
+        self._route_patterns: Optional[List[RoutePattern]] = None
 
     _BROADCAST_STATES = frozenset(
         {ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION}
@@ -3331,7 +3332,7 @@ class DeploymentState:
         return self._docs_path
 
     @property
-    def route_patterns(self) -> Optional[List[str]]:
+    def route_patterns(self) -> Optional[List[RoutePattern]]:
         return self._route_patterns
 
     @property
@@ -3887,6 +3888,10 @@ class DeploymentState:
         old_num = self._target_state.target_num_replicas
         if num_replicas == old_num:
             return
+        # A rescale only happens on an already-deployed target, so info/version
+        # are set here.
+        assert self._target_state.info is not None
+        assert self._target_state.version is not None
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
         self._set_target_state(new_info, num_replicas)
@@ -5010,7 +5015,10 @@ class DeploymentState:
         configured. Falls back to the defaults before a target is set.
         """
         try:
-            cfg = self._target_state.info.deployment_config
+            # info is None before a target is set; the AttributeError propagates to
+            # the except below and falls back to defaults.
+            # pyrefly: ignore[missing-attribute]
+            cfg = self._target_state.info.deployment_config  # type: ignore[union-attr]
             return min(
                 cfg.health_check_period_s,
                 cfg.request_router_config.request_routing_stats_period_s,
@@ -6323,7 +6331,7 @@ class DeploymentStateManager:
 
     def get_deployment_route_patterns(
         self, deployment_id: DeploymentID
-    ) -> Optional[List[str]]:
+    ) -> Optional[List[RoutePattern]]:
         """Get route patterns for a deployment if available."""
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].route_patterns
