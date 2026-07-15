@@ -89,6 +89,10 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
+  /// The stack size of each fiber (see RayReanchorStackProtectionToCurrentFiberStack in
+  /// _raylet.pyx)
+  static constexpr size_t kStackSize = 1024 * 256;
+
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
                                   bool has_other_concurrency_groups) {
     RAY_UNUSED(max_concurrency_in_default_group);
@@ -201,8 +205,6 @@ class FiberState {
   }
 
  private:
-  static constexpr size_t kStackSize = 1024 * 256;
-
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;
   /// The fiber channel used to send task between the submitter thread
