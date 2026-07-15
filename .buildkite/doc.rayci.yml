@@ -49,7 +49,6 @@ steps:
       - llm
       - rllib
       - rllib_gpu
-      - doc
     key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
@@ -72,7 +71,6 @@ steps:
       - llm
       - rllib
       - rllib_gpu
-      - doc
     key: doc_api_policy_check
     instance_type: medium
     depends_on: docbuild
