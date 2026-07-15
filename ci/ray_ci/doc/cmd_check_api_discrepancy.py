@@ -104,7 +104,7 @@ TEAM_API_CONFIGS = {
     "rllib": {
         "head_modules": {"ray.rllib"},
         "head_doc_file": "doc/source/rllib/package_ref/index.rst",
-        "white_list_apis": {},
+        "white_list_apis": set(),
     },
 }
 
