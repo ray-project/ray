@@ -20,10 +20,7 @@ The locks are consumed directly by Ray's Docker and Wanda image builds.
 
 ### Layer 1 — source requirements
 
-`python/requirements/` holds the hand-written files. In most cases, these are the files you edit to change dependencies across every Python track and image. They list direct dependencies only and express intent (a loose floor, an exact pin, or an environment marker). They're organized two ways:
-
-- **By feature area:** `ml/tune-requirements.txt`, `ml/train-requirements.txt`, `ml/rllib-requirements.txt`, `ml/data-requirements.txt`, `serve/`, plus top-level files like `test-requirements.txt` and `cloud-requirements.txt`.
-- **By Python track:** the `py313/` and `ml/py313/` directories hold overrides for the Python 3.13 track. When a `py313/` file exists, the 3.13 build uses it instead of the shared file.
+`python/requirements/` holds the hand-written files. In most cases, these are the files you edit to change dependencies across every Python version and image. They list direct dependencies only and express intent (a loose floor, an exact pin, or an environment marker). They're organized by feature area: `ml/tune-requirements.txt`, `ml/train-requirements.txt`, `ml/rllib-requirements.txt`, `ml/data-requirements.txt`, `serve/`, plus top-level files like `test-requirements.txt` and `cloud-requirements.txt`.
 
 ### Layer 2 — compiled requirements
 
@@ -31,22 +28,15 @@ The locks are consumed directly by Ray's Docker and Wanda image builds.
 
 | File | Covers |
 |---|---|
-| `python/requirements_compiled.txt` | The real lockfile for Python 3.10–3.12 |
+| `python/requirements_compiled.txt` | The real lockfile for Python 3.10–3.13 |
 | `python/requirements_compiled_py3.10.txt` | Symlink → `requirements_compiled.txt` |
 | `python/requirements_compiled_py3.11.txt` | Symlink → `requirements_compiled.txt` |
 | `python/requirements_compiled_py3.12.txt` | Symlink → `requirements_compiled.txt` |
-| `python/requirements_compiled_py3.13.txt` | Separate file, compiled from `py313/` sources |
+| `python/requirements_compiled_py3.13.txt` | Symlink → `requirements_compiled.txt` |
 
-The 3.13 file is independent and carries different pins from the shared file. Don't hand-edit these files because they're generated artifacts. Use the `ci/ci.sh` commands described below to regenerate them.
+Don't hand-edit these files because they're generated artifacts. Use the `ci/ci.sh` commands described below to regenerate them.
 
-Two functions in `ci/ci.sh` generate the compiled files, each reading a different list of source `python/requirements/**.txt` files:
-
-| Function | Reads | Writes |
-|---|---|---|
-| `ci/ci.sh compile_pip_dependencies` | shared `python/requirements/**.txt` | `python/requirements_compiled.txt` |
-| `ci/ci.sh compile_313_pip_dependencies` | the `py313/` override files | `python/requirements_compiled_py3.13.txt` |
-
-Both functions run in a Python 3.11 environment, even the one that produces the 3.13 lock. (CI uses the `oss-ci-base_test-py3.11` job for both.) That works because `pip-compile` resolves based on what the requirement files declare, not on the Python it's currently running. The two functions differ only in which source files they read: `compile_pip_dependencies` reads the shared `python/requirements/**.txt` files, and `compile_313_pip_dependencies` reads the `py313/` override files.
+`compile_pip_dependencies` runs in a Python 3.11 environment (CI uses the `oss-ci-base_test-py3.11` job); that works because `pip-compile` resolves based on what the requirement files declare, not on the Python it's currently running.
 
 ### Layer 3 — lock files
 
@@ -96,7 +86,7 @@ If you have an x86_64 Linux machine with Python 3.11, compile locally (see [Comp
 
 ### 1. Edit the Layer 1 file
 
-Change the relevant `python/requirements/**.txt` file. If your change affects the Python 3.13 track, also update the matching file under `py313/`.
+Change the relevant `python/requirements/**.txt` file.
 
 Don't hand-edit `python/requirements_compiled*.txt` or any file under `python/deplocks/` as they're build artifacts. Express the change as a source-file pin. The regenerated lock will pick it up.
 
@@ -111,7 +101,7 @@ Drift between these files ships a broken `pip install ray` to end users while CI
 
 ### 2. Let CI recompile, then commit the result
 
-The `dependencies` Buildkite pipeline runs `compile_pip_dependencies` and `compile_313_pip_dependencies`, then **diffs the result against the committed file and fails if they differ**, printing:
+The `dependencies` Buildkite pipeline runs `compile_pip_dependencies`, then **diffs the result against the committed file and fails if they differ**, printing:
 
 > `requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes.`
 
@@ -149,7 +139,6 @@ So an Apple Silicon Mac or any ARM box can't produce a valid lockfile. The GPU a
 ```bash
 # x86_64 Linux, Python 3.11
 ci/ci.sh compile_pip_dependencies            # -> requirements_compiled.txt
-ci/ci.sh compile_313_pip_dependencies        # -> requirements_compiled_py3.13.txt
 bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 ```
 
@@ -227,7 +216,6 @@ If you remove a requirements file from a dependency set to resolve a conflict, y
 | Task | Command |
 |---|---|
 | Recompile Layer 2 (x86_64, py3.11) | `ci/ci.sh compile_pip_dependencies` |
-| Recompile the 3.13 track | `ci/ci.sh compile_313_pip_dependencies` |
 | Rebuild all Layer 3 locks | `bazelisk run //ci/raydepsets:raydepsets -- build --all-configs` |
 | Rebuild one depset (fast iteration) | `bazelisk run //ci/raydepsets:raydepsets -- build <config>.yaml --name <depset_name>` |
 | Validate locks are current | `bazelisk run //ci/raydepsets:raydepsets -- build --all-configs --check` |
