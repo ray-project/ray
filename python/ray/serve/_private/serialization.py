@@ -98,7 +98,7 @@ class RPCSerializer:
             self.response_method
         )
 
-    def _get_serializer_funcs(self, method: str) -> Tuple[Any, Any]:
+    def _get_serializer_funcs(self, method: str) -> Tuple[Any, Any]:  # type: ignore[return]
         """Get dumps and loads functions for a given serialization method."""
         if method == SerializationMethod.CLOUDPICKLE:
             return cloudpickle.dumps, cloudpickle.loads

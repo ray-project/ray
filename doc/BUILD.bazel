@@ -352,12 +352,37 @@ py_test_run_all_subdirectory(
         "source/llm/doc_code/serve/direct_streaming/**/*.py",
         "source/llm/doc_code/serve/multi_gpu/**/*.py",
         "source/llm/doc_code/serve/sglang/**/*.py",
+        # custom_vllm runs in its own direct-streaming target below.
+        "source/llm/doc_code/serve/custom_vllm/**/*.py",
     ],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
         "exclusive",
         "gpu",
+        "team:llm",
+    ],
+)
+
+# Custom vLLM model (Qwen3 reward model) GPU tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/custom_vllm/**/*.py"],
+    exclude = [
+        "source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/**/*.py",
+        # setup.py packages the plugin; it is not a runnable example.
+        "source/llm/doc_code/serve/custom_vllm/setup.py",
+    ],
+    extra_srcs = [],
+    data = ["source/llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml"],
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    tags = [
+        "exclusive",
+        "gpu",
+        "custom_vllm_plugin",
         "team:llm",
     ],
 )

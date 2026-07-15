@@ -25,11 +25,11 @@ class DeploymentNode(DAGNode):
             deployment_init_args,
             deployment_init_kwargs,
             ray_actor_options,
-            other_args_to_resolve=other_args_to_resolve,
+            other_args_to_resolve=other_args_to_resolve,  # type: ignore[arg-type]
         )
         self._app_name = app_name
         self._deployment = deployment
-        self._deployment_handle = DeploymentHandle(
+        self._deployment_handle: DeploymentHandle = DeploymentHandle(
             self._deployment.name, self._app_name
         )
 
@@ -43,7 +43,7 @@ class DeploymentNode(DAGNode):
         return DeploymentNode(
             self._deployment,
             self._app_name,
-            new_args,
+            new_args,  # type: ignore[arg-type]
             new_kwargs,
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,

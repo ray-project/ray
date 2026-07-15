@@ -13,7 +13,6 @@ from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
     get_or_create_autoscaling_coordinator,
 )
-from .default_cluster_autoscaler import DefaultClusterAutoscaler
 from .default_cluster_autoscaler_v2 import DefaultClusterAutoscalerV2
 
 if TYPE_CHECKING:
@@ -29,7 +28,6 @@ DEFAULT_CLUSTER_AUTOSCALER_VERSION = "V2"
 
 class ClusterAutoscalerVersion(str, enum.Enum):
     V2 = "V2"
-    V1 = "V1"
 
 
 def create_cluster_autoscaler(
@@ -52,13 +50,6 @@ def create_cluster_autoscaler(
             execution_id=execution_id,
             resource_limits=resource_limits,
             label_selector=label_selector,
-        )
-
-    elif cluster_autoscaler_version == ClusterAutoscalerVersion.V1:
-        return DefaultClusterAutoscaler(
-            topology,
-            resource_limits=resource_limits,
-            execution_id=execution_id,
         )
 
     else:
