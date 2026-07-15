@@ -55,6 +55,22 @@ def test_documented_params_empty_without_args():
     assert documented_params(None) == set()
 
 
+def test_documented_params_stops_on_dedent():
+    # A dedented line below the first param's indent ends the Args block, so a
+    # "name:"-looking line in trailing prose is not counted as a param.
+    doc = _src(
+        """
+        Summary.
+
+        Args:
+            a: the a.
+
+          note: this trailing line is dedented and must not count.
+        """
+    )
+    assert documented_params(doc) == {"a"}
+
+
 def test_signature_params_excludes_self_and_varargs():
     tree = _src(
         """

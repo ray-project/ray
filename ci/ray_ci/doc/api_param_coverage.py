@@ -27,7 +27,9 @@ import ast
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+
+_FuncNode = Union[ast.FunctionDef, ast.AsyncFunctionDef]
 
 # Google-style "Args:"/"Arguments:" section headers.
 _GOOGLE_SECTION = re.compile(
@@ -64,13 +66,20 @@ def documented_params(docstring: Optional[str]) -> Set[str]:
             indent = len(line) - len(line.lstrip())
             if args_indent is None:
                 args_indent = indent
+            elif indent < args_indent:
+                # Dedent below the first param's indent ends the Args block,
+                # even without an explicit next-section header.
+                in_args = False
+                continue
             m = _GOOGLE_PARAM.match(line)
             if m and indent <= args_indent + 1:
                 documented.add(m.group(1).lstrip("*"))
     return documented
 
 
-def has_publicapi_decorator(node: ast.AST) -> bool:
+def has_publicapi_decorator(
+    node: Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef]
+) -> bool:
     """Whether a class/function node carries an ``@PublicAPI`` decorator.
 
     Matches bare ``@PublicAPI`` and called ``@PublicAPI(...)`` forms, and both
@@ -90,7 +99,7 @@ def has_publicapi_decorator(node: ast.AST) -> bool:
     return False
 
 
-def signature_params(func: ast.AST) -> List[str]:
+def signature_params(func: _FuncNode) -> List[str]:
     """Return every named signature parameter, in order.
 
     Excludes ``self``/``cls`` and the ``*args``/``**kwargs`` catch-alls (which
@@ -218,7 +227,7 @@ class Callable_:
 
 
 def _undocumented_for_func(
-    func: ast.AST,
+    func: _FuncNode,
     qual: str,
     index: ClassIndex,
     class_doc_node: Optional[ast.ClassDef],

@@ -42,9 +42,12 @@ def _changed_python_files(checkout_dir: str, base: str) -> List[str]:
     Skips deleted files (no head content to check) and the non-API paths in
     ``_SKIP_SEGMENTS``.
     """
-    out = _git(
-        checkout_dir, "diff", "--name-only", "--diff-filter=d", f"{base}...HEAD"
-    )
+    try:
+        out = _git(
+            checkout_dir, "diff", "--name-only", "--diff-filter=d", f"{base}...HEAD"
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"could not list changed files: {e}")
     files = []
     for line in out.splitlines():
         path = line.strip()
@@ -70,7 +73,11 @@ def _iter_source_files(checkout_dir: str):
     """Yield ``(repo_rel_path, source)`` for every in-scope working-tree file."""
     root = os.path.join(checkout_dir, _SOURCE_ROOT)
     for dirpath, _dirs, filenames in os.walk(root):
-        if any(seg in f"/{dirpath}" for seg in _SKIP_SEGMENTS):
+        # Match skip segments against the repo-relative path, not the absolute
+        # one: a checkout dir that itself contains a skip segment (e.g. a path
+        # under ".../test/...") would otherwise skip every file.
+        rel_dirpath = os.path.relpath(dirpath, checkout_dir)
+        if any(seg in f"/{rel_dirpath}" for seg in _SKIP_SEGMENTS):
             continue
         for fn in filenames:
             if not fn.endswith(".py"):
