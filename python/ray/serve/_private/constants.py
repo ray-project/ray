@@ -1,6 +1,8 @@
+import logging
 import os
 from typing import List
 
+from ray._common.network_utils import get_all_interfaces_ip
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -16,6 +18,7 @@ from ray.serve._private.constants_utils import (
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
@@ -103,7 +106,7 @@ RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
 # than to calculate them on raw data, both in terms of time and space.
 
 #: Default histogram buckets for latency tracker.
-DEFAULT_LATENCY_BUCKET_MS = [
+DEFAULT_LATENCY_BUCKET_MS: List[float] = [
     1,
     2,
     5,
@@ -153,7 +156,7 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
 
 #: Histogram buckets for replica startup and reconfigure latency.
 #: These are longer operations (constructor, model loading) so buckets start higher.
-DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS: List[float] = [
     5,
     20,
     50,
@@ -182,7 +185,7 @@ BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
 BATCH_WAIT_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
 
 #: Histogram buckets for batch utilization percentage.
-DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT = [
+DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT: List[float] = [
     5,
     10,
     20,
@@ -220,7 +223,7 @@ RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS = int(
 )
 
 #: Histogram buckets for actual batch size.
-DEFAULT_BATCH_SIZE_BUCKETS = [
+DEFAULT_BATCH_SIZE_BUCKETS: List[float] = [
     1,
     2,
     4,
@@ -615,6 +618,12 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
 RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
 
+# Feature flag to run gc.collect() + gc.freeze() at the end of replica
+# initialization. Objects allocated during startup are long-lived, so freezing
+# them excludes them from future GC scans, reducing GC pauses / tail latency in
+# the request path. Set to 0 to disable (e.g. if memory usage is a concern).
+RAY_SERVE_FREEZE_GC_ON_STARTUP = get_env_bool("RAY_SERVE_FREEZE_GC_ON_STARTUP", "1")
+
 # Interval at which cached metrics will be exported using the Ray metric API.
 # Set to `0` to disable caching entirely.
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
@@ -634,6 +643,9 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
+
+# Name of deployment static replica metadata method implemented by user.
+RECORD_REPLICA_METADATA_METHOD = "record_replica_metadata"
 
 # By default, we run user code in a separate event loop.
 # This flag can be set to 0 to run user code in the same event loop as the
@@ -672,6 +684,11 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
+RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
+    "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
+)
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
 NO_ROUTES_MESSAGE = "Route table is not populated yet."
@@ -687,22 +704,15 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
-# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
-# of a system-installed binary. When enabled, get_haproxy_binary() resolves
-# the binary from the ray_haproxy package (pip install ray-haproxy).
-RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
-    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
-)
-
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
-# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
-# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
-RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
+# Absolute path to an HAProxy binary. When set, it takes precedence over the
+# bundled ray-haproxy package.
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -742,6 +752,41 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
+# Timeout for a spawned HAProxy to take over the admin socket (pid-verified).
+# Generous: a reload under load transfers listener FDs from a busy predecessor.
+RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
+)
+
+# HAProxy close-spread-time. Drains the old worker's idle connections over this
+# window at soft-stop so they migrate to the reloaded config instead of lingering
+# until hard-stop-after. None omits it.
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = get_env_int(
+    "RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S", None
+)
+
+# Minimum spacing between HAProxy reloads. Broadcasts arriving inside
+# the window are batched into one apply; without it, autoscaling churn
+# can fire reloads tens of ms apart.
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
+)
+
+# Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
+# from the first coalesced controller broadcast to the HAProxy reload finishing.
+RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
+
+# Controls whether HAProxy system metrics are reported. On by default.
+RAY_SERVE_HAPROXY_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_METRICS_ENABLED", "1"
+)
+
+# How often (seconds) each HAProxyManager samples and emits node-level HAProxy
+# observability gauges (process count and broadcasted-vs-reported target mismatch).
+RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S", 10.0
+)
+
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
@@ -750,20 +795,32 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
-# HAProxy log port
-RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
-    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
+# Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
+# Prefer http_options.port / grpc_options.port. This override only matters when
+# proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
+# Parallels RAY_SERVE_HAPROXY_STATS_PORT / RAY_SERVE_HAPROXY_METRICS_PORT.
+RAY_SERVE_WORKER_PROXY_HTTP_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_HTTP_PORT", None)
+RAY_SERVE_WORKER_PROXY_GRPC_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_GRPC_PORT", None)
+
+# HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
+# supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
+RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
+    "RAY_SERVE_HAPROXY_LOG_TARGET", "127.0.0.1:514"
 )
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
 RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
+    # Guarded by the truthiness check below; the two get() calls can't be
+    # narrowed by mypy.
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))  # type: ignore[arg-type]
     if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S")
     else None
 )
 
 RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))
+    # Guarded by the truthiness check below; the two get() calls can't be
+    # narrowed by mypy.
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
     if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
     else None
 )
@@ -828,11 +885,20 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
 # `retry-on` token reference:
 # https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+# Retry policy for the HAProxy `defaults` block, inherited by every backend.
+# Defaults to `conn-failure` only: nothing was sent to the replica, so the
+# request is safe to replay for any method (we deliberately avoid empty-response
+# / 503, which can double-execute non-idempotent requests or retry deliberate
+# backpressure). Set RAY_SERVE_HAPROXY_RETRY_ON to override globally.
+RAY_SERVE_HAPROXY_RETRY_ON = get_env_str("RAY_SERVE_HAPROXY_RETRY_ON", "conn-failure")
+RAY_SERVE_HAPROXY_RETRIES = get_env_int_non_negative("RAY_SERVE_HAPROXY_RETRIES", None)
+# Same retry policy as above; defaults to the global value so the ingress
+# request router shares one policy unless explicitly overridden.
 RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", RAY_SERVE_HAPROXY_RETRY_ON
 )
 RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", RAY_SERVE_HAPROXY_RETRIES
 )
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
@@ -847,6 +913,26 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
 )
 
+# HAProxy tuning flags
+RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
+)
+RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE", 1024 * 16
+)  # 16KB
+RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE", 1024 * 64
+)  # 64KB
+RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS", 100
+)
+RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE", 1024 * 64
+)  # 64KB
+RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS", 100
+)
+
 # Escape hatch: when true, HAProxy forwards the (possibly truncated) request
 # body to /internal/route and the router reads it. Off by default because for
 # large payloads the body buffering / re-emit cost adds noticeable time-to-
@@ -858,7 +944,28 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
 # Flip this to true if the configured request router needs the body for its
 # decision, e.g. prefix-aware / prefix-cache routing.
 RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
+)
+
+# Emit per-request metrics from the ingress-request-router data path:
+# - truncated body counter
+# - router consultation latency histogram
+# - replica-id mismatch counter (router pinned X, HAProxy used Y after fallthrough)
+#
+# When enabled, HAProxy logs an RFC 5424 line with metric fields in the
+# structured-data section to RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH, and the
+# HAProxy proxy actor parses each datagram into ray.serve.metrics Counter /
+# Histogram objects. When disabled, neither the log target nor the Lua timing
+# calls are rendered into the generated config -- there is no runtime cost.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0"
+)
+
+# Unix dgram socket that HAProxy writes the structured metric log lines to.
+# Bound by the proxy actor before HAProxy is started. Only consulted when
+# RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED is true.
+RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
@@ -876,12 +983,30 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
+
+# Hold released replica ports out of the pool this long so proxies can
+# drop their stale slot before a new replica grabs the same port. 0 disables.
+# Defaults to hard-stop-after plus a margin: soft-stopped (reloaded-out)
+# HAProxy workers run no health checks and keep routing to their frozen
+# server list until hard-stop-after fires, so a freed port must stay out
+# of the pool at least that long or another app's replica can inherit the
+# old app's traffic. The margin covers the broadcast/reload lag before an
+# old worker's hard-stop clock starts.
+RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
+    "RAY_SERVE_PORT_QUARANTINE_S",
+    float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
+)
+
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
+
+# Grace added on top of the min draining period when flooring an ingress
+# deployment's graceful_shutdown_timeout_s.
+RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S = 5
 
 # HTTP request timeout
 SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
@@ -919,15 +1044,38 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
+    RAY_SERVE_FREEZE_GC_ON_STARTUP = get_env_bool("RAY_SERVE_FREEZE_GC_ON_STARTUP", "1")
 
-# Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
+    # Direct ingress must be enabled if HAProxy is enabled.
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
+
+    # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
+    # the effective default binds to all interfaces regardless of
+    # RAY_SERVE_DEFAULT_HTTP_HOST.
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
+        logger.warning(
+            f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
+            "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
+            "so HAProxy on other nodes can reach Serve HTTP ports."
+        )
+    DEFAULT_HTTP_HOST = get_all_interfaces_ip()
+
+if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
+    RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
+
+# Feature flag to include high-cardinality source tags on Serve controller metrics.
+# Disable this to keep deployment/application tags while dropping source identifiers
+# like replica IDs from controller-emitted metrics.
+RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", "1"
+)
+
 # Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
 # When enabled, metric tags use only the LongPollNamespace enum name
 # (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes
@@ -956,7 +1104,7 @@ RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
 # - 100-500ms: problematic, likely blocking code
 # - > 500ms: severe, definitely blocking
 # - > 5s: catastrophic
-SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS: List[float] = [
     1,  # 1ms
     5,  # 5ms
     10,  # 10ms

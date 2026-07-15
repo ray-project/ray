@@ -16,6 +16,7 @@ user-guides/k8s-cluster-setup
 user-guides/storage
 user-guides/config
 user-guides/configuring-autoscaling
+user-guides/configuring-ippr
 user-guides/label-based-scheduling
 user-guides/kuberay-gcs-ft
 user-guides/kuberay-gcs-persistent-ft
@@ -40,8 +41,7 @@ user-guides/kuberay-history-server
 
 
 :::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide <kuberay-quickstart>` first.
+To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 * {ref}`kuberay-rayservice`

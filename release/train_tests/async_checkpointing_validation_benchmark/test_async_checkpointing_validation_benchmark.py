@@ -17,6 +17,7 @@ from torchvision.transforms import ToTensor, Normalize
 import ray
 import ray.train
 import ray.train.torch
+from ray.data import ExecutionOptions
 from ray.train import CheckpointUploadMode, ValidationConfig, ValidationTaskConfig
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -108,6 +109,10 @@ class Predictor:
 
 
 def validate_with_map_batches(checkpoint):
+    validation_dataset.set_name("async_val_map_batches")
+    validation_dataset.context.execution_options.label_selector = {
+        "ray-subcluster": "validation"
+    }
     start_time = time.time()
     eval_res = validation_dataset.map_batches(
         Predictor,
@@ -148,7 +153,7 @@ def eval_only_train_func(config_dict):
     model.cuda().eval()
 
     # Get the data
-    test_data_shard = ray.train.get_dataset_shard("test")
+    test_data_shard = ray.train.get_dataset_shard("async_val_torch_trainer")
     test_dataloader = test_data_shard.iter_torch_batches(batch_size=128)
 
     # Report metrics
@@ -167,9 +172,16 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
-        datasets={"test": validation_dataset},
+        datasets={"async_val_torch_trainer": validation_dataset},
         run_config=ray.train.RunConfig(
             name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
+        ),
+        dataset_config=ray.train.DataConfig(
+            execution_options={
+                "async_val_torch_trainer": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
         ),
     )
     result = trainer.fit()
@@ -197,7 +209,7 @@ def validate_and_report(
     checkpoint_save_mode = config["checkpoint_save_mode"]
 
     if validate_within_trainer:
-        test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
+        test_dataloader = ray.train.get_dataset_shard("inline_val").iter_torch_batches(
             batch_size=128
         )
 
@@ -395,7 +407,28 @@ def run_training_with_validation(
         "checkpoint_save_mode": checkpoint_save_mode,
     }
     if validate_within_trainer:
-        datasets["test"] = validation_dataset
+        datasets["inline_val"] = validation_dataset
+        # Sync validation: train workers iterate both datasets, so split each
+        # across the train subcluster and the validation subcluster respectively.
+        dataset_config = ray.train.DataConfig(
+            datasets_to_split=["train", "inline_val"],
+            execution_options={
+                "train": ExecutionOptions(label_selector={"ray-subcluster": "train"}),
+                "inline_val": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
+        )
+    else:
+        # Async validation: the validation dataset is consumed by a separate
+        # driver (validate_with_torch_trainer / validate_with_map_batches),
+        # which sets its own subcluster label.
+        dataset_config = ray.train.DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(label_selector={"ray-subcluster": "train"}),
+            },
+        )
 
     # async_save additionally requires a CPU process group alongside the GPU one
     #   because it runs collectives in a background thread.
@@ -412,6 +445,7 @@ def run_training_with_validation(
         datasets=datasets,
         torch_config=torch_config,
         run_config=ray.train.RunConfig(storage_path="/mnt/cluster_storage"),
+        dataset_config=dataset_config,
     )
     result = trainer.fit()
     end_time = time.time()

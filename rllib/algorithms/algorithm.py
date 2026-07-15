@@ -1049,6 +1049,12 @@ class Algorithm(Checkpointable, Trainable):
                         inference_only=False,
                     )[COMPONENT_LEARNER]
                 # Create the offline evaluation runner group.
+                # Compute the correct pg_offset so offline eval runners
+                # target the right placement group bundle indices
+                # (after main process, env runners, and eval env runners).
+                offline_eval_pg_offset = self.config.num_env_runners
+                if self._should_create_evaluation_env_runners(self.evaluation_config):
+                    offline_eval_pg_offset += self.evaluation_config.num_env_runners
                 self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
                     config=self.evaluation_config,
                     # Do not create a local runner such that the dataset can be split.
@@ -1059,6 +1065,7 @@ class Algorithm(Checkpointable, Trainable):
                     # Note, even if no environment is run, the `MultiRLModule` needs
                     # spaces to construct the policy network.
                     spaces=spaces,
+                    pg_offset=offline_eval_pg_offset,
                 )
 
         # Create an Aggregator actor set, if necessary.
@@ -3946,6 +3953,9 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results[
                     "num_remote_worker_restarts"
                 ] = self.eval_env_runner_group.num_remote_worker_restarts()
+                eval_results[
+                    "num_env_runners_dropped_lifetime"
+                ] = self.eval_env_runner_group.num_env_runners_dropped_lifetime()
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -4074,6 +4084,9 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                     "num_remote_worker_restarts": (
                         self.env_runner_group.num_remote_worker_restarts()
+                    ),
+                    "num_env_runners_dropped_lifetime": (
+                        self.env_runner_group.num_env_runners_dropped_lifetime()
                     ),
                 }
                 results["env_runner_group"] = {
@@ -4553,6 +4566,9 @@ class Algorithm(Checkpointable, Trainable):
         results[
             "num_remote_worker_restarts"
         ] = self.env_runner_group.num_remote_worker_restarts()
+        results[
+            "num_env_runners_dropped_lifetime"
+        ] = self.env_runner_group.num_env_runners_dropped_lifetime()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [

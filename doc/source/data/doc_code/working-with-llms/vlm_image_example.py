@@ -60,7 +60,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
     ),
     batch_size=16,
     concurrency=1,
-    prepare_multimodal_stage={"enabled": True},
+    prepare_multimodal_stage=True,
 )
 # __vlm_config_example_end__
 
@@ -178,7 +178,7 @@ def create_vlm_config():
         ),
         batch_size=1,
         concurrency=1,
-        prepare_multimodal_stage={"enabled": True},
+        prepare_multimodal_stage=True,
     )
 
 
@@ -196,7 +196,6 @@ def run_vlm_example():
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
 # __vlm_run_example_end__

@@ -661,5 +661,31 @@ def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
         ), ".git should be included when defaults disabled"
 
 
+def test_working_dir_does_not_propagate_driver_paths(start_cluster):
+    """Tests that `runtime_env.working_dir` suppresses driver-local sys.path
+    propagation.
+
+    When a driver `ray.init`s with a `runtime_env.working_dir`, neither
+    `script_directory` (the driver's `sys.argv[0]` dir) nor the current
+    directory should end up in `py_driver_sys_path`. Otherwise an actor
+    later created with a *different* `runtime_env.working_dir` will still
+    have the driver's working_dir inserted at `sys.path[0]` by
+    `maybe_initialize_job_config`, silently shadowing its own working_dir
+    on `import` (the symptom is replicas serving stale code on redeploy
+    without `serve.shutdown()`).
+    """
+    cluster, address = start_cluster
+    with tempfile.TemporaryDirectory() as working_dir:
+        Path(working_dir, "noop.py").write_text("")
+        ray.init(address, runtime_env={"working_dir": working_dir})
+        try:
+            paths = list(
+                ray._private.worker.global_worker.core_worker.get_job_config().py_driver_sys_path
+            )
+            assert paths == [], paths
+        finally:
+            ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

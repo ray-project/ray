@@ -1,4 +1,7 @@
-from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
+from ray.train.lightgbm._lightgbm_utils import (
+    RayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
+)
 from ray.train.lightgbm.config import LightGBMConfig, get_network_params
 from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 from ray.train.lightgbm.lightgbm_trainer import LightGBMTrainer
@@ -13,6 +16,7 @@ __all__ = [
     "LightGBMTrainer",
     "LightGBMConfig",
     "get_network_params",
+    "normalize_pandas_for_lightgbm",
 ]
 
 

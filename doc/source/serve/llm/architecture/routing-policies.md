@@ -1,3 +1,4 @@
+(routing-policies-guide)=
 # Request routing
 
 Ray Serve LLM provides customizable request routing to optimize request distribution across replicas for different workload patterns. Request routing operates at the **replica selection level**, distinct from ingress-level model routing.
@@ -19,6 +20,10 @@ This document focuses on **request routing** (replica selection).
 ```
 HTTP Request → Ingress (model routing) → Request Router (replica selection) → Server Replica
 ```
+
+:::{note}
+Direct streaming uses these same routing policies and the same `request_router_config`, so nothing in this document changes. The only difference is where replica selection runs: at the HTTP ingress instead of inside `OpenAiIngress`. See the {ref}`direct streaming guide <direct-streaming-guide>` for details and caveats.
+:::
 
 ## Request routing architecture
 
@@ -77,7 +82,7 @@ For more details, see {ref}`prefix-aware-routing-guide`.
 
 Customizing request routers is a feature in Ray Serve's native APIs that you can define per deployment. For each deployment, you can customize the routing logic that executes every time you call `.remote()` on the deployment handle from a caller. Because deployment handles are globally available objects across the cluster, you can call them from any actor or task in the Ray cluster. For more details on this API, see {ref}`custom-request-router-guide`.
 
-This allows you to run the same routing logic even if you have multiple handles. The default request router in Ray Serve is Power of Two Choices, which balances load equalization and prioritizes locality routing. However, you can customize this to use LLM-specific metrics.
+As a result, the same routing logic runs even when you have multiple handles. The default request router in Ray Serve is Power of Two Choices, which balances load equalization and prioritizes locality routing. However, you can customize this to use LLM-specific metrics.
 
 Ray Serve LLM includes prefix-aware routing in the framework. There are two common architectural patterns for customizing request routers. There are clear trade-offs between them, so choose the suitable one and balance simplicity with performance:
 

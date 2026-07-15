@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import IO, AnyStr, Optional, Tuple
+from typing import IO, TYPE_CHECKING, AnyStr, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -49,6 +49,9 @@ from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
+if TYPE_CHECKING:
+    from ray._private.parameter import RayParams
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
@@ -69,7 +72,7 @@ class Node:
 
     def __init__(
         self,
-        ray_params,
+        ray_params: "RayParams",
         head: bool = False,
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
@@ -454,7 +457,57 @@ class Node:
         if not connect_only:
             self._record_stats()
 
+    def _resolve_ray_config(self, name, default):
+        """Resolve a RAY_CONFIG value the same way the C++ GCS does.
+
+        ``RayConfig::initialize`` (src/ray/common/ray_config.cc) first
+        reads the ``RAY_<name>`` env var, then overrides it from the
+        ``--config_list`` JSON, which Python passes as ``_system_config``.
+        So ``_system_config`` wins over the env var, which wins over the
+        default. Checking only ``os.environ`` here would miss a backend
+        selected purely via ``_system_config`` and desync the Python-side
+        rocksdb startup logic (marker file, GCS port wait) from the
+        backend the GCS process actually picks.
+        """
+        return self._config.get(name, os.environ.get("RAY_" + name, default))
+
+    def _is_rocksdb_gcs(self):
+        return self._resolve_ray_config("gcs_storage", "memory") == "rocksdb"
+
+    def _check_persisted_rocksdb_session_name(self):
+        # Read the session_name marker file written by the previous head
+        # process. GCS isn't up yet at this point in startup, so we can't
+        # query the rocksdb-backed internal_kv directly; the marker file
+        # bridges that gap. (This is a plain file on the GCS storage
+        # volume, not a Kubernetes sidecar container.) See
+        # src/ray/gcs/store_client/rocksdb_session_name_recovery.md for
+        # the full rationale and write-path invariants.
+        rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
+        if not rocksdb_storage_path:
+            # Mirrors the C++ RAY_CHECK in
+            # gcs_server.cc::GetStorageType(); fail loudly rather
+            # than silently skipping recovery, which would
+            # generate a fresh session_name and trip the assert
+            # at the persisted-value check below.
+            raise ValueError(
+                "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                "to be set to a writable directory."
+            )
+        session_name_file = os.path.join(rocksdb_storage_path, "session_name")
+        try:
+            with open(session_name_file, "rb") as f:
+                persisted = f.read().strip()
+                return persisted if persisted else None
+        except FileNotFoundError:
+            return None
+
     def check_persisted_session_name(self):
+        # For the rocksdb GCS backend the session_name lives in a marker
+        # file on the storage volume; delegate to the helper. Non-rocksdb
+        # deployments fall through to the Redis path below.
+        if self._is_rocksdb_gcs():
+            return self._check_persisted_rocksdb_session_name()
+
         if self._ray_params.external_addresses is None:
             return None
         self._redis_address = self._ray_params.external_addresses[0]
@@ -478,6 +531,49 @@ class Node:
             b"session_name",
         )
 
+    def _persist_rocksdb_session_name_file(self):
+        """Durably write session_name to the RocksDB GCS storage directory.
+
+        Companion to check_persisted_session_name(): on a head restart,
+        that method reads this marker file before GCS (and thus
+        internal_kv) is back up. The write is atomic and durable
+        (tmp + fsync + rename + dir fsync) so the file survives a
+        power-loss crash, matching the durability of the internal_kv_put
+        that follows it.
+        """
+        rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
+        if not rocksdb_storage_path:
+            # Symmetric with check_persisted_session_name(); see
+            # there for the rationale. Without the marker file, the
+            # internal_kv_put would persist a session_name in rocksdb
+            # with no companion file, breaking restart recovery.
+            raise ValueError(
+                "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                "to be set to a writable directory."
+            )
+        session_name_file = os.path.join(rocksdb_storage_path, "session_name")
+        os.makedirs(rocksdb_storage_path, exist_ok=True)
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=rocksdb_storage_path,
+            prefix="session_name.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(self._session_name.encode("utf-8"))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, session_name_file)
+            dir_fd = os.open(rocksdb_storage_path, os.O_DIRECTORY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
@@ -496,6 +592,9 @@ class Node:
 
         This will be used to detect if workers or drivers are started using
         different versions of Python, or Ray.
+
+        Returns:
+            None.
 
         Raises:
             Exception: An exception is raised if there is a version mismatch.
@@ -586,11 +685,14 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
-                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
-            ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
+            ).resolve(
+                is_head=self.head,
+                node_ip_address=self.node_ip_address,
+                resource_isolation_config=self.resource_isolation_config,
+            )
         return self._resource_and_label_spec
 
     @property
@@ -734,7 +836,33 @@ class Node:
 
         # TODO(ryw) instead of create a new GcsClient, wrap the one from
         # CoreWorkerProcess to save a grpc channel.
-        for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
+        #
+        # RocksDB GCS recovery (open two on-disk DBs, WAL replay, GetAll
+        # table scans that grow with cluster state) is slow -- worst on a
+        # head restart over existing state -- and can exceed the default
+        # ~20s connect window (NUM_REDIS_GET_RETRIES x ~1s sleep below).
+        # This affects any node connecting while the head is reopening
+        # RocksDB: the head itself (whose fault-tolerance restart reuses a
+        # fixed GCS port, skipping start_gcs_server()'s port-file wait that
+        # is gated on gcs_server_port == 0), and also workers/drivers
+        # joining during that window.
+        num_retries = ray_constants.NUM_REDIS_GET_RETRIES
+        gcs_wait_override = os.environ.get("RAY_gcs_server_port_wait_time_s")
+        if gcs_wait_override is not None:
+            # Explicit operator budget: honor it exactly -- may lengthen OR
+            # shorten the window -- so this env var behaves identically here
+            # and in start_gcs_server()'s port-file wait. Floor at one
+            # attempt (~1s per iteration below) so a 0 value still tries
+            # once rather than skipping the connect entirely. This is also
+            # the opt-in for workers/drivers whose pods lack RAY_gcs_storage
+            # / RAY_gcs_storage_path and thus can't auto-detect the backend.
+            num_retries = max(1, int(gcs_wait_override))
+        elif self._is_rocksdb_gcs():
+            # No explicit override, but we can see the backend is RocksDB:
+            # extend to the same 120s budget as the port-zero path, without
+            # shrinking a larger operator-configured retry count.
+            num_retries = max(num_retries, 120)
+        for _ in range(num_retries):
             gcs_address = None
             last_ex = None
             try:
@@ -811,7 +939,7 @@ class Node:
         Args:
             suffix: The suffix of the temp file.
             prefix: The prefix of the temp file.
-            directory_name (str) : The base directory of the temp file.
+            directory_name: The base directory of the temp file.
 
         Returns:
             A string of file name. If there existing a file having
@@ -994,6 +1122,11 @@ class Node:
 
         Args:
             socket_path: the socket file to prepare.
+            default_prefix: the filename prefix to use when ``socket_path`` is
+                ``None`` and a new socket path needs to be generated.
+
+        Returns:
+            The resolved socket path string.
         """
         result = socket_path
         if sys.platform == "win32":
@@ -1127,10 +1260,29 @@ class Node:
         ]
 
         if self._ray_params.gcs_server_port == 0:
+            # The GCS port file is published only at the very end of
+            # startup: GcsServer binds its RPC port after GcsInitData
+            # loads the full persisted table set (GetAll over the job,
+            # node, actor, actor-task-spec, and placement-group tables)
+            # and every manager is constructed. With the RocksDB backend
+            # this is meaningfully slower than in-memory -- two on-disk
+            # DB instances are opened (column-family discovery, WAL
+            # replay, manifest read) and those table scans hit disk, the
+            # latter growing with cluster state on restart recovery (the
+            # port file lives on ephemeral /tmp, so a restarted head
+            # re-enters this path over an existing store). The default
+            # 30s wait can elapse before the port is bound, so bump it to
+            # 120s when the GCS backend is rocksdb; operator override via
+            # RAY_gcs_server_port_wait_time_s.
+            default_wait = "120" if self._is_rocksdb_gcs() else "30"
+            gcs_port_wait_s = int(
+                os.environ.get("RAY_gcs_server_port_wait_time_s", default_wait)
+            )
             self._ray_params.gcs_server_port = wait_for_persisted_port(
                 self._session_dir,
                 self._node_id,
                 GCS_SERVER_PORT_NAME,
+                timeout_ms=gcs_port_wait_s * 1000,
             )
 
         # Connecting via non-localhost address may be blocked by firewall rule,
@@ -1152,6 +1304,12 @@ class Node:
         """Start the raylet.
 
         Args:
+            plasma_directory: Filesystem directory backing the plasma store's
+                shared memory.
+            fallback_directory: Directory used by plasma when memory mapped
+                files cannot be created in ``plasma_directory``.
+            object_store_memory: Maximum number of bytes the object store can
+                use.
             use_valgrind: True if we should start the process in
                 valgrind.
             use_profiler: True if we should start the process in the
@@ -1314,6 +1472,20 @@ class Node:
         ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
         )
+        # On restart with the RocksDB GCS backend, check_persisted_session_name()
+        # needs the previous session_name before GCS (and thus internal_kv) is
+        # back up. We bridge that gap by also writing session_name to a plain
+        # file in the GCS storage directory. Only done for the RocksDB backend;
+        # others are unaffected.
+        #
+        # Write the file BEFORE the internal_kv_put below so the two never
+        # disagree: if we crash in between, the next restart reads the file and
+        # the internal_kv_put inserts cleanly. A write failure here is fatal --
+        # the storage path also holds RocksDB's own files, so an unwritable path
+        # means GCS can't run anyway.
+        if self._is_rocksdb_gcs():
+            self._persist_rocksdb_session_name_file()
+
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1328,7 +1500,7 @@ class Node:
             assert curr_val == self._session_name.encode("utf-8"), (
                 f"Session name {self._session_name} does not match "
                 f"persisted value {curr_val}. Perhaps there was an "
-                f"error connecting to Redis."
+                f"error connecting to the GCS storage backend."
             )
 
         # Add tracing_startup_hook to redis / internal kv manually
@@ -1493,7 +1665,7 @@ class Node:
 
     def _kill_process_type(
         self,
-        process_type,
+        process_type: str,
         allow_graceful: bool = False,
         check_alive: bool = True,
         wait: bool = False,
@@ -1541,6 +1713,7 @@ class Node:
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
+        wait_timeout_seconds = 1
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1579,19 +1752,21 @@ class Node:
             if allow_graceful:
                 process.terminate()
                 # Allow the process one second to exit gracefully.
-                timeout_seconds = 1
                 try:
-                    process.wait(timeout_seconds)
+                    process.wait(timeout=wait_timeout_seconds)
                 except subprocess.TimeoutExpired:
                     pass
 
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # The reason we usually don't call process.wait() here is that
+                # After kill, wait must be called
+                # The reason we usually don't set timeout=None here is that
                 # there's some chance we'd end up waiting a really long time.
-                if wait:
-                    process.wait()
+                try:
+                    process.wait(timeout=None if wait else wait_timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
 
         del self.all_processes[process_type]
 
@@ -1675,7 +1850,12 @@ class Node:
             ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive
         )
 
-    def kill_all_processes(self, check_alive=True, allow_graceful=False, wait=False):
+    def kill_all_processes(
+        self,
+        check_alive: bool = True,
+        allow_graceful: bool = False,
+        wait: bool = False,
+    ):
         """Kill all of the processes.
 
         Note that This is slower than necessary because it calls kill, wait,
@@ -1684,6 +1864,8 @@ class Node:
         Args:
             check_alive: Raise an exception if any of the processes were
                 already dead.
+            allow_graceful: Send a SIGTERM first and give each process time
+                to exit gracefully before falling back to SIGKILL.
             wait: If true, then this method will not return until the
                 process in question has exited.
         """
@@ -1896,9 +2078,12 @@ class Node:
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
-            gcs_storage_type = (
-                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
-            )
+            if self._is_rocksdb_gcs():
+                gcs_storage_type = "rocksdb"
+            elif os.environ.get("RAY_REDIS_ADDRESS") is not None:
+                gcs_storage_type = "redis"
+            else:
+                gcs_storage_type = "memory"
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
         cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
         if cpu_model_name:

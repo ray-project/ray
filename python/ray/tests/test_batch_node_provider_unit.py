@@ -5,7 +5,7 @@ import random
 import sys
 from collections import defaultdict
 from copy import copy
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import pytest
@@ -121,20 +121,23 @@ class BatchingNodeProviderTester:
         self.expected_scale_request_submitted_count = 0
 
     def update(
-        self, create_node_requests, terminate_nodes_requests, safe_to_scale_flag
-    ):
+        self,
+        create_node_requests: List[Tuple[str, int]],
+        terminate_nodes_requests: List[Tuple[str, int]],
+        safe_to_scale_flag: bool,
+    ) -> None:
         """Simulates an autoscaler update with multiple terminate and create calls.
 
         Calls non_terminated_nodes, then create/terminate nodes, then post_process.
 
         Args:
-            create_node_requests (List[Tuple(str, int)]): List of pairs
+            create_node_requests: List of pairs
                 (node type, count). Each pair is used in a create_node call that
                 creates count nodes of the node type.
-            terminate_nodes_requests (List[Tuple(str, int)]): List of pairs
+            terminate_nodes_requests: List of pairs
                 (node type, count). Each pair is used in a terminate_nodes call
                 that terminates up to count nodes of the node type.
-            safe_to_scale_flag (bool): Passed to the node provider to determine  # noqa
+            safe_to_scale_flag: Passed to the node provider to determine
                 where provider.safe_to_scale() evaluates to True or False.
         """
         self.node_provider.safe_to_scale_flag = safe_to_scale_flag

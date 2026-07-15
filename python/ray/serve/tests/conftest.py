@@ -1,9 +1,11 @@
 import os
 import random
+import socket
 import subprocess
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
+from typing import Any, Dict, Generator
 
 import httpx
 import pytest
@@ -41,6 +43,15 @@ TEST_GRPC_SERVICER_FUNCTIONS = [
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
+
+@pytest.fixture(autouse=True)
+def _clear_stale_ray_address():
+    # Serve CI runs several test targets per container sharing /tmp/ray; a target
+    # killed mid-run can leave a ray_current_cluster pointing at a dead cluster.
+    # Drop it before each test so an address-less ray.init() starts fresh.
+    reset_ray_address()
+    yield
 
 
 @pytest.fixture
@@ -142,6 +153,7 @@ def _shared_serve_instance():
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
+        address="local",
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
@@ -251,12 +263,17 @@ def ray_start_stop_in_specific_directory(request):
 
 
 @pytest.fixture
-def ray_instance(request):
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
     """Starts and stops a Ray instance for this test.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+
+    Yields:
+        Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
     """
 
     original_env_vars = os.environ.copy()
@@ -268,6 +285,7 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
     yield ray.init(
+        address="local",
         _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 1000,
@@ -317,12 +335,49 @@ def manage_ray_with_telemetry(monkeypatch):
         wait_for_condition(check_ray_stopped, timeout=5)
 
 
+def wait_for_metrics_port_free(port=TEST_METRICS_EXPORT_PORT, timeout=30):
+    """
+    Ensures the metrics export port is freed.
+    """
+
+    def port_free():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("", port))
+            return True
+        except OSError:
+            return False
+        finally:
+            s.close()
+
+    wait_for_condition(port_free, timeout=timeout, retry_interval_ms=200)
+
+
+def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeout=30):
+    """
+    Ensures the current dashboard agent is serving the metrics endpoint. A
+    timeout indicates another agent is still running and holding the port.
+    """
+
+    def ready():
+        try:
+            resp = httpx.get(f"http://localhost:{port}/metrics", timeout=1.0)
+        except Exception:
+            return False
+        return resp.status_code == 200 and f'SessionName="{session_name}"' in resp.text
+
+    wait_for_condition(ready, timeout=timeout, retry_interval_ms=500)
+
+
 @pytest.fixture
 def metrics_start_shutdown(request):
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    wait_for_metrics_port_free()
     ray.init(
+        address="local",
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 100,
@@ -331,17 +386,8 @@ def metrics_start_shutdown(request):
     )
 
     try:
-        # Wait for metrics endpoint to be ready before starting Serve
-        def metrics_endpoint_ready():
-            try:
-                resp = httpx.get(
-                    f"http://localhost:{TEST_METRICS_EXPORT_PORT}", timeout=1.0
-                )
-                return resp.status_code == 200
-            except Exception:
-                return False
-
-        wait_for_condition(metrics_endpoint_ready, timeout=30, retry_interval_ms=500)
+        session_name = ray._private.worker._global_node.session_name
+        wait_for_metrics_endpoint(session_name)
 
         grpc_port = 9000
         grpc_servicer_functions = [

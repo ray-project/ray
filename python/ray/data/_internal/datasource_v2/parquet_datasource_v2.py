@@ -18,6 +18,10 @@ from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     check_for_legacy_tensor_type,
 )
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    FileChunker,
+    ParquetFileChunker,
+)
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
@@ -75,6 +79,8 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
+        parquet_format_kwargs: Optional[dict] = None,
+        file_chunker: Optional[FileChunker] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -96,11 +102,23 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._include_row_hash = include_row_hash
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
+        # ``pds.ParquetFileFormat`` kwargs forwarded from the deprecated
+        # ``read_parquet(dataset_kwargs=...)`` arg. Spread into the format
+        # built by ``ParquetFileReader._make_format``.
+        self._parquet_format_kwargs = parquet_format_kwargs or {}
         # User-supplied schema override. When set, ``infer_schema`` returns
         # it verbatim (plus partition/path augmentation) rather than reading
         # footers, and the scanner pins it on the pyarrow dataset so files
         # are cast to these types at scan time.
         self._user_schema = schema
+        # Chunker that splits each listed Parquet file into one or more
+        # row-group-aligned read units. Defaults to ``ParquetFileChunker``
+        # (1 GiB target chunk size, or whatever ``DataContext`` configures).
+        # Callers can inject an alternative for tests or shuffle-aware
+        # planning code that wants whole-file reads.
+        self._file_chunker: FileChunker = (
+            file_chunker if file_chunker is not None else ParquetFileChunker()
+        )
 
     @property
     def paths(self) -> List[str]:
@@ -133,6 +151,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
     def _get_file_indexer(self) -> FileIndexer:
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
+            file_chunker=self._file_chunker,
         )
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
@@ -286,4 +305,5 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,
+            parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )

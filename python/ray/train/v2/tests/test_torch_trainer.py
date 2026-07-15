@@ -60,19 +60,18 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     [
         (TorchConfig(backend="gloo", init_method="env"), 2),
         (TorchConfig(backend="gloo", init_method="tcp"), 2),
-        # TODO(tseah): enable this after CI has torchft dependencies
-        # (
-        #     TorchftConfig(
-        #         backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
-        #     ),
-        #     1,
-        # ),
-        # (
-        #     TorchftConfig(
-        #         backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
-        #     ),
-        #     1,
-        # ),
+        (
+            TorchftConfig(
+                backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
+            ),
+            1,
+        ),
+        (
+            TorchftConfig(
+                backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
+            ),
+            1,
+        ),
     ],
 )
 def test_torch_start_shutdown(ray_start_4_cpus, torch_config, expected_world_size):
@@ -107,7 +106,6 @@ def test_torch_process_group_shutdown_timeout(ray_start_4_cpus, monkeypatch, tim
     trainer.fit()
 
 
-@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 def test_torchft_linear(ray_start_4_cpus):
     """Test torchft linear training: loss goes down and models are equal across workers."""
 
@@ -159,7 +157,6 @@ def test_torchft_linear(ray_start_4_cpus):
 # TODO(tseah): Add test for lighthouse failures (e.g. lighthouse unreachable).
 
 
-@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 @pytest.mark.parametrize(
     "min_replicas,max_failures,expect_error,expected_train_fn_calls,expected_reports",
     [
@@ -167,7 +164,8 @@ def test_torchft_linear(ray_start_4_cpus):
         # trying to restart the replica group.
         # (1, 0, False, 2),
         # This continues training with 1 replica. It does not replay step 10 and its report.
-        (1, 1, False, 3, 1),
+        # TODO(tseah): expected_reports should be 1 when we support training with 1/2 workers.
+        (1, 1, False, 3, 0),
         # This errors immediately.
         (2, 0, True, 2, 0),
         # This stops training with 1 replica. It replays step 10 and its report.
@@ -187,6 +185,10 @@ def test_torchft_linear_replica_failure(
     from ray.train.v2.examples.pytorch.torchft_linear_example import (
         train_func as torchft_linear_train_func,
     )
+
+    num_workers = 2
+    # TODO(tseah): remove this check once we support training with 1/2 workers.
+    training_requires_all_workers = min_replicas == num_workers
 
     @ray.remote
     class Counter:
@@ -213,8 +215,9 @@ def test_torchft_linear_replica_failure(
             "error_step": 10,
             "error_rank": 0,
             "num_replicas": min_replicas,
+            "training_requires_all_workers": training_requires_all_workers,
         },
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=num_workers),
         torch_config=TorchftConfig(
             backend="gloo", lighthouse_kwargs={"min_replicas": min_replicas}
         ),

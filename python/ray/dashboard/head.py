@@ -221,8 +221,11 @@ class DashboardHead:
         """Load `DashboardHeadModule`s.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A tuple of ``(loaded_modules, skipped_module_names)``.
         """
         modules = []
         skipped_modules = set()
@@ -263,13 +266,18 @@ class DashboardHead:
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
     ) -> List["SubprocessModuleHandle"]:
-        """
+        """Load ``SubprocessModule`` handles.
+
         If minimal, return an empty list.
         If non-minimal, load `SubprocessModule`s by creating Handles to them.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A list of ``SubprocessModuleHandle`` instances, or an empty list in
+            minimal mode.
         """
         if self.minimal:
             logger.info("Subprocess modules not loaded in minimal mode.")
@@ -398,11 +406,17 @@ class DashboardHead:
         # memory_full_info is None on Mac due to the permission issue
         # (https://github.com/giampaolo/psutil/issues/883)
         if proc_attrs.get("memory_full_info") is not None:
-            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").uss) / 1.0e6
             )
-            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").uss)
+            )
+            self.metrics.metrics_dashboard_mem_rss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").rss)
             )
 
     async def run(self):

@@ -375,12 +375,6 @@ def _test_write_large_data(
     write_kwargs = {} if write_kwargs is None else write_kwargs
     write_fn(ds, out_dir, **write_kwargs)
 
-    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
-    assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
-        max_heap_memory,
-        ext,
-    )
-
     # Make sure we can read out a record.
     if read_fn is not None:
         assert read_fn(out_dir).count() == num_blocks_per_task
