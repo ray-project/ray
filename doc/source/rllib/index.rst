@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Industry-grade, scalable reinforcement learning with a unified API for single-agent, multi-agent, and offline RL training and deployment.
 
 .. sphinx_rllib_readme_begin
 
@@ -55,7 +56,6 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     user-guides
     rllib-examples
     new-api-stack-migration-guide
-    package_ref/index
 
 
 .. sphinx_rllib_readme_2_begin
@@ -138,8 +138,8 @@ on the collected data, and a model update step.
     # Build the algorithm.
     algo = config.build_algo()
 
-    # Train it for 5 iterations ...
-    for _ in range(5):
+    # Train it for 2 iterations ...
+    for _ in range(2):
         pprint(algo.train())
 
 At the end of your script, you evaluate the trained Algorithm and release all its resources:

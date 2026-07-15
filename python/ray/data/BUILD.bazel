@@ -804,6 +804,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches",
+    size = "small",
+    srcs = ["tests/test_iter_torch_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iterator",
     size = "small",
     srcs = ["tests/test_iterator.py"],
@@ -1358,7 +1372,7 @@ py_test(
 
 py_test(
     name = "test_iceberg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_iceberg.py"],
     tags = [
         "exclusive",
@@ -1416,6 +1430,20 @@ py_test(
     name = "test_operators",
     size = "small",
     srcs = ["tests/test_operators.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_block_ref_counter",
+    size = "small",
+    srcs = ["tests/test_block_ref_counter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1964,9 +1992,9 @@ py_test(
 )
 
 py_test(
-    name = "test_autoscaler",
+    name = "test_actor_autoscaler",
     size = "small",
-    srcs = ["tests/test_autoscaler.py"],
+    srcs = ["tests/test_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",

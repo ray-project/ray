@@ -37,6 +37,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_counter.h"
@@ -138,8 +139,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
         /*clock=*/clock_,
@@ -393,6 +393,122 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
     ASSERT_EQ(key.at("Source"), "executor");
     ASSERT_EQ(key.at("IsRetry"), "0");
   }
+}
+
+// A running task must stay visible in the gauge on every RecordMetrics() tick,
+// not only on state transitions, so it does not vanish between scrapes when the
+// metrics backend clears gauge observations after each export (#56405).
+TEST(TaskCounterTest, RecordMetricsReEmitsRunningGaugeAcrossTicksWithoutTransitions) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // A task starts running and then stays running with no further transitions.
+  const std::string func_name = "long_running_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+
+  // First tick emits the RUNNING-state breakdown: RUNNING, the SUBMITTED_TO_WORKER
+  // negation, and the three RUNNING_IN_* sub-states.
+  task_counter.RecordMetrics();
+  auto first_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(first_tick.size(), 5) << "expected RUNNING + negation + 3 sub-states";
+
+  // Clear observations to detect re-emission on the next tick.
+  task_by_state_gauge.Clear();
+  ASSERT_TRUE(task_by_state_gauge.GetTagToValue().empty());
+
+  // With no transitions since the last tick, the gauge must still be re-asserted.
+  task_counter.RecordMetrics();
+  auto second_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(second_tick.size(), 5) << "running task must persist without a transition";
+  ASSERT_EQ(second_tick, first_tick);
+
+  // Re-emission is sustained across further ticks, not a one-time flush.
+  task_by_state_gauge.Clear();
+  task_counter.RecordMetrics();
+  auto third_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(third_tick.size(), 5);
+  ASSERT_EQ(third_tick, first_tick);
+}
+
+// When a running task finishes, its RUNNING-state gauge must be retracted to 0 on
+// the next RecordMetrics() tick (the on-change callback fires for the now-zero key),
+// rather than remaining at its last non-zero value.
+TEST(TaskCounterTest, RecordMetricsRetractsRunningGaugeWhenTaskFinishes) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // Returns the gauge value recorded for the given State tag, or -1 if absent.
+  auto value_for_state = [&task_by_state_gauge](const std::string &state) -> double {
+    for (const auto &[tags, value] : task_by_state_gauge.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+
+  const std::string func_name = "finishing_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 1) << "task should be counted as RUNNING";
+
+  // The task finishes; the RUNNING count drops to zero.
+  task_counter.MoveRunningToFinished(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 0)
+      << "RUNNING gauge must be retracted to 0, not left at its last value";
+}
+
+// Free callback used to exercise the async-generator unblock notify registry.
+// Increments the int pointed to by `ctx` (the registry treats ctx opaquely).
+static void IncrementUnblockCounter(void *ctx) { ++(*static_cast<int *>(ctx)); }
+
+TEST_F(CoreWorkerTest, AsyncGeneratorUnblockNotifyFiresOnConsumptionUpdate) {
+  const auto generator_id = ObjectID::FromRandom();
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+
+  // Register a backpressure state so the consumption handler finds a waiter,
+  // plus an async unblock notify for this generator.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  core_worker_->RegisterGeneratorBackpressureState(
+      generator_id, waiter, /*actor_metadata=*/nullptr, owner_address);
+
+  int count = 0;
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, &IncrementUnblockCounter, &count);
+
+  auto send_consumed = [&](int64_t total) {
+    rpc::UpdateGeneratorBackpressureConsumedRequest request;
+    request.set_generator_id(generator_id.Binary());
+    request.set_total_num_object_consumed(total);
+    rpc::UpdateGeneratorBackpressureConsumedReply reply;
+    core_worker_->HandleUpdateGeneratorBackpressureConsumed(
+        std::move(request),
+        &reply,
+        [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  // A consumption update through the public RPC handler wakes the async
+  // generator by firing the registered notify.
+  send_consumed(1);
+  ASSERT_EQ(count, 1);
+
+  // After clearing, a further consumption update does not fire it.
+  core_worker_->ClearAsyncGeneratorBackpressureUnblockNotify(generator_id);
+  send_consumed(2);
+  ASSERT_EQ(count, 1);
+
+  // Defense-in-depth: a null callback must not crash when the handler fires it.
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, nullptr, nullptr);
+  send_consumed(3);
+  ASSERT_EQ(count, 1);
 }
 
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
@@ -798,119 +914,9 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
-class CoreWorkerPubsubWorkerObjectEvictionChannelTest
-    : public CoreWorkerTest,
-      public ::testing::WithParamInterface<bool> {};
-
-TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatchRetries) {
-  // should_free_object: determines whether the object is freed from plasma. This is used
-  // to trigger AddObjectOutOfScopeOrFreedCallback in HandlePubsubCommandBatch which
-  // stores the unpin_object callback that publishes the message to the
-  // WORKER_OBJECT_EVICTION channel
-  // should_free_object == true: the object is freed from plasma and we expect the message
-  // to the WORKER_OBJECT_EVICTION channel to be published.
-  // should_free_object == false: the object is not freed and we expect the message to the
-  // WORKER_OBJECT_EVICTION channel to not be published.
-  bool should_free_object = GetParam();
-
-  auto subscriber_id = NodeID::FromRandom();
-  auto object_id = ObjectID::FromRandom();
-
-  rpc::Address owner_address;
-  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id,
-                                     {},
-                                     owner_address,
-                                     "",
-                                     0,
-                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                     true);
-
-  rpc::PubsubCommandBatchRequest command_batch_request;
-  command_batch_request.set_subscriber_id(subscriber_id.Binary());
-  auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  command->set_key_id(object_id.Binary());
-  auto *sub_message = command->mutable_subscribe_message();
-  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
-  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
-  real_sub_message->set_object_id(object_id.Binary());
-  *real_sub_message->mutable_subscriber_address() = rpc_address_;
-
-  rpc::PubsubCommandBatchReply command_reply1;
-  rpc::PubsubCommandBatchReply command_reply2;
-  // Each call to HandlePubsubCommandBatch causes the reference counter to store the
-  // unpin_object callback that publishes the WORKER_OBJECT_EVICTION message
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply1,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply2,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-
-  if (should_free_object) {
-    // Triggers the unpin_object callbacks that publish the message to the
-    // WORKER_OBJECT_EVICTION channel
-    reference_counter_->FreePlasmaObjects({object_id});
-  }
-
-  rpc::PubsubLongPollingRequest request;
-  request.set_subscriber_id(subscriber_id.Binary());
-  request.set_max_processed_sequence_id(0);
-  request.set_publisher_id("");
-
-  rpc::PubsubLongPollingReply reply;
-
-  // should_free_object == true: Each call to HandlePubsubCommandBatch adds an
-  // unpin_object callback that is triggered via FreePlasmaObjects which publishes the
-  // message to the WORKER_OBJECT_EVICTION channel, hence we have 1 publish per callback
-  // so 2 in total. The long poll connection is closed
-  // should_free_object == false: Since FreePlasmaObjects is not called, the unpin_object
-  // callbacks are not triggered and we have 0 publishes. NOTE: The long poll connection
-  // is not closed when should_free_object == false since there was no publish.
-  core_worker_->HandlePubsubLongPolling(
-      request,
-      &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-
-  int expected_messages = should_free_object ? 2 : 0;
-  EXPECT_EQ(reply.pub_messages_size(), expected_messages);
-
-  for (int i = 0; i < expected_messages; i++) {
-    const auto &msg = reply.pub_messages(i);
-    EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    EXPECT_EQ(msg.key_id(), object_id.Binary());
-    EXPECT_EQ(msg.sequence_id(), i + 1);
-    EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
-  }
-
-  if (!should_free_object) {
-    // Since the long poll connection is not closed, we need to flush it. Otherwise this
-    // can trigger undefined behavior since unlike in prod where grpc arena allocates the
-    // reply, here we allocate the reply on the stack. Hence the normal order of
-    // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
-    // reply which access freed memory
-    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
-    object_info_publisher_->CheckDeadSubscribers();
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
-                         CoreWorkerPubsubWorkerObjectEvictionChannelTest,
-                         ::testing::Values(true, false));
-
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
   // type. The publisher was created with only:
-  // - WORKER_OBJECT_EVICTION
   // - WORKER_REF_REMOVED_CHANNEL
   // - WORKER_OBJECT_LOCATIONS_CHANNEL
   // Using a channel type that was not registered should return InvalidArgument.
@@ -953,7 +959,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
 
   rpc::PubsubCommandBatchReply command_reply;
@@ -977,7 +983,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
   command->mutable_subscribe_message();
 

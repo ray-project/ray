@@ -1574,7 +1574,7 @@ def iterate_with_retry(
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
                     f"Retrying attempt {attempt + 1} to {description} "
-                    f"after {backoff:.1f}s due to: {e}"
+                    f"after {backoff:.1f}s due to: {error_str}"
                 )
                 time.sleep(backoff)
             else:

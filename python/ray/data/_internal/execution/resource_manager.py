@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -108,6 +109,7 @@ class ResourceManager:
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
+        block_ref_counter: BlockRefCounter,
     ):
         self._topology = topology
         self._options = options
@@ -139,6 +141,8 @@ class ResourceManager:
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
         self._output_operator = terminal_operator_from_topology(topology)
+
+        self._block_ref_counter = block_ref_counter
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"

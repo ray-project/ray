@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Train how-to guides: data loading, accelerators, storage, monitoring, checkpointing, fault tolerance, elastic training, and experiment tracking.
+
 .. _train-user-guides:
 
 Ray Train User Guides
