@@ -408,8 +408,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
-    ref_stream_execution_signal_callbacks_.emplace(
-        generator_id, std::vector<ExecutionSignalCallback>());
     RAY_CHECK(inserted.second);
   }
 
@@ -812,26 +810,20 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
-  // Call execution signal callbacks to ensure that the executor does not block
-  // after the generator goes out of scope at the caller.
-  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (signal_it != ref_stream_execution_signal_callbacks_.end()) {
-    RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
-                   << generator_id;
-    for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."));
-    }
-    // We may still receive more generator return reports in the future, if the
-    // generator task is still running or is retried. They will get the
-    // callback immediately because we deleted this entry.
-    ref_stream_execution_signal_callbacks_.erase(signal_it);
-  }
-
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     ref_stream_consumption_update_callbacks_.erase(generator_id);
     return true;
   }
+
+  // Record that the caller has requested deletion (the generator went out of
+  // scope). The stream may still be retained below if EOF has not been written
+  // yet or its consumed returns still have lineage in scope. While it is
+  // retained, a report from a still-running executor is told the stream is
+  // deleted (see HandleReportGeneratorItemReturns) so it stops backpressuring,
+  // whereas a report from a lineage-reconstruction retry (EOF already written)
+  // is still handled to re-materialize the referenced returns.
+  stream_it->second.MarkCallerDeleted();
 
   auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
   if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
@@ -990,9 +982,18 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
   }
+  // Whether the caller has dropped the generator. Once dropped, it reads no
+  // further, so any index it has not already consumed is unwanted; only
+  // already-consumed indices reported here are lineage-reconstruction retries of
+  // still-referenced returns and must still be handled.
+  const bool caller_deleted = stream_it->second.IsCallerDeleted();
   if (backpressure_threshold != -1) {
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+    // If the whole batch is unconsumed (its lowest index is unconsumed, and a
+    // batch is contiguous), tell the executor the stream is deleted so it stops
+    // backpressuring - there is no consumer left. A batch whose lowest index is
+    // already consumed is handled below; its unconsumed tail, if any, is skipped
+    // per-object.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(item_index)) {
       execution_signal_callback(Status::NotFound("Stream is deleted."));
       return false;
     }
@@ -1007,6 +1008,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReturnObject &returned_object = request.returned_objects(i);
     const auto object_id = ObjectID::FromBinary(returned_object.object_id());
     const auto object_index = item_index + i;
+
+    // A single report can batch multiple yields that straddle the consumed
+    // boundary (a consumed prefix followed by an unconsumed tail). If the caller
+    // has dropped the generator, skip storing the unconsumed tail: those refs
+    // would never be read and only need cleanup later. The consumed prefix is
+    // still handled below to re-materialize referenced returns.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
+      continue;
+    }
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;

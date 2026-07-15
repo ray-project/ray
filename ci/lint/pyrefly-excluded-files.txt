@@ -25,6 +25,8 @@ python/ray/data/_internal/datasource/json_datasource.py
 python/ray/data/_internal/datasource/kafka_datasource.py
 python/ray/data/_internal/datasource/lance_datasink.py
 python/ray/data/_internal/datasource/lance_datasource.py
+python/ray/data/_internal/datasource/_lerobot_compat.py
+python/ray/data/_internal/datasource/lerobot_datasource.py
 python/ray/data/_internal/datasource/mongo_datasource.py
 python/ray/data/_internal/datasource/numpy_datasink.py
 python/ray/data/_internal/datasource/parquet_datasink.py
@@ -210,6 +212,7 @@ python/ray/data/tests/datasource/test_file_datasink.py
 python/ray/data/tests/datasource/test_huggingface.py
 python/ray/data/tests/datasource/test_iceberg.py
 python/ray/data/tests/datasource/test_image.py
+python/ray/data/tests/datasource/test_lerobot.py
 python/ray/data/tests/datasource/test_numpy.py
 python/ray/data/tests/datasource/test_pandas.py
 python/ray/data/tests/datasource/test_parquet.py
