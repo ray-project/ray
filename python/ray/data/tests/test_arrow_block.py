@@ -347,5 +347,23 @@ def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     assert roundtripped.to_pydict() == {"x": expected_values}
 
 
+def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
+    # https://github.com/ray-project/ray/issues/64765: opting out restores the
+    # pre-2.56 numpy conversion, so standard Arrow types no longer become
+    # pd.ArrowDtype. This unblocks pandas UDFs that assign multi-dimensional
+    # arrays into columns or rely on numpy-only ops these columns do not support.
+    ctx = DataContext.get_current()
+    table = pa.table({"x": pa.array([1, 2, 3], pa.int64())})
+
+    ctx.enable_arrow_backed_pandas_conversion = True
+    on = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(on.dtypes["x"], pd.ArrowDtype)
+
+    ctx.enable_arrow_backed_pandas_conversion = False
+    off = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(off.dtypes["x"], pd.ArrowDtype)
+    assert off.dtypes["x"] == np.dtype("int64")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
