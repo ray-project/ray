@@ -333,7 +333,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       metrics_.placement_group_count_gauge);
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
-  InitGcsWorkerManager();
+  InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
@@ -870,13 +870,15 @@ void GcsServer::InitRuntimeEnvManager() {
       /*max_active_rpcs_per_handler=*/-1));
 }
 
-void GcsServer::InitGcsWorkerManager() {
+void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
       *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // No-op unless dead worker entries survived a GCS restart (Redis FT).
+  gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
 }
 
 void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
