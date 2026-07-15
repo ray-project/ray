@@ -76,7 +76,7 @@ class ReplicaQueueLengthCache:
             get_curr_time_s if get_curr_time_s is not None else lambda: time.time()
         )
 
-    def _is_timed_out(self, timestamp_s: int) -> bool:
+    def _is_timed_out(self, timestamp_s: float) -> bool:
         return self._get_curr_time_s() - timestamp_s > self._staleness_timeout_s
 
     def get(self, replica_id: ReplicaID) -> Optional[int]:

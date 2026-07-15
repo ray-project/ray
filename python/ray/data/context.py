@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -108,6 +108,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
+
+DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -518,12 +520,10 @@ class DataContext:
         autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
-        scheduling_strategy: The global scheduling strategy. For tasks with large args,
-            ``scheduling_strategy_large_args`` takes precedence.
-        scheduling_strategy_large_args: Scheduling strategy for tasks with large args.
-        large_args_threshold: Size in bytes after which point task arguments are
-            considered large. Choose a value so that the data transfer overhead is
-            significant in comparison to task scheduling (i.e., low tens of ms).
+        scheduling_strategy: Deprecated. Ray Data manages scheduling internally.
+        scheduling_strategy_large_args: Deprecated. Ray Data manages scheduling
+            internally.
+        large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
         eager_free: Whether to eagerly free memory.
@@ -773,6 +773,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the task-based hash-shuffle v2 path for join. When
+    # False, fall back to the legacy actor-based `JoinOperator`.
+    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -929,7 +933,38 @@ class DataContext:
         self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if (
+        if name == "scheduling_strategy" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "scheduling_strategy_large_args" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy_large_args` is deprecated and will "
+                "be removed after January 2027. Ray Data manages scheduling "
+                "internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "large_args_threshold" and (
+            name in self.__dict__ or value != DEFAULT_LARGE_ARGS_THRESHOLD
+        ):
+            warnings.warn(
+                "`DataContext.large_args_threshold` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif (
             name == "write_file_retry_on_errors"
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
@@ -982,6 +1017,14 @@ class DataContext:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
+
+        elif name == "join_operator_actor_num_cpus_override" and value is not None:
+            warnings.warn(
+                "`join_operator_actor_num_cpus_override` is deprecated and ignored, "
+                "joins now run on the hash-shuffle v2 path, whose reduce tasks are "
+                "not actor-based.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 

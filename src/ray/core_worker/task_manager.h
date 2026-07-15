@@ -176,11 +176,6 @@ class ObjectRefStream {
    */
   void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
-  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
-  ///
-  /// \return A list of object IDs that are not read yet.
-  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
-
   /// Pop all ObjectIDs that are not read yet via
   /// TryReadNextItem.
   ///
@@ -195,6 +190,13 @@ class ObjectRefStream {
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
+
+  /// Whether the caller has requested deletion of this stream (i.e. the
+  /// language-frontend generator went out of scope). The stream may still be
+  /// retained after this point until EOF is written and the lineage of its
+  /// consumed returns goes out of scope.
+  void MarkCallerDeleted() { caller_deleted_ = true; }
+  bool IsCallerDeleted() const { return caller_deleted_; }
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
@@ -224,6 +226,10 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// Set once the caller requests deletion of the stream (the generator went
+  /// out of scope). Used to decide whether a backpressured executor should be
+  /// released while the stream is still retained. See MarkCallerDeleted.
+  bool caller_deleted_ = false;
 };
 
 class TaskManager : public TaskManagerInterface {
@@ -840,12 +846,6 @@ class TaskManager : public TaskManagerInterface {
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
-
-  /// Tracks active streams that may receive backpressured generator reports.
-  /// Erasing an entry marks the stream deleted while the ObjectRefStream may
-  /// remain around until EOF/lineage cleanup.
-  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
-      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Report visibility is acknowledged immediately and consumed progress is
   /// pushed separately to the executor.

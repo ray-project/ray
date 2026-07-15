@@ -10,12 +10,10 @@ from typing import (
     Any,
     AsyncIterator,
     Callable,
-    Coroutine,
     Dict,
     List,
     Optional,
     Tuple,
-    Union,
 )
 
 import ray
@@ -45,13 +43,15 @@ def _validate_deployment_options(
     deployment: Deployment,
     deployment_id: DeploymentID,
 ):
-    if "num_gpus" in deployment.ray_actor_options:
+    # `Deployment.ray_actor_options` is annotated `Optional[Dict]`; would raise
+    # `TypeError` here if it were ever `None` in practice.
+    if "num_gpus" in deployment.ray_actor_options:  # type: ignore[operator]
         logger.warning(
             f"Deployment {deployment_id} has num_gpus configured. "
             "CUDA_VISIBLE_DEVICES is not managed automatically in local testing mode. "
         )
 
-    if "runtime_env" in deployment.ray_actor_options:
+    if "runtime_env" in deployment.ray_actor_options:  # type: ignore[operator]
         logger.warning(
             f"Deployment {deployment_id} has runtime_env configured. "
             "runtime_envs are ignored in local testing mode."
@@ -77,9 +77,13 @@ def make_local_deployment_handle(
     deployment_id = DeploymentID(deployment.name, app_name)
     _validate_deployment_options(deployment, deployment_id)
     user_callable_wrapper = UserCallableWrapper(
-        deployment.func_or_class,
+        # `func_or_class` is `Union[Callable, str]`; in local testing mode it's
+        # always the actual callable, not an import path string.
+        deployment.func_or_class,  # type: ignore[arg-type]
         deployment.init_args,
-        deployment.init_kwargs,
+        # `Deployment.init_kwargs` is (mis)annotated as `Tuple[Any]` upstream;
+        # at runtime it's the init kwargs `Dict`.
+        deployment.init_kwargs,  # type: ignore[arg-type]
         deployment_id=deployment_id,
         run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
         run_user_code_in_separate_thread=True,
@@ -132,7 +136,7 @@ class LocalReplicaResult(ReplicaResult):
         generator_result_queue: Optional[queue.Queue] = None,
     ):
         self._future = future
-        self._lazy_asyncio_future = None
+        self._lazy_asyncio_future: Optional[asyncio.Future] = None
         self._request_id = request_id
         self._is_streaming = is_streaming
 
@@ -151,7 +155,9 @@ class LocalReplicaResult(ReplicaResult):
 
         return self._lazy_asyncio_future
 
-    def _process_response(f: Union[Callable, Coroutine]):
+    # Decorator applied at class-body evaluation time, so it intentionally has no
+    # `self` parameter.
+    def _process_response(f: Callable):  # type: ignore[misc]
         @wraps(f)
         def wrapper(self, *args, **kwargs):
             try:
@@ -197,11 +203,14 @@ class LocalReplicaResult(ReplicaResult):
     @_process_response
     def __next__(self):
         assert self._is_streaming, "next() can only be called on a streaming result."
+        # Streaming invariant: `_generator_result_queue` is non-None.
+        assert self._generator_result_queue is not None
 
         while True:
             if self._future.done() and self._generator_result_queue.empty():
                 if self._future.exception():
-                    raise self._future.exception()
+                    # Guarded: `exception()` is non-None per the check above.
+                    raise self._future.exception()  # pyrefly: ignore[bad-raise]
                 else:
                     raise StopIteration
 
@@ -213,13 +222,18 @@ class LocalReplicaResult(ReplicaResult):
     @_process_response
     async def __anext__(self):
         assert self._is_streaming, "anext() can only be called on a streaming result."
+        # Streaming invariant: `_generator_result_queue` is non-None.
+        assert self._generator_result_queue is not None
 
         # This callback does not pull from the queue, only checks that a result is
         # available, else there is a race condition where the future finishes and the
         # queue is empty, but this function hasn't returned the result yet.
         def _wait_for_result():
             while True:
-                if self._future.done() or not self._generator_result_queue.empty():
+                if (
+                    self._future.done()
+                    or not self._generator_result_queue.empty()  # pyrefly: ignore[missing-attribute]
+                ):
                     return
                 time.sleep(0.01)
 
@@ -235,7 +249,8 @@ class LocalReplicaResult(ReplicaResult):
             return self._generator_result_queue.get()
 
         if self._asyncio_future.exception():
-            raise self._asyncio_future.exception()
+            # Guarded: `exception()` is non-None per the check above.
+            raise self._asyncio_future.exception()  # pyrefly: ignore[bad-raise]
 
         raise StopAsyncIteration
 
@@ -306,16 +321,20 @@ class LocalRouter(Router):
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> concurrent.futures.Future[LocalReplicaResult]:
+    ) -> concurrent.futures.Future[ReplicaResult]:
         request_args, request_kwargs = self._resolve_deployment_responses(
             request_args, request_kwargs
         )
 
+        generator_result_queue: Optional[queue.Queue]
+        generator_result_callback: Optional[Callable[[Any], None]]
         if request_meta.is_streaming:
             generator_result_queue = queue.Queue()
 
             def generator_result_callback(item: Any):
-                generator_result_queue.put_nowait(item)
+                # Closure over the outer `Optional` variable; always non-None
+                # on this (streaming) branch.
+                generator_result_queue.put_nowait(item)  # type: ignore[union-attr]
 
         else:
             generator_result_queue = None
@@ -342,7 +361,9 @@ class LocalRouter(Router):
                 request_args,
                 request_kwargs,
             )
-        noop_future = concurrent.futures.Future()
+        noop_future: concurrent.futures.Future[
+            ReplicaResult
+        ] = concurrent.futures.Future()
         noop_future.set_result(
             LocalReplicaResult(
                 fut,

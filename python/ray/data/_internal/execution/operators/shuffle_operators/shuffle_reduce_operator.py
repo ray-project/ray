@@ -20,7 +20,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
     ShuffleMapOp,
     extract_partition_id,
 )
@@ -421,14 +421,13 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
-        upstream = self.input_dependencies[0]
-        assert isinstance(upstream, ShuffleMapOp)
-        partition_bytes = upstream.get_partition_bytes()
         memory = 0
-        sizes = [b for b in partition_bytes.values() if b > 0]
-        if sizes:
-            avg_bytes = sum(sizes) / len(sizes)
-            memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+        for upstream in self.input_dependencies:
+            assert isinstance(upstream, ShuffleMapOp)
+            sizes = [b for b in upstream.get_partition_bytes().values() if b > 0]
+            if sizes:
+                avg_bytes = sum(sizes) / len(sizes)
+                memory += int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )
