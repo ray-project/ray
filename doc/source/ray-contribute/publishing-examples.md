@@ -25,7 +25,7 @@ In this flow the example's content lives in a template, not in the Ray repositor
 
 ### 1. Author and publish the template
 
-Author your example as an Anyscale template so it's both a workspace people can launch and a docs page. A template ships a `README.md` and a matching `README.ipynb`. The docs build renders the `README.md` as the example page and excludes the duplicate notebook. If you're not sure whether your example should be a template, ask the Ray docs team.
+Author your example as an Anyscale template so it's both a workspace people can launch and a docs page. See the [`anyscale/templates` repository](https://github.com/anyscale/templates) and its "Contributing a template" guide for how to author one. A template ships a `README.md` and a matching `README.ipynb`. The docs build renders the `README.md` as the example page and excludes the duplicate notebook. If you're not sure whether your example should be a template, ask the Ray docs team.
 
 ### 2. Register the template in the docs build
 
