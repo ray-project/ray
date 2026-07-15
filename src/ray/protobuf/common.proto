@@ -278,6 +278,10 @@ enum ErrorType {
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 32;
   // Indicates that the worker failed to startup after multiple retry attempts.
   WORKER_STARTUP_FAILED = 33;
+  // A streaming generator task was replayed (e.g. for lineage
+  // reconstruction) and produced a different number of objects than the
+  // first successful attempt, indicating non-deterministic generator output.
+  STREAMING_GENERATOR_REPLAY_INCONSISTENT = 34;
 }
 
 // The user error information.
