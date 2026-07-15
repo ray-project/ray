@@ -527,8 +527,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         }
         return kwargs
 
-    # --- SupportsMetadata ---
-
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
         """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
