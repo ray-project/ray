@@ -530,8 +530,13 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
-# Better typehint formatting (see custom.css)
-autodoc_typehints = "signature"
+# Move type hints out of the signature and into the Parameters description list
+# (see custom.css), so signatures stay short and scannable while each parameter
+# still shows its type. "documented" scopes the description-side types to params
+# that already have a docstring entry, which keeps their prose descriptions and
+# preserves short type names.
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented"
 
 
 def filter_out_undoc_class_members(member_name, class_name, module_name):
