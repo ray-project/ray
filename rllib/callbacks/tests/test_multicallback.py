@@ -95,8 +95,6 @@ class TestMultiCallback(unittest.TestCase):
 
         # Run a few training iterations and check, if the metrics defined in the
         # callbacks made it into the results. Furthermore, check, if the values are correct.
-        # The callback values are constant, so a few iterations are enough; running many
-        # made this test straddle the 180s per-test timeout.
         for _ in range(3):
             results = algo.train()
             self.assertIn("callback_1", results["env_runners"])
