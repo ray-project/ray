@@ -93,27 +93,6 @@ If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
 
 `ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
 
-The following example demonstrates the recommended flow:
-
-```bash
-# First attempt without a token - authentication stays disabled.
-$ ray start --head
-...
-Ray runtime started.
-...
-$ ray stop
-
-# Generate a token.
-$ ray get-auth-token --generate
-<token is output and written to ~/.ray/auth_token>
-
-# Start local cluster again - token authentication is now enabled automatically.
-$ ray start --head
-...
-Ray runtime started.
-...
-```
-
 If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
 
 ```bash
