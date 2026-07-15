@@ -1056,7 +1056,7 @@ class PhysicalOperator(Operator):
         The default implementation reads from BlockRefCounter, which tracks
         all live blocks attributed to this operator. Subclasses may override
         to customize (e.g., ShuffleMapOperator returns 0 since its outputs
-        are IPC shards managed by the shuffle reduce stage).
+        are intermediate partitions managed by the shuffle reduce stage).
         """
         return self._block_ref_counter.get_object_store_memory_usage(self.id)
 

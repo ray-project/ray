@@ -422,8 +422,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         )
 
     def estimate_object_store_usage(self) -> int:
-        # ShuffleMapOperator's outputs are IPC shards consumed by the
-        # reduce stage; they don't count toward backpressure.
+        # Map outputs are intermediate partitions consumed by the reduce
+        # stage; backpressure is driven by the reduce side instead.
         return 0
 
     def incremental_resource_usage(self) -> ExecutionResources:
