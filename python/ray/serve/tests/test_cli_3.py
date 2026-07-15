@@ -27,7 +27,11 @@ CONNECTION_ERROR_MSG = "connection error"
 def ping_endpoint(app_name: str = SERVE_DEFAULT_APP_NAME, params: str = ""):
     try:
         url = get_application_url("HTTP", app_name=app_name)
-        return httpx.get(f"{url}/{params}").text
+        if params.startswith("?"):
+            url = f"{url}{params}"
+        elif params:
+            url = f"{url.rstrip('/')}/{params.lstrip('/')}"
+        return httpx.get(url).text
     # A broad except is intentional: once `serve run` is torn down the app
     # disappears from Serve details and `get_application_url` raises (not an
     # httpx error), which is exactly the "endpoint is down" signal the
@@ -251,7 +255,9 @@ class TestRun:
         p = subprocess.Popen(
             ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_3.parrot_node"]
         )
-        wait_for_condition(lambda: ping_endpoint(params="?sound=squawk") == "squawk")
+        wait_for_condition(
+            lambda: ping_endpoint(params="?sound=squawk") == "squawk", timeout=15
+        )
         print(
             "Run successful! Deployment is live and reachable over HTTP. Killing run."
         )
@@ -259,7 +265,8 @@ class TestRun:
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
         wait_for_condition(
-            lambda: ping_endpoint(params="?sound=squawk") == CONNECTION_ERROR_MSG
+            lambda: ping_endpoint(params="?sound=squawk") == CONNECTION_ERROR_MSG,
+            timeout=15,
         )
         print("Kill successful! Deployment is not reachable over HTTP.")
 
@@ -568,6 +575,7 @@ class TestRun:
                 f"{get_application_url('HTTP', app_name='app1')}?sleep_s=0.11"
             ).status_code
             == 408,
+            timeout=15,
         )
 
         # Ensure the http request returned the correct response when the deployment runs
@@ -577,6 +585,7 @@ class TestRun:
                 f"{get_application_url('HTTP', app_name='app1')}?sleep_s=0.09"
             ).text
             == "Task Succeeded!",
+            timeout=15,
         )
 
         p.send_signal(signal.SIGINT)
