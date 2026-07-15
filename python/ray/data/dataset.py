@@ -4107,7 +4107,13 @@ class Dataset:
             return meta_count
 
         # NOTE: Project the dataset to avoid the need to carry actual
-        #       data when we're only interested in the total count
+        #       data when we're only interested in the total count.
+        #
+        # DataSourceV2 reads defer listing to execution, so ``_meta_count``
+        # above can't answer. For a bare V2 read whose reader supports metadata,
+        # the ``PushdownCountFiles`` optimizer rule rewrites this ``Count`` into
+        # a footer-only metadata pass over ``ListFiles`` -- reading no data
+        # columns -- while other plans fall back to full materialization here.
         count_op = Count(
             input_dependencies=[
                 Project(exprs=[], input_dependencies=[self._logical_plan.dag])

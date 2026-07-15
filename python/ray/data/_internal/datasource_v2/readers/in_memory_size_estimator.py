@@ -1,13 +1,18 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
 
+from ray.data._internal.datasource_v2.coercion import finite_float
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockAccessor
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -144,3 +149,61 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return self._encoding_ratio * manifest.file_sizes
+
+
+@DeveloperAPI
+class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
+    """Parquet-specific estimator that reads the per-chunk footer-derived hint.
+
+    The row-group-aware ``ParquetFileChunker`` reads each Parquet file's footer at
+    listing time and stamps a type-aware Arrow in-memory estimate onto each
+    chunk's metadata under the ``in_memory_size`` key -- assigned in
+    ``ParquetFileChunker.generate_chunk_metadatas`` (its ``_emit`` helper) and
+    carried through the manifest's chunk-metadata column. This estimator reads
+    that hint, so partition sizing reflects each chunk's actual columns --
+    absorbing cross-file compression and encoding variance -- instead of a single
+    global on-disk × encoding-ratio guess.
+
+    Chunks without a hint (whole-file fallback on a corrupt/empty footer, or
+    non-Parquet inputs) -- or with a hint of exactly ``0`` (a suspicious
+    footer-accounting corner case for a chunk with real on-disk bytes, e.g. an
+    all-dictionary/struct schema) -- fall back to ``on_disk_size ×
+    fallback_ratio``, the constant-ratio behavior, so mixed manifests are
+    handled row by row and a real chunk never contributes 0 weight to
+    ``FileAffinityPartitioner``'s size-cap flush.
+    """
+
+    def __init__(self, fallback_ratio: float = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT):
+        self._fallback_ratio = fallback_ratio
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        file_sizes = manifest.file_sizes
+        chunk_metadatas = manifest.file_chunk_metadatas
+        out = np.empty(len(file_sizes), dtype=np.float64)
+        for i in range(len(file_sizes)):
+            md = chunk_metadatas[i]
+            hint = md.get("in_memory_size") if isinstance(md, dict) else None
+            # A hint of exactly 0 is treated the same as a missing hint: a
+            # chunk's on-disk bytes (file_sizes[i], per-chunk here) are
+            # essentially never 0 for a real row-group chunk, so a 0 hint on
+            # such a chunk is a suspicious footer-accounting corner case
+            # (e.g. an all-dictionary/struct schema whose uncompressed bytes
+            # weren't attributed), not a genuine zero-byte chunk. Falling
+            # through to the ratio-based estimate avoids stamping a 0 weight
+            # onto real data, which would let it skip FileAffinityPartitioner's
+            # max_bucket_size flush entirely. A truly empty chunk (0 on-disk
+            # bytes too) still estimates to 0 via the fallback, so this is a
+            # no-op for the legitimate zero case.
+            if hint:
+                out[i] = float(hint)
+            else:
+                path = manifest.paths[i]
+                if log_once(f"parquet_footer_hint_missing_v2:{path}"):
+                    logger.debug(
+                        "No usable footer-derived in_memory_size hint for '%s' "
+                        "(missing or 0); falling back to on_disk_size * %s.",
+                        path,
+                        self._fallback_ratio,
+                    )
+                out[i] = finite_float(file_sizes[i]) * self._fallback_ratio
+        return out

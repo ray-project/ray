@@ -6,14 +6,13 @@ unsupported-option gating. They call ``ray.data.read_parquet`` which
 triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
+from ray.data import FileShuffleConfig
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
@@ -41,6 +40,74 @@ def test_v2_flag_default():
     assert isinstance(ctx.use_datasource_v2, bool)
 
 
+def _count_is_pushed_down(ds) -> bool:
+    """Return whether ``PushdownCountFiles`` rewrites this ds's count plan.
+
+    Builds the same ``Count`` plan ``count()`` uses, runs the logical
+    optimizer, and checks the read was replaced by a footer-only metadata
+    pass (a ``MapBatches`` directly over ``ListFiles``) with no ``ReadFiles``
+    left in the plan.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import MapBatches, Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    count_op = Count(
+        input_dependencies=[
+            Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+        ]
+    )
+    optimized = LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context)).dag
+
+    if not isinstance(optimized, MapBatches):
+        return False
+    # No ReadFiles anywhere in the optimized plan -> data columns never read.
+    stack, seen_list_files = [optimized], False
+    while stack:
+        op = stack.pop()
+        if isinstance(op, ReadFiles):
+            return False
+        if isinstance(op, ListFiles):
+            seen_list_files = True
+        stack.extend(op.input_dependencies)
+    return seen_list_files
+
+
+def test_read_parquet_v2_count_pushdown(tmp_path, restore_ctx):
+    # count() on a bare V2 parquet read is answered from Parquet footers
+    # (via the PushdownCountFiles rule + SupportsMetadata reader) without
+    # reading data columns, and equals the real row count across files.
+    _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
+    _write(tmp_path / "b.parquet", pa.table({"a": list(range(25))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # The rule fires: the read is rewritten to a footer-only metadata pass.
+    assert _count_is_pushed_down(ds)
+    # End-to-end count() returns the exact count.
+    assert ds.count() == 35
+
+
+def test_read_parquet_v2_count_falls_back_with_downstream_op(tmp_path, restore_ctx):
+    # A row-changing operator above the read (filter / limit) means the plan is
+    # no longer a bare ReadFiles, so the pushdown declines and count() returns
+    # the true post-op count via the full read path.
+    from ray.data.expressions import col
+
+    _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
+
+    restore_ctx.use_datasource_v2 = True
+    filtered = ray.data.read_parquet(str(tmp_path)).filter(expr=col("a") >= 7)
+    assert not _count_is_pushed_down(filtered)
+    assert filtered.count() == 3
+
+    limited = ray.data.read_parquet(str(tmp_path)).limit(4)
+    assert not _count_is_pushed_down(limited)
+    assert limited.count() == 4
+
+
 def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     f = tmp_path / "data.parquet"
     _write(f, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
@@ -54,6 +121,66 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert schema is not None
     assert "a" in schema.names
     assert "b" in schema.names
+
+
+def test_read_parquet_v2_shuffle_files_randomizes_row_order(tmp_path, restore_ctx):
+    # Regression test: FileAffinityPartitioner.finalize() used to sort emitted
+    # partitions by path "for determinism," which silently discarded any
+    # upstream shuffle for datasets small enough to never hit the
+    # max_bucket_size overflow path (i.e. most small-file datasets) -- shuffle
+    # had no effect at all, not even on the first execution. Fixed by
+    # preserving arrival order instead of re-sorting.
+    num_files = 15
+    for i in range(num_files):
+        _write(tmp_path / f"f{i}.parquet", pa.table({"file_id": [i]}))
+
+    restore_ctx.use_datasource_v2 = True
+    unshuffled_order = [
+        r["file_id"] for r in ray.data.read_parquet(str(tmp_path)).iter_rows()
+    ]
+    shuffled_order = [
+        r["file_id"]
+        for r in ray.data.read_parquet(
+            str(tmp_path), shuffle=FileShuffleConfig(seed=42)
+        ).iter_rows()
+    ]
+
+    assert sorted(shuffled_order) == list(range(num_files))
+    assert shuffled_order != unshuffled_order
+    # The pre-fix bug produced exactly the lexicographic path order
+    # (f0, f1, f10, f11, ..., f2, f3, ...), not a random permutation.
+    assert shuffled_order != sorted(range(num_files), key=lambda i: f"f{i}.parquet")
+
+
+def test_read_parquet_v2_shuffle_with_multi_row_group_files_reads_all_rows(
+    tmp_path, restore_ctx
+):
+    # Regression test for a cursor[bot] finding: FileManifest.shuffle permutes
+    # individual chunk rows, so a multi-row-group file's chunks can arrive at
+    # FileAffinityPartitioner non-contiguously (unlike the single-chunk files
+    # test_read_parquet_v2_shuffle_files_randomizes_row_order uses, which
+    # can't exercise this). This only ever affected read efficiency (a
+    # scattered file could fragment across extra read partitions), not
+    # correctness, but assert end-to-end row-content correctness under
+    # shuffle + multi-row-group files either way.
+    num_files = 5
+    rows_per_file = 20
+    expected_ids = []
+    for i in range(num_files):
+        ids = list(range(i * rows_per_file, (i + 1) * rows_per_file))
+        expected_ids.extend(ids)
+        # row_group_size=5 -> 4 row groups per file, so each file contributes
+        # multiple manifest rows (chunks) that shuffle can scatter.
+        pq.write_table(
+            pa.table({"id": ids}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=5,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), shuffle=FileShuffleConfig(seed=7))
+    read_ids = sorted(r["id"] for r in ds.iter_rows())
+    assert read_ids == sorted(expected_ids)
 
 
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
@@ -123,22 +250,6 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
-
-
-def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-
-    restore_ctx.use_datasource_v2 = True
-    original = restore_ctx.read_op_min_num_blocks
-    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
-
-    # The override should drive the ListFiles partitioner's bucket count
-    # for this read only — the global DataContext must not be mutated.
-    list_files_op = ds._logical_plan.dag.input_dependencies[0]
-    assert isinstance(list_files_op, ListFiles)
-    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
-    assert list_files_op.file_partitioner.num_buckets == 7
-    assert restore_ctx.read_op_min_num_blocks == original
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):

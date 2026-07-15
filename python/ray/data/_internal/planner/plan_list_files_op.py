@@ -135,18 +135,23 @@ def _create_input_data_buffer(
     *,
     should_parallelize: bool,
 ) -> InputDataBuffer:
-    """Wrap ``op.paths`` into listing-input RefBundles.
+    """Wrap the listing inputs into listing-input RefBundles.
 
     Each bundle's block is a 1-column arrow table ``{"__path": [paths...]}``
     that :func:`list_files_for_each_block` expands into manifest blocks.
+
+    The user's raw paths/prefixes are sharded across listing tasks; each task
+    lists and reads footers for its share.
     """
-    if should_parallelize and op.paths:
+    shard_items = list(op.paths)
+
+    if should_parallelize and shard_items:
         path_splits = np.array_split(
-            list(op.paths),
-            min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, len(op.paths)),
+            shard_items,
+            min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, len(shard_items)),
         )
     else:
-        path_splits = [list(op.paths)]
+        path_splits = [shard_items]
 
     input_data: List[RefBundle] = []
     for path_split in path_splits:

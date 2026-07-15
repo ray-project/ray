@@ -1,0 +1,227 @@
+"""File-affinity partitioner for DataSourceV2.
+
+Groups each file's chunks into size-bounded partitions, preserving **file
+locality**: a file is split into multiple partitions of consecutive
+("sister") row-group chunks when its estimated in-memory size exceeds
+``max_bucket_size``, giving read-task locality (one open + one footer read +
+sequential I/O per file) plus sub-file parallelism for large files. By
+default, multiple small files are additionally packed into a shared
+partition so many tiny files don't each become their own read task -- see
+the class docstring for details and the kill switch.
+"""
+
+import collections
+from typing import Dict, Optional, Tuple, cast
+
+from ray._common.utils import env_bool
+from ray.data._internal.datasource_v2.chunkers.file_chunker import ChunkMetadata
+from ray.data._internal.datasource_v2.coercion import finite_float, finite_int
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    FilePartitioner,
+)
+from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    InMemorySizeEstimator,
+)
+from ray.data._internal.weighted_round_robin import _WeightedBucket
+
+# One accumulated chunk: (path, file_size, chunk_metadata, intra-file sort key).
+_ChunkItem = Tuple[str, int, Optional[ChunkMetadata], int]
+
+
+def _chunk_sort_key(chunk_metadata: Optional[ChunkMetadata]) -> int:
+    """Intra-file ordering key for a chunk, by metadata schema.
+
+    Keeps a file's chunks in ascending on-disk order within its partition so the
+    reader sees a clean ascending range: row-group index for Parquet, byte
+    offset for line-delimited formats. Whole-file chunks (no positional
+    metadata) fall back to ``0`` -- a stable sort then preserves input order.
+    """
+    if chunk_metadata is None:
+        return 0
+    # ``ChunkMetadata`` subclasses are ``TypedDict``s -- plain ``dict``s at
+    # runtime with no distinct class -- so ``isinstance`` can't discriminate them
+    # (it raises ``TypeError`` on a TypedDict). Discriminate on each schema's
+    # positional key instead. The base ``ChunkMetadata`` declares no keys, so
+    # view it as a plain ``dict`` for the runtime key lookups.
+    meta = cast(Dict[str, int], chunk_metadata)
+    if "row_group_start" in meta:  # ParquetFileChunkMetadata
+        return int(meta["row_group_start"])
+    if "chunk_byte_start_idx" in meta:  # LineDelimitedFileChunkMetadata
+        return int(meta["chunk_byte_start_idx"])
+    return 0
+
+
+def _bucket_to_manifest(bucket: "_WeightedBucket[_ChunkItem]") -> FileManifest:
+    # Sort by the intra-file key so each partition is a clean ascending range:
+    # deterministic output (the ``FilePartitioner`` contract) and lets the reader
+    # coalesce contiguous row groups into a single scan.
+    items = sorted(bucket.items, key=lambda it: it[3])
+    return FileManifest.construct_manifest(
+        [it[0] for it in items],
+        [it[1] for it in items],
+        [it[2] for it in items],
+    )
+
+
+def _flush_pending_pack(
+    pending_pack: "_WeightedBucket[FileManifest]",
+    output_queue: "collections.deque[FileManifest]",
+) -> None:
+    """Flush a pack of completed small-file manifests as one partition."""
+    if pending_pack.items:
+        output_queue.append(FileManifest.concat(pending_pack.items))
+        pending_pack.clear()
+
+
+class FileAffinityPartitioner(FilePartitioner):
+    """Partitions chunks per file, bounded by ``max_bucket_size`` in-memory bytes.
+
+    A file whose estimated in-memory size exceeds ``max_bucket_size`` is split
+    into multiple partitions of consecutive row-group chunks -- a file's own
+    chunks are never split across two *different* partitions unless the file
+    alone exceeds the cap. ``num_buckets`` is intentionally absent -- the
+    number of partitions is data-driven.
+
+    By default (``RAY_DATA_PARTITIONER_PACK_FILES=1``), multiple small files
+    (each individually under ``max_bucket_size``) are packed into a shared
+    partition via next-fit bin-packing, so many tiny files don't each become
+    their own read task. Disable via ``RAY_DATA_PARTITIONER_PACK_FILES=0`` for
+    the pre-packing behavior: every partition holds chunks of exactly one file
+    ("never mixed with other files").
+
+    Groups by **path**. When the caller confirms the input is contiguous
+    (``assume_contiguous_files=True``, the default -- true for the standard
+    unshuffled listing path, where the indexer yields one file's entire chunk
+    list as one atomic unit through ``make_async_gen`` and the manifest
+    batching preserves that order, so different files interleave only at file
+    granularity, never chunk granularity), a change of path marks the
+    previous file complete: ``add_input`` flushes that file's bucket
+    immediately (either standalone or into the pending pack), pipelining
+    ``ReadFiles`` decoding with the listing task's remaining footer reads.
+    This assumption does NOT hold when file shuffling is active --
+    ``FileManifest.shuffle`` permutes individual chunk rows, so a
+    multi-row-group file's chunks can arrive non-contiguously -- callers must
+    pass ``assume_contiguous_files=False`` in that case; the file's chunks
+    still all land in one partition (via the size-cap overflow branch or
+    ``finalize``), just without the incremental per-file pipelining.
+    ``finalize`` flushes the trailing open file and any pending pack, and
+    preserves insertion (arrival) order for shuffle determinism.
+    """
+
+    def __init__(
+        self,
+        in_memory_size_estimator: InMemorySizeEstimator,
+        *,
+        max_bucket_size: Optional[int],
+        assume_contiguous_files: bool = True,
+    ):
+        self._in_memory_size_estimator = in_memory_size_estimator
+        self._max_bucket_size = max_bucket_size
+        # path -> bucket currently accumulating that file's chunks.
+        self._open_buckets: Dict[str, "_WeightedBucket[_ChunkItem]"] = {}
+        self._output_queue: "collections.deque[FileManifest]" = collections.deque()
+        # Path of the file whose chunks are currently arriving. When a chunk
+        # with a different path arrives, the previous file is complete (chunks
+        # arrive contiguously -- see class docstring) and its bucket is flushed.
+        # Instance state (not per-block) so a file straddling two manifest
+        # blocks keeps accumulating into the same bucket.
+        self._current_open_path: Optional[str] = None
+        # Kill switch: when False, skip the per-file incremental flush and fall
+        # back to flushing only at ``finalize`` (pre-pipelining behavior).
+        # Also forced off when the caller can't guarantee contiguous arrival
+        # (e.g. file shuffling is active) -- the path-change flush would
+        # otherwise fragment a scattered file into spurious extra partitions.
+        self._pipeline_flush = assume_contiguous_files and env_bool(
+            "RAY_DATA_PARTITIONER_PIPELINE_FLUSH", True
+        )
+        # Kill switch: when False, every completed file emits its own
+        # standalone partition (pre-packing behavior).
+        self._pack_files = env_bool("RAY_DATA_PARTITIONER_PACK_FILES", False)
+        # Completed small files (own weight < max_bucket_size) accumulate here
+        # instead of emitting standalone, until the pack would overflow.
+        self._pending_pack: "_WeightedBucket[FileManifest]" = _WeightedBucket()
+
+    def _complete_file(self, bucket: "_WeightedBucket[_ChunkItem]") -> None:
+        """Emit a fully-arrived file's bucket: standalone, or packed with others.
+
+        A file that overflowed its own bucket (size-cap branch in ``add_input``)
+        never reaches this method -- it self-emits directly. This method only
+        sees files whose entire content fit under ``max_bucket_size`` on their
+        own, so they're candidates for packing with other small files.
+        """
+        manifest = _bucket_to_manifest(bucket)
+        if (
+            not self._pack_files
+            or self._max_bucket_size is None
+            or bucket.weight >= self._max_bucket_size
+        ):
+            self._output_queue.append(manifest)
+            return
+        if self._pending_pack.weight + bucket.weight > self._max_bucket_size:
+            _flush_pending_pack(self._pending_pack, self._output_queue)
+        self._pending_pack.add(manifest, bucket.weight)
+
+    def add_input(self, input_manifest: FileManifest):
+        in_memory_sizes = self._in_memory_size_estimator.estimate_in_memory_sizes(
+            input_manifest
+        )
+        for path, file_size, chunk_metadata, in_memory_size in zip(
+            input_manifest.paths,
+            input_manifest.file_sizes,
+            input_manifest.file_chunk_metadatas,
+            in_memory_sizes,
+        ):
+            # A change of path means the previous file is complete (its chunks
+            # arrived contiguously): flush its still-open bucket now so
+            # ReadFiles can decode it while later files' footers are still being
+            # read. The size-cap overflow below may already have flushed and
+            # removed that bucket, so ``pop`` with a default tolerates its
+            # absence.
+            if self._pipeline_flush and path != self._current_open_path:
+                prev = self._current_open_path
+                if prev is not None:
+                    prev_bucket = self._open_buckets.pop(prev, None)
+                    if prev_bucket is not None and prev_bucket.items:
+                        self._complete_file(prev_bucket)
+                self._current_open_path = path
+
+            bucket = self._open_buckets.get(path)
+            if bucket is None:
+                bucket = _WeightedBucket()
+                self._open_buckets[path] = bucket
+            sort_key = _chunk_sort_key(chunk_metadata)
+            bucket.add(
+                (path, finite_int(file_size), chunk_metadata, sort_key),
+                finite_float(in_memory_size),
+            )
+            # Flush this file's bucket once it reaches the size cap. Subsequent
+            # chunks of the same file start a fresh bucket, so each partition is
+            # a consecutive range of one file's row groups.
+            if (
+                self._max_bucket_size is not None
+                and bucket.weight >= self._max_bucket_size
+            ):
+                self._output_queue.append(_bucket_to_manifest(bucket))
+                del self._open_buckets[path]
+
+    def has_partition(self) -> bool:
+        return len(self._output_queue) > 0
+
+    def next_partition(self) -> FileManifest:
+        return self._output_queue.popleft()
+
+    def finalize(self):
+        # Flush each file's remaining chunks in the order buckets were first
+        # opened -- i.e. the order the input manifest arrived in. This must
+        # NOT re-sort by path: an upstream shuffle (``shuffle_files``) already
+        # produces a deterministic order (it sorts by path before permuting),
+        # so re-sorting here would silently discard the permutation and
+        # defeat any requested file shuffling. ``dict`` preserves insertion
+        # order in Python 3.7+.
+        for bucket in self._open_buckets.values():
+            if bucket.items:
+                self._complete_file(bucket)
+        self._open_buckets.clear()
+        self._current_open_path = None
+        _flush_pending_pack(self._pending_pack, self._output_queue)

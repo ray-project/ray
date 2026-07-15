@@ -35,7 +35,8 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-    ParquetInMemorySizeEstimator,
+    InMemorySizeEstimator,
+    ParquetFooterDerivedInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.util import _is_local_scheme
@@ -111,14 +112,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # footers, and the scanner pins it on the pyarrow dataset so files
         # are cast to these types at scan time.
         self._user_schema = schema
-        # Chunker that splits each listed Parquet file into one or more
-        # row-group-aligned read units. Defaults to ``ParquetFileChunker``
-        # (1 GiB target chunk size, or whatever ``DataContext`` configures).
-        # Callers can inject an alternative for tests or shuffle-aware
-        # planning code that wants whole-file reads.
-        self._file_chunker: FileChunker = (
-            file_chunker if file_chunker is not None else ParquetFileChunker()
-        )
+        # Chunker that splits each listed Parquet file into parallel-read
+        # units: the row-group-aware ``ParquetFileChunker`` reads the footer at
+        # listing time and chunks on true row-group boundaries. An explicitly
+        # injected ``file_chunker`` wins (tests, shuffle-aware planning that
+        # wants whole-file reads).
+        self._file_chunker: FileChunker = file_chunker or ParquetFileChunker()
 
     @property
     def paths(self) -> List[str]:
@@ -154,8 +153,14 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             file_chunker=self._file_chunker,
         )
 
-    def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
-        return ParquetInMemorySizeEstimator()
+    def get_size_estimator(self) -> InMemorySizeEstimator:
+        # Footer-derived, type-aware in-memory estimate: ``ParquetFileChunker``
+        # stamps each chunk's decoded Arrow size onto its metadata at listing
+        # time, so the partitioner sizes partitions by the real decoded footprint
+        # (per-file compression / encoding) rather than a flat on-disk × ratio
+        # guess. Falls back to the on-disk × ratio per chunk when a footer hint
+        # is absent (corrupt footer / non-Parquet). I/O-free and pickle-safe.
+        return ParquetFooterDerivedInMemorySizeEstimator()
 
     @override
     def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:
@@ -296,6 +301,15 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # datasource itself stays immutable — fall back to the
         # constructor-provided one for direct users of this API.
         partitioning = options.get("partitioning", self._partitioning)
+        ctx = DataContext.get_current()
+        # Per-batch decode target. Defaults to ``target_max_block_size`` but can
+        # be set independently via ``parquet_reader_target_batch_size_bytes`` to
+        # decode in finer batches (lower transient memory) without changing the
+        # output-block size. Only ``None`` (unset) falls back -- an explicit
+        # value (including ``0``) is honored verbatim.
+        target_batch_size = ctx.parquet_reader_target_batch_size_bytes
+        if target_batch_size is None:
+            target_batch_size = ctx.target_max_block_size
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,
@@ -304,6 +318,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             include_row_hash=self._include_row_hash,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
-            target_block_size=DataContext.get_current().target_max_block_size,
+            target_block_size=target_batch_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )

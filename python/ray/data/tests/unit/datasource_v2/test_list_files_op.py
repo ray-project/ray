@@ -72,6 +72,81 @@ def test_shuffle_config_factory_returns_config_when_seeded(tmp_path):
     assert config.seed == 42
 
 
+# --- Listing-input sharding ---------------------------------------------------
+
+
+def _mk_multi_path_list_files(tmp_path, num_files: int, shuffle_seed=None):
+    """A ListFiles op pointing at ``num_files`` explicit parquet file paths."""
+    import pyarrow.fs as pafs
+
+    paths = []
+    for i in range(num_files):
+        p = str(tmp_path / f"f{i:04d}.parquet")
+        pq.write_table(pa.table({"x": [i]}), p)
+        paths.append(p)
+
+    def _shuffle_factory():
+        return None if shuffle_seed is None else FileShuffleConfig(seed=shuffle_seed)
+
+    return ListFiles(
+        paths=paths,
+        file_indexer=_mk_indexer(),
+        filesystem=pafs.LocalFileSystem(),
+        source_paths=paths,
+        shuffle_config_factory=_shuffle_factory,
+    )
+
+
+def _bundle_paths(buffer):
+    import ray
+
+    out = []
+    for ref_bundle in buffer._input_data:
+        for entry in ref_bundle.blocks:
+            out += ray.get(entry.ref)[PATH_COLUMN_NAME].to_pylist()
+    return out
+
+
+@pytest.mark.parametrize("num_files", [1, 2, 50, 250])
+def test_raw_paths_shard_across_tasks(ray_start_2_cpus_shared, tmp_path, num_files):
+    # Raw input paths are sharded across listing bundles (one Ray task each),
+    # capped at DEFAULT_MAX_NUM_LIST_FILES_TASKS.
+    from ray.data._internal.planner.plan_list_files_op import (
+        DEFAULT_MAX_NUM_LIST_FILES_TASKS,
+        _create_input_data_buffer,
+    )
+    from ray.data.context import DataContext
+
+    op = _mk_multi_path_list_files(tmp_path, num_files=num_files)
+    buffer = _create_input_data_buffer(
+        op, DataContext.get_current(), should_parallelize=True
+    )
+
+    expected = min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_files)
+    assert len(buffer._input_data) == expected
+
+    # Every input path is sharded exactly once across all bundles.
+    paths = _bundle_paths(buffer)
+    assert len(paths) == num_files
+    assert len(set(paths)) == num_files
+
+
+def test_shuffle_forces_single_bundle_with_all_paths(ray_start_2_cpus_shared, tmp_path):
+    # Shuffle needs one global permutation, so listing stays a single task
+    # containing every input path.
+    from ray.data._internal.planner.plan_list_files_op import (
+        _create_input_data_buffer,
+    )
+    from ray.data.context import DataContext
+
+    op = _mk_multi_path_list_files(tmp_path, num_files=30, shuffle_seed=7)
+    buffer = _create_input_data_buffer(
+        op, DataContext.get_current(), should_parallelize=False
+    )
+    assert len(buffer._input_data) == 1
+    assert len(_bundle_paths(buffer)) == 30
+
+
 if __name__ == "__main__":
     import sys
 
