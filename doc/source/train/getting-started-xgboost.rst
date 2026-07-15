@@ -1,3 +1,6 @@
+.. meta::
+   :description: Convert an XGBoost script to distributed training with Ray Train using XGBoostTrainer, with checkpointing and CPU/GPU ScalingConfig.
+
 .. _train-xgboost:
 
 Get Started with Distributed Training using XGBoost

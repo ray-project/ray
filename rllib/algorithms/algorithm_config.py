@@ -680,9 +680,10 @@ class AlgorithmConfig(_Config):
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
-        Note: If using the new API stack (enable_rl_module_and_learner=True), the
-        returned dictionary will dynamically overwrite the legacy `train_batch_size` key
-        with the calculated `total_train_batch_size`.
+        Note: On the new API stack (enable_rl_module_and_learner=True), the effective
+        batch size is derived from `train_batch_size_per_learner` and `num_learners`;
+        read the `total_train_batch_size` property for it. The legacy `train_batch_size`
+        key in the returned dict is not authoritative on the new stack.
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
@@ -745,14 +746,6 @@ class AlgorithmConfig(_Config):
         ]:
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)
-
-        # If using the New API Stack, overwrite the stale legacy train_batch_size
-        # with the true computed total so to_dict() is not misleading.
-        if self.enable_rl_module_and_learner:
-            try:
-                config["train_batch_size"] = self.total_train_batch_size
-            except ValueError:
-                config["train_batch_size"] = None
 
         return config
 

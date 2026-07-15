@@ -24,6 +24,7 @@ pre_commit() {
     black
     prettier
     mypy
+    pyrefly-serve
     rst-directive-colons
     rst-inline-touching-normal
     python-check-mock-methods
