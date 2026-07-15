@@ -231,11 +231,11 @@ steps:
         --only-tags dask
     depends_on: datalbuild-multipy(python=3.12)
 
-  - label: ":database: data: doc tests"
+  - label: ":database: data: docs example tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
-      - doc
+      - data_doc
     instance_type: medium
     commands:
       # doc tests
@@ -254,11 +254,11 @@ steps:
         --skip-ray-installation
     depends_on: datalbuild-multipy(python=3.10)
 
-  - label: ":database: data: dask doc tests"
+  - label: ":database: data: dask docs example tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
-      - doc
+      - data_doc
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
@@ -268,11 +268,11 @@ steps:
         --parallelism-per-worker 2
     depends_on: datalbuild-multipy(python=3.12)
 
-  - label: ":database: data: doc gpu tests"
+  - label: ":database: data: docs example gpu tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
-      - doc
+      - data_doc
       - gpu
     instance_type: gpu-large
     commands:
