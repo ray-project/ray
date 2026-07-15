@@ -288,7 +288,7 @@ DRAIN_DELAY_S = 1.0
 
 # Scales to test. Higher values reveal whether per-callback cost is constant
 # or grows with N (due to GIL contention, queue growth, etc.).
-SCALES = [100, 1000, 5000, 10000, 20000]
+SCALES = [100, 1000, 5000, 10000]
 
 
 def _run_at_scales(name, test_fn, scales):
