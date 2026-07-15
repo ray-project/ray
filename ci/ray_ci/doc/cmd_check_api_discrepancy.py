@@ -151,9 +151,7 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
     # Load the white list APIs. Permanent exemptions and tracked doc debt are
     # kept in separate config keys for readability; the check treats them the
     # same, so union them here.
-    white_list_apis = config["white_list_apis"] | config.get(
-        "tracked_doc_debt", set()
-    )
+    white_list_apis = config["white_list_apis"] | config.get("tracked_doc_debt", set())
 
     passed = True
 
