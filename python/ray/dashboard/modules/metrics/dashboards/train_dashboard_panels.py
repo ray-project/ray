@@ -279,7 +279,7 @@ DATA_LOADING_THROUGHPUT_PANEL = Panel(
     id=27,
     title="Data Ingest Throughput by Rank",
     description="Average rows/sec ingested by user iteration loop, one line per rank, over the last ${window}.",
-    unit="",
+    unit="rowsps",
     targets=[
         Target(
             expr="sum(rate(ray_data_iter_rows_total{{{global_filters}}}[$window])) by (dataset, split)",
@@ -293,31 +293,31 @@ DATA_LOADING_THROUGHPUT_PANEL = Panel(
 ITER_BLOCKED_TIME_BY_STAGE_PANEL = Panel(
     id=19,
     title="Data Stall Time Breakdown by Stage",
-    description="Average per-batch stall time attributed to each data loading stage, averaged across all ranks, over the last ${window}. Used to identify the bottleneck stages in data loading.",
-    unit="seconds",
+    description="Average per-batch stall time attributed to each data loading stage, averaged across all ranks, over the last ${window}. Stages run in pipeline order: Production Wait -> Data Transfer -> Batching -> Format -> Collate -> Finalize. Used to identify the bottleneck stages in data loading.",
+    unit="ms",
     targets=[
         Target(
-            expr="avg(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Production Wait: {{dataset}}",
         ),
         Target(
-            expr="avg(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Data Transfer: {{dataset}}",
         ),
         Target(
-            expr="avg(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Batching: {{dataset}}",
         ),
         Target(
-            expr="avg(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Format: {{dataset}}",
         ),
         Target(
-            expr="avg(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Collate: {{dataset}}",
         ),
         Target(
-            expr="avg(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * avg(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Finalize: {{dataset}}",
         ),
     ],
@@ -329,10 +329,10 @@ ITER_BLOCKED_PRODUCTION_WAIT_PANEL = Panel(
     id=20,
     title="Production Wait Stall by Rank",
     description="Average per-batch stall waiting on upstream data production, one line per rank, over the last ${window}. Used to identify if ranks are being starved by upstream data pipeline.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
@@ -344,10 +344,10 @@ ITER_BLOCKED_DATA_TRANSFER_PANEL = Panel(
     id=22,
     title="Data Transfer Stall by Rank",
     description="Average per-batch stall on cross-node data transfer, one line per rank, over the last ${window}. Used to identify data transfer bottlenecks often due to poor data locality.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
@@ -359,10 +359,10 @@ ITER_BLOCKED_BATCHING_PANEL = Panel(
     id=23,
     title="Batching Stall by Rank",
     description="Average per-batch stall building batches (slice/shuffle), one line per rank, over the last ${window}. Used to identify batching bottlenecks often due to user enabled local shuffle buffer.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
@@ -374,10 +374,10 @@ ITER_BLOCKED_FORMAT_PANEL = Panel(
     id=24,
     title="Format Stall by Rank",
     description="Average per-batch stall converting blocks to batch format, one line per rank, over the last ${window}. Used to identify formatting bottlenecks.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
@@ -389,10 +389,10 @@ ITER_BLOCKED_COLLATE_PANEL = Panel(
     id=25,
     title="Collate Stall by Rank",
     description="Average per-batch stall in the user collate function, one line per rank, over the last ${window}. Used to identify collation bottlenecks often caused by heavy user defined collate function.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
@@ -404,10 +404,10 @@ ITER_BLOCKED_FINALIZE_PANEL = Panel(
     id=26,
     title="Finalize Stall by Rank",
     description="Average per-batch stall in the user finalize function, one line per rank, over the last ${window}. Used to identify finalization bottlenecks often due to heavy host to device transfer.",
-    unit="seconds",
+    unit="ms",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
             legend="{{dataset}}, {{split}}",
         ),
     ],
