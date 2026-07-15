@@ -47,6 +47,7 @@ prometheus_client>=0.7.1
 pandas>=2.2.3
 tensorboardX
 aiohttp>=3.13.3
+anyio>=4.2
 starlette>=1.0.1
 typer
 fsspec
