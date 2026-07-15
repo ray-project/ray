@@ -97,11 +97,7 @@ repos:
             python/ray/_private/thirdparty/|
             python/ray/cloudpickle/|
             python/ray/core/src/ray/gcs/|
-            python/ray/serve/_private/application_state.py|
             python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
-            python/ray/serve/_private/controller.py|
-            python/ray/serve/_private/deployment_state.py|
-            python/ray/serve/_private/replica.py|
             python/ray/serve/tests/test_config_files/syntax_error\.py|
             python/ray/thirdparty_files/
           )

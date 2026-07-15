@@ -281,7 +281,9 @@ class DeploymentAutoscalingState:
         """Records task queue length from QueueMonitor for async inference."""
         self._total_pending_async_requests = report.queue_length
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
+    def drop_stale_handle_metrics(
+        self, alive_serve_actor_ids: Set[Optional[str]]
+    ) -> None:
         """Drops handle metrics that are no longer valid.
 
         This includes handles that live on Serve Proxy or replica actors
@@ -1080,7 +1082,7 @@ class ApplicationAutoscalingState:
                 report.deployment_id
             ].record_async_inference_task_queue_metrics(report)
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]):
+    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[Optional[str]]):
         """Drops handle metrics that are no longer valid.
 
         This includes handles that live on Serve Proxy or replica actors
@@ -1271,6 +1273,8 @@ class AutoscalingStateManager:
         if app_state:
             app_state.record_async_inference_task_queue_metrics(report)
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
+    def drop_stale_handle_metrics(
+        self, alive_serve_actor_ids: Set[Optional[str]]
+    ) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
