@@ -208,7 +208,7 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
 
-    shuffle_op = ds._plan._logical_plan.dag
+    shuffle_op = ds._logical_plan.dag
     read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
     assert read_op.ray_remote_args == {"scheduling_strategy": "SPREAD"}
 

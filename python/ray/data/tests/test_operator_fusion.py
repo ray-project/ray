@@ -21,13 +21,13 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     Read,
+    Write,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
 from ray.data.tests.conftest import *  # noqa
@@ -43,8 +43,8 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(
-        read_op,
         lambda x: x,
+        input_dependencies=[read_op],
     )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
@@ -67,10 +67,10 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     # Test that a chain of different map operators are fused.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    map1 = MapRows(read_op, lambda x: x)
-    map2 = MapBatches(map1, lambda x: x)
-    map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, fn=lambda x: x)
+    map1 = MapRows(lambda x: x, input_dependencies=[read_op])
+    map2 = MapBatches(lambda x: x, input_dependencies=[map1])
+    map3 = FlatMap(lambda x: x, input_dependencies=[map2])
+    map4 = Filter(fn=lambda x: x, input_dependencies=[map3])
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -116,8 +116,12 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
             ray_remote_args={"resources": {"non-existent": 1}},
             parallelism=1,
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            lambda x: x, input_dependencies=[read_op], ray_remote_args=up_remote_args
+        )
+        op = MapBatches(
+            lambda x: x, input_dependencies=[op], ray_remote_args=down_remote_args
+        )
         logical_plan = LogicalPlan(op, ctx)
 
         physical_plan, _ = planner.plan(logical_plan)
@@ -167,8 +171,12 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         read_op = get_parquet_read_logical_op(
             ray_remote_args={"resources": {"non-existent": 1}}
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            lambda x: x, input_dependencies=[read_op], ray_remote_args=up_remote_args
+        )
+        op = MapBatches(
+            lambda x: x, input_dependencies=[op], ray_remote_args=down_remote_args
+        )
         logical_plan = LogicalPlan(op, ctx)
         physical_plan, _ = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -199,8 +207,10 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # the former comes before the latter.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(lambda x: x, input_dependencies=[read_op])
+    op = MapBatches(
+        lambda x: x, input_dependencies=[op], compute=ray.data.ActorPoolStrategy()
+    )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -221,7 +231,9 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     # Test that reads fuse into an actor-based map operator.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(
+        lambda x: x, input_dependencies=[read_op], compute=ray.data.ActorPoolStrategy()
+    )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -242,8 +254,10 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, lambda x: x)
+    op = MapBatches(
+        lambda x: x, input_dependencies=[read_op], compute=ray.data.ActorPoolStrategy()
+    )
+    op = MapBatches(lambda x: x, input_dependencies=[op])
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -308,27 +322,27 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), fn=lambda x: False),
+            Filter(fn=lambda x: False, input_dependencies=[InputData([])]),
             False,
         ),
         (
             # No fusion (could drastically expand/reduce dataset)
-            FlatMap(InputData([]), lambda x: x),
+            FlatMap(lambda x: x, input_dependencies=[InputData([])]),
             False,
         ),
         (
             # Fusion
-            MapBatches(InputData([]), lambda x: x),
+            MapBatches(lambda x: x, input_dependencies=[InputData([])]),
             True,
         ),
         (
             # Fusion
-            MapRows(InputData([]), lambda x: x),
+            MapRows(lambda x: x, input_dependencies=[InputData([])]),
             True,
         ),
         (
             # Fusion
-            Project(InputData([]), exprs=[star()]),
+            Project(exprs=[star()], input_dependencies=[InputData([])]),
             True,
         ),
     ],
@@ -343,8 +357,9 @@ def test_map_batches_batch_size_fusion(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     ds = Dataset(
-        ExecutionPlan(DatasetStats(metadata={}, parent=None), context),
         LogicalPlan(input_op, context),
+        context,
+        DatasetStats(metadata={}, parent=None),
     )
 
     mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
@@ -452,7 +467,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
     assert "ReadRange->MapBatches(fn)" not in stats
     # Ensure all three operators are also present in usage record
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
@@ -514,7 +529,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Operator 1 ReadRange" in ds.stats()
     assert "Operator 2 Repartition" in ds.stats()
     assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapRows"])
 
     ctx.target_max_block_size = old_target_max_block_size
 
@@ -540,6 +555,98 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
         assert "ReadRange->MapBatches(fn)" in ds.stats()
         assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
+
+
+def test_fuse_map_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+    ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == (
+        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    )
+    assert dag._fused_output_map_transformer is not None
+
+    assert sorted(extract_values("id", ds.take_all())) == list(range(100))
+
+
+def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b)
+        .limit(10)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "limit=10"
+    map_op = dag.input_dependencies[0]
+    assert map_op.name == "MapBatches(<lambda>)"
+    reduce_op = map_op.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+    assert len(ds.take_all()) == 10
+
+
+def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b, concurrency=2)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "MapBatches(<lambda>)"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+
+def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    from ray.data.datasource.datasink import Datasink
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+    class _NoopDatasink(Datasink):
+        def write(self, blocks, ctx):
+            for _ in blocks:
+                pass
+            return None
+
+    repartitioned = ray.data.range(100).repartition(4, keys=["id"])
+    write_op = Write(
+        _NoopDatasink(),
+        input_dependencies=[repartitioned._logical_plan.dag],
+    )
+    dag = get_execution_plan(LogicalPlan(write_op, DataContext.get_current()))[0].dag
+
+    # The write stays a separate root op feeding off an un-fused reduce.
+    assert dag.name == "Write"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
 
 
 def test_read_map_batches_operator_fusion_with_sort_operator(
@@ -620,7 +727,7 @@ def test_read_map_chain_operator_fusion_e2e(
         "->MapBatches(<lambda>)->FlatMap(<lambda>):"
     )
     assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
@@ -720,7 +827,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = MapBatches(read_op, lambda x: x)
+    op = MapBatches(lambda x: x, input_dependencies=[read_op])
     logical_plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(logical_plan)
 

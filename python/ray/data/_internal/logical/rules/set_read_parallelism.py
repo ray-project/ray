@@ -40,7 +40,7 @@ def compute_additional_split_factor(
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
         logger.debug(
-            f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
+            f"Expected in-memory size {mem_size}, block size {expected_block_size}"
         )
         if target_max_block_size is None:
             # Unlimited block size -> no extra splits

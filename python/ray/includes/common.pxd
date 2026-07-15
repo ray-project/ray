@@ -383,16 +383,19 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     int64_t generator_backpressure_num_objects)
+                     int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
@@ -420,7 +423,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
-            c_vector[CFallbackOption] fallback_strategy)
+            c_vector[CFallbackOption] fallback_strategy,
+            int64_t actor_generator_backpressure_num_objects)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -432,6 +436,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const unordered_map[c_string, CPlacementStrategy] &topology_strategy,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

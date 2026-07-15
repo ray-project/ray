@@ -124,7 +124,7 @@ class MetricsLogger:
     The MetricsLogger supports logging anything that has a corresponding reduction method.
     These are defined natively in the Stats classes, which are used to log the metrics.
     Please take a look ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP for the available reduction methods.
-    You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
+    You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.reporting().
 
     Notes on architecture:
     In our docstrings we make heavy use of the phrase 'parallel components'.

@@ -389,6 +389,7 @@ def test_request_and_clear():
         mock_coordinator.request_resources.remote.assert_called_with(
             requester_id=policy._requester_id,
             resources=[resources_per_worker] * 4,
+            label_selectors=None,
             expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
         )

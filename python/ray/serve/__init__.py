@@ -26,7 +26,7 @@ try:
         status,
     )
     from ray.serve.batching import batch
-    from ray.serve.config import HTTPOptions
+    from ray.serve.config import ControllerOptions, HTTPOptions
     from ray.serve.utils import get_trace_context
 
 except ModuleNotFoundError as e:
@@ -48,6 +48,7 @@ __all__ = [
     "_run_many",
     "batch",
     "start",
+    "ControllerOptions",
     "HTTPOptions",
     "get_replica_context",
     "get_deployment_actor",

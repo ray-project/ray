@@ -174,12 +174,17 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
         from pandas.io.formats.format import _ExtensionArrayFormatter
 
         formatter_cls = _ExtensionArrayFormatter
-    formatter_cls._format_strings_orig = formatter_cls._format_strings
-    if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
-        formatter_cls._format_strings = _format_strings_patched
-    else:
-        formatter_cls._format_strings = _format_strings_patched_v1_0_0
-    formatter_cls._patched_by_ray_datasets = True
+
+    # Avoid double-patching: re-saving `_format_strings_orig` after `_format_strings`
+    # already points at our patch makes `_format_strings_orig()` recurse infinitely
+    # for non-Tensor extension columns (e.g. Arrow-backed ints in doctests).
+    if not getattr(formatter_cls, "_patched_by_ray_datasets", False):
+        formatter_cls._format_strings_orig = formatter_cls._format_strings
+        if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
+            formatter_cls._format_strings = _format_strings_patched
+        else:
+            formatter_cls._format_strings = _format_strings_patched_v1_0_0
+        formatter_cls._patched_by_ray_datasets = True
 
 ###########################################
 # End patching of ExtensionArrayFormatter #
@@ -347,8 +352,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @classmethod
     def construct_from_string(cls, string: str):
-        r"""
-        Construct this type from a string.
+        r"""Construct this type from a string.
 
         This is useful mainly for data types that accept parameters.
         For example, a period dtype accepts a frequency parameter that
@@ -358,37 +362,30 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         expected. But subclasses can overwrite this method to accept
         parameters.
 
-        Parameters
-        ----------
-        string : str
-            The name of the type, for example ``category``.
+        Args:
+            string: The name of the type, for example ``category``.
 
-        Returns
-        -------
-        ExtensionDtype
+        Returns:
             Instance of the dtype.
 
-        Raises
-        ------
-        TypeError
-            If a class cannot be constructed from this 'string'.
+        Raises:
+            TypeError: If a class cannot be constructed from this ``string``.
 
-        Examples
-        --------
-        For extension dtypes with arguments the following may be an
-        adequate implementation.
+        Examples:
+            For extension dtypes with arguments the following may be an
+            adequate implementation.
 
-        >>> import re
-        >>> @classmethod
-        ... def construct_from_string(cls, string):
-        ...     pattern = re.compile(r"^my_type\[(?P<arg_name>.+)\]$")
-        ...     match = pattern.match(string)
-        ...     if match:
-        ...         return cls(**match.groupdict())
-        ...     else:
-        ...         raise TypeError(
-        ...             f"Cannot construct a '{cls.__name__}' from '{string}'"
-        ...         )
+            >>> import re
+            >>> @classmethod
+            ... def construct_from_string(cls, string):
+            ...     pattern = re.compile(r"^my_type\[(?P<arg_name>.+)\]$")
+            ...     match = pattern.match(string)
+            ...     if match:
+            ...         return cls(**match.groupdict())
+            ...     else:
+            ...         raise TypeError(
+            ...             f"Cannot construct a '{cls.__name__}' from '{string}'"
+            ...         )
         """
         import ast
         import re
@@ -420,13 +417,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @classmethod
     def construct_array_type(cls):
-        """
-        Return the array type associated with this dtype.
-
-        Returns
-        -------
-        type
-        """
+        """Return the array type associated with this dtype."""
         return TensorArray
 
     def __from_arrow__(self, array: Union[pa.Array, pa.ChunkedArray]):
@@ -477,8 +468,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @property
     def _is_boolean(self):
-        """
-        Whether this extension array should be considered boolean.
+        """Whether this extension array should be considered boolean.
 
         By default, ExtensionArrays are assumed to be non-numeric.
         Setting this to True will affect the behavior of several places,
@@ -486,10 +476,6 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
         * is_bool
         * boolean indexing
-
-        Returns
-        -------
-        bool
         """
         # This is needed to support returning a TensorArray from .isnan().
         from pandas.core.dtypes.common import is_bool_dtype
@@ -598,40 +584,26 @@ class TensorArrayElement(_TensorOpsMixin, _TensorScalarCastMixin):
 
     @property
     def numpy_dtype(self):
-        """
-        Get the dtype of the tensor.
-        :return: The numpy dtype of the backing ndarray
-        """
+        """The numpy dtype of the backing ndarray."""
         return self._tensor.dtype
 
     @property
     def numpy_ndim(self):
-        """
-        Get the number of tensor dimensions.
-        :return: integer for the number of dimensions
-        """
+        """The number of tensor dimensions."""
         return self._tensor.ndim
 
     @property
     def numpy_shape(self):
-        """
-        Get the shape of the tensor.
-        :return: A tuple of integers for the numpy shape of the backing ndarray
-        """
+        """The numpy shape of the backing ndarray."""
         return self._tensor.shape
 
     @property
     def numpy_size(self):
-        """
-        Get the size of the tensor.
-        :return: integer for the number of elements in the tensor
-        """
+        """The number of elements in the tensor."""
         return self._tensor.size
 
     def to_numpy(self):
-        """
-        Return the values of this element as a NumPy ndarray.
-        """
+        """Return the values of this element as a NumPy ndarray."""
         return np.asarray(self._tensor)
 
     def __array__(self, dtype: np.dtype = None, **kwargs) -> np.ndarray:
@@ -820,26 +792,24 @@ class TensorArray(
 
     @classmethod
     def _from_sequence(
-        cls, scalars, *, dtype: Optional[Dtype] = None, copy: bool = False
+        cls,
+        scalars: Sequence,
+        *,
+        dtype: Optional[Dtype] = None,
+        copy: bool = False,
     ):
-        """
-        Construct a new ExtensionArray from a sequence of scalars.
+        """Construct a new ExtensionArray from a sequence of scalars.
 
-        Parameters
-        ----------
-        scalars : Sequence
-            Each element will be an instance of the scalar type for this
-            array, ``cls.dtype.type`` or be converted into this type in this
-            method.
-        dtype : dtype, optional
-            Construct for this particular dtype. This should be a Dtype
-            compatible with the ExtensionArray.
-        copy : bool, default False
-            If True, copy the underlying data.
+        Args:
+            scalars: Each element will be an instance of the scalar type for
+                this array, ``cls.dtype.type`` or be converted into this type
+                in this method.
+            dtype: Construct for this particular dtype. This should be a Dtype
+                compatible with the ExtensionArray.
+            copy: If True, copy the underlying data.
 
-        Returns
-        -------
-        ExtensionArray
+        Returns:
+            A new ``TensorArray`` constructed from ``scalars``.
         """
         if copy and isinstance(scalars, np.ndarray):
             scalars = scalars.copy()
@@ -851,50 +821,36 @@ class TensorArray(
     def _from_factorized(
         cls, values: np.ndarray, original: pd.api.extensions.ExtensionArray
     ):
-        """
-        Reconstruct an ExtensionArray after factorization.
+        """Reconstruct an ExtensionArray after factorization.
 
-        Parameters
-        ----------
-        values : ndarray
-            An integer ndarray with the factorized values.
-        original : ExtensionArray
-            The original ExtensionArray that factorize was called on.
-
-        See Also
-        --------
-        factorize : Top-level factorize method that dispatches here.
-        ExtensionArray.factorize : Encode the extension array as an enumerated
-            type.
+        Args:
+            values: An integer ndarray with the factorized values.
+            original: The original ExtensionArray that factorize was called on.
         """
         raise NotImplementedError
 
     def __getitem__(
         self, item: Union[int, slice, np.ndarray]
     ) -> Union["TensorArray", "TensorArrayElement"]:
-        """
-        Select a subset of self.
+        """Select a subset of self.
 
-        Parameters
-        ----------
-        item : int, slice, or ndarray
-            * int: The position in 'self' to get.
-            * slice: A slice object, where 'start', 'stop', and 'step' are
-              integers or None
-            * ndarray: A 1-d boolean NumPy ndarray the same length as 'self'
-
-        Returns
-        -------
-        item : scalar or ExtensionArray
-
-        Notes
-        -----
         For scalar ``item``, return a scalar value suitable for the array's
         type. This should be an instance of ``self.dtype.type``.
         For slice ``key``, return an instance of ``ExtensionArray``, even
         if the slice is length 0 or 1.
         For a boolean mask, return an instance of ``ExtensionArray``, filtered
         to the values where ``item`` is True.
+
+        Args:
+            item: The selector. Can be:
+                * int: The position in 'self' to get.
+                * slice: A slice object, where 'start', 'stop', and 'step' are
+                  integers or None
+                * ndarray: A 1-d boolean NumPy ndarray the same length as
+                  'self'
+
+        Returns:
+            A scalar or ExtensionArray.
         """
         # Return scalar if single value is selected, a TensorArrayElement for
         # single array element, or TensorArray for slice.
@@ -921,13 +877,7 @@ class TensorArray(
             return TensorArray(self._tensor[item])
 
     def __len__(self) -> int:
-        """
-        Length of this array.
-
-        Returns
-        -------
-        length : int
-        """
+        """Length of this array."""
         return len(self._tensor)
 
     @property
@@ -962,23 +912,15 @@ class TensorArray(
         return self._tensor.nbytes
 
     def isna(self) -> "TensorArray":
-        """
-        A 1-D array indicating if each value is missing.
+        """A 1-D array indicating if each value is missing.
 
-        Returns
-        -------
-        na_values : Union[np.ndarray, ExtensionArray]
-            In most cases, this should return a NumPy ndarray. For
-            exceptional cases like ``SparseArray``, where returning
-            an ndarray would be expensive, an ExtensionArray may be
-            returned.
-
-        Notes
-        -----
-        If returning an ExtensionArray, then
+        In most cases, this should return a NumPy ndarray. For
+        exceptional cases like ``SparseArray``, where returning
+        an ndarray would be expensive, an ExtensionArray may be
+        returned. If returning an ExtensionArray, then
 
         * ``na_values._is_boolean`` should be True
-        * `na_values` should implement :func:`ExtensionArray._reduce`
+        * ``na_values`` should implement :func:`ExtensionArray._reduce`
         * ``na_values.any`` and ``na_values.all`` should be implemented
         """
         if self._tensor.dtype.type is np.object_:
@@ -997,84 +939,37 @@ class TensorArray(
     def take(
         self, indices: Sequence[int], allow_fill: bool = False, fill_value: Any = None
     ) -> "TensorArray":
-        """
-        Take elements from an array.
+        """Take elements from an array.
 
-        Parameters
-        ----------
-        indices : sequence of int
-            Indices to be taken.
-        allow_fill : bool, default False
-            How to handle negative values in `indices`.
-
-            * False: negative values in `indices` indicate positional indices
-              from the right (the default). This is similar to
-              :func:`numpy.take`.
-
-            * True: negative values in `indices` indicate
-              missing values. These values are set to `fill_value`. Any other
-              other negative values raise a ``ValueError``.
-
-        fill_value : any, optional
-            Fill value to use for NA-indices when `allow_fill` is True.
-            This may be ``None``, in which case the default NA value for
-            the type, ``self.dtype.na_value``, is used.
-
-            For many ExtensionArrays, there will be two representations of
-            `fill_value`: a user-facing "boxed" scalar, and a low-level
-            physical NA value. `fill_value` should be the user-facing version,
-            and the implementation should handle translating that to the
-            physical version for processing the take if necessary.
-
-        Returns
-        -------
-        ExtensionArray
-
-        Raises
-        ------
-        IndexError
-            When the indices are out of bounds for the array.
-        ValueError
-            When `indices` contains negative values other than ``-1``
-            and `allow_fill` is True.
-
-        See Also
-        --------
-        numpy.take : Take elements from an array along an axis.
-        api.extensions.take : Take elements from an array.
-
-        Notes
-        -----
         ExtensionArray.take is called by ``Series.__getitem__``, ``.loc``,
-        ``iloc``, when `indices` is a sequence of values. Additionally,
+        ``iloc``, when ``indices`` is a sequence of values. Additionally,
         it's called by :meth:`Series.reindex`, or any other method
-        that causes realignment, with a `fill_value`.
+        that causes realignment, with a ``fill_value``.
 
-        Examples
-        --------
-        Here's an example implementation, which relies on casting the
-        extension array to object dtype. This uses the helper method
-        :func:`pandas.api.extensions.take`.
+        Args:
+            indices: Indices to be taken.
+            allow_fill: How to handle negative values in ``indices``.
 
-        .. testcode::
+                * False: negative values in ``indices`` indicate positional
+                  indices from the right (the default). This is similar to
+                  :func:`numpy.take`.
+                * True: negative values in ``indices`` indicate missing
+                  values. These values are set to ``fill_value``. Any other
+                  negative values raise a ``ValueError``.
 
-           def take(self, indices, allow_fill=False, fill_value=None):
-               from pandas.core.algorithms import take
+            fill_value: Fill value to use for NA-indices when ``allow_fill``
+                is True. This may be ``None``, in which case the default NA
+                value for the type, ``self.dtype.na_value``, is used.
 
-               # If the ExtensionArray is backed by an ndarray, then
-               # just pass that here instead of coercing to object.
-               data = self.astype(object)
+                For many ExtensionArrays, there will be two representations
+                of ``fill_value``: a user-facing "boxed" scalar, and a
+                low-level physical NA value. ``fill_value`` should be the
+                user-facing version, and the implementation should handle
+                translating that to the physical version for processing the
+                take if necessary.
 
-               if allow_fill and fill_value is None:
-                   fill_value = self.dtype.na_value
-
-               # fill value should always be translated from the scalar
-               # type for the array, to the physical storage type for
-               # the data, before passing to take.
-
-               result = take(data, indices, fill_value=fill_value,
-                             allow_fill=allow_fill)
-               return self._from_sequence(result, dtype=self.dtype)
+        Returns:
+            A ``TensorArray`` containing the taken elements.
         """
         if allow_fill:
             # With allow_fill being True, negative values in `indices` indicate
@@ -1104,28 +999,19 @@ class TensorArray(
         return TensorArray(values)
 
     def copy(self) -> "TensorArray":
-        """
-        Return a copy of the array.
-
-        Returns
-        -------
-        ExtensionArray
-        """
+        """Return a copy of the array."""
         # TODO(Clark): Copy cached properties.
         return TensorArray(self._tensor.copy())
 
     @classmethod
     def _concat_same_type(cls, to_concat: Sequence["TensorArray"]) -> "TensorArray":
-        """
-        Concatenate multiple array of this dtype.
+        """Concatenate multiple array of this dtype.
 
-        Parameters
-        ----------
-        to_concat : sequence of this type
+        Args:
+            to_concat: A sequence of ``TensorArray`` instances to concatenate.
 
-        Returns
-        -------
-        ExtensionArray
+        Returns:
+            A ``TensorArray`` containing the concatenated values.
         """
         should_flatten = False
         shape = None
@@ -1144,29 +1030,21 @@ class TensorArray(
         return concated
 
     def __setitem__(self, key: Union[int, np.ndarray], value: Any) -> None:
-        """
-        Set one or more values inplace.
+        """Set one or more values inplace.
 
         This method is not required to satisfy the pandas extension array
         interface.
 
-        Parameters
-        ----------
-        key : int, ndarray, or slice
-            When called from, e.g. ``Series.__setitem__``, ``key`` will be
-            one of
+        Args:
+            key: When called from, e.g. ``Series.__setitem__``, ``key`` will
+                be one of
 
-            * scalar int
-            * ndarray of integers.
-            * boolean ndarray
-            * slice object
+                * scalar int
+                * ndarray of integers
+                * boolean ndarray
+                * slice object
 
-        value : ExtensionDtype.type, Sequence[ExtensionDtype.type], or object
-            value or values to be set of ``key``.
-
-        Returns
-        -------
-        None
+            value: Value or values to be set of ``key``.
         """
         key = check_array_indexer(self, key)
         if isinstance(value, TensorArrayElement) or np.isscalar(value):
@@ -1207,28 +1085,18 @@ class TensorArray(
         raise NotImplementedError
 
     def _reduce(self, name: str, skipna: bool = True, **kwargs):
-        """
-        Return a scalar result of performing the reduction operation.
+        """Return a scalar result of performing the reduction operation.
 
-        Parameters
-        ----------
-        name : str
-            Name of the function, supported values are:
-            { any, all, min, max, sum, mean, median, prod,
-            std, var, sem, kurt, skew }.
-        skipna : bool, default True
-            If True, skip NaN values.
-        **kwargs
-            Additional keyword arguments passed to the reduction function.
-            Currently, `ddof` is the only supported kwarg.
+        Args:
+            name: Name of the function. Supported values are:
+                { any, all, min, max, sum, mean, median, prod, std, var,
+                sem, kurt, skew }.
+            skipna: If True, skip NaN values.
+            **kwargs: Additional keyword arguments passed to the reduction
+                function. Currently, ``ddof`` is the only supported kwarg.
 
-        Returns
-        -------
-        scalar
-
-        Raises
-        ------
-        TypeError : subclass does not define reductions
+        Returns:
+            A scalar ``TensorArrayElement`` with the reduction result.
         """
         supported_kwargs = ["ddof"]
         reducer_kwargs = {}
@@ -1281,30 +1149,24 @@ class TensorArray(
         copy: bool = False,
         na_value: Any = pd.api.extensions.no_default,
     ):
-        """
-        Convert to a NumPy ndarray.
+        """Convert to a NumPy ndarray.
 
         .. versionadded:: 1.0.0
 
         This is similar to :meth:`numpy.asarray`, but may provide additional
         control over how the conversion is done.
 
-        Parameters
-        ----------
-        dtype : str or numpy.dtype, optional
-            The dtype to pass to :meth:`numpy.asarray`.
-        copy : bool, default False
-            Whether to ensure that the returned value is a not a view on
-            another array. Note that ``copy=False`` does not *ensure* that
-            ``to_numpy()`` is no-copy. Rather, ``copy=True`` ensure that
-            a copy is made, even if not strictly necessary.
-        na_value : Any, optional
-            The value to use for missing values. The default value depends
-            on `dtype` and the type of the array.
+        Args:
+            dtype: The dtype to pass to :meth:`numpy.asarray`.
+            copy: Whether to ensure that the returned value is a not a view
+                on another array. Note that ``copy=False`` does not *ensure*
+                that ``to_numpy()`` is no-copy. Rather, ``copy=True`` ensure
+                that a copy is made, even if not strictly necessary.
+            na_value: The value to use for missing values. The default value
+                depends on ``dtype`` and the type of the array.
 
-        Returns
-        -------
-        numpy.ndarray
+        Returns:
+            A NumPy ndarray view (or copy) of the tensor values.
         """
         if dtype is not None:
             dtype = pd.api.types.pandas_dtype(dtype)
@@ -1320,53 +1182,35 @@ class TensorArray(
 
     @property
     def numpy_dtype(self):
-        """
-        Get the dtype of the tensor.
-        :return: The numpy dtype of the backing ndarray
-        """
+        """The numpy dtype of the backing ndarray."""
         return self._tensor.dtype
 
     @property
     def numpy_ndim(self):
-        """
-        Get the number of tensor dimensions.
-        :return: integer for the number of dimensions
-        """
+        """The number of tensor dimensions."""
         return self._tensor.ndim
 
     @property
     def numpy_shape(self):
-        """
-        Get the shape of the tensor.
-        :return: A tuple of integers for the numpy shape of the backing ndarray
-        """
+        """The numpy shape of the backing ndarray."""
         return self._tensor.shape
 
     @property
     def numpy_size(self):
-        """
-        Get the size of the tensor.
-        :return: integer for the number of elements in the tensor
-        """
+        """The number of elements in the tensor."""
         return self._tensor.size
 
-    def astype(self, dtype, copy=True):
-        """
-        Cast to a NumPy array with 'dtype'.
+    def astype(self, dtype: Dtype, copy: bool = True):
+        """Cast to a NumPy array with ``dtype``.
 
-        Parameters
-        ----------
-        dtype : str or dtype
-            Typecode or data-type to which the array is cast.
-        copy : bool, default True
-            Whether to copy the data, even if not necessary. If False,
-            a copy is made only if the old dtype does not match the
-            new dtype.
+        Args:
+            dtype: Typecode or data-type to which the array is cast.
+            copy: Whether to copy the data, even if not necessary. If False,
+                a copy is made only if the old dtype does not match the new
+                dtype.
 
-        Returns
-        -------
-        array : ndarray
-            NumPy ndarray with 'dtype' for its dtype.
+        Returns:
+            NumPy ndarray with ``dtype`` for its dtype.
         """
         dtype = pd.api.types.pandas_dtype(dtype)
 
@@ -1389,33 +1233,47 @@ class TensorArray(
             values = self._tensor.astype(dtype, copy=copy)
         return values
 
-    def any(self, axis=None, out=None, keepdims=False):
-        """
-        Test whether any array element along a given axis evaluates to True.
+    def any(
+        self,
+        axis: Optional[Union[int, Tuple[int, ...]]] = None,
+        out: Optional[np.ndarray] = None,
+        keepdims: bool = False,
+    ):
+        """Test whether any array element along a given axis evaluates to True.
 
         See numpy.any() documentation for more information
         https://numpy.org/doc/stable/reference/generated/numpy.any.html#numpy.any
 
-        :param axis: Axis or axes along which a logical OR reduction is
-            performed.
-        :param out: Alternate output array in which to place the result.
-        :param keepdims: If this is set to True, the axes which are reduced are
-            left in the result as dimensions with size one.
-        :return: single boolean unless axis is not None else TensorArray
+        Args:
+            axis: Axis or axes along which a logical OR reduction is
+                performed.
+            out: Alternate output array in which to place the result.
+            keepdims: If this is set to True, the axes which are reduced are
+                left in the result as dimensions with size one.
+
+        Returns:
+            Single boolean unless axis is not None else TensorArray.
         """
         result = self._tensor.any(axis=axis, out=out, keepdims=keepdims)
         return result if axis is None else TensorArray(result)
 
-    def all(self, axis=None, out=None, keepdims=False):
-        """
-        Test whether all array elements along a given axis evaluate to True.
+    def all(
+        self,
+        axis: Optional[Union[int, Tuple[int, ...]]] = None,
+        out: Optional[np.ndarray] = None,
+        keepdims: bool = False,
+    ):
+        """Test whether all array elements along a given axis evaluate to True.
 
-        :param axis: Axis or axes along which a logical AND reduction is
-            performed.
-        :param out: Alternate output array in which to place the result.
-        :param keepdims: If this is set to True, the axes which are reduced are
-            left in the result as dimensions with size one.
-        :return: single boolean unless axis is not None else TensorArray
+        Args:
+            axis: Axis or axes along which a logical AND reduction is
+                performed.
+            out: Alternate output array in which to place the result.
+            keepdims: If this is set to True, the axes which are reduced are
+                left in the result as dimensions with size one.
+
+        Returns:
+            Single boolean unless axis is not None else TensorArray.
         """
         result = self._tensor.all(axis=axis, out=out, keepdims=keepdims)
         return result if axis is None else TensorArray(result)
@@ -1442,8 +1300,7 @@ class TensorArray(
 
     @property
     def _is_boolean(self):
-        """
-        Whether this extension array should be considered boolean.
+        """Whether this extension array should be considered boolean.
 
         By default, ExtensionArrays are assumed to be non-numeric.
         Setting this to True will affect the behavior of several places,
@@ -1451,10 +1308,6 @@ class TensorArray(
 
         * is_bool
         * boolean indexing
-
-        Returns
-        -------
-        bool
         """
         # This is needed to support returning a TensorArray from .isnan().
         return self.dtype._is_boolean()

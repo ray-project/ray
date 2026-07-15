@@ -317,8 +317,8 @@ class TestToPyArrow:
         assert converted.equals(expected)
 
     @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
+        version_parse(pa.__version__) < version_parse("19.0.0"),
+        reason="Requires PyArrow >= 19 for string compute UDF pushdown",
     )
     def test_negated_pyarrow_compute_udf(self, test_table):
         """Test that negated PyArrow compute UDF expressions convert correctly."""

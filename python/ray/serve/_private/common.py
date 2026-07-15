@@ -32,7 +32,7 @@ class DeploymentID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.name, self.app_name))
             object.__setattr__(self, "_hash", h)
@@ -72,7 +72,7 @@ class ReplicaID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.unique_id, self.deployment_id))
             object.__setattr__(self, "_hash", h)
@@ -188,6 +188,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
@@ -287,7 +288,9 @@ class DeploymentStatusInfo:
     message: str = ""
 
     @property
-    def rank(self) -> int:
+    # Implicitly returns None when neither (status,) nor
+    # (status, status_trigger) is in DEPLOYMENT_STATUS_RANKING_ORDER.
+    def rank(self) -> Optional[int]:  # type: ignore[return]
         """Get priority of state based on ranking_order().
 
         The ranked order indicates what the status should be of a
@@ -305,8 +308,8 @@ class DeploymentStatusInfo:
 
     def _updated_copy(
         self,
-        status: DeploymentStatus = None,
-        status_trigger: DeploymentStatusTrigger = None,
+        status: Optional[DeploymentStatus] = None,
+        status_trigger: Optional[DeploymentStatusTrigger] = None,
         message: str = "",
     ):
         """Returns a copy of the current object with the passed in kwargs updated."""
@@ -659,6 +662,7 @@ class RunningReplicaInfo:
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
+    replica_metadata: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
     backend_http_port: Optional[int] = None
 
@@ -680,6 +684,7 @@ class RunningReplicaInfo:
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.replica_metadata),
                     str(self.port),
                     str(self.backend_http_port),
                 ]
@@ -691,13 +696,14 @@ class RunningReplicaInfo:
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
-        return self._hash
+        # Set via `object.__setattr__` above (frozen dataclass).
+        return self._hash  # pyrefly: ignore[missing-attribute]
 
     def __eq__(self, other):
         return all(
             [
                 isinstance(other, RunningReplicaInfo),
-                self._hash == other._hash,
+                self._hash == other._hash,  # pyrefly: ignore[missing-attribute]
             ]
         )
 
@@ -789,10 +795,17 @@ class RequestMetadata:
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
 
+    # Session ID.
+    session_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 
     _http_method: str = ""
+
+    # Full gRPC service method (e.g. "/pkg.Service/Method") for direct-ingress gRPC
+    # requests. Mirrors the proxy's `method` metric tag (`gRPCProxyRequest.method`).
+    _grpc_service_method: str = ""
 
     # The client address in "host:port" format, if available.
     _client: str = ""
@@ -817,6 +830,9 @@ class RequestMetadata:
     request_serialization: str = "cloudpickle"
     response_serialization: str = "cloudpickle"
 
+    # Token for a replica-side slot reserved by choose_replica().
+    _reserved_slot_token: Optional[str] = None
+
     @property
     def is_http_request(self) -> bool:
         return self._request_protocol == RequestProtocol.HTTP
@@ -824,6 +840,10 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+    @property
+    def protocol(self) -> RequestProtocol:
+        return self._request_protocol
 
 
 class StreamingHTTPRequest:
@@ -862,11 +882,16 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
+            # Constructor invariant: if `receive_asgi_messages` wasn't passed,
+            # then `proxy_actor_name` is not None.
+            assert self._proxy_actor_name is not None
             self._cached_proxy_actor = ray.get_actor(
                 self._proxy_actor_name, namespace=SERVE_NAMESPACE
             )
             self._receive_asgi_messages = (
-                self._cached_proxy_actor.receive_asgi_messages.remote
+                # `ActorHandle.__getattr__` is annotated `Never`; per-method
+                # attributes exist on real handles at runtime.
+                self._cached_proxy_actor.receive_asgi_messages.remote  # type: ignore[attr-defined]
             )
 
         return self._receive_asgi_messages

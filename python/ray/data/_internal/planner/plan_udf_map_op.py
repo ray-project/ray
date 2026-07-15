@@ -135,10 +135,11 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # Extract expressions before defining the closure to prevent cloudpickle from
     # serializing the entire op object (which may contain references to non-serializable
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
+    common_sub_exprs = op.get_common_sub_exprs()
 
     compute = get_compute(op.compute)
 
@@ -147,7 +148,7 @@ def plan_project_op(
         _create_callable_class_udf_init_fn,
     )
 
-    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(op.get_all_exprs())
 
     def _project_block(block: Block) -> Block:
         try:
@@ -155,7 +156,11 @@ def plan_project_op(
                 eval_projection,
             )
 
-            return eval_projection(projection_exprs, block)
+            return eval_projection(
+                projection_exprs,
+                block,
+                common_sub_exprs=common_sub_exprs,
+            )
         except Exception as e:
             _try_wrap_udf_exception(e)
 
@@ -876,8 +881,12 @@ def _generate_transform_fn_for_async_map(
             finally:
                 output_queue.put(sentinel)
 
-        # NOTE: Reordering is an async process
-        asyncio.create_task(_reorder())
+        # NOTE: Reordering is an async process. Keep a strong reference to
+        # the created task: ``loop.create_task`` only registers a weak
+        # reference with the event loop, so without a strong reference the
+        # task could be garbage collected mid-execution and the reordering
+        # would silently stop.
+        reorder_task = loop.create_task(_reorder())
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
@@ -926,6 +935,11 @@ def _generate_transform_fn_for_async_map(
         finally:
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
+            # Wait for the reorder task to finish draining ``completed_tasks_queue``
+            # and pushing remaining results to the output queue. This both keeps a
+            # strong reference to the task alive until completion (preventing GC)
+            # and surfaces any unexpected exception raised inside ``_reorder``.
+            await reorder_task
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)

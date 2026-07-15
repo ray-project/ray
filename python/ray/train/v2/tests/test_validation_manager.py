@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
 from ray.train.v2._internal.execution.worker_group.worker import Worker
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 from ray.train.v2.tests.util import create_dummy_training_reports
 
@@ -44,9 +45,15 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
         validation_config=ValidationConfig(fn=lambda x: None),
     )
     vm._pending_validations = {
-        task1: checkpoint1,
-        task2: checkpoint2,
-        task3: checkpoint3,
+        task1: validation_manager._PendingValidation(
+            checkpoint=checkpoint1, start_time=0.0, timeout_s=None
+        ),
+        task2: validation_manager._PendingValidation(
+            checkpoint=checkpoint2, start_time=0.0, timeout_s=None
+        ),
+        task3: validation_manager._PendingValidation(
+            checkpoint=checkpoint3, start_time=0.0, timeout_s=None
+        ),
     }
     mock_wait.side_effect = [([], [task1, task2, task3]), ([task1, task2, task3], [])]
     monkeypatch.setattr(ray, "get", lambda x: {"score": 1})
@@ -54,9 +61,16 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     # Call before_controller_shutdown
     asyncio.run(vm.before_controller_shutdown())
     assert mock_wait.call_count == 2
-    assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
-        unittest.mock.call({checkpoint1: {"score": 1}}),
-        unittest.mock.call({checkpoint2: {"score": 1}, checkpoint3: {"score": 1}}),
+    assert checkpoint_manager.update_checkpoints_with_validation_result.mock_calls == [
+        unittest.mock.call(
+            {checkpoint1: ({"score": 1}, ReportedCheckpointStatus.VALIDATED)}
+        ),
+        unittest.mock.call(
+            {
+                checkpoint2: ({"score": 1}, ReportedCheckpointStatus.VALIDATED),
+                checkpoint3: ({"score": 1}, ReportedCheckpointStatus.VALIDATED),
+            }
+        ),
     ]
 
 
@@ -123,8 +137,13 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 1
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {low_initial_high_final_training_result.checkpoint: {"score": 200}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_once_with(
+        {
+            low_initial_high_final_training_result.checkpoint: (
+                {"score": 200},
+                ReportedCheckpointStatus.VALIDATED,
+            )
+        }
     )
     ray.wait(
         list(vm._pending_validations.keys()),
@@ -132,8 +151,13 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
-        {high_initial_low_final_training_result.checkpoint: {"score": 100}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_with(
+        {
+            high_initial_low_final_training_result.checkpoint: (
+                {"score": 100},
+                ReportedCheckpointStatus.VALIDATED,
+            )
+        }
     )
 
 
@@ -171,8 +195,13 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {failing_training_result.checkpoint: {}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_once_with(
+        {
+            failing_training_result.checkpoint: (
+                {},
+                ReportedCheckpointStatus.VALIDATION_FAILED,
+            )
+        }
     )
 
 
@@ -227,8 +256,13 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {training_result.checkpoint: {"score": 100}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_once_with(
+        {
+            training_result.checkpoint: (
+                {"score": 100},
+                ReportedCheckpointStatus.VALIDATED,
+            )
+        }
     )
 
 
@@ -284,8 +318,13 @@ def test_checkpoint_validation_management_resume(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 1
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {training_reports[0].checkpoint: {"score": 1}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_once_with(
+        {
+            training_reports[0].checkpoint: (
+                {"score": 1},
+                ReportedCheckpointStatus.VALIDATED,
+            )
+        }
     )
     ray.wait(
         list(vm._pending_validations.keys()),
@@ -293,8 +332,13 @@ def test_checkpoint_validation_management_resume(tmp_path):
     )
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
-        {training_reports[2].checkpoint: {"score": 2}}
+    checkpoint_manager.update_checkpoints_with_validation_result.assert_called_with(
+        {
+            training_reports[2].checkpoint: (
+                {"score": 2},
+                ReportedCheckpointStatus.VALIDATED,
+            )
+        }
     )
 
 

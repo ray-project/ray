@@ -177,7 +177,7 @@ class Trainable:
 
 
         Args:
-            config[Dict[str, Any]]: The Trainable's config dict.
+            config: The Trainable's config dict.
 
         Returns:
             PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
@@ -191,6 +191,9 @@ class Trainable:
 
         Args:
             config: The Trainer's config dict.
+
+        Returns:
+            A help string describing the resources required by the trainable.
         """
         return ""
 
@@ -256,6 +259,8 @@ class Trainable:
                 the whole buffer.
             max_buffer_length: Maximum number of results to buffer.
 
+        Returns:
+            A list of result dicts collected from each call to ``train()``.
         """
         results = []
 
@@ -809,7 +814,7 @@ class Trainable:
         """Returns configuration passed in by Tune."""
         return self.config
 
-    def step(self):
+    def step(self) -> Dict:
         """Subclasses should override this to implement train().
 
         The return value will be automatically passed to the loggers. Users
@@ -963,7 +968,7 @@ class Trainable:
             export_formats: List of formats that should be exported.
             export_dir: Directory to place exported models.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
