@@ -125,7 +125,7 @@ class DataConfig:
 
             if execution_options.is_resource_limits_default():
                 if not self._scaling_policy_reserves_train_resources():
-                    execution_options.exclude_resources = (
+                    execution_options._set_exclude_resources(
                         execution_options.exclude_resources.add(
                             ExecutionResources(
                                 cpu=self._num_train_cpus, gpu=self._num_train_gpus
