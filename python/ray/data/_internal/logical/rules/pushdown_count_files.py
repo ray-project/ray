@@ -2,6 +2,23 @@ import copy
 import dataclasses
 from typing import TYPE_CHECKING, Optional
 
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    WholeFileChunker,
+)
+from ray.data._internal.datasource_v2.listing.file_indexer import (
+    NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.listing.file_manifest import (
+    PATH_COLUMN_NAME,
+    FileManifest,
+)
+from ray.data._internal.datasource_v2.readers.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
+from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
+    ArrowFileScanner,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.map_operator import MapBatches, Project
@@ -31,27 +48,7 @@ class PushdownCountFiles(Rule):
     # tasks can run per core (the work is network-bound, not CPU-bound).
     _PER_TASK_NUM_CPUS_ALLOCATION = 0.5
 
-    # ``Rule.apply`` is typed ``(Plan) -> Plan``; like every other logical rule
-    # this narrows to ``LogicalPlan`` for a more precise signature.
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
-        from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-            WholeFileChunker,
-        )
-        from ray.data._internal.datasource_v2.listing.file_indexer import (
-            NonSamplingFileIndexer,
-        )
-        from ray.data._internal.datasource_v2.listing.file_manifest import (
-            PATH_COLUMN_NAME,
-            FileManifest,
-        )
-        from ray.data._internal.datasource_v2.readers.supports_metadata import (
-            MetadataType,
-            SupportsMetadata,
-        )
-        from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
-            ArrowFileScanner,
-        )
-
         count = plan.dag
         if not isinstance(count, Count):
             return plan
@@ -98,7 +95,7 @@ class PushdownCountFiles(Rule):
         # appear once per chunk, in different batches, and be over-counted).
         # ``ListFiles`` is frozen, so ``replace`` a copy with a fresh indexer.
         count_indexer = copy.deepcopy(list_files.file_indexer)
-        assert isinstance(count_indexer, NonSamplingFileIndexer), count_indexer
+        assert isinstance(count_indexer, NonSamplingFileIndexer), type(count_indexer)
         count_indexer._file_chunker = WholeFileChunker()
         list_files = dataclasses.replace(
             list_files,
