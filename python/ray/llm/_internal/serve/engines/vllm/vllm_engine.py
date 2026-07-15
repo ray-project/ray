@@ -77,7 +77,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
     from vllm.entrypoints.pooling.scoring.serving import ServingScores
-    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
+    from vllm.entrypoints.serve.tokenize.serving import ServingTokenization
     from vllm.entrypoints.speech_to_text.transcription.serving import (
         OpenAIServingTranscription,
     )
@@ -314,7 +314,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
-        self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
+        self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
     async def build_asgi_app(self):
         from vllm.entrypoints.openai.api_server import build_app, init_app_state

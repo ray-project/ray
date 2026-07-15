@@ -205,6 +205,13 @@ class FakeDeploymentStateManager:
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         return []
 
+    def get_ingress_membership_version(self) -> int:
+        # Advance every call so the reconcile gate never skips in tests that
+        # exercise the reconcile body. The gate's skip behavior is covered by
+        # test_ingress_port_reconcile_gated_on_membership_version.
+        self._ingress_version = getattr(self, "_ingress_version", 0) + 1
+        return self._ingress_version
+
 
 class FakeTestingDeploymentStateManager:
     def __init__(self):
@@ -238,6 +245,7 @@ class FakeDirectIngressController(ServeController):
         self.proxy_state_manager = proxy_state_manager
         self._direct_ingress_enabled = True
         self._last_ingress_port_tuples = set()
+        self._last_ingress_membership_version = -1
         self._ha_proxy_enabled = False
         self._controller_node_id = "head_node_id"
 
@@ -1193,6 +1201,61 @@ def test_recon_port_gate_prune_skips_unchanged_node(
         # Second tick: alive set unchanged -> reclaim scan skipped.
         direct_ingress_controller._maybe_update_ingress_ports()
         assert spy.call_count == 1
+
+
+def test_ingress_port_reconcile_gated_on_membership_version(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """The direct-ingress port reconcile is skipped on ticks where the ingress
+    membership version is unchanged and no port is awaiting quarantine reclaim, and
+    runs again as soon as the version advances."""
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
+    version = {"v": 1}
+    # Constant version until we bump it (overrides the always-advancing fake default).
+    dsm.get_ingress_membership_version = lambda: version["v"]
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    with mock.patch.object(NodePortManager, "update_ports") as mock_update:
+        # First tick: version (1) differs from the controller's initial -1 -> runs.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Unchanged version and nothing quarantined -> gate skips the reconcile.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Membership version advances -> reconcile runs again.
+        version["v"] = 2
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 2
+
+
+def test_reconcile_version_not_advanced_on_failure(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """If the port reconcile raises, the ingress membership version must NOT be marked
+    reconciled -- otherwise the gate would skip the retry (the outer control loop catches
+    the exception and re-runs the step next tick) and leave ports out of sync."""
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
+    dsm.get_ingress_membership_version = lambda: 1
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    # First tick: update_ports raises -> reconcile fails.
+    with mock.patch.object(
+        NodePortManager, "update_ports", side_effect=RuntimeError("boom")
+    ):
+        with pytest.raises(RuntimeError):
+            direct_ingress_controller._maybe_update_ingress_ports()
+    # Version stays at the initial sentinel -> the failed reconcile is still pending.
+    assert direct_ingress_controller._last_ingress_membership_version == -1
+
+    # Next tick: update_ports succeeds -> the reconcile is retried, not skipped.
+    with mock.patch.object(NodePortManager, "update_ports") as ok:
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert ok.call_count == 1  # retried
+    assert direct_ingress_controller._last_ingress_membership_version == 1
 
 
 if __name__ == "__main__":

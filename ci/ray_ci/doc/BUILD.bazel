@@ -94,6 +94,27 @@ py_test(
 )
 
 py_test(
+    name = "test_cmd_check_api_discrepancy",
+    size = "small",
+    srcs = [
+        "cmd_check_api_discrepancy.py",
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_cmd_check_api_discrepancy.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_build_cache",
     size = "small",
     srcs = ["test_build_cache.py"],

@@ -126,6 +126,97 @@ class TestEnvRunnerGroup(unittest.TestCase):
             2,
         )
 
+    def test_num_env_runners_dropped_lifetime_no_drops(self):
+        """No EnvRunner should be reported as dropped when calls complete in time."""
+        ws = EnvRunnerGroup(
+            config=(
+                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
+            ),
+        )
+
+        # Baseline: counter starts at zero.
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        # A fast, timeout-bounded call should not register any drops.
+        results = ws.foreach_env_runner(
+            lambda w: 1,
+            local_env_runner=False,
+            timeout_seconds=10.0,
+        )
+        self.assertEqual(len(results), 2)
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        # A non-timeout-bounded call must never increment the counter, even if
+        # it returned fewer results than the number of remote actors.
+        ws.foreach_env_runner(
+            lambda w: 1,
+            local_env_runner=False,
+            timeout_seconds=None,
+        )
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        ws.stop()
+
+    def test_num_env_runners_dropped_lifetime_ignores_fire_and_forget(self):
+        """Calls with ``timeout_seconds == 0`` must NOT inflate the counter.
+
+        ``sync_weights`` defaults to ``timeout_seconds=0.0`` (fire-and-forget)
+        and propagates that into ``foreach_env_runner``; under such calls
+        ``ray.wait(timeout=0.0)`` returns immediately and typically with zero
+        results. Treating that as a drop would make the metric meaningless
+        in normal training.
+        """
+        ws = EnvRunnerGroup(
+            config=(
+                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
+            ),
+        )
+
+        # Make the remote call slow relative to ``timeout_seconds=0.0`` so
+        # ``ray.wait(timeout=0.0)`` returns with zero results. A short sleep
+        # is enough; we don't need the workers to be busy for long, just
+        # long enough for the fire-and-forget poll to come back empty.
+        def _slow(w):
+            time.sleep(0.5)
+            return 1
+
+        ws.foreach_env_runner(
+            _slow,
+            local_env_runner=False,
+            timeout_seconds=0.0,
+        )
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        ws.stop()
+
+    def test_num_env_runners_dropped_lifetime_counts_timeouts(self):
+        """Verify the lifetime counter increments when remote calls time out."""
+        ws = EnvRunnerGroup(
+            config=(
+                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
+            ),
+        )
+
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
+
+        # Force both remote workers to exceed a short positive timeout by
+        # sleeping in the remote call. The sleep just needs to exceed the
+        # timeout; keeping it small keeps the test fast in CI and avoids
+        # leaving long-running actor work alive past the test boundary.
+        def _slow(w):
+            time.sleep(0.5)
+            return 1
+
+        results = ws.foreach_env_runner(
+            _slow,
+            local_env_runner=False,
+            timeout_seconds=0.05,
+        )
+        self.assertEqual(len(results), 0)
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 2)
+
+        ws.stop()
+
 
 if __name__ == "__main__":
     import sys
