@@ -140,6 +140,18 @@ api_policy_check() {
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }
 
+api_param_coverage() {
+  # Static, diff-scoped check: fail a PR that adds a new @PublicAPI callable, or
+  # a new parameter on an existing one, without a docstring Args: entry.
+  # Pre-existing gaps are grandfathered. Parses source only, so no Ray build or
+  # install is needed. Non-blocking by default; pass --blocking to gate.
+  echo "--- Check new-parameter documentation coverage"
+  local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+  git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_param_coverage.py \
+    "$(pwd)" --base-ref "origin/${base_branch}" "$@"
+}
+
 documentation_style() {
   ./ci/lint/check-documentation-style.sh
 }
