@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from traceback import format_exception
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import colorama
 
@@ -102,23 +102,39 @@ class TaskCancelledError(RayError):
         return msg
 
 
-def _is_hidden_internal_frame(line: str, hide_data_frames: bool) -> bool:
-    """Return True if ``line`` is a traceback ``File ...`` header for a frame
-    that belongs to Ray-internal machinery and should be stripped from
-    user-facing tracebacks.
+# Path fragments (POSIX "/") identifying traceback ``File ...`` frames that
+# belong to Ray-internal machinery -- noise in a user-facing traceback. Ray
+# Core frames are always hidden; callers can hide additional library-internal
+# frames by passing their own markers (Ray Data passes the DATA markers below).
+_RAY_CORE_INTERNAL_FRAME_MARKERS = (
+    "ray/worker.py",
+    "ray/_private/",
+    "ray/util/tracing/",
+    "ray/_raylet.pyx",
+)
 
-    Ray Core internal frames are always hidden. Ray Data ``_internal`` frames
-    are hidden only when ``hide_data_frames`` is True (i.e. the error came from a
-    user-supplied UDF, so the surrounding Ray Data machinery is just noise).
+# Ray Data execution-layer frames (scheduler/executor/planner), hidden on top
+# of the core set when a traceback's root cause is user code (a Ray Data UDF).
+_RAY_DATA_INTERNAL_FRAME_MARKERS = ("ray/data/_internal/",)
+
+
+def _is_hidden_internal_frame(line: str, extra_markers: Sequence[str] = ()) -> bool:
+    """Return True if ``line`` is a traceback ``  File ...`` header for a frame
+    that belongs to Ray-internal machinery and should be stripped from a
+    user-facing traceback.
+
+    Library-agnostic: Ray Core frames (``_RAY_CORE_INTERNAL_FRAME_MARKERS``) are
+    always matched. ``extra_markers`` lets a caller additionally hide its own
+    internal frames on top of the core set (Ray Data passes
+    ``_RAY_DATA_INTERNAL_FRAME_MARKERS`` when the root cause is a UDF).
     """
+    # TODO(windows): markers use POSIX "/" separators; Windows tracebacks render
+    # paths with "\", so these substrings won't match and internal frames won't
+    # be stripped there.
     if not line.startswith("  File "):
         return False
-    return (
-        "ray/worker.py" in line
-        or "ray/_private/" in line
-        or "ray/util/tracing/" in line
-        or "ray/_raylet.pyx" in line
-        or (hide_data_frames and "ray/data/_internal/" in line)
+    return any(
+        marker in line for marker in (*_RAY_CORE_INTERNAL_FRAME_MARKERS, *extra_markers)
     )
 
 
@@ -342,12 +358,15 @@ class RayTaskError(RayError):
                 else:
                     traceback_line += ")"
                 out.append(traceback_line)
-            elif _is_hidden_internal_frame(line, hide_data_frames):
+            elif _is_hidden_internal_frame(
+                line,
+                _RAY_DATA_INTERNAL_FRAME_MARKERS if hide_data_frames else (),
+            ):
                 # Drop this frame's ``File ...`` header and mark its continuation
                 # lines for removal.
                 in_hidden_frame = True
                 if "ray._raylet.raise_if_dependency_failed" in line:
-                    # A dependency (input argument) failed; show a friendly
+                    # A dependency (input argument) failed; show a user friendly
                     # note in place of the internal frame.
                     out.append(
                         "  At least one of the input arguments for "
