@@ -993,6 +993,22 @@ def test_rendered_lua_has_no_timing_calls_when_metrics_disabled() -> None:
     assert "ingress_request_router_truncated_full_length" not in lua
 
 
+def test_metric_registry_dedups_across_collectors() -> None:
+    """Re-constructing a collector in the same process must reuse the shared
+    registry's metric handles instead of re-creating Ray metric objects, and
+    the exported metric names must be unchanged by the registry migration."""
+    a = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi(), node_id="node-a")
+    b = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi(), node_id="node-b")
+
+    assert a.requests_counter is b.requests_counter
+    assert a.latency_histogram is b.latency_histogram
+    assert a.process_count_gauge is b.process_count_gauge
+
+    assert a.requests_counter.info["name"] == "serve_haproxy_ingress_router_requests"
+    assert a.latency_histogram.info["name"] == "serve_haproxy_ingress_router_latency_ms"
+    assert a.process_count_gauge.info["name"] == "serve_haproxy_process_count"
+
+
 if __name__ == "__main__":
     import sys
 

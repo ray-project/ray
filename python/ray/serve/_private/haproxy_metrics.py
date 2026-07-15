@@ -2,8 +2,10 @@
 
 HAProxy is configured to emit one RFC 5424 syslog line per request to a
 dedicated Unix dgram socket. Existing rfc3164 log targets are unaffected.
-`HAProxyMetricsCollector` owns the parsing and the `ray.util.metrics`
-objects; `_DatagramHandler` is the asyncio glue that hands datagrams in.
+`HAProxyMetricsCollector` owns the parsing and records through handles from
+a shared `MetricRegistry` (namespace `serve_haproxy`), which dedups metric
+creation across collector instances; `_DatagramHandler` is the asyncio glue
+that hands datagrams in.
 """
 
 import asyncio
@@ -17,9 +19,15 @@ from typing import Optional
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
-from ray.util import metrics
+from ray.util.metric_registry import MetricRegistry
 
 logger = logging.getLogger(__name__)
+
+# Shared registry for every serve_haproxy_* metric. Module-level so that
+# re-constructing a collector in the same process (e.g. tests, actor
+# restarts) reuses the existing Ray metric objects instead of re-creating
+# them.
+_METRIC_REGISTRY = MetricRegistry(namespace="serve_haproxy")
 
 # SD-ID we publish under. The leading bracket + this string is what the
 # parser anchors on; only lines containing this section are processed.
@@ -142,8 +150,12 @@ class HAProxyMetricsCollector:
             node_ip_address=node_ip_address,
         )
 
-        self.truncated_bodies_counter = metrics.Counter(
-            "serve_haproxy_ingress_router_truncations",
+        # All serve_haproxy_* metrics are created through the shared
+        # registry, which get-or-creates by name (namespace prefix applied
+        # there) and hands back record-through handles.
+        self.metric_registry = _METRIC_REGISTRY
+        self.truncated_bodies_counter = self.metric_registry.counter(
+            "ingress_router_truncations",
             description=(
                 "Count of requests whose body was truncated by HAProxy "
                 "(exceeded tune.bufsize) before being forwarded to the "
@@ -151,18 +163,18 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("application",),
         )
-        self.latency_histogram = metrics.Histogram(
-            "serve_haproxy_ingress_router_latency_ms",
+        self.latency_histogram = self.metric_registry.histogram(
+            "ingress_router_latency_ms",
+            buckets=self._LATENCY_BUCKETS_MS,
             description=(
                 "Wall-clock time (in milliseconds) HAProxy spent to resolve "
                 "the request to a server via the ingress request router. "
                 "Only includes successful routing attempts."
             ),
-            boundaries=self._LATENCY_BUCKETS_MS,
             tag_keys=("application", "outcome"),
         )
-        self.replica_mismatches_counter = metrics.Counter(
-            "serve_haproxy_ingress_router_server_mismatch",
+        self.replica_mismatches_counter = self.metric_registry.counter(
+            "ingress_router_server_mismatch",
             description=(
                 "Count of requests where HAProxy ultimately routed to a "
                 "different replica than the one the ingress request router "
@@ -171,8 +183,8 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("application",),
         )
-        self.failures_counter = metrics.Counter(
-            "serve_haproxy_ingress_router_failures",
+        self.failures_counter = self.metric_registry.counter(
+            "ingress_router_failures",
             description=(
                 "Count of ingress-request-router consultations that failed "
                 "to pin a replica, broken down by reason. Possible reasons: "
@@ -187,8 +199,8 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("application", "reason"),
         )
-        self.requests_counter = metrics.Counter(
-            "serve_haproxy_ingress_router_requests",
+        self.requests_counter = self.metric_registry.counter(
+            "ingress_router_requests",
             description=(
                 "The number of requests that have been processed by "
                 "the ingress request router. This includes both successful "
@@ -198,8 +210,8 @@ class HAProxyMetricsCollector:
         )
 
         # Node-level gauges, sampled by _report_node_metrics_forever.
-        self.process_count_gauge = metrics.Gauge(
-            "serve_haproxy_process_count",
+        self.process_count_gauge = self.metric_registry.gauge(
+            "process_count",
             description=(
                 "Number of HAProxy processes running on the node for this proxy, "
                 "spanning the live worker, draining workers from prior reloads, "
@@ -208,8 +220,8 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("node_id",),
         )
-        self.target_mismatch_gauge = metrics.Gauge(
-            "serve_haproxy_target_mismatch",
+        self.target_mismatch_gauge = self.metric_registry.gauge(
+            "target_mismatch",
             description=(
                 "Number of targets that differ between the controller's "
                 "broadcasted target set and the targets HAProxy actually reports "
