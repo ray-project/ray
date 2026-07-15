@@ -162,21 +162,28 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     def _get_output_ratio(self, op: "PhysicalOperator") -> float:
         """Get ratio of buffered outputs to downstream inputs.
 
-        BlockRefCounter tracks blocks from production until freed, so
-        get_op_usage(op) includes both the operator's buffered outputs AND
-        the downstream operator's inputs. To get the
-        ratio of just buffered outputs to downstream inputs, subtract 1:
+        Uses get_mem_op_outputs (BlockRefCounter bytes only, excludes
+        pending_task_outputs) because pending_task_outputs are blocks
+        still being generated, not buffered outputs waiting for
+        downstream consumption.
 
-            output_bytes / downstream_input_bytes
-            = (buffered + downstream_input) / downstream_input
-            = (buffered / downstream_input) + 1
+        BlockRefCounter tracks blocks from production until freed:
+
+            output_bytes = outqueues + downstream_inqueue
+                         + downstream_pending_task_inputs + in_transit
+
+        Subtract 1 to remove the downstream_pending_task_inputs overlap:
+
+            ratio = output_bytes / downstream_pending_task_inputs - 1
+                  ≈ (outqueues + downstream_inqueue + in_transit)
+                    / downstream_pending_task_inputs
         """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
 
-        output_size_bytes = self._resource_manager.get_op_usage(op).object_store_memory
+        output_size_bytes = self._resource_manager.get_mem_op_outputs(op)
         return max((output_size_bytes / downstream_capacity_size_bytes) - 1, 0)
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
@@ -202,9 +209,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
-            output_size_bytes = self._resource_manager.get_op_usage(
-                op
-            ).object_store_memory
+            output_size_bytes = self._resource_manager.get_mem_op_outputs(op)
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
