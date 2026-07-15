@@ -1130,17 +1130,10 @@ def _discover_and_persist_subslices(
     try:
         ray.get(full_slice.placement_group.ready())
 
-        # Extract slice name from the bundle label selectors.
-        slice_name: Optional[str] = None
-        for selector in full_slice.bundle_label_selector:
-            sn = selector.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
-            if sn:
-                slice_name = sn
-                break
-        if not slice_name:
-            raise RuntimeError(
-                "Failed to identify TPU slice name during subslice discovery."
-            )
+        # All bundle selectors carry the same reserved slice name.
+        slice_name = full_slice.bundle_label_selector[0][
+            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+        ]
 
         # Short-circuit: a concurrent caller may have already discovered this
         # slice. The head-PG mechanism guarantees that when this caller
