@@ -223,6 +223,8 @@ For this to work, you must add the new document explicitly to a parent document'
 
 Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](https://docs.ray.io/en/latest/tune/tutorials/overview.html) as a panel, and the same goes for [all Tune examples](https://docs.ray.io/en/latest/tune/examples/index.html). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
+(creating-notebook-example)=
+
 ## Creating a notebook example
 
 This section covers authoring a notebook. To publish a finished example and set up CI so it keeps working, see {ref}`publishing-examples`.

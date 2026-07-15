@@ -19,6 +19,7 @@ development
 ci
 docs
 publishing-examples
+publishing-examples-legacy
 writing-style
 writing-code-snippets
 fake-autoscaler
