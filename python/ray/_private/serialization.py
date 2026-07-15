@@ -46,6 +46,7 @@ from ray.exceptions import (
     RayTaskError,
     ReferenceCountingAssertionError,
     RuntimeEnvSetupError,
+    StreamingGeneratorReplayInconsistentError,
     TaskCancelledError,
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
@@ -531,6 +532,13 @@ class SerializationContext:
                 return ActorUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
                 return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value(
+                "STREAMING_GENERATOR_REPLAY_INCONSISTENT"
+            ):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return StreamingGeneratorReplayInconsistentError(
+                    error_info.error_message
+                )
             elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 if error_info.HasField("actor_unavailable_error"):
