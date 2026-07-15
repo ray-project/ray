@@ -297,27 +297,27 @@ ITER_BLOCKED_TIME_BY_STAGE_PANEL = Panel(
     unit="ms",
     targets=[
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_production_wait_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Production Wait: {{dataset}}",
         ),
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_data_transfer_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Data Transfer: {{dataset}}",
         ),
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_batching_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Batching: {{dataset}}",
         ),
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_format_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Format: {{dataset}}",
         ),
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_collate_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Collate: {{dataset}}",
         ),
         Target(
-            expr="1000 * avg(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window]) / rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
+            expr="1000 * sum(rate(ray_data_iter_blocked_finalize_seconds{{{global_filters}}}[$window])) by (dataset) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset)",
             legend="Finalize: {{dataset}}",
         ),
     ],
