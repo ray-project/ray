@@ -95,6 +95,23 @@ def vm_write(int remote_pid, unsigned long remote_addr, bytes data):
     return nwritten
 
 
+def shm_create_buffer(long long size):
+    """Create an anonymous shared-memory fd of `size` bytes.
+
+    Uses memfd_create on Linux and an immediately-unlinked POSIX shm object on
+    macOS. Returns an OS file descriptor (int) truncated to `size`. The caller
+    owns the fd (mmap it, and/or pass it to a consumer via SCM_RIGHTS, then
+    os.close() it).
+    """
+    cdef size_t c_size = <size_t>size
+    cdef int fd
+    with nogil:
+        fd = CreateSharedBuffer(c_size)
+    if fd < 0:
+        raise OSError(errno, f"CreateSharedBuffer({size}) failed")
+    return fd
+
+
 def vm_scatter_write(int remote_pid, unsigned long remote_addr,
                      long long remote_size, list local_buffers):
     """Scatter-gather write: write multiple local buffers into a contiguous

@@ -78,6 +78,41 @@ def _serialize_to_recording_sink(table) -> "_RecordingSink":
     return sink
 
 
+def _dataplane() -> str:
+    """Same-node dataplane backend: "vm" (process_vm_writev, Linux-only) or
+    "shm" (anonymous shared memory + SCM_RIGHTS fd passing, Linux + macOS).
+    Defaults to "vm" to preserve existing behavior."""
+    return os.environ.get("RAY_FLIGHT_DATAPLANE", "vm").lower()
+
+
+def _close_shm_entry(entry) -> None:
+    """Close the mmap and fd of a `self._shm` entry (fd, mm, size)."""
+    if entry is None:
+        return
+    fd, mm, _size = entry
+    try:
+        mm.close()
+    except Exception:
+        pass
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _recv_exact(conn, n: int) -> Optional[bytes]:
+    """Read exactly `n` bytes from `conn`, or None if the peer closed early."""
+    chunks = []
+    remaining = n
+    while remaining > 0:
+        chunk = conn.recv(remaining)
+        if not chunk:
+            return None
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
 def _get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -104,11 +139,20 @@ class FlightCore:
         # the underlying buffers alive even if the table dict were to
         # drop the table independently.
         self._sinks: Dict[str, Any] = {}
+        # key -> (fd: int, mm: mmap.mmap, size: int). Populated at put time when
+        # the shm dataplane is active: the IPC stream is copied once into an
+        # anonymous shared-memory buffer, whose fd is then handed to same-node
+        # consumers over an AF_UNIX socket (SCM_RIGHTS) for zero-copy reads.
+        self._shm: Dict[str, Any] = {}
         self._lock = threading.Lock()
         self._server = None
         self._server_thread = None
         self._uri: Optional[str] = None
         self._clients: Dict[str, Any] = {}
+        # AF_UNIX server for handing shared-memory fds to same-node consumers.
+        self._fd_sock = None
+        self._fd_sock_path: Optional[str] = None
+        self._fd_server_thread = None
 
     # ------------------------------------------------------------ public API
 
@@ -126,6 +170,17 @@ class FlightCore:
     def uri(self) -> Optional[str]:
         return self._uri
 
+    def ensure_fd_server(self) -> str:
+        """Start the AF_UNIX shared-memory fd server on first call; return its
+        socket path. Used by the shm dataplane to hand fds to consumers."""
+        if self._fd_sock_path is not None:
+            return self._fd_sock_path
+        with self._lock:
+            if self._fd_sock_path is not None:
+                return self._fd_sock_path
+            self._start_fd_server_locked()
+            return self._fd_sock_path
+
     def put(self, key: str, table) -> int:
         """Store `table` under `key`; return its IPC stream size.
 
@@ -138,6 +193,8 @@ class FlightCore:
         with self._lock:
             self._tables[key] = table
             self._sinks[key] = sink
+        if _dataplane() == "shm":
+            self._materialize_shm(key, sink, size)
         return size
 
     def get(self, key: str):
@@ -149,12 +206,17 @@ class FlightCore:
         """Remove and return a table by key."""
         with self._lock:
             self._sinks.pop(key, None)
-            return self._tables.pop(key, None)
+            shm_entry = self._shm.pop(key, None)
+            table = self._tables.pop(key, None)
+        _close_shm_entry(shm_entry)
+        return table
 
     def delete(self, key: str) -> None:
         with self._lock:
             self._tables.pop(key, None)
             self._sinks.pop(key, None)
+            shm_entry = self._shm.pop(key, None)
+        _close_shm_entry(shm_entry)
 
     def fetch_via_vm(self, flight_uri: str, key: str, size: int):
         """Same-node consumer path: allocate a local buffer, ask the producer
@@ -180,6 +242,42 @@ class FlightCore:
 
         return ipc.open_stream(local_buf).read_all()
 
+    def fetch_via_shm(self, fd_sock_path: str, key: str, size: int):
+        """Same-node consumer path (Linux + macOS): connect to the producer's
+        AF_UNIX fd server, receive the shared-memory fd for `key` via SCM_RIGHTS,
+        mmap it read-only, and reassemble the pa.Table with zero-copy views.
+
+        The mmap is kept alive by the returned table (pa.py_buffer holds a
+        reference), so the fd can be closed immediately after mapping.
+        """
+        import mmap
+
+        import pyarrow as pa
+        import pyarrow.ipc as ipc
+
+        key_bytes = key.encode("utf-8")
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(fd_sock_path)
+        try:
+            sock.sendall(struct.pack("<I", len(key_bytes)) + key_bytes)
+            # Producer replies with an 8-byte size and (on success) one fd.
+            msg, fds, _flags, _addr = socket.recv_fds(sock, 8, 1)
+            if len(msg) < 8:
+                raise OSError(f"short fd-server reply for key {key}")
+            recv_size = struct.unpack("<q", msg)[0]
+            if recv_size < 0 or not fds:
+                raise KeyError(f"shm object not found: {key}")
+            fd = fds[0]
+            try:
+                mm = mmap.mmap(fd, recv_size, prot=mmap.PROT_READ)
+            finally:
+                # The mapping stays valid after the fd is closed.
+                os.close(fd)
+            buf = pa.py_buffer(mm)
+            return ipc.open_stream(buf).read_all()
+        finally:
+            sock.close()
+
     def fetch_via_flight(self, flight_uri: str, key: str):
         """Cross-node consumer path: plain Flight DoGet RPC."""
         import pyarrow.flight as flight
@@ -200,6 +298,109 @@ class FlightCore:
             pass
 
     # ----------------------------------------------------------- internals
+
+    def _materialize_shm(self, key: str, sink: "_RecordingSink", size: int) -> None:
+        """Copy the IPC stream captured by `sink` once into an anonymous
+        shared-memory buffer and record it under `key`. Idempotent per key."""
+        import mmap
+
+        from ray._raylet import shm_create_buffer
+
+        with self._lock:
+            if key in self._shm:
+                return
+
+        fd = shm_create_buffer(size)
+        try:
+            mm = mmap.mmap(fd, size)
+        except Exception:
+            os.close(fd)
+            raise
+        # Copy each captured chunk contiguously into the shared buffer. The
+        # sink's `_refs` are buffer-protocol objects (pa.Buffer / py_buffer)
+        # parallel to its scatter-list, so this is a straight memcpy per chunk.
+        # Cast both sides to unsigned bytes so slice assignment matches formats
+        # (mmap is "B"; a pa.Buffer memoryview may report a different format).
+        view = memoryview(mm).cast("B")
+        offset = 0
+        try:
+            for ref in sink._refs:
+                mv = memoryview(ref).cast("B")
+                nbytes = mv.nbytes
+                if nbytes:
+                    view[offset : offset + nbytes] = mv
+                offset += nbytes
+        finally:
+            view.release()
+
+        entry = (fd, mm, size)
+        drop = None
+        with self._lock:
+            if key in self._shm:
+                drop = entry  # Lost a race; discard ours.
+            else:
+                self._shm[key] = entry
+        if drop is not None:
+            _close_shm_entry(drop)
+        # Consumers need the fd server running to fetch.
+        self.ensure_fd_server()
+
+    def _start_fd_server_locked(self) -> None:
+        import tempfile
+
+        # Keep the path short: AF_UNIX sun_path is capped (~104 on macOS).
+        path = os.path.join(
+            tempfile.gettempdir(), f"ray_flt_{os.getpid()}.sock"
+        )
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(path)
+        srv.listen(128)
+        self._fd_sock = srv
+        self._fd_sock_path = path
+        t = threading.Thread(target=self._serve_fds, args=(srv,), daemon=True)
+        t.start()
+        self._fd_server_thread = t
+
+    def _serve_fds(self, srv) -> None:
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(
+                target=self._handle_fd_conn, args=(conn,), daemon=True
+            ).start()
+
+    def _handle_fd_conn(self, conn) -> None:
+        """Producer-side handler: read a key, reply with its shm fd (SCM_RIGHTS).
+
+        Wire format: request is key_len(4) + key; reply is size(8) plus, on a
+        hit, the fd as ancillary data. On a miss, size is -1 and no fd is sent.
+        """
+        try:
+            hdr = _recv_exact(conn, 4)
+            if hdr is None:
+                return
+            (key_len,) = struct.unpack("<I", hdr)
+            key_bytes = _recv_exact(conn, key_len)
+            if key_bytes is None:
+                return
+            key = key_bytes.decode("utf-8")
+            with self._lock:
+                entry = self._shm.get(key)
+            if entry is None:
+                conn.sendall(struct.pack("<q", -1))
+                return
+            fd, _mm, size = entry
+            socket.send_fds(conn, [struct.pack("<q", size)], [fd])
+        except OSError:
+            pass
+        finally:
+            conn.close()
 
     def _get_client(self, uri: str):
         import pyarrow.flight as flight

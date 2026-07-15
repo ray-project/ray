@@ -185,6 +185,7 @@ from ray.includes.flight_store cimport (
     ReadFromRemoteProcess,
     WriteToRemoteProcess,
     ScatterWriteToRemoteProcess,
+    CreateSharedBuffer,
 )
 
 cimport cpython

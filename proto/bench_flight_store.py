@@ -7,6 +7,7 @@ throughput and per-task latency.
 
 CLI:
   --mode              ray | arrow-rdt | arrow-native (transfer path)
+  --dataplane         vm | shm (same-node backend for arrow-* modes)
   --placement         same-node | cross-node | mixed (actor placement)
   --consumer-mode     read-only | modify (consumer work)
   --num-actor-pairs   number of producer/consumer actor pairs
@@ -23,6 +24,7 @@ Cross-node and mixed require >= 2 worker nodes in the cluster.
 """
 
 import argparse
+import os
 import time
 
 import numpy as np
@@ -40,6 +42,16 @@ MODE_LABELS = {
 def parse_args():
     p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument("--mode", choices=list(MODE_LABELS), default="ray")
+    p.add_argument(
+        "--dataplane",
+        choices=["vm", "shm"],
+        default="vm",
+        help=(
+            "Same-node transfer backend for the arrow-* modes: 'vm' "
+            "(process_vm_writev, Linux only) or 'shm' (anonymous shared memory + "
+            "SCM_RIGHTS fd passing, Linux + macOS). Ignored for --mode ray."
+        ),
+    )
     p.add_argument(
         "--placement", choices=["same-node", "cross-node", "mixed"], default="same-node"
     )
@@ -65,15 +77,26 @@ def parse_args():
 def _enable_ptrace():
     """Enable process_vm_readv/writev between sibling workers.
 
-    Must run inside the actor process, since yama/ptrace_scope is read at
-    syscall time per-caller. Requires passwordless sudo on the node.
+    Only relevant to the "vm" dataplane on Linux (yama/ptrace_scope gates
+    process_vm_readv). No-op elsewhere: macOS has no /proc or yama, and the
+    "shm" dataplane and plasma path don't need it. Best-effort — a failure
+    here must not kill the actor (that would hang the driver waiting on it).
     """
     import subprocess
+    import sys
 
-    subprocess.check_output(
-        "echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope",
-        shell=True,
-    )
+    if sys.platform != "linux":
+        return
+    if os.environ.get("RAY_FLIGHT_DATAPLANE", "vm").lower() != "vm":
+        return
+    try:
+        subprocess.check_output(
+            "echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope",
+            shell=True,
+            stderr=subprocess.STDOUT,
+        )
+    except Exception as e:
+        print(f"[warn] _enable_ptrace best-effort failed: {e}")
 
 
 def _make_producer_cls(mode: str, concurrency: int):
@@ -82,7 +105,8 @@ def _make_producer_cls(mode: str, concurrency: int):
         @ray.remote(num_cpus=0, max_concurrency=concurrency)
         class Producer:
             def __init__(self):
-                _enable_ptrace()
+                # _enable_ptrace()
+                pass
 
             @ray.method(tensor_transport="ARROW_FLIGHT")
             def make_table(self, size_mb):
@@ -94,7 +118,8 @@ def _make_producer_cls(mode: str, concurrency: int):
         @ray.remote(num_cpus=0, max_concurrency=concurrency)
         class Producer:
             def __init__(self):
-                _enable_ptrace()
+                # _enable_ptrace()
+                pass
 
             def make_table(self, size_mb):
                 n_rows = max(1, size_mb * 1024 * 1024 // 8)
@@ -109,7 +134,8 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
         @ray.remote(num_cpus=0, max_concurrency=concurrency)
         class Consumer:
             def __init__(self):
-                _enable_ptrace()
+                # _enable_ptrace()
+                pass
 
             def process(self, table):
                 assert isinstance(table, pa.Table), f"got {type(table)}"
@@ -120,7 +146,8 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
         @ray.remote(num_cpus=0, max_concurrency=concurrency)
         class Consumer:
             def __init__(self):
-                _enable_ptrace()
+                # _enable_ptrace()
+                pass
 
             def process(self, table):
                 assert isinstance(table, pa.Table), f"got {type(table)}"
@@ -290,8 +317,14 @@ def main():
     args = parse_args()
 
     runtime_env = None
-    if args.mode == "arrow-native":
-        runtime_env = {"env_vars": {"RAY_USE_FLIGHT_NATIVE": "1"}}
+    if args.mode in ("arrow-native", "arrow-rdt"):
+        env_vars = {"RAY_FLIGHT_DATAPLANE": args.dataplane}
+        if args.mode == "arrow-native":
+            env_vars["RAY_USE_FLIGHT_NATIVE"] = "1"
+        # Pass through the fetch-path debug flag so it reaches worker processes.
+        if os.environ.get("RAY_FLIGHT_DEBUG"):
+            env_vars["RAY_FLIGHT_DEBUG"] = os.environ["RAY_FLIGHT_DEBUG"]
+        runtime_env = {"env_vars": env_vars}
     ray.init(runtime_env=runtime_env)
 
     producer_nodes, consumer_nodes, all_nodes = _plan_placement(
@@ -309,6 +342,8 @@ def main():
         max_in_flight = args.num_actor_pairs * args.concurrency
 
     print(f"Mode:          {MODE_LABELS[args.mode]}")
+    if args.mode in ("arrow-native", "arrow-rdt"):
+        print(f"Dataplane:     {args.dataplane}  (same-node transfer backend)")
     print(
         f"Placement:     {args.placement}  (cluster has {len(all_nodes)} worker nodes)"
     )

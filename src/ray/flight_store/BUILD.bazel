@@ -7,3 +7,11 @@ cc_library(
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "fd_transfer",
+    srcs = ["fd_transfer.cc"],
+    hdrs = ["fd_transfer.h"],
+    strip_include_prefix = "//src",
+    visibility = ["//visibility:public"],
+)

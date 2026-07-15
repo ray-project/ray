@@ -23,3 +23,7 @@ cdef extern from "ray/flight_store/vm_transfer.h" \
                                          size_t num_bufs,
                                          uintptr_t remote_addr,
                                          size_t remote_size)
+
+cdef extern from "ray/flight_store/fd_transfer.h" \
+        namespace "ray::fd_transfer" nogil:
+    int CreateSharedBuffer(size_t size)

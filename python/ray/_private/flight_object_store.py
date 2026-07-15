@@ -38,15 +38,22 @@ class FlightObjectStore:
         Ray object store as the return value."""
         import ray
 
+        from ray._private.flight_core import _dataplane
+
         self._core.ensure_server()
         size = self._core.put(key, table)
-        return {
+        info = {
             "flight_uri": self._core.uri,
             "key": key,
             "pid": os.getpid(),
             "ipc_size": size,
             "node_id": ray.get_runtime_context().get_node_id(),
+            "backend": _dataplane(),
         }
+        if _dataplane() == "shm":
+            # Same-node consumers fetch the shared-memory fd over this socket.
+            info["fd_sock_path"] = self._core.ensure_fd_server()
+        return info
 
     def fetch(self, info: dict):
         """Consumer path: dispatch same-node vs cross-node based on the
@@ -64,12 +71,28 @@ class FlightObjectStore:
         if isinstance(producer_node, bytes):
             producer_node = producer_node.decode("utf-8", errors="replace")
         my_node = ray.get_runtime_context().get_node_id()
-        same_node = producer_node == my_node and sys.platform == "linux"
+        same_node = producer_node == my_node
+        backend = info.get("backend", "vm")
 
-        if same_node:
+        if same_node and backend == "shm":
+            # Shared-memory fd passing works on both Linux and macOS.
+            path = "shm"
+            table = self._core.fetch_via_shm(
+                info["fd_sock_path"], key, ipc_size
+            )
+        elif same_node and sys.platform == "linux":
+            path = "vm"
             table = self._core.fetch_via_vm(flight_uri, key, ipc_size)
         else:
+            path = "flight"
             table = self._core.fetch_via_flight(flight_uri, key)
+
+        if os.environ.get("RAY_FLIGHT_DEBUG") == "1":
+            print(
+                f"[flight] fetched key={key} via {path} "
+                f"(backend={backend}, same_node={same_node}, ipc_size={ipc_size})",
+                flush=True,
+            )
 
         # Native path owns its own eviction; tell the producer to drop
         # the entry now that we've pulled it.

@@ -8,8 +8,15 @@ FLIGHT_MODE selects the transfer path to exercise:
   - "plasma": Ray's normal object store (baseline / regression check).
   - "native": RAY_USE_FLIGHT_NATIVE=1 intercept path.
   - "rdt":    ARROW_FLIGHT RDT backend via @ray.method(tensor_transport=...).
+
+DATAPLANE selects the same-node transfer backend for the native/rdt paths:
+  - "vm":  process_vm_writev (Linux only).
+  - "shm": anonymous shared memory + SCM_RIGHTS fd passing (Linux + macOS).
+
+Both can be overridden from the environment via FLIGHT_MODE / RAY_FLIGHT_DATAPLANE.
 """
 
+import os
 import sys
 import traceback
 
@@ -18,7 +25,8 @@ import pyarrow as pa
 
 import ray
 
-FLIGHT_MODE = "native"  # "plasma" | "native" | "rdt"
+FLIGHT_MODE = os.environ.get("FLIGHT_MODE", "native")  # "plasma" | "native" | "rdt"
+DATAPLANE = os.environ.get("RAY_FLIGHT_DATAPLANE", "vm")  # "vm" | "shm"
 
 # ---------------------------------------------------------------------------
 # Test cases — diverse schemas and sizes.
@@ -206,12 +214,18 @@ _MODE_LABELS = {
 
 def run_suite():
     assert FLIGHT_MODE in _MODE_LABELS, f"invalid FLIGHT_MODE: {FLIGHT_MODE}"
+    assert DATAPLANE in ("vm", "shm"), f"invalid DATAPLANE: {DATAPLANE}"
     print(f"Mode: {_MODE_LABELS[FLIGHT_MODE]}")
+    if FLIGHT_MODE in ("native", "rdt"):
+        print(f"Dataplane: {DATAPLANE}")
     print()
 
     runtime_env = None
-    if FLIGHT_MODE == "native":
-        runtime_env = {"env_vars": {"RAY_USE_FLIGHT_NATIVE": "1"}}
+    if FLIGHT_MODE in ("native", "rdt"):
+        env_vars = {"RAY_FLIGHT_DATAPLANE": DATAPLANE}
+        if FLIGHT_MODE == "native":
+            env_vars["RAY_USE_FLIGHT_NATIVE"] = "1"
+        runtime_env = {"env_vars": env_vars}
     ray.init(runtime_env=runtime_env)
 
     Producer = _producer_cls()

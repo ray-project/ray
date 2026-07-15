@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
-from ray._private.flight_core import get_flight_core
+from ray._private.flight_core import _dataplane, get_flight_core
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -45,6 +45,8 @@ class ArrowFlightTransportMetadata(TensorTransportMetadata):
     pid: Optional[int] = None
     node_id: Optional[str] = None
     ipc_size: Optional[int] = None
+    backend: str = "vm"
+    fd_sock_path: Optional[str] = None
 
 
 class ArrowFlightTransport(TensorTransportManager):
@@ -95,6 +97,10 @@ class ArrowFlightTransport(TensorTransportManager):
         [table] = rdt_object
         size = self._core.put(obj_id, table)
 
+        backend = _dataplane()
+        fd_sock_path = (
+            self._core.ensure_fd_server() if backend == "shm" else None
+        )
         return ArrowFlightTransportMetadata(
             tensor_meta=[((table.num_rows,), str(table.schema))],
             tensor_device="cpu",
@@ -103,6 +109,8 @@ class ArrowFlightTransport(TensorTransportManager):
             pid=os.getpid(),
             node_id=ray.get_runtime_context().get_node_id(),
             ipc_size=size,
+            backend=backend,
+            fd_sock_path=fd_sock_path,
         )
 
     def get_communicator_metadata(
@@ -122,8 +130,12 @@ class ArrowFlightTransport(TensorTransportManager):
             return []
 
         my_node = ray.get_runtime_context().get_node_id()
-        same_node = meta.node_id == my_node and sys.platform == "linux"
-        if same_node:
+        same_node = meta.node_id == my_node
+        if same_node and meta.backend == "shm":
+            table = self._core.fetch_via_shm(
+                meta.fd_sock_path, meta.key, meta.ipc_size
+            )
+        elif same_node and sys.platform == "linux":
             table = self._core.fetch_via_vm(meta.flight_uri, meta.key, meta.ipc_size)
         else:
             table = self._core.fetch_via_flight(meta.flight_uri, meta.key)
