@@ -13,6 +13,8 @@ from typing import (
     Union,
 )
 
+from fastapi import HTTPException
+
 import ray
 from ray import serve
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -27,6 +29,10 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ModelCard,
+    to_model_metadata,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
@@ -108,13 +114,6 @@ def _add_openai_models_retrieve_route(app, llm_config: LLMConfig) -> None:
     streaming clients call openai_client.models.retrieve(...) like the
     OpenAiIngress path, so add the single-model retrieve route here.
     """
-    from fastapi import HTTPException
-
-    from ray.llm._internal.serve.core.configs.openai_api_models import (
-        ModelCard,
-        to_model_metadata,
-    )
-
     model_id = llm_config.model_id
     model_card = to_model_metadata(model_id, llm_config)
 
