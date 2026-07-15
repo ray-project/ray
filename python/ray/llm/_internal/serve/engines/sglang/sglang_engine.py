@@ -264,6 +264,8 @@ class SGLangServer:
           where Ray Serve listens. Skipping it also transitions the tokenizer
           manager's status to ``Up``, which the ``/health`` endpoints require.
         """
+        # TODO(sgl-project/sglang#31356): replace this module-global wiring with a
+        # per-instance app builder once SGLang provides one.
         from sglang.srt.entrypoints.http_server import (
             _GlobalState,
             app,
