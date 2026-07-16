@@ -147,11 +147,11 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
         remote_args["num_returns"] = "streaming"
-        # max_retries + retry_exceptions together let a
-        # ``ShuffleFetchError`` (usually ``ShuffleNodeLostError``) trigger
-        # a Ray-Core retry, whose arg re-resolution picks up a
-        # lineage-recovered mapper handle. Default retry_exceptions is
-        # False (system failures only), which would defeat that.
+        # max_retries + retry_exceptions together let a ``ShuffleFetchError``
+        # (raised when the manager's actor is unreachable and in-task recovery
+        # fails) trigger a Ray-Core retry, whose arg re-resolution picks up a
+        # lineage-recovered mapper handle. Default retry_exceptions is False
+        # (system failures only), which would defeat that.
         remote_args.setdefault("max_retries", 3)
         remote_args["retry_exceptions"] = [ShuffleFetchError]
         return remote_args

@@ -534,7 +534,7 @@ def _external_shuffle_reduce_task(
                     table = _read_ipc(ipc_buf)
                     accum_tables.append(table)
                     accum_bytes += table.nbytes
-                # fdatasync turns this fd's dirty pwrite'd pages clean,
+                # fsync turns this fd's dirty pwrite'd pages clean,
                 # so the DONTNEED that follows actually evicts them.
                 os.fsync(fd)
                 _drop_pagecache(fd, base, size)
