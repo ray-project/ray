@@ -2668,7 +2668,7 @@
 
   run:
     timeout: 3600
-    script: python example_algorithms/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=60 --stop-reward=20.0 --as-release-test
+    script: python example_algorithms/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=40 --stop-reward=20.0 --as-release-test
 
 - name: rllib_learning_tests_pong_impala_torch
   python: "3.10"
@@ -2689,7 +2689,7 @@
 
   run:
     timeout: 3600
-    script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=46 --stop-reward=19.0 --as-release-test
+    script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=40 --stop-reward=19.0 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
   python: "3.10"
