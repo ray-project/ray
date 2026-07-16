@@ -116,6 +116,26 @@
         }
       },
       {
+        "name": "Cluster",
+        "label": "Cluster",
+        "description": "Filter queries to specific Ray clusters. The ray_io_cluster label is set per cluster (automatic for KubeRay via Prometheus PodMonitor).",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+        "query": {
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "current": {
+          "selected": false
+        }
+      },
+      {
         "name": "interval",
         "label": "Interval",
         "type": "custom",

@@ -400,7 +400,7 @@ assert len(_all_ids) == len(
 serve_llm_sglang_dashboard_config = DashboardConfig(
     name="SERVE_LLM_SGLANG",
     default_uid="rayServeLlmSglangDashboard",
-    standard_global_filters=[],
+    standard_global_filters=['ray_io_cluster=~"$Cluster"'],
     base_json_file_name="serve_llm_sglang_grafana_dashboard_base.json",
     rows=_ALL_ROWS,
 )
