@@ -64,6 +64,10 @@ TEAM_API_CONFIGS = {
             "ray.data._internal.execution.interfaces.execution_options.ExecutionResources",
             "ray.data._internal.logical.operators.n_ary_operator.MixStoppingCondition",
             "ray.data._internal.random_config.RandomSeedConfig",
+            # Same pattern under ray.data.llm: the @PublicAPI Processor is
+            # re-exported through ray.data.llm (documented in data/api/llm.rst)
+            # while its implementation lives under ray.llm._internal.
+            "ray.llm._internal.batch.processor.base.Processor",
         },
         # Canonical names intentionally documented in more than one place. Each
         # is listed both in the generated ray.data.Dataset.rst method table
@@ -371,18 +375,25 @@ def _mock_uninstalled_backends(ray_checkout_dir: str):
     """
     from sphinx.ext.autodoc.mock import mock
 
-    doc_source = os.path.join(ray_checkout_dir, "doc", "source")
+    doc_source = os.path.abspath(os.path.join(ray_checkout_dir, "doc", "source"))
     sys.path.insert(0, doc_source)
     try:
         from api_mock_imports import absent_mock_modules
+
+        modules_to_mock = absent_mock_modules()
     finally:
         sys.path.remove(doc_source)
+        # api_mock_imports is checkout-specific and unqualified, so a copy left
+        # in sys.modules would be reused by a later invocation with a different
+        # ray_checkout_dir even after doc_source leaves sys.path. Evict it so
+        # each invocation re-imports from its own checkout.
+        sys.modules.pop("api_mock_imports", None)
 
     # Mock only the genuinely-absent optional backends, not the full
     # autodoc_mock_imports list: shadowing an installed library (e.g. pandas)
     # would make resolve()'s ``import ray.data`` fail and mass-flag every data
     # entry as unresolved. ray.* is never mocked.
-    with mock(absent_mock_modules()):
+    with mock(modules_to_mock):
         yield
 
 
