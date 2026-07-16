@@ -77,3 +77,28 @@ BUILD_ONLY_MOCK_MODULES = [
     "ray.core.generated",
     "ray.serve.generated",
 ]
+
+
+def absent_mock_modules():
+    """Return the THIRD_PARTY_MOCK_MODULES that aren't importable here.
+
+    conf.py mocks every entry because Sphinx autodoc tolerates -- and sometimes
+    needs (e.g. tensorflow) -- shadowing an installed library. The raw-import
+    consumers (the standalone stub generator and the ci/ray_ci/doc consistency
+    check) must NOT shadow an installed library: mocking e.g. pandas, which is
+    installed in the docbuild image and imported by ray.data, makes a plain
+    importlib / autosummary ``import ray.data`` fail. So they mock only the
+    genuinely-absent modules -- all that's needed to make optional-dependency
+    modules (ray.data.llm, ray.serve.llm, ray.train.lightning, ...) importable.
+    """
+    import importlib.util
+
+    absent = []
+    for name in THIRD_PARTY_MOCK_MODULES:
+        try:
+            if importlib.util.find_spec(name) is None:
+                absent.append(name)
+        except (ImportError, ValueError):
+            # A parent package that itself isn't importable: treat as absent.
+            absent.append(name)
+    return absent

@@ -374,11 +374,15 @@ def _mock_uninstalled_backends(ray_checkout_dir: str):
     doc_source = os.path.join(ray_checkout_dir, "doc", "source")
     sys.path.insert(0, doc_source)
     try:
-        from api_mock_imports import THIRD_PARTY_MOCK_MODULES
+        from api_mock_imports import absent_mock_modules
     finally:
         sys.path.remove(doc_source)
 
-    with mock(THIRD_PARTY_MOCK_MODULES):
+    # Mock only the genuinely-absent optional backends, not the full
+    # autodoc_mock_imports list: shadowing an installed library (e.g. pandas)
+    # would make resolve()'s ``import ray.data`` fail and mass-flag every data
+    # entry as unresolved. ray.* is never mocked.
+    with mock(absent_mock_modules()):
         yield
 
 
