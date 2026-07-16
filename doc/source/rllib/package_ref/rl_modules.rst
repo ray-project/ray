@@ -192,19 +192,21 @@ Saving and restoring
 Additional RLModule APIs
 ------------------------
 
-.. currentmodule:: ray.rllib.core.rl_module.apis
-
 InferenceOnlyAPI
 ++++++++++++++++
 
-.. autoclass:: inference_only_api.InferenceOnlyAPI
+.. currentmodule:: ray.rllib.core.rl_module.apis.inference_only_api
+
+.. autoclass:: InferenceOnlyAPI
 
     .. automethod:: get_non_inference_attributes
 
 QNetAPI
 +++++++
 
-.. autoclass:: q_net_api.QNetAPI
+.. currentmodule:: ray.rllib.core.rl_module.apis.q_net_api
+
+.. autoclass:: QNetAPI
 
     .. automethod:: compute_q_values
     .. automethod:: compute_advantage_distribution
@@ -212,14 +214,18 @@ QNetAPI
 SelfSupervisedLossAPI
 +++++++++++++++++++++
 
-.. autoclass:: self_supervised_loss_api.SelfSupervisedLossAPI
+.. currentmodule:: ray.rllib.core.rl_module.apis.self_supervised_loss_api
+
+.. autoclass:: SelfSupervisedLossAPI
 
     .. automethod:: compute_self_supervised_loss
 
 TargetNetworkAPI
 ++++++++++++++++
 
-.. autoclass:: target_network_api.TargetNetworkAPI
+.. currentmodule:: ray.rllib.core.rl_module.apis.target_network_api
+
+.. autoclass:: TargetNetworkAPI
 
     .. automethod:: make_target_networks
     .. automethod:: get_target_network_pairs
@@ -228,6 +234,8 @@ TargetNetworkAPI
 ValueFunctionAPI
 ++++++++++++++++
 
-.. autoclass:: value_function_api.ValueFunctionAPI
+.. currentmodule:: ray.rllib.core.rl_module.apis.value_function_api
+
+.. autoclass:: ValueFunctionAPI
 
     .. automethod:: compute_values

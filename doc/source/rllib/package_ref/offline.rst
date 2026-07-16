@@ -47,6 +47,7 @@ Constructing OfflineData
     :toctree: doc/
 
     OfflineData
+    OfflineData.__init__
 
 Sampling from Offline Data
 --------------------------
@@ -78,3 +79,5 @@ Transforming Data with an OfflinePreLearner
     :toctree: doc/
 
     SCHEMA
+    OfflinePreLearner.__call__
+    OfflinePreLearner._map_to_episodes
