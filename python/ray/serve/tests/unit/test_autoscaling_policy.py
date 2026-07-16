@@ -1571,5 +1571,23 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2]["counter"] == 5
 
 
+def test_last_decision_total_num_requests_reuses_decision_value():
+    """record_autoscaling_metrics stashes the decision's total; the getter returns it
+    verbatim. The log reuse + no-second-aggregation is covered end-to-end in
+    test_deployment_state.py::TestAutoscaling::test_scale_log_reuses_decision_aggregate.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st._config = AutoscalingConfig(
+        min_replicas=1, max_replicas=100, target_ongoing_requests=1
+    )
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+    )
+    assert st.get_last_decision_total_num_requests() == 42.0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
