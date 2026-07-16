@@ -306,6 +306,21 @@ def test_llms_txt():
             "Excluded API Page" not in secB_full,
             "excluded page leaked into shard TOC",
         )
+        # _collections/<lib> pages group into <lib>'s full-text shard too — same
+        # section membership as the index — not a separate _collections shard.
+        _check(
+            "A build-fetched example page keyed to section B." in secB_full,
+            "_collections page not folded into the secB full-text shard",
+        )
+        _check(
+            not (out / "_collections" / "llms-full.txt").exists()
+            and not (out / "_collections" / "secB" / "llms-full.txt").exists(),
+            "a stray _collections shard was written",
+        )
+        _check(
+            "_collections/" not in manifest,
+            "manifest still references a _collections shard",
+        )
 
         # --- sub-sharding: an oversize section splits into per-subdir shards ---
         # "Guides" exceeds the tiny llms_txt_full_max_shard_tokens budget and has

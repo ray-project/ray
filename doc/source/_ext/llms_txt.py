@@ -236,17 +236,25 @@ def _top_dir(docname: str) -> str:
     return docname.split("/", 1)[0] if "/" in docname else docname
 
 
-def _match_dir(docname: str) -> str:
-    """Top-level directory used to fold an un-navigated page into a section.
+def _shard_relpath(docname: str) -> str:
+    """Logical path used for section grouping and shard-tree placement.
 
     Pages fetched into ``_collections/<library>/...`` at build time (external
-    example repos, linked from galleries rather than toctrees) are keyed on
-    ``<library>`` so a Serve tutorial living under ``_collections/serve/`` lists
-    under Ray Serve rather than a synthetic bucket.
+    example repos, linked from galleries rather than toctrees) are keyed under
+    ``<library>`` — the ``_collections/`` prefix stripped — so a Serve tutorial
+    living at ``_collections/serve/tutorials/…`` groups with Ray Serve in BOTH
+    the index and the full-text shards, not a synthetic ``_collections`` bucket.
+    Only grouping/placement uses this; the real docname still reads source and
+    builds URLs.
     """
     if docname.startswith("_collections/"):
-        docname = docname[len("_collections/") :]
-    return _top_dir(docname)
+        return docname[len("_collections/") :]
+    return docname
+
+
+def _match_dir(docname: str) -> str:
+    """Top-level directory a page is grouped under (see ``_shard_relpath``)."""
+    return _top_dir(_shard_relpath(docname))
 
 
 def _base_url(config) -> str:
@@ -517,10 +525,13 @@ def _emit_shards(
     total = sum(_src_size(env, d) for d in docnames)
 
     # Partition into subdirectory groups vs pages held directly at this level.
+    # Split on the logical path (``_collections/`` alias stripped) so fetched
+    # pages nest into their library's shard tree; the real docname is kept for
+    # reading source and building URLs.
     subgroups: dict[str, list[str]] = {}
     direct = []
     for d in docnames:
-        rest = d[len(prefix) + 1 :]
+        rest = _shard_relpath(d)[len(prefix) + 1 :]
         if "/" in rest:
             subgroups.setdefault(rest.split("/", 1)[0], []).append(d)
         else:
@@ -593,12 +604,14 @@ def _write_full_files(
     )
     budget = max(1, max_tokens) * _CHARS_PER_TOKEN
 
-    # Group every in-scope page by its top-level directory.
+    # Group every in-scope page by its section directory (build-fetched
+    # ``_collections/<lib>/…`` pages key under ``<lib>``; see ``_shard_relpath``)
+    # so the full-text shards match the index's section membership.
     groups: dict[str, list[str]] = {}
     for docname in env.all_docs:
         if docname == root_doc or _excluded(env, docname, exclude):
             continue
-        groups.setdefault(_top_dir(docname), []).append(docname)
+        groups.setdefault(_match_dir(docname), []).append(docname)
 
     # Map each directory to its nav-section label + landing page (first wins).
     dir_label, dir_landing = {}, {}
