@@ -194,20 +194,20 @@ def _drop_pagecache(fd: int, offset: int, length: int) -> None:
     try:
         os.posix_fadvise(fd, offset, length, os.POSIX_FADV_DONTNEED)
     except OSError:
-        # Best-effort: any failure is silently ignored — worst case is the
-        # kernel keeps the pages a bit longer.
+        # Best-effort: any failure is silently ignored, cause the worst case is the
+        # kernel keeps the pages longer.
         pass
 
 
 # Fetch helper class used by file server actor
-class _FetchHandler(socketserver.StreamRequestHandler):
+class _FetchHandler(socketserver.BaseRequestHandler):
     """ Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
     Each FETCH can carry multiple source paths, so a reducer with N sources on
-    this node pays only one TCP round-trip handshake/setup overhead
+    this node pays only one TCP round-trip handshake/setup overhead.
     """
     def handle(self):
         srv = self.server
-        sock = self.connection
+        sock = self.request
         _tune_shuffle_socket(sock)
         try:
             if not self._handshake(sock, srv):
