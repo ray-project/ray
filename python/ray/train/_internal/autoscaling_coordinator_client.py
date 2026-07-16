@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ResourceDict,
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 def build_train_resource_request(
     scaling_config: "ScalingConfig",
     num_workers: int,
-) -> Tuple[List[ResourceDict], Optional[List[str]]]:
+) -> Tuple[List[ResourceDict], Optional[List[Dict[str, str]]]]:
     """Build coordinator bundles for worker resources and optional trainer resources.
 
     Trainer bundles are included when ``scaling_config._trainer_resources_not_none``
@@ -44,6 +44,7 @@ class TrainV1ResourceReservation:
         num_workers: int,
     ):
         from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (  # noqa: E501
+            AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             AUTOSCALING_REQUESTS_INTERVAL_S,
             TrainAutoscalingCoordinatorClient,
         )
@@ -52,6 +53,9 @@ class TrainV1ResourceReservation:
         self._scaling_config = scaling_config
         self._num_workers = num_workers
         self._refresh_interval_s = AUTOSCALING_REQUESTS_INTERVAL_S
+        # 1 seconda more, since a send_resource_request could stall
+        # up to AUTOSCALING_REQUESTS_GET_TIMEOUT_S seconds
+        self._refresh_join_timeout_s = AUTOSCALING_REQUESTS_GET_TIMEOUT_S + 1
         self._stop_event = threading.Event()
         self._refresh_thread: Optional[threading.Thread] = None
 
@@ -66,7 +70,7 @@ class TrainV1ResourceReservation:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._stop_event.set()
         if self._refresh_thread is not None:
-            self._refresh_thread.join(timeout=1)
+            self._refresh_thread.join(timeout=self._refresh_join_timeout_s)
         self._client.cancel_resource_request()
 
     def _refresh_loop(self) -> None:
