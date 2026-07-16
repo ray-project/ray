@@ -355,6 +355,20 @@ TEST(StatusOrTest, Swap) {
     }
     EXPECT_EQ(Counted::alive, 0);
   }
+  // error <-> value: the mirror of the case above, covering the other
+  // move-across branch (this side unconstructed, rhs holds the value).
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> a = Status::InvalidArgument("error");
+      StatusOr<Counted> b{Counted{1}};
+      a.swap(b);
+      ASSERT_TRUE(a.ok());
+      EXPECT_EQ(a.value().value, 1);
+      EXPECT_FALSE(b.ok());
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
   // value <-> value (via the free swap function).
   {
     Counted::alive = 0;

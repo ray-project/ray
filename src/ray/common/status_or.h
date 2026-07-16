@@ -94,9 +94,14 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      // AssignValue destroys the old value only if ok(), so set status_ after it.
-      AssignValue(rhs.value());
-      status_ = Status::OK();
+      // Reuse the existing value if we already hold one; otherwise construct it
+      // and set status_ only after the construction succeeds.
+      if (ok()) {
+        get() = rhs.value();
+      } else {
+        MakeValue(rhs.value());
+        status_ = Status::OK();
+      }
       return *this;
     }
     AssignStatus(rhs.status());
@@ -116,9 +121,13 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      // Set status_ after AssignValue; see the copy-assignment operator.
-      AssignValue(std::move(rhs).value());
-      status_ = Status::OK();
+      // See the copy-assignment operator.
+      if (ok()) {
+        get() = std::move(rhs).value();
+      } else {
+        MakeValue(std::move(rhs).value());
+        status_ = Status::OK();
+      }
       return *this;
     }
     AssignStatus(rhs.status());
@@ -350,11 +359,30 @@ T &&StatusOr<T>::value() && {
 
 template <typename T>
 void StatusOr<T>::swap(StatusOr &rhs) {
-  // data_ is only a live T when ok(), so swapping it directly would touch
-  // unconstructed storage. Go through moves, which already guard on ok().
-  StatusOr tmp = std::move(*this);
-  *this = std::move(rhs);
-  rhs = std::move(tmp);
+  // data_ is only a live T when ok(), so handle each state combination: swap the
+  // values (or statuses) when both sides match, and move the lone value across
+  // when only one side holds it, constructing into the other's raw storage.
+  if (ok()) {
+    if (rhs.ok()) {
+      using std::swap;
+      swap(get(), rhs.get());
+    } else {
+      new (&rhs.data_) T(std::move(get()));
+      get().~T();
+      status_ = std::move(rhs.status_);
+      rhs.status_ = Status::OK();
+    }
+  } else {
+    if (rhs.ok()) {
+      new (&data_) T(std::move(rhs.get()));
+      rhs.get().~T();
+      rhs.status_ = std::move(status_);
+      status_ = Status::OK();
+    } else {
+      using std::swap;
+      swap(status_, rhs.status_);
+    }
+  }
 }
 
 template <typename T>
