@@ -114,8 +114,23 @@ FILES = {
         "Topic B Intro\n=============\n\n"
         "Body text for the topic B intro page within the guides section here.\n"
     ),
-    # In-scope but not referenced by any toctree — must still appear, under the
-    # trailing "## Other pages" catch-all, so the index stays complete.
+    # In no toctree but under Section A's directory (mimics a gallery page Ray
+    # links from a grid card, not a toctree). Must fold into Section A, not the
+    # catch-all.
+    "secA/gallery-orphan.rst": (
+        ":orphan:\n\n"
+        "Section A Gallery Orphan\n========================\n\n"
+        "A gallery-linked page under secA that no toctree reaches.\n"
+    ),
+    # Build-fetched into _collections/<lib>/... — keyed on <lib> (secB) so it
+    # folds into Section B rather than a synthetic collections bucket.
+    "_collections/secB/fetched-example.rst": (
+        ":orphan:\n\n"
+        "Fetched Collection Example\n==========================\n\n"
+        "A build-fetched example page keyed to section B.\n"
+    ),
+    # In-scope, in no toctree, AND in a directory that maps to no section — the
+    # only kind of page left in the trailing "## Other pages" catch-all.
     "orphan.rst": (
         ":orphan:\n\n"
         "Orphan Page\n===========\n\n"
@@ -217,9 +232,36 @@ def test_llms_txt():
             "[llms-full.txt](https://example.com/docs/llms-full.txt)" in index,
             "index missing pointer to llms-full.txt",
         )
-        # Catch-all: an in-scope page in no toctree still appears.
+        # Directory folding: a page in no toctree but under a section's
+        # directory lists under that section, not the catch-all.
+        _check(
+            index.index("## Section A")
+            < index.index("Section A Gallery Orphan")
+            < index.index("## Section B"),
+            "gallery orphan not folded into Section A",
+        )
+        # _collections/<lib> pages fold on <lib>, into that library's section.
+        _check(
+            index.index("## Section B")
+            < index.index("Fetched Collection Example")
+            < index.index("## Guides"),
+            "_collections page not folded into Section B",
+        )
+        # Catch-all: only a page whose directory maps to no section lands here.
         _check("## Other pages" in index, "missing '## Other pages' catch-all")
         _check("Orphan Page" in index, "orphan page missing from catch-all")
+        _check(
+            index.index("Orphan Page") > index.index("## Other pages"),
+            "true orphan should be under the catch-all",
+        )
+        _check(
+            max(
+                index.index("Section A Gallery Orphan"),
+                index.index("Fetched Collection Example"),
+            )
+            < index.index("## Other pages"),
+            "a folded page leaked into the catch-all",
+        )
 
         # --- llms-full root manifest + per-dir shards ---
         manifest = (out / "llms-full.txt").read_text(encoding="utf-8")

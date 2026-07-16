@@ -138,6 +138,22 @@ llms_txt_exclude = [
     "tune/api/doc/*",
     "serve/api/doc/*",
     "rllib/package_ref/*",
+    # Deprecated pages: surfacing a superseded API/guide to an agent is worse
+    # than omitting it — the agent may follow the old API. (DOC-908)
+    "train/api/deprecated",
+    "train/deprecated-user-guides/*",
+    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
+    "ray-air/deployment",
+    # Include-only fragments spliced into other pages (no standalone title).
+    "train/common/*",
+    "ray-contribute/involvement",
+    # Helper/utility code files and raw scripts rendered as pages — code, not
+    # docs; the real guide pages that literalinclude them are kept.
+    "train/user-guides/_collate_utils",
+    "tune/examples/pbt_visualization/pbt_visualization_utils",
+    "cluster/vms/user-guides/community/slurm-*",
+    # Thin literalinclude example stubs (a heading + a code block, no prose).
+    "tune/examples/includes/*",
 ]
 
 # Jupyter notebooks are dropped from llms.txt / llms-full.txt by the llms_txt

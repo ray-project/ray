@@ -11,10 +11,12 @@ output). It emits three kinds of file into the HTML build output:
     the root document. Each section lists its landing page and **every** in-scope
     page beneath it (the full ``toctree`` subtree, deduped) as
     ``- [title](url): description`` lines, so an agent can find any page from the
-    index itself without drilling into the corpus. Sections named in
-    ``llms_txt_optional_sections`` move to a trailing ``## Optional`` section;
-    any in-scope page not reachable via the nav toctrees is swept into a final
-    ``## Other pages`` section so the index stays complete.
+    index itself without drilling into the corpus. A page the nav toctrees never
+    reach (e.g. an example linked only from a gallery grid) is folded into the
+    section that owns its top-level directory, so it still lists under its
+    library. Sections named in ``llms_txt_optional_sections`` move to a trailing
+    ``## Optional`` section; only pages whose directory maps to no section at all
+    land in a final ``## Other pages`` section, so the index stays complete.
 
 ``<section>/llms-full.txt``
     The verbatim source of every in-scope page under a section, each prefixed
@@ -234,6 +236,19 @@ def _top_dir(docname: str) -> str:
     return docname.split("/", 1)[0] if "/" in docname else docname
 
 
+def _match_dir(docname: str) -> str:
+    """Top-level directory used to fold an un-navigated page into a section.
+
+    Pages fetched into ``_collections/<library>/...`` at build time (external
+    example repos, linked from galleries rather than toctrees) are keyed on
+    ``<library>`` so a Serve tutorial living under ``_collections/serve/`` lists
+    under Ray Serve rather than a synthetic bucket.
+    """
+    if docname.startswith("_collections/"):
+        docname = docname[len("_collections/") :]
+    return _top_dir(docname)
+
+
 def _base_url(config) -> str:
     """Absolute base URL for generated links (trailing slash stripped).
 
@@ -290,9 +305,15 @@ def _build_sections(app, env, exclude, cache):
     ``pages`` is every in-scope page under a section — the full toctree subtree,
     deduped so each page appears under only the first section that reaches it —
     so the index can list any page without an agent having to drill into the
-    corpus. ``unreached`` is any in-scope page not reachable via the nav
-    toctrees (e.g. orphan pages), swept into a trailing section so the index
-    stays complete.
+    corpus.
+
+    Pages the nav toctrees never reach are then folded into the section that
+    owns their top-level directory. Ray drives its example galleries with grid
+    cards and query-param links (from ``examples.yml``), not ``toctree``, so a
+    Serve tutorial or Train example is in-scope yet unreached; directory folding
+    lists it under its library instead of a catch-all. ``unreached`` is only
+    what is left — pages whose directory maps to no section — swept into a
+    trailing ``## Other pages`` group so the index still stays complete.
     """
     root_doc = getattr(env.config, "root_doc", None) or getattr(
         env.config, "master_doc", "index"
@@ -305,9 +326,23 @@ def _build_sections(app, env, exclude, cache):
         seen.add(landing)
         pages = _collect_pages(env, landing, cache, exclude, seen)
         sections.append((label, landing, pages))
-    unreached = sorted(
-        d for d in env.all_docs if d not in seen and not _excluded(env, d, exclude)
-    )
+
+    # Fold each un-navigated page into the section owning its directory (first
+    # section to land in that directory wins, matching the full-text grouping).
+    dir_to_idx: dict[str, int] = {}
+    for i, (_label, landing, _pages) in enumerate(sections):
+        dir_to_idx.setdefault(_top_dir(landing), i)
+    unreached = []
+    for docname in sorted(env.all_docs):
+        if docname in seen or _excluded(env, docname, exclude):
+            continue
+        idx = dir_to_idx.get(_match_dir(docname))
+        if idx is None:
+            unreached.append(docname)
+        else:
+            # Appended after the toctree-walked pages, in docname order (the
+            # loop iterates sorted docnames).
+            sections[idx][2].append((_doc_title(env, docname), docname))
     return sections, unreached
 
 
