@@ -1,4 +1,3 @@
-from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test, TestState
 from ray_release.test_automation.state_machine import (
     WEEKLY_RELEASE_BLOCKER_TAG,
@@ -58,7 +57,7 @@ class ReleaseTestStateMachine(TestStateMachine):
     """
 
     def _create_github_issue(self) -> None:
-        repo_name = get_global_config()["state_machine_github_repo"]
+        repo_name = self.ray_repo.full_name
         labels = [
             "P0",
             "bug",
