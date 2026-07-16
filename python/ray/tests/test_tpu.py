@@ -1370,6 +1370,8 @@ def test_dispatch_integration_v6e_single_host(ray_v6e_tpu_cluster):
 
     assert len(refs) == 1
     ray.get(refs)
+
+
 # Mock data for SubslicePlacementGroup tests.
 # Chip coordinates for 4 workers of a 4x4 v6e slice (4 chips/VM each).
 # Format per worker: list of (hostname, chip_index, [x, y]) tuples.
@@ -1837,6 +1839,85 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
     assert len(result_labels) == 1
 
 
+def test_discover_raises_when_workers_incomplete(mock_4x4_pgs):
+    """If discovery labels fewer workers than the slice has bundles (e.g. a
+    worker returns no chip coordinates), _discover_and_persist_subslices raises
+    RuntimeError rather than persisting a partial mapping that would later yield
+    a placement group with the wrong number of hosts.
+    """
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-incomplete"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    # 4x4 has 4 bundles, but only 3 workers return coordinates; the 4th returns
+    # empty coords and is skipped, leaving the mapping incomplete (3 of 4).
+    incomplete_results = [
+        {"node_id": f"node_{i}", "coords": _4X4_MOCK_COORDS[i]} for i in range(3)
+    ] + [{"node_id": "node_3", "coords": []}]
+
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
+        mock_ray_get.side_effect = [None, incomplete_results]
+        with pytest.raises(RuntimeError, match="incomplete"):
+            ray.util.tpu._discover_and_persist_subslices("4x4", "v6e", 4, None)
+
+    # Nothing should have been persisted for the incomplete slice.
+    assert slice_name not in ray.util.tpu._tpu_subslice_cache
+
+
+def test_subslice_continues_scheduling_when_kv_lookup_fails():
+    """A GCS internal-KV lookup failure during cache refresh is swallowed so
+    scheduling proceeds to discovery instead of aborting.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    nodes = _slice_nodes("slice-x", "4x4")
+    avail = {f"slice-x-w{i}": {"TPU": 4} for i in range(4)}  # fully idle
+
+    reached = {}
+
+    def _fake_discover(
+        parent_topology, version, chips_per_vm, timeout, target_slice_name=None
+    ):
+        reached["parent"] = parent_topology
+        reached["target"] = target_slice_name
+        raise RuntimeError("stop-loop")  # break out of the retry loop
+
+    with (
+        patch("ray.nodes", return_value=nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+        patch(
+            "ray.experimental.internal_kv._internal_kv_get",
+            side_effect=RuntimeError("gcs unavailable"),
+        ),
+        patch(
+            "ray.util.tpu._discover_and_persist_subslices",
+            side_effect=_fake_discover,
+        ),
+        pytest.raises(RuntimeError, match="stop-loop"),
+    ):
+        ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x2",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+        )
+
+    # KV failure did not abort scheduling: we reached discovery, pinned to the
+    # specific idle slice.
+    assert reached.get("parent") == "4x4"
+    assert reached.get("target") == "slice-x"
+
+
 def test_find_available_subslice_skips_incomplete_subslices():
     """Subslices with fewer workers than the topology requires are skipped.
 
@@ -1991,9 +2072,9 @@ def test_subslice_same_as_parent_raises_value_error():
         )
 
 
-def test_find_undiscovered_idle_parent():
-    """_find_undiscovered_idle_parent returns the first parent topology that
-    has an undiscovered, fully-idle slice, or None.
+def test_find_undiscovered_idle_slice():
+    """_find_undiscovered_idle_slice returns (parent_topology, slice_name) for
+    the first undiscovered, fully-idle slice, or None.
     """
     ray.util.tpu._tpu_subslice_cache.clear()
     parent_topo = "4x4"
@@ -2013,7 +2094,7 @@ def test_find_undiscovered_idle_parent():
             for i, nid in enumerate(node_ids)
         ]
 
-    check = ray.util.tpu._find_undiscovered_idle_parent
+    check = ray.util.tpu._find_undiscovered_idle_slice
 
     # No nodes at all → None.
     assert check([parent_topo], [], {}) is None
@@ -2022,8 +2103,8 @@ def test_find_undiscovered_idle_parent():
     all_free = {"n0": {"TPU": 4}, "n1": {"TPU": 4}}
     one_busy = {"n0": {"TPU": 0}, "n1": {"TPU": 4}}
 
-    # Undiscovered and fully idle → returns the parent topology.
-    assert check([parent_topo], nodes, all_free) == parent_topo
+    # Undiscovered and fully idle → returns (parent_topology, slice_name).
+    assert check([parent_topo], nodes, all_free) == (parent_topo, "slice-a")
 
     # Undiscovered but one worker busy → None.
     assert check([parent_topo], nodes, one_busy) is None
@@ -2081,7 +2162,9 @@ def test_subslice_omitted_chips_per_vm_matches_discovered_parent():
 
     captured = {}
 
-    def _fake_discover(parent_topology, version, chips_per_vm, timeout):
+    def _fake_discover(
+        parent_topology, version, chips_per_vm, timeout, target_slice_name=None
+    ):
         captured["parent"] = parent_topology
         captured["chips_per_vm"] = chips_per_vm
         raise RuntimeError("stop-loop")  # break out of the retry loop

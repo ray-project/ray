@@ -165,6 +165,7 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
     return tuple(int(d) for d in topology.strip().lower().split("x"))
 
 
+@lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
     (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
@@ -359,6 +360,8 @@ def _get_physical_worker_id_from_coords(
     *coords_list* entries are [x, y] (2D) or [x, y, z] (3D). Raises
     ``ValueError`` if the coordinates don't match the topology.
     """
+    if not coords_list:
+        raise ValueError("coords_list cannot be empty")
     worker_dims = _get_worker_dims_for_topology(parent_topology)
     chip_dims = _parse_topology_dims(parent_topology)
 
@@ -481,6 +484,7 @@ def reserve_tpu_slice(
     topology: str,
     accelerator_type: str,
     timeout_s: Optional[float] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    slice_name: Optional[str] = None,
 ) -> Optional[Tuple[str, PlacementGroup]]:
     """Reserves a TPU slice using its head resource and returns the slice name.
     This enables gang scheduling of training workers with multi-host TPUs.
@@ -494,6 +498,10 @@ def reserve_tpu_slice(
             before the slice name can be retrieved, so this call is necessarily
             blocking. Defaults to ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
             Pass ``None`` to wait indefinitely.
+        slice_name: If provided, target this specific slice by constraining the
+            head reservation to that slice's worker 0. Without it, the head can
+            land on any matching slice's worker 0 — including one whose other
+            workers are busy, which would then fail to gang-schedule.
 
     Returns:
         A tuple of a string representing a unique TPU slice name and the placement
@@ -512,6 +520,8 @@ def reserve_tpu_slice(
         "ray.io/tpu-worker-id": "0",
         "ray.io/tpu-pod-type": pod_type,
     }
+    if slice_name is not None:
+        head_label_selector[ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] = slice_name
     head_placement_group = placement_group(
         bundles=[{f"TPU-{pod_type}-head": 1}],
         bundle_label_selector=[head_label_selector],

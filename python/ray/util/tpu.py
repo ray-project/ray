@@ -464,6 +464,8 @@ class SlicePlacementGroup:
             indefinitely.
         bundle_label_selector: Optional list of label selectors to apply per bundle. These label
             selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
+        target_slice_name: Optionally pin the reservation to a specific slice by name. Only valid
+            with ``num_slices=1``; used by subslice discovery to target a slice known to be idle.
 
     Examples:
 
@@ -508,7 +510,11 @@ class SlicePlacementGroup:
             DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
         ),
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        target_slice_name: Optional[str] = None,
     ):
+        if target_slice_name is not None and num_slices != 1:
+            raise ValueError("target_slice_name can only be used with num_slices=1.")
+        self._target_slice_name = target_slice_name
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._placement_group: Optional[PlacementGroup] = None
@@ -595,6 +601,7 @@ class SlicePlacementGroup:
                     self._topology,
                     accelerator_type,
                     timeout_s=self._head_reservation_timeout_s,
+                    slice_name=self._target_slice_name,
                 )
                 if not reservation:
                     raise RuntimeError(
@@ -1051,8 +1058,8 @@ def _find_valid_parent_topologies(
         topo
         for node in nodes
         if node.get("Alive")
-        for topo in [node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)]
-        if topo is not None
+        and (topo := node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY))
+        is not None
     }
 
     candidates: List[Tuple[str, Tuple[int, ...]]] = []
@@ -1073,7 +1080,7 @@ def _find_valid_parent_topologies(
 
 
 def _discover_tpu_node_coords(
-    mock_coords: Optional[List[Any]] = None,
+    mock_coords: Optional[List[Tuple[str, int, List[int]]]] = None,
 ) -> Dict[str, Any]:
     """Remote function: discover this TPU worker's physical chip coordinates.
 
@@ -1108,9 +1115,14 @@ def _discover_and_persist_subslices(
     accelerator_version: str,
     chips_per_vm: int,
     head_reservation_timeout_s: Optional[float],
+    target_slice_name: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Dict[str, str]]]:
     """Reserve a full slice, run libtpu discovery, compute and persist subslice
     labels to internal KV, then release the slice.
+
+    When *target_slice_name* is given, the reservation is pinned to that
+    specific slice so discovery runs on the slice known to be fully idle
+    (rather than any slice whose worker 0 happens to be free).
 
     Returns ``(slice_name, {worker_id_label: {label_key: label_value}})``.
     """
@@ -1126,6 +1138,7 @@ def _discover_and_persist_subslices(
         accelerator_version=accelerator_version,
         chips_per_vm=chips_per_vm,
         head_reservation_timeout_s=head_reservation_timeout_s,
+        target_slice_name=target_slice_name,
     )
     try:
         ray.get(full_slice.placement_group.ready())
@@ -1266,7 +1279,7 @@ def _refresh_cache_from_kv(
 
     Isolates the cache-population side effect so that
     :func:`_collect_known_slice_labels` and
-    :func:`_find_undiscovered_idle_parent` stay pure reads. Call once before
+    :func:`_find_undiscovered_idle_slice` stay pure reads. Call once before
     them so both observe KV-persisted slices.
     """
     parent_set = set(parent_topologies)
@@ -1295,6 +1308,15 @@ def _refresh_cache_from_kv(
                 namespace=_TPU_SUBSLICE_KV_NAMESPACE,
             )
         except Exception:
+            # KV is a best-effort cache; a lookup failure (e.g. transient GCS
+            # error) just means we fall back to fresh discovery. Log at debug
+            # to avoid noise since this runs per undiscovered slice per call.
+            logger.debug(
+                "KV lookup for subslice labels of '%s' failed; "
+                "will fall back to discovery.",
+                slice_name,
+                exc_info=True,
+            )
             continue
         if existing:
             worker_labels = json.loads(existing)
@@ -1555,13 +1577,18 @@ def _build_slice_worker_to_node(
     }
 
 
-def _find_undiscovered_idle_parent(
+def _find_undiscovered_idle_slice(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-) -> Optional[str]:
-    """Return the first topology from *parent_topologies* (smallest-first) with
-    an undiscovered (absent from cache) and fully idle slice, else ``None``.
+) -> Optional[Tuple[str, str]]:
+    """Return ``(parent_topology, slice_name)`` for the first undiscovered
+    (absent from cache), fully idle slice, scanning *parent_topologies*
+    smallest-first; else ``None``.
+
+    Returning the specific slice name lets the caller pin discovery to a slice
+    known to be fully idle, rather than letting an untargeted reservation grab
+    any slice's worker 0 (possibly one whose other workers are busy).
 
     Must run after :func:`_refresh_cache_from_kv` so the cache already
     reflects KV-persisted labels; otherwise an already-discovered slice may
@@ -1593,7 +1620,7 @@ def _find_undiscovered_idle_parent(
                     idle = False
                     break
             if idle:
-                return parent_topology
+                return parent_topology, sname
 
     return None
 
@@ -1859,11 +1886,9 @@ def subslice_placement_group(
         cached_subslice = _find_available_cached_subslice(
             parent_topologies, subslice_topology, nodes, avail, slice_worker_to_node
         )
-        discoverable_parent = _find_undiscovered_idle_parent(
-            parent_topologies, nodes, avail
-        )
+        discoverable = _find_undiscovered_idle_slice(parent_topologies, nodes, avail)
 
-        if cached_subslice is None and discoverable_parent is None:
+        if cached_subslice is None and discoverable is None:
             raise RuntimeError(
                 f"No subslice of '{subslice_topology}' is schedulable across "
                 f"any of the candidate parent topologies: {parent_topologies}."
@@ -1886,14 +1911,16 @@ def subslice_placement_group(
                 lifetime,
             )
 
-        # No idle cached subslice found — discover the layout of one idle
-        # parent slice (preferring the smallest parent topology) and loop
-        # back to claim a subslice from the newly populated cache. chips_per_vm
-        # must match the parent actually being discovered.
-        assert discoverable_parent is not None  # guaranteed by the check above
+        # No idle cached subslice found — discover the layout of the specific
+        # idle slice we found (pinned by name so the head reservation lands on
+        # that fully-idle slice) and loop back to claim a subslice from the
+        # newly populated cache. chips_per_vm must match the parent discovered.
+        assert discoverable is not None  # guaranteed by the check above
+        discoverable_parent, discoverable_slice_name = discoverable
         _discover_and_persist_subslices(
             discoverable_parent,
             version,
             _resolve_chips_per_vm(user_chips_per_vm, discoverable_parent, version),
             head_reservation_timeout_s,
+            target_slice_name=discoverable_slice_name,
         )
