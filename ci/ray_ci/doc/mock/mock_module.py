@@ -1,4 +1,4 @@
-from ci.ray_ci.doc.api import AnnotationType
+from ci.ray_ci.doc.api import _OVERRIDE_HOOK_MARKER, AnnotationType
 
 
 def PublicAPI(*args, **kwargs):
@@ -27,10 +27,10 @@ def Deprecated(*args, **kwargs):
 
 def OverrideToImplementCustomLogic(obj):
     # Mirrors rllib.utils.annotations.OverrideToImplementCustomLogic: tags a
-    # method as a template-method override hook by setting __is_overridden__.
+    # method as a template-method override hook by setting the override marker.
     # The API check reads the attribute generically, so the test fixture does
     # not import RLlib.
-    obj.__is_overridden__ = False
+    setattr(obj, _OVERRIDE_HOOK_MARKER, False)
     return obj
 
 

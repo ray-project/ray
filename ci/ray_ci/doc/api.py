@@ -11,6 +11,12 @@ _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
 # example ~module.api_name will render only api_name
 _SPHINX_AUTODOC_SHORTNAME = "~"
 
+# Attribute set by RLlib's @OverrideToImplementCustomLogic decorators to tag a
+# method as a template-method override hook. Its presence marks an intentional
+# public extension point, so an underscore-named object carrying it is exempt
+# from the private-name rule.
+_OVERRIDE_HOOK_MARKER = "__is_overridden__"
+
 
 class AnnotationType(Enum):
     PUBLIC_API = "PublicAPI"
@@ -233,7 +239,7 @@ class API:
         Read the attribute generically so the shared check needs no per-team
         import.
         """
-        return hasattr(obj, "__is_overridden__")
+        return hasattr(obj, _OVERRIDE_HOOK_MARKER)
 
     def is_public(self) -> bool:
         """
