@@ -10,13 +10,26 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _SHUFFLE_MAP_RUNTIME_ENV,
+    _make_hash_partition_fn,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
-from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.execution.operators.join import (
+    JoinOperator,
+    _make_join_reduce_fn,
+)
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -33,6 +46,7 @@ from ray.data._internal.logical.operators import (
     Filter,
     InputData,
     Join,
+    JoinType,
     Limit,
     ListFiles,
     Mix,
@@ -128,12 +142,61 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
+def _plan_join_shuffle_v2(
+    logical_op: Join,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    left_keys = list(logical_op.left_key_columns)
+    right_keys = list(logical_op.right_key_columns)
+    num_partitions = logical_op.num_partitions
+    join_type = JoinType(logical_op.join_type)
+
+    left_map = ShuffleMapOp(
+        physical_children[0],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"JoinShuffleMapLeft(keys={tuple(left_keys)}, parts={num_partitions})",
+    )
+    right_map = ShuffleMapOp(
+        physical_children[1],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"JoinShuffleMapRight(keys={tuple(right_keys)}, parts={num_partitions})",
+    )
+
+    reduce_fn = _make_join_reduce_fn(
+        join_type=join_type,
+        left_key_col_names=tuple(left_keys),
+        right_key_col_names=tuple(right_keys),
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        left_schema=logical_op.input_dependencies[0].infer_schema(),
+        right_schema=logical_op.input_dependencies[1].infer_schema(),
+    )
+    return ShuffleReduceOp(
+        [left_map, right_map],
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        disallow_block_splitting=False,
+        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
+        name=f"JoinShuffleReduce(num_partitions={num_partitions})",
+    )
+
+
 def plan_join_op(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
+    if data_context.use_hash_shuffle_v2:
+        return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
         left_input_op=physical_children[0],
@@ -286,9 +349,8 @@ class Planner:
         queue = [physical_op]
         while queue:
             curr_physical_op = queue.pop()
-            # Once we find an operator with a logical operator set, we can stop.
             if curr_physical_op._logical_operators:
-                break
+                continue
 
             curr_physical_op.set_logical_operators(logical_op)
             # Add this operator to the op_map so optimizer can find it

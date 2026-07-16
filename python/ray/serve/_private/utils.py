@@ -13,16 +13,16 @@ import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union, cast
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 import ray
 import ray.util.serialization_addons
 from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._raylet import MessagePackSerializer
+from ray._raylet import MessagePackSerializer  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
@@ -37,12 +37,12 @@ from ray.util.serialization import StandaloneSerializationContext
 try:
     import pandas as pd
 except ImportError:
-    pd = None
+    pd = cast(Any, None)
 
 try:
     import numpy as np
 except ImportError:
-    np = None
+    np = cast(Any, None)
 
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 

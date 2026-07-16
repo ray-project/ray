@@ -1,6 +1,6 @@
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -349,6 +349,30 @@ def arrow_batch_to_tensors(
                 dtypes=dtypes,
                 pin_memory=pin_memory,
             )
+
+
+@torch.no_grad()
+def pin_tensors_to_memory(batch: TensorBatchType) -> TensorBatchType:
+    """Recursively pin CPU tensors in a TensorBatchType. Preserves structure.
+
+    No-op for tensors that are already pinned or not on CPU (e.g. CUDA tensors).
+
+    Args:
+        batch: A tensor or collection of tensors to pin. Can be any
+            TensorBatchType variant.
+
+    Returns:
+        The batch with the same structure, with CPU tensors pinned.
+    """
+    if _is_tensor(batch):
+        if batch.device.type == "cpu" and not batch.is_pinned():
+            return batch.pin_memory()
+        return batch
+    elif isinstance(batch, Mapping):
+        return {k: pin_tensors_to_memory(v) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(pin_tensors_to_memory(v) for v in batch)
+    return batch
 
 
 @torch.no_grad()

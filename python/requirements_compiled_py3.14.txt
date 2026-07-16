@@ -419,7 +419,7 @@ cryptography==44.0.3
     #   pyopenssl
     #   snowflake-connector-python
     #   trustme
-cupy-cuda12x==14.0.0 ; sys_platform != "darwin"
+cupy-cuda12x==14.0.1 ; sys_platform != "darwin"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
@@ -1049,7 +1049,7 @@ linear-operator==0.6.1
     #   gpytorch
 linkify-it-py==2.1.0
     # via markdown-it-py
-llvmlite==0.44.0
+llvmlite==0.47.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   numba
@@ -1254,7 +1254,7 @@ nodeenv==1.10.0
     #   pyright
 notebook-shim==0.2.4
     # via jupyterlab
-numba==0.61.2
+numba==0.65.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   statsforecast
@@ -1264,7 +1264,7 @@ numexpr==2.14.1
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   pymars
-numpy==2.3.2
+numpy==2.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -1820,7 +1820,7 @@ pyspark==3.4.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   raydp
-pytest==7.4.4
+pytest==8.3.3
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2570,7 +2570,7 @@ uri-template==1.3.0
     # via jsonschema
 uritemplate==4.2.0
     # via google-api-python-client
-urllib3==1.26.20
+urllib3==2.0.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   botocore

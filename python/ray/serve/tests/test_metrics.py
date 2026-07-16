@@ -39,6 +39,7 @@ from ray.serve._private.test_utils import (
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
@@ -204,6 +205,10 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
+@skip_if_haproxy(
+    "HAProxy answers unmatched-route 404s itself and counts its health-check "
+    "probes in these metrics"
+)
 def test_proxy_metrics_not_found(metrics_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -301,6 +306,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy returns 502 for a dead backend instead of a replica 500 and counts "
+    "its health-check probes in these metrics"
+)
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
     # This test kills the replica process so metrics are not emitted.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
@@ -403,6 +412,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy answers the 404 itself and counts its health-check probes in these "
+    "metrics"
+)
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
@@ -465,6 +478,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ],
     indirect=True,
 )
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -544,6 +558,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -595,6 +610,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its health-check probes in these latency metrics")
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -736,6 +752,10 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy can't inspect websocket close codes, so it can't classify them as "
+    "HTTP errors and the error-vs-success request counts this test asserts can't hold"
+)
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
@@ -1043,6 +1063,8 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
 def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip("direct ingress bypasses the proxy router, queue-len gauge stays 0")
     signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=10)
@@ -1158,6 +1180,10 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy labels HTTP metrics with the static backend path_prefix, not "
+    "FastAPI route patterns"
+)
 @pytest.mark.parametrize("use_factory_pattern", [False, True])
 def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
     """Test that proxy metrics use specific route patterns for FastAPI apps.

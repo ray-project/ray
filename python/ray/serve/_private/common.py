@@ -32,7 +32,7 @@ class DeploymentID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.name, self.app_name))
             object.__setattr__(self, "_hash", h)
@@ -72,7 +72,7 @@ class ReplicaID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.unique_id, self.deployment_id))
             object.__setattr__(self, "_hash", h)
@@ -288,7 +288,9 @@ class DeploymentStatusInfo:
     message: str = ""
 
     @property
-    def rank(self) -> int:
+    # Implicitly returns None when neither (status,) nor
+    # (status, status_trigger) is in DEPLOYMENT_STATUS_RANKING_ORDER.
+    def rank(self) -> Optional[int]:  # type: ignore[return]
         """Get priority of state based on ranking_order().
 
         The ranked order indicates what the status should be of a
@@ -306,8 +308,8 @@ class DeploymentStatusInfo:
 
     def _updated_copy(
         self,
-        status: DeploymentStatus = None,
-        status_trigger: DeploymentStatusTrigger = None,
+        status: Optional[DeploymentStatus] = None,
+        status_trigger: Optional[DeploymentStatusTrigger] = None,
         message: str = "",
     ):
         """Returns a copy of the current object with the passed in kwargs updated."""
@@ -694,13 +696,14 @@ class RunningReplicaInfo:
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
-        return self._hash
+        # Set via `object.__setattr__` above (frozen dataclass).
+        return self._hash  # pyrefly: ignore[missing-attribute]
 
     def __eq__(self, other):
         return all(
             [
                 isinstance(other, RunningReplicaInfo),
-                self._hash == other._hash,
+                self._hash == other._hash,  # pyrefly: ignore[missing-attribute]
             ]
         )
 
@@ -879,11 +882,16 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
+            # Constructor invariant: if `receive_asgi_messages` wasn't passed,
+            # then `proxy_actor_name` is not None.
+            assert self._proxy_actor_name is not None
             self._cached_proxy_actor = ray.get_actor(
                 self._proxy_actor_name, namespace=SERVE_NAMESPACE
             )
             self._receive_asgi_messages = (
-                self._cached_proxy_actor.receive_asgi_messages.remote
+                # `ActorHandle.__getattr__` is annotated `Never`; per-method
+                # attributes exist on real handles at runtime.
+                self._cached_proxy_actor.receive_asgi_messages.remote  # type: ignore[attr-defined]
             )
 
         return self._receive_asgi_messages
