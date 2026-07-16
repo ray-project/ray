@@ -119,8 +119,7 @@ def _tune_shuffle_socket(sock: socket.socket) -> None:
       frames in sequence (token, opcode + header, per-range headers),
       Nagle's default coalesce would inject ~40ms latency between them.
     * ``SO_KEEPALIVE`` lets the kernel detect dead peers via TCP-level
-      probes on long-idle connections — important when intermediate
-      NAT / firewall middleboxes silently drop idle flows.
+      probes on long-idle connections.
 
     Applied to both the reducer's client socket and each connection the
     ShuffleManager server accepts.  Silently ignores failures: not every
@@ -417,14 +416,11 @@ class ShuffleManager:
         return (self._host, self._port)
 
 
-# Import ``shutil`` lazily in the remote task body — module-level import
-# would drag it into every driver / worker process that touches this
-# module, and it's only needed here.
 @ray.remote(num_cpus=0)
 def _cleanup_shuffle_dir(base_dir: str, expected_node_id: str) -> None:
     """Best-effort ``rmtree`` of a per-shuffle ``base_dir``. Submitted with
     ``NodeAffinity(soft=True)``, so we might land off-target; no-op in that
-    case. Failure never propagates — OS tmpwatch is the fallback."""
+    case."""
     if ray.get_runtime_context().get_node_id() != expected_node_id:
         return
     import shutil
@@ -488,7 +484,7 @@ class _ShuffleConnection:
         ``sources[i]``, and each inner list is parallel to that source's
         ``ranges`` argument. Useful for in-memory consumers (tests, direct
         ``_read_ipc(buf)`` callers); production reduce path uses
-        :meth:`fetch_to_files` instead to avoid full per-range bytes.
+        :meth:`fetch_into` instead to stream directly onto disk.
         """
         self._send_fetch_request(sources)
         status = _recv_u8(self._sock)
@@ -499,9 +495,7 @@ class _ShuffleConnection:
             n = _recv_u32(self._sock)
             if n != len(ranges):
                 # Protocol contract violation: server's per-source range count
-                # must match what we sent. Raise instead of ``assert`` so the
-                # check survives ``python -O`` (where ``assert`` is stripped
-                # and a mismatch would silently corrupt the read stream).
+                # must match what we sent.
                 raise RuntimeError(
                     f"protocol error: server returned {n} ranges for "
                     f"{path!r}, expected {len(ranges)}"
@@ -512,69 +506,6 @@ class _ShuffleConnection:
                 buf.append(_recvall(self._sock, length))
             out.append(buf)
         return out
-
-    # ── FETCH (streams response into files) ──────────────────────────────
-    def fetch_to_files(
-        self,
-        sources: List[Tuple[str, List[Tuple[int, int]]]],
-        out_files: List[str],
-        chunk_size: int = 64 * 1024,
-    ) -> None:
-        """Single FETCH whose per-source response streams into ``out_files[i]``.
-
-        Each output file gets self-contained framing (``u32 num_ranges`` then
-        per range ``u32 len`` + raw bytes). Kept around for tests and for any
-        caller that wants per-source files (one mmap per source).
-
-        User-space peak is ``chunk_size`` regardless of how big any range is.
-        """
-        if len(sources) != len(out_files):
-            # Caller bug, not a protocol violation — but still must be a real
-            # raise so ``python -O`` doesn't swallow it.
-            raise ValueError(
-                f"sources/out_files length mismatch: "
-                f"{len(sources)} vs {len(out_files)}"
-            )
-        self._send_fetch_request(sources)
-        status = _recv_u8(self._sock)
-        if status != _STATUS_OK:
-            self._raise_error_response(status)
-
-        chunk = bytearray(chunk_size)
-        view = memoryview(chunk)
-        opened_files: List[str] = []
-        try:
-            for (path, ranges), out_path in zip(sources, out_files):
-                num_ranges = _recv_u32(self._sock)
-                if num_ranges != len(ranges):
-                    raise RuntimeError(
-                        f"protocol error: server returned {num_ranges} "
-                        f"ranges for {path!r}, expected {len(ranges)}"
-                    )
-                with open(out_path, "wb") as f:
-                    opened_files.append(out_path)
-                    f.write(struct.pack(">I", num_ranges))
-                    for _ in range(num_ranges):
-                        length = _recv_u32(self._sock)
-                        f.write(struct.pack(">I", length))
-                        remaining = length
-                        while remaining > 0:
-                            want = min(remaining, chunk_size)
-                            n = self._sock.recv_into(view[:want], want)
-                            if n == 0:
-                                raise ConnectionError("peer closed mid-fetch")
-                            f.write(view[:n])
-                            remaining -= n
-        except Exception:
-            # Best-effort cleanup so failed multi-source fetches don't leak
-            # partial files (the connection itself is unusable past this point;
-            # caller's ``with`` block will close it).
-            for p in opened_files:
-                try:
-                    os.unlink(p)
-                except OSError:
-                    pass
-            raise
 
     # ── FETCH (streams response APPENDED into one open file) ────────────
     def fetch_into(
@@ -709,16 +640,24 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
 
 
 class ShuffleManagerAnomalyError(RuntimeError):
-    """todo: Raised when a ShuffleManager is unreachable while its node is alive?
+    """Terminal shuffle-manager failure: a driver-level retry cannot fix it.
 
-    Under our configuration (``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``) Ray restarts
-    the actor on any crash, and a dead node surfaces as PENDING /
-    ``ActorUnavailableError``, not ``ActorDiedError``. So an
-    ``ActorDiedError`` on a live node means one of:
+    We run with ``max_restarts=-1``, ``lifetime="detached"``,
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
+    the actor on any mid-life crash (os.exit) and surfaces ``ActorUnavailableError``
+    during the restart window. So the anomalous states we key off of are:
 
-    - External ``ray.kill(actor, no_restart=True)`` from user code.
-    - __init__ error
+    - ``ActorDiedError``          -> ``__init__`` raised, or external
+                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
+                                    relocation. Terminal at the shuffle layer;
+                                    an upstream lineage layer must re-execute
+                                    the mapper on healthy capacity.
+    - ``ValueError`` (from ``ray.get_actor``) -> actor name is not registered
+                                                (never created or gc'd).
+    - Handshake replied with an unknown status byte.
+    - TCP failed but the endpoint is unchanged and Ray RPC still works, which is
+      often a network-configuration problem (``NetworkPolicy``, firewall, routing).
     """
 
 
@@ -770,7 +709,7 @@ class _NodeMember:
 class _NodeGroup:
     """All sources on one ShuffleManager, grouped so we open ONE TCP
     connection per manager. Sources collapse to the same group when their
-    ``(shuffle_id, node_id)`` — the manager's named-actor identity — matches.
+    ``(shuffle_id, node_id)`` (i.e., the manager's named-actor identity) matches.
     """
 
     shuffle_id: str
@@ -785,7 +724,7 @@ class _PwriteSink:
     DISJOINT base regions write the same fd concurrently without lock.
 
     ``reset()`` rewinds ``_pos`` to the base offset so a fetch attempt that
-    partially wrote can be retried in-place — subsequent ``os.pwrite``s
+    partially wrote can be retried in-place and subsequent ``os.pwrite``s
     overwrite the partial data (same offsets, idempotent write)."""
 
     __slots__ = ("_fd", "_base_offset", "_pos")
@@ -820,7 +759,7 @@ def _prefetch_node_into(
     connection, chunked into multi-source FETCH frames of
     ≤ ``max_bytes_per_fetch``.
 
-    Actor state drives the recovery policy — Ray Core is authoritative:
+    Actor state drives the recovery policy:
       * Dead (init fail/ray.kill)     -> ``ShuffleManagerAnomalyError`` (terminal)
       * Unavailable (restarting)      -> poll until Ray resolves
       * TCP dead, endpoint changed    -> reset sink, reopen, retry in-place
@@ -1023,11 +962,10 @@ def _compute_prefetch_layout(
 ) -> Tuple[int, List[int], List[int]]:
     """Assign each group a contiguous byte region in the reducer's prefetch file.
 
-    Returns ``(total_size, base_offsets, per_group_sizes)`` — sizes are the
+    Returns ``(total_size, base_offsets, per_group_sizes)`` where sizes are the
     ``4 + length`` framed byte totals (u32 len prefix + IPC bytes per range),
     base offsets are running cumulative sums. Fetch threads then pwrite each
-    group's response frames at DISJOINT offsets → lock-free concurrent writes
-    to one fd.
+    group's response frames at DISJOINT offsets
     """
     sizes = [
         sum(4 + length for m in g.members for (_off, length) in m.ranges)
