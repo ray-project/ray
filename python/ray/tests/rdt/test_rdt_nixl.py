@@ -717,5 +717,74 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     assert not pool.has_block(base)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream(ray_start_regular):
+    """set_nixl_cuda_stream restricts the pre-registration sync to the given
+    stream, and the transferred data is still valid."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class StreamActor:
+        @ray.method(tensor_transport="nixl")
+        def echo_on_stream(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            stream = torch.cuda.Stream()
+            with torch.cuda.stream(stream):
+                out = data.to("cuda") * 2
+            # Only block on `stream` instead of every stream on the device.
+            set_nixl_cuda_stream([stream])
+            return out
+
+        @ray.method(tensor_transport="nixl")
+        def echo_default(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            # Reset to the default full-device synchronization.
+            set_nixl_cuda_stream(None)
+            return data.to("cuda") * 2
+
+    src_actor = StreamActor.remote()
+    dst_actor = GPUTestActor.remote()
+
+    ref = src_actor.echo_on_stream.remote(torch.tensor([1, 2, 3]))
+    assert ray.get(dst_actor.sum.remote(ref, "cuda")) == 12
+
+    # After resetting to None, transfers still succeed.
+    ref2 = src_actor.echo_default.remote(torch.tensor([4, 5, 6]))
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 30
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_set_nixl_cuda_stream_duplicate_device(ray_start_regular):
+    """Providing two streams for the same device errors at set time."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    # Both streams default to the current device, so they collide.
+    stream1 = torch.cuda.Stream()
+    stream2 = torch.cuda.Stream()
+    with pytest.raises(ValueError, match="Multiple CUDA streams"):
+        transport.set_cuda_streams([stream1, stream2])
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream_uncovered_device(ray_start_regular):
+    """A device used by the RDT object with no matching stream errors."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    # Provide a stream only for cuda:1, but create the tensor on cuda:0.
+    stream = torch.cuda.Stream(device=torch.device("cuda:1"))
+    transport.set_cuda_streams([stream])
+
+    tensor = torch.tensor([1, 2, 3]).to("cuda:0")
+    with pytest.raises(ValueError, match="Missing CUDA stream for device"):
+        transport.extract_tensor_transport_metadata("uncovered_obj", [tensor])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

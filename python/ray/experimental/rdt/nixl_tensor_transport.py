@@ -162,9 +162,32 @@ class NixlTensorTransport(TensorTransportManager):
         self._memory_pool: Optional[MemoryPoolManager] = None
         # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
         self._backend: Optional[str] = None
+        # Optional mapping from torch.device to the CUDA stream to synchronize
+        # before NIXL memory registration in extract_tensor_transport_metadata.
+        # When None, all streams on each device are synchronized instead.
+        self._cuda_stream_by_device: Optional[
+            Dict["torch.device", "torch.cuda.Stream"]
+        ] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
+
+    def set_cuda_streams(self, streams: Optional[List["torch.cuda.Stream"]]) -> None:
+        """Sets the CUDA streams to synchronize before NIXL memory registration.
+
+        See :func:`ray.experimental.set_nixl_cuda_stream` for details.
+        """
+        if not streams:
+            self._cuda_stream_by_device = None
+            return
+        device_to_stream: Dict["torch.device", "torch.cuda.Stream"] = {}
+        for stream in streams:
+            if stream.device in device_to_stream:
+                raise ValueError(
+                    f"Multiple CUDA streams provided for device {stream.device}."
+                )
+            device_to_stream[stream.device] = stream
+        self._cuda_stream_by_device = device_to_stream
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -285,8 +308,19 @@ class NixlTensorTransport(TensorTransportManager):
                 if device.type == "cuda":
                     # We have to synchronize before memory registration to assure the
                     # object has been created because nixl doesn't guarantee it will.
-                    for dev in devices:
-                        torch.cuda.synchronize(dev)
+                    device_to_stream = self._cuda_stream_by_device
+                    if not device_to_stream:
+                        for dev in devices:
+                            torch.cuda.synchronize(dev)
+                    else:
+                        for dev in devices:
+                            if dev not in device_to_stream:
+                                raise ValueError(
+                                    f"Missing CUDA stream for device {dev} used "
+                                    "by this RDT object; provide a stream for it via "
+                                    "ray.experimental.set_nixl_cuda_stream."
+                                )
+                            device_to_stream[dev].synchronize()
 
                 nixl_agent = self.get_nixl_agent()
                 # Use the pool only when every tensor lives on the exact same
