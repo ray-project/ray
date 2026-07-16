@@ -29,6 +29,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     showAcceleratorColumns: false,
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     toggleTheme: () => {},
+    showAcceleratorColumns: true,
   };
 
   return (
