@@ -134,7 +134,7 @@ def _plan_hash_shuffle_repartition(
     )
 
 
-def _plan_hash_shuffle_aggregate(
+def _plan_hash_shuffle_aggregate_v2(
     data_context: DataContext,
     logical_op: Aggregate,
     input_physical_op: PhysicalOperator,
@@ -192,6 +192,30 @@ def _plan_hash_shuffle_aggregate(
     return reduce_op
 
 
+def _plan_hash_shuffle_aggregate(
+    data_context: DataContext,
+    logical_op: Aggregate,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.execution.operators.hash_aggregate import (
+        HashAggregateOperator,
+    )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.key).get_columns()
+
+    return HashAggregateOperator(
+        data_context,
+        input_physical_op,
+        key_columns=tuple(normalized_key_columns),  # noqa: type
+        aggregation_fns=tuple(logical_op.aggs),  # noqa: type
+        # NOTE: In case number of partitions is not specified, we fall back to
+        #       default min parallelism configured
+        num_partitions=logical_op.num_partitions,
+        # TODO wire in aggregator args overrides
+    )
+
+
 def _plan_gpu_shuffle_aggregate(
     data_context: DataContext,
     logical_op: Aggregate,
@@ -228,6 +252,10 @@ def _plan_gpu_shuffle_aggregate(
             logical_op.aggs,
             fallback_reason,
         )
+        if data_context.use_hash_shuffle_v2:
+            return _plan_hash_shuffle_aggregate_v2(
+                data_context, logical_op, input_physical_op
+            )
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
     return GPUHashAggregateOperator(
@@ -319,6 +347,10 @@ def plan_all_to_all_op(
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            if data_context.use_hash_shuffle_v2:
+                return _plan_hash_shuffle_aggregate_v2(
+                    data_context, op, input_physical_dag
+                )
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
