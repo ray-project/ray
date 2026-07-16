@@ -161,6 +161,70 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
+# --- Default values for dashboard profiling parameters (py-spy / memray). ---
+# Each applies only when the corresponding request query param is omitted, so
+# behavior is unchanged unless an operator overrides it on the Ray head node.
+# An explicit query param always takes precedence.
+
+# Include native (C/C++) stack frames. Higher overhead; only takes effect on
+# Linux (see CpuProfilingManager in the reporter's profile_manager).
+RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT", False
+)
+# Also profile child processes of the target (py-spy --subprocesses).
+RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT", False
+)
+# Include off-CPU / sleeping threads (py-spy --idle; CPU profiling only).
+RAY_DASHBOARD_PROFILING_IDLE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_IDLE_DEFAULT", False
+)
+# Report memory leaks instead of peak usage (memray; memory profiling only).
+RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT", True
+)
+# Record pymalloc allocations (memray; memory profiling only).
+RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT", False
+)
+# Duration in seconds for CPU profiling. Capped at 60 by the endpoint.
+RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = env_integer(
+    "RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5
+)
+# Duration in seconds for memory profiling. Capped at 60 by the endpoint.
+RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = env_integer(
+    "RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10
+)
+
+# Output format defaults. The valid sets DIFFER by profiler: py-spy (CPU) accepts
+# flamegraph/raw/speedscope while memray (memory) accepts flamegraph/table, so
+# each is validated independently against its own set.
+_VALID_CPU_PROFILING_FORMATS = ("flamegraph", "raw", "speedscope")
+_VALID_MEMORY_PROFILING_FORMATS = ("flamegraph", "table")
+
+
+def _validated_profiling_format(env_key, valid_formats, fallback="flamegraph"):
+    """Read a profiling-format env var, falling back if it's not a valid choice."""
+    value = os.environ.get(env_key, fallback)
+    if value not in valid_formats:
+        logger.warning(
+            "%s=%r is invalid; expected one of %s. Falling back to %r.",
+            env_key,
+            value,
+            valid_formats,
+            fallback,
+        )
+        return fallback
+    return value
+
+
+RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT", _VALID_CPU_PROFILING_FORMATS
+)
+RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT", _VALID_MEMORY_PROFILING_FORMATS
+)
+
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2

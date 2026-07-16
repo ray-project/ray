@@ -24,6 +24,15 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_CLUSTER,
     KV_NAMESPACE_DASHBOARD,
     RAY_DASHBOARD_ENABLE_PROFILING,
+    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
+    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
+    RAY_DASHBOARD_PROFILING_IDLE_DEFAULT,
+    RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT,
+    RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
+    RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
+    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT,
+    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT,
+    RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT,
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
@@ -58,6 +67,22 @@ SVG_STYLE = """<style>
 RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS", 1
 )
+
+
+def _query_flag(req: aiohttp.web.Request, name: str, default: bool) -> bool:
+    """Parse a boolean profiling query flag.
+
+    Falls back to ``default`` (an operator-configurable env var default) when the
+    param is absent; an explicit ``"1"``/``"0"`` in the query always wins.
+    """
+    val = req.query.get(name)
+    return default if val is None else val == "1"
+
+
+def _query_int(req: aiohttp.web.Request, name: str, default: int) -> int:
+    """Parse an integer profiling query param, falling back to ``default`` when absent."""
+    val = req.query.get(name)
+    return default if val is None else int(val)
 
 
 class ReportHead(SubprocessModule):
@@ -97,10 +122,26 @@ class ReportHead(SubprocessModule):
 
     @routes.get("/api/profiling_enabled")
     async def profiling_enabled(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        # `profiling_defaults` lets the dashboard seed its profiling dialogs with
+        # the operator-configured defaults. Keys are google-style-cased in the
+        # response, e.g. `cpu_duration` -> `data.profilingDefaults.cpuDuration`.
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="",
             profiling_enabled=RAY_DASHBOARD_ENABLE_PROFILING,
+            profiling_defaults={
+                "native": RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT,
+                "subprocesses": RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT,
+                "idle": RAY_DASHBOARD_PROFILING_IDLE_DEFAULT,
+                "leaks": RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT,
+                "trace_python_allocators": (
+                    RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT
+                ),
+                "cpu_duration": RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
+                "memory_duration": RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
+                "cpu_format": RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
+                "memory_format": RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
+            },
         )
 
     @routes.get("/api/v0/cluster_metadata")
@@ -280,10 +321,12 @@ class ReportHead(SubprocessModule):
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        # Default not using `--subprocesses` for profiling
-        subprocesses = req.query.get("subprocesses", False) == "1"
+        # `native`/`subprocesses` default to the operator-configured env var
+        # (both off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -381,21 +424,24 @@ class ReportHead(SubprocessModule):
         node_id_hex = req.query.get("node_id")
 
         try:
-            duration_s = int(req.query.get("duration", 5))
+            duration_s = _query_int(
+                req, "duration", RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT
+            )
         except ValueError:
             raise aiohttp.web.HTTPBadRequest(
                 text="duration query parameter must be an integer"
             )
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
-        format = req.query.get("format", "flamegraph")
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        # Default not using `--idle` for profiling
-        idle = req.query.get("idle", False) == "1"
-        # Default not using `--subprocesses` for profiling
-        subprocesses = req.query.get("subprocesses", False) == "1"
+        # native/idle/subprocesses default to the operator-configured env vars
+        # (all off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        idle = _query_flag(req, "idle", RAY_DASHBOARD_PROFILING_IDLE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
@@ -502,10 +548,12 @@ class ReportHead(SubprocessModule):
 
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        # Default not using `--subprocesses` for profiling
-        subprocesses = req.query.get("subprocesses", False) == "1"
+        # `native`/`subprocesses` default to the operator-configured env var
+        # (both off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
         logger.info(
             f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, subprocesses={subprocesses}"
         )
@@ -585,21 +633,24 @@ class ReportHead(SubprocessModule):
         except ValueError:
             raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
         try:
-            duration_s = int(req.query.get("duration", 5))
+            duration_s = _query_int(
+                req, "duration", RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT
+            )
         except ValueError:
             raise aiohttp.web.HTTPBadRequest(
                 text="duration query parameter must be an integer"
             )
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
-        format = req.query.get("format", "flamegraph")
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        # Default not using `--idle` for profiling
-        idle = req.query.get("idle", False) == "1"
-        # Default not using `--subprocesses` for profiling
-        subprocesses = req.query.get("subprocesses", False) == "1"
+        # native/idle/subprocesses default to the operator-configured env vars
+        # (all off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        idle = _query_flag(req, "idle", RAY_DASHBOARD_PROFILING_IDLE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
         logger.info(
             f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
@@ -931,17 +982,24 @@ class ReportHead(SubprocessModule):
         ip_port = build_address(ip, grpc_port)
 
         try:
-            duration_s = int(req.query.get("duration", 10))
+            duration_s = _query_int(
+                req, "duration", RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT
+            )
         except ValueError:
             raise aiohttp.web.HTTPBadRequest(
                 text="duration query parameter must be an integer"
             )
 
-        # Default not using `--native`, `--leaks` and `--format` for profiling
-        format = req.query.get("format", "flamegraph")
-        native = req.query.get("native", False) == "1"
-        leaks = req.query.get("leaks", False) == "1"
-        trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
+        # format/native/leaks/trace_python_allocators default to the
+        # operator-configured env vars (unless overridden on the head node).
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT)
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        leaks = _query_flag(req, "leaks", RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT)
+        trace_python_allocators = _query_flag(
+            req,
+            "trace_python_allocators",
+            RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT,
+        )
 
         reporter_stub = self._make_stub(ip_port)
 

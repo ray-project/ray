@@ -34,6 +34,7 @@ from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
 )
+from ray.dashboard.modules.reporter.reporter_head import _query_flag, _query_int
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -1637,6 +1638,121 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
         recs, node_type, active=1, pending=2, failed=1, idle_expected=2
     )
     agent._get_cluster_stats_v2.assert_called_once()
+
+
+class _FakeRequest:
+    """Minimal stand-in for aiohttp.web.Request exposing only `.query`."""
+
+    def __init__(self, query):
+        self.query = query
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default (either value).
+        ({}, False, False),
+        ({}, True, True),
+        # Param present -> the explicit value wins, ignoring the default.
+        ({"native": "1"}, False, True),
+        ({"native": "0"}, True, False),
+        # Any non-"1" value is treated as False (matches prior behavior).
+        ({"native": "true"}, True, False),
+    ],
+)
+def test_query_flag(query, default, expected):
+    assert _query_flag(_FakeRequest(query), "native", default) is expected
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default.
+        ({}, 5, 5),
+        ({}, 10, 10),
+        # Param present -> parsed as int, ignoring the default.
+        ({"duration": "30"}, 5, 30),
+    ],
+)
+def test_query_int(query, default, expected):
+    assert _query_int(_FakeRequest(query), "duration", default) == expected
+
+
+def test_query_int_invalid_raises_value_error():
+    # A non-integer value raises ValueError, which the endpoints catch and turn
+    # into an HTTP 400. The helper itself must not swallow it.
+    with pytest.raises(ValueError):
+        _query_int(_FakeRequest({"duration": "abc"}), "duration", 5)
+
+
+@pytest.mark.parametrize(
+    "env_value, valid_formats, expected",
+    [
+        # Valid values pass through unchanged.
+        ("flamegraph", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("speedscope", ray_constants._VALID_CPU_PROFILING_FORMATS, "speedscope"),
+        ("table", ray_constants._VALID_MEMORY_PROFILING_FORMATS, "table"),
+        # Invalid values fall back to flamegraph.
+        ("bogus", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        # The valid sets differ by profiler: `speedscope` is a py-spy (CPU) format
+        # and must be rejected for memray (memory) profiling, and vice versa for
+        # `table`. This guards against a single shared format default.
+        ("speedscope", ray_constants._VALID_MEMORY_PROFILING_FORMATS, "flamegraph"),
+        ("table", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+    ],
+)
+def test_validated_profiling_format(monkeypatch, env_value, valid_formats, expected):
+    monkeypatch.setenv("RAY_TEST_PROFILING_FORMAT", env_value)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", valid_formats
+        )
+        == expected
+    )
+
+
+def test_validated_profiling_format_absent_uses_fallback(monkeypatch):
+    monkeypatch.delenv("RAY_TEST_PROFILING_FORMAT", raising=False)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", ray_constants._VALID_CPU_PROFILING_FORMATS
+        )
+        == "flamegraph"
+    )
+
+
+def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
+    """`/api/profiling_enabled` exposes the profiling defaults (camelCased)."""
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+    assert wait_until_server_available(webui_url)
+
+    def verify():
+        resp = requests.get(f"{webui_url}/api/profiling_enabled")
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        assert data["profilingEnabled"] is True
+        defaults = data["profilingDefaults"]
+        # snake_case keys are google-style-cased in the response.
+        for key in (
+            "native",
+            "subprocesses",
+            "idle",
+            "leaks",
+            "tracePythonAllocators",
+            "cpuDuration",
+            "memoryDuration",
+            "cpuFormat",
+            "memoryFormat",
+        ):
+            assert key in defaults, f"missing {key} in {defaults}"
+        # Spot-check defaults match the constants' shipped values.
+        assert defaults["cpuDuration"] == 5
+        assert defaults["memoryDuration"] == 10
+        assert defaults["cpuFormat"] == "flamegraph"
+        return True
+
+    wait_for_condition(verify, timeout=20)
 
 
 if __name__ == "__main__":
