@@ -8,6 +8,7 @@ from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock, patch
 
+import aiohttp
 import numpy as np
 import pytest
 import requests
@@ -34,7 +35,7 @@ from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
 )
-from ray.dashboard.modules.reporter.reporter_head import _query_flag, _query_int
+from ray.dashboard.modules.reporter.reporter_head import _query_duration, _query_flag
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -1670,19 +1671,32 @@ def test_query_flag(query, default, expected):
         # Param absent -> falls back to the configured default.
         ({}, 5, 5),
         ({}, 10, 10),
-        # Param present -> parsed as int, ignoring the default.
+        # Param present and in range -> parsed as int, ignoring the default.
         ({"duration": "30"}, 5, 30),
+        # Boundary values are accepted.
+        ({"duration": "1"}, 5, 1),
+        ({"duration": "60"}, 5, 60),
     ],
 )
-def test_query_int(query, default, expected):
-    assert _query_int(_FakeRequest(query), "duration", default) == expected
+def test_query_duration_valid(query, default, expected):
+    assert _query_duration(_FakeRequest(query), default) == expected
 
 
-def test_query_int_invalid_raises_value_error():
-    # A non-integer value raises ValueError, which the endpoints catch and turn
-    # into an HTTP 400. The helper itself must not swallow it.
-    with pytest.raises(ValueError):
-        _query_int(_FakeRequest({"duration": "abc"}), "duration", 5)
+@pytest.mark.parametrize(
+    "value",
+    [
+        "abc",  # not an integer
+        "0",  # below the minimum
+        "-5",  # negative
+        "61",  # above the maximum
+        "1000",  # far above the maximum
+    ],
+)
+def test_query_duration_invalid_raises_bad_request(value):
+    # Invalid or out-of-range durations must surface as HTTP 400, not a bare
+    # ValueError (which would become a 500).
+    with pytest.raises(aiohttp.web.HTTPBadRequest):
+        _query_duration(_FakeRequest({"duration": value}), 5)
 
 
 @pytest.mark.parametrize(

@@ -189,6 +189,12 @@ export const ProfilingParamsDialog = ({
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
+  // Duration must be an integer in [1, 60] (matches the backend validation).
+  // Only relevant when the dialog shows a duration field.
+  const durationInvalid =
+    duration !== undefined &&
+    (Number.isNaN(durationValue) || durationValue < 1 || durationValue > 60);
+
   return (
     <div>
       <Link
@@ -230,6 +236,10 @@ export const ProfilingParamsDialog = ({
                 type="number"
                 value={Number.isNaN(durationValue) ? "" : durationValue}
                 onChange={(e) => setDurationValue(parseInt(e.target.value, 10))}
+                error={durationInvalid}
+                helperText={
+                  durationInvalid ? "Duration must be between 1 and 60" : ""
+                }
                 required
               />
               <br />
@@ -280,18 +290,19 @@ export const ProfilingParamsDialog = ({
             variant="text"
             onClick={handleClose}
             style={{ textTransform: "capitalize" }}
+            // Render the button itself as the anchor rather than nesting a
+            // <Link> inside it (nesting interactive elements is invalid HTML).
+            component="a"
+            href={buildUrl({
+              duration: durationValue,
+              format: formatValue,
+              flags: flagValues,
+            })}
+            disabled={durationInvalid}
+            rel="noreferrer"
+            target="_blank"
           >
-            <Link
-              href={buildUrl({
-                duration: durationValue,
-                format: formatValue,
-                flags: flagValues,
-              })}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {submitLabel}
-            </Link>
+            {submitLabel}
           </Button>
         </Box>
       </Dialog>

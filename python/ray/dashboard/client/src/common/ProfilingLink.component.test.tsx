@@ -184,6 +184,24 @@ describe("CpuProfilingLink (worker)", () => {
         `&native=0&idle=1&subprocesses=0`,
     );
   });
+
+  it("disables submit and shows an error for an out-of-range duration", async () => {
+    // Seed an invalid duration (below the min of 1) so the dialog opens invalid.
+    mockProfiling(true, { cpuDuration: 0 });
+    const user = userEvent.setup();
+    render(<CpuProfilingLink pid={99} nodeId="n1" type="" />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await user.click(await screen.findByLabelText(/CPU Profiling Config/));
+    // Error helper text is shown.
+    expect(
+      await screen.findByText(/Duration must be between 1 and 60/),
+    ).toBeInTheDocument();
+    // The submit button (rendered as an anchor) is disabled.
+    const submit = screen.getByText(/Generate report/);
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+  });
 });
 
 describe("TaskCpuStackTraceLink", () => {

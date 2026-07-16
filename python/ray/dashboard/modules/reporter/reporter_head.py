@@ -79,10 +79,35 @@ def _query_flag(req: aiohttp.web.Request, name: str, default: bool) -> bool:
     return default if val is None else val == "1"
 
 
-def _query_int(req: aiohttp.web.Request, name: str, default: int) -> int:
-    """Parse an integer profiling query param, falling back to ``default`` when absent."""
-    val = req.query.get(name)
-    return default if val is None else int(val)
+# Bounds for the profiling `duration` query parameter (seconds).
+MIN_PROFILING_DURATION_S = 1
+MAX_PROFILING_DURATION_S = 60
+
+
+def _query_duration(req: aiohttp.web.Request, default: int) -> int:
+    """Parse and validate the profiling ``duration`` query param (seconds).
+
+    Falls back to ``default`` when the param is absent. Raises
+    ``aiohttp.web.HTTPBadRequest`` (HTTP 400) if the value is not an integer or
+    is outside ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    """
+    val = req.query.get("duration")
+    if val is None:
+        return default
+    try:
+        duration_s = int(val)
+    except ValueError:
+        raise aiohttp.web.HTTPBadRequest(
+            text="duration query parameter must be an integer"
+        )
+    if not MIN_PROFILING_DURATION_S <= duration_s <= MAX_PROFILING_DURATION_S:
+        raise aiohttp.web.HTTPBadRequest(
+            text=(
+                f"duration must be between {MIN_PROFILING_DURATION_S} and "
+                f"{MAX_PROFILING_DURATION_S} seconds, got: {duration_s}"
+            )
+        )
+    return duration_s
 
 
 class ReportHead(SubprocessModule):
@@ -423,16 +448,7 @@ class ReportHead(SubprocessModule):
         attempt_number = req.query.get("attempt_number")
         node_id_hex = req.query.get("node_id")
 
-        try:
-            duration_s = _query_int(
-                req, "duration", RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT
-            )
-        except ValueError:
-            raise aiohttp.web.HTTPBadRequest(
-                text="duration query parameter must be an integer"
-            )
-        if duration_s > 60:
-            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
+        duration_s = _query_duration(req, RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT)
         format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
         # native/idle/subprocesses default to the operator-configured env vars
@@ -632,16 +648,7 @@ class ReportHead(SubprocessModule):
             pid = int(pid)
         except ValueError:
             raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
-        try:
-            duration_s = _query_int(
-                req, "duration", RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT
-            )
-        except ValueError:
-            raise aiohttp.web.HTTPBadRequest(
-                text="duration query parameter must be an integer"
-            )
-        if duration_s > 60:
-            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
+        duration_s = _query_duration(req, RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT)
         format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
         # native/idle/subprocesses default to the operator-configured env vars
@@ -981,14 +988,9 @@ class ReportHead(SubprocessModule):
         assert pid is not None
         ip_port = build_address(ip, grpc_port)
 
-        try:
-            duration_s = _query_int(
-                req, "duration", RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT
-            )
-        except ValueError:
-            raise aiohttp.web.HTTPBadRequest(
-                text="duration query parameter must be an integer"
-            )
+        duration_s = _query_duration(
+            req, RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT
+        )
 
         # format/native/leaks/trace_python_allocators default to the
         # operator-configured env vars (unless overridden on the head node).
