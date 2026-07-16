@@ -3191,6 +3191,61 @@ TEST_F(TaskManagerTest,
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadIgnoresLateReportPastEof) {
+  // Bulk consume can advance next_index_ past end_of_stream_index_ for peeked
+  // EOF-region refs. A delayed/duplicate report at or after EOF must be
+  // ignored without aborting the owner (InsertToStream used to RAY_CHECK that
+  // next_index_ <= end_of_stream_index_).
+  TaskSpecification spec = CreateTaskHelper(1,
+                                            {},
+                                            /*dynamic_returns=*/true,
+                                            /*is_streaming_generator=*/true);
+  const ObjectID generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  const ObjectID value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req =
+      GetIntermediateTaskReturn(/*idx*/ 0,
+                                /*finished*/ false,
+                                generator_id,
+                                /*dynamic_return_id*/ value_id,
+                                /*data*/ data,
+                                /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  // Peek past EOF so the bulk path can consume an EOF-region ref, then finish
+  // the generator (EOF at index 1).
+  ASSERT_EQ(manager_.PeekObjectRefStreamN(generator_id, 2).size(), 2UL);
+  CompletePendingStreamingTask(spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  // Cursor advances to 2 while EOF is at 1.
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+
+  // Late report for the EOF index must be ignored, not crash.
+  const ObjectID eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(/*idx*/ 1,
+                                  /*finished*/ false,
+                                  generator_id,
+                                  /*dynamic_return_id*/ eof_id,
+                                  /*data*/ data,
+                                  /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status) {
+        signal_called = true;
+        ASSERT_TRUE(callback_status.ok());
+      }));
+  ASSERT_TRUE(signal_called);
+
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadCountsOutOfOrderRefsForBackpressure) {
   // The last ref can be reported before earlier refs. Bulk consumption advances
   // the logical stream cursor, so backpressure must advance by the whole batch,

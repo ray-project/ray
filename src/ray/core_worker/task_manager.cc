@@ -272,12 +272,12 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
   RAY_CHECK_EQ(object_id, GetObjectRefAtIndex(item_index));
   if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
-    RAY_CHECK(next_index_ <= end_of_stream_index_);
-    // Ignore the index after the end of the stream index.
-    // It can happen if the stream is marked as ended
-    // and a new item is written. E.g., Report RPC sent ->
-    // worker crashes -> worker crash detected (task failed)
-    // -> report RPC received.
+    // Ignore indexes at or after EOF. This can happen if the stream is marked
+    // ended and a late/duplicate report arrives, e.g. Report RPC sent ->
+    // worker crashes -> worker crash detected (task failed) -> report RPC
+    // received. Bulk consumers may already have advanced next_index_ past
+    // end_of_stream_index_ for peeked EOF-region refs, so do not assert on
+    // the cursor here.
     return false;
   }
 
