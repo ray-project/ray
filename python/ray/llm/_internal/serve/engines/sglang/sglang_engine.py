@@ -10,6 +10,7 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 
 import copy
 import json
+import logging
 import signal
 import time
 import uuid
@@ -24,6 +25,7 @@ from typing import (
 
 from pydantic import BaseModel
 
+import ray
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -41,6 +43,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+
+logger = logging.getLogger(__name__)
 
 
 class SGLangPauseConfig(BaseModel):
@@ -99,6 +103,15 @@ class SGLangServer:
                 "dependencies."
             ) from e
 
+        engine_kwargs = dict(self.engine_kwargs)
+
+        # Route SGLang engine metrics through Ray's metric agent (Ray's
+        # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
+        # actors and auto-wires the Ray-backed stat_loggers when enable_metrics
+        # is set, matching vLLM's single-flag behaviour.
+        if self._llm_config.log_engine_metrics:
+            engine_kwargs["enable_metrics"] = True
+
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
         original_signal_func = signal.signal
@@ -110,7 +123,7 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = Engine(**self.engine_kwargs)
+            self.engine = Engine(**engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -243,6 +256,14 @@ class SGLangServer:
         # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
         # this integration does not run. Keep the protocol hook as a no-op.
         return
+
+    async def stop(self) -> None:
+        # Lifecycle hook for replica teardown. Shut the engine down explicitly so
+        # RayEngine's scheduler actors (which hold GPUs) are killed on replica
+        # teardown rather than leaked until the atexit handler fires.
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            engine.shutdown()
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
@@ -629,20 +650,12 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            # RayEngine spawns all tp/pp SchedulerActors onto a single bundle
-            # per node (it indexes the PG with `bundle_for_node[node_idx]` and
-            # reuses that same bundle_idx for every rank on that node). Default
-            # to one bundle with all local GPUs; multi-node deployments must
-            # provide an explicit placement_group_config with one bundle per
-            # node (each containing that node's share of GPUs).
+            # RayEngine assigns tp/pp ranks to bundles by node index, so all
+            # local GPUs go in one node-sized bundle (see ray-project/ray#62888).
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
                 "GPU": num_devices,
             }
-
-            if ray_actor_options.get("num_gpus"):
-                replica_bundle["GPU"] += ray_actor_options["num_gpus"]
-
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
