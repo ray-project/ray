@@ -94,15 +94,22 @@ class UnBatchToIndividualItems(ConnectorV2):
                                 "shared_data['vector_env_episodes_map'] for a missing ",
                                 "mapping.",
                             )
-                        # If an episode has not just started and the agent's episode
-                        # is done do not return data.
-                        # This should not be `True` for new `MultiAgentEpisode`s.
-                        if (
-                            episode.agent_episodes
-                            and episode.agent_episodes[agent_id].is_done
-                            and not episode.is_done
-                        ):
-                            continue
+                        # If an episode has not just started, do not return an action
+                        # to `env.step()` for an agent whose `SingleAgentEpisode` is
+                        # already done (terminated/truncated) or is no longer part of
+                        # this episode. Neither should be the case for a freshly reset
+                        # `MultiAgentEpisode` (hence the `not episode.is_done` guard).
+                        if episode.agent_episodes and not episode.is_done:
+                            # `sa_episode` is None when `agent_id` is no longer in
+                            # `episode.agent_episodes`. This happens when the agent
+                            # terminated exactly at a `truncate_episodes` rollout
+                            # boundary: `MultiAgentEpisode.cut()` drops the just-done
+                            # agent from the continuation chunk, yet the cached
+                            # `memorized_map_structure` (built before the cut) still
+                            # references it. See issue #61602.
+                            sa_episode = episode.agent_episodes.get(agent_id)
+                            if sa_episode is None or sa_episode.is_done:
+                                continue
 
                         new_column_data[key].append(column_data[i])
                     module_data[column] = dict(new_column_data)
