@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
 _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
+# Largest integer magnitude float64 can represent exactly. Beyond this, integers
+# are not uniquely representable, so an "integral" float may not equal the
+# intended value.
+FLOAT64_MAX_INTEGER_VALUE = 2**53
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,99 @@ def lazy_import_pandas():
 
         _pandas = pandas
     return _pandas
+
+
+def _reconcile_arrow_backed_int_float_columns(
+    tables: List["pandas.DataFrame"],
+) -> List["pandas.DataFrame"]:
+    """Reconcile columns typed integer in some blocks and float in others.
+
+    Per-block pyarrow inference can type the same column as ``int64`` in some
+    blocks and ``double`` in others (e.g. a block whose values are all null infers
+    ``double``). ``pandas.concat`` then promotes to ``double`` with a *checked*
+    cast, which raises ``ArrowInvalid`` for ``int64`` values above ``2**53``. When
+    the float-typed blocks hold only null / integral values, cast them back to the
+    integer type so the concat stays lossless and cannot overflow. Blocks with
+    genuine fractional values are left untouched (pandas promotes as usual).
+
+    Reconciliation only happens when it is provably lossless (integral values
+    within both ``+-2**53`` and the target integer type's range). When it is not
+    lossless — e.g. a column mixes true ``int64`` values above ``2**53`` with
+    fractional float values — the blocks are left as-is and the subsequent
+    ``pandas.concat`` still raises ``ArrowInvalid`` on the checked ``int64`` ->
+    ``double`` promotion, exactly as before.
+
+    Only affects Arrow-backed (``pd.ArrowDtype``) columns; a no-op otherwise.
+    See https://github.com/ray-project/ray/issues/64765.
+    """
+    import pyarrow as pa
+
+    pandas = lazy_import_pandas()
+    if len(tables) < 2:
+        return tables
+
+    common_columns = set(tables[0].columns)
+    for table in tables[1:]:
+        common_columns &= set(table.columns)
+
+    # column -> integer ArrowDtype to cast the float-typed blocks to.
+    casts = {}
+    for column in common_columns:
+        dtypes = [table[column].dtype for table in tables]
+        if not all(isinstance(dtype, pandas.ArrowDtype) for dtype in dtypes):
+            continue
+        arrow_types = [dtype.pyarrow_dtype for dtype in dtypes]
+        int_types = [t for t in arrow_types if pa.types.is_integer(t)]
+        float_columns = [
+            table[column]
+            for table in tables
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        ]
+        if not int_types or not float_columns:
+            continue
+        # Downcast the float blocks to the widest integer type present among the
+        # int blocks, but only when every non-null float value can be recovered
+        # exactly as that integer type. A value must be:
+        #   - integral, and
+        #   - within +-2**53 (beyond that float64 cannot represent every integer,
+        #     so an "integral" float may not equal the intended value), and
+        #   - within the target type's range (bit width and signedness), so the
+        #     cast cannot overflow, wrap, or produce an invalid value.
+        # Otherwise leave the blocks for pandas' usual (float) promotion.
+        target_type = max(int_types, key=lambda t: t.bit_width)
+        if pa.types.is_unsigned_integer(target_type):
+            type_min, type_max = 0, 2**target_type.bit_width - 1
+        else:
+            type_min = -(2 ** (target_type.bit_width - 1))
+            type_max = 2 ** (target_type.bit_width - 1) - 1
+        lo = max(type_min, -FLOAT64_MAX_INTEGER_VALUE)
+        hi = min(type_max, FLOAT64_MAX_INTEGER_VALUE)
+        lossless = True
+        for column_values in float_columns:
+            non_null = column_values.dropna()
+            if non_null.empty:
+                continue
+            values = non_null.to_numpy(dtype="float64", na_value=np.nan)
+            is_integral = np.mod(values, 1) == 0
+            in_range = (values >= lo) & (values <= hi)
+            if not np.all(is_integral & in_range):
+                lossless = False
+                break
+        if lossless:
+            casts[column] = pandas.ArrowDtype(target_type)
+
+    if not casts:
+        return tables
+
+    reconciled = []
+    for table in tables:
+        replace = {
+            column: table[column].astype(target)
+            for column, target in casts.items()
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        }
+        reconciled.append(table.assign(**replace) if replace else table)
+    return reconciled
 
 
 def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
@@ -361,6 +458,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
         if len(tables) > 1:
+            tables = _reconcile_arrow_backed_int_float_columns(tables)
             df = pandas.concat(tables, ignore_index=True)
             df.reset_index(drop=True, inplace=True)
         else:

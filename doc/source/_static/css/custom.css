@@ -246,6 +246,11 @@ li.active-link {
 /* Ray logo */
 .navbar-brand.logo > svg {
   width: 120px;
+  /* The SVG ships with width="400" height="201"; without an explicit height here
+     the box keeps the 201px attribute height while only the width is overridden,
+     leaving ~140px of empty clickable logo box overhanging the sidebar (it steals
+     the first API nav link's clicks). height:auto scales height from the viewBox. */
+  height: auto;
 }
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);

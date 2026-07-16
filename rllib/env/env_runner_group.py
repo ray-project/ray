@@ -192,6 +192,12 @@ class EnvRunnerGroup:
             init_id=1,
         )
 
+        # Total number of remote EnvRunner responses dropped due to a
+        # `timeout_seconds`-bounded `foreach_env_runner` call (typically
+        # `sample_timeout_s` during synchronous sampling). This counter is
+        # cumulative over the lifetime of the group.
+        self._num_env_runners_dropped_lifetime: int = 0
+
         if _setup:
             try:
                 self._setup(
@@ -500,6 +506,13 @@ class EnvRunnerGroup:
         # Add the model weights (a `ray.ObjectRef`) and `WEIGHTS_SEQ_NO` (= version).
         env_runner_states.update(rl_module_state)
         return env_runner_states
+
+    def num_env_runners_dropped_lifetime(self) -> int:
+        """Cumulative count of remote EnvRunner responses dropped due to a
+        positive ``timeout_seconds``-bounded :py:meth:`foreach_env_runner`
+        call.
+        """
+        return self._num_env_runners_dropped_lifetime
 
     def sync_env_runner_states(
         self,
@@ -954,6 +967,19 @@ class EnvRunnerGroup:
         if not self._worker_manager.actor_ids():
             return local_result
 
+        # Snapshot the dispatch size so we can detect EnvRunners dropped due
+        # to a timeout (see ``num_env_runners_dropped_lifetime``).
+        num_dispatched: Optional[int] = None
+        if timeout_seconds is not None and timeout_seconds > 0:
+            if healthy_only:
+                candidate_ids = self._worker_manager.healthy_actor_ids()
+            else:
+                candidate_ids = self._worker_manager.actor_ids()
+            if remote_worker_ids is not None:
+                requested = set(remote_worker_ids)
+                candidate_ids = [i for i in candidate_ids if i in requested]
+            num_dispatched = len(candidate_ids)
+
         remote_results = self._worker_manager.foreach_actor(
             func,
             kwargs=kwargs,
@@ -967,6 +993,12 @@ class EnvRunnerGroup:
         FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
         )
+
+        if num_dispatched is not None:
+            num_responses_received = len(remote_results)
+            dropped = num_dispatched - num_responses_received
+            if dropped > 0:
+                self._num_env_runners_dropped_lifetime += dropped
 
         # With application errors handled, return good results.
         remote_results = [r.get() for r in remote_results.ignore_errors()]

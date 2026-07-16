@@ -44,3 +44,19 @@ zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting 
 # stay gated to py3.11+, otherwise the py3.10 data locks can't resolve zarr.
 numcodecs==0.15.1 ; python_version >= '3.11'
 numcodecs==0.13.1 ; python_version < '3.11'
+
+# lerobot v3 datasource (ray.data.read_lerobot). lerobot >=0.5 requires
+# Python >=3.12, so gate the whole stack -- including its torchcodec video
+# decoder and the av writer the tests use -- behind that marker. The data
+# locks compile for py3.10/3.11/3.12; only the 3.12 lock picks these up.
+# Cap <0.6: lerobot 0.6.0's datasets/pyav_utils.py reads `av.option` at import
+# time, which our pinned av (18.x) does not expose, so 0.6.0 fails to import
+# against Ray's av. The 0.5.x line (what the datasource is built and tested
+# against) decodes via torchcodec and imports cleanly.
+lerobot>=0.5.0,<0.6; python_version >= "3.12"
+# torchcodec 0.10.0 is built for torch 2.10 (its libtorchcodec fails to load
+# against our pinned torch 2.9.0 with a c10 ABI symbol error); cap to the 0.9.x
+# line, which lerobot 0.5.1 allows (torchcodec>=0.3,<0.11) and which loads on
+# torch 2.9.
+torchcodec<0.10; python_version >= "3.12"
+av; python_version >= "3.12"
