@@ -71,6 +71,10 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION = env_bool(
+    "RAY_DATA_ENABLE_ARROW_BACKED_PANDAS_CONVERSION", True
+)
+
 DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
     "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
 )
@@ -682,6 +686,12 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        enable_arrow_backed_pandas_conversion: Whether ``BlockAccessor.to_pandas``
+            maps standard Arrow types to pandas Arrow-backed dtypes
+            (``pd.ArrowDtype``). When ``False``, standard Arrow types convert to
+            numpy dtypes (the pre-2.56 behavior). Set to ``False`` if pandas UDFs
+            assign multi-dimensional arrays into columns or rely on numpy-only
+            operations (e.g. ``%``) that Arrow-backed columns do not implement.
         batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
@@ -891,6 +901,10 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    enable_arrow_backed_pandas_conversion: bool = (
+        DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION
+    )
 
     batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
 
