@@ -11,7 +11,6 @@ py_binary(
     name = "cmd_check_api_param_coverage",
     srcs = ["cmd_check_api_param_coverage.py"],
     deps = [
-        ci_require("click"),
         ":doc",
     ],
 )

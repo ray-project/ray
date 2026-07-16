@@ -1,9 +1,8 @@
+import argparse
 import os
 import subprocess
 import sys
 from typing import Dict, List, Optional, Tuple
-
-import click
 
 from ci.ray_ci.doc.api_param_coverage import (
     Violation,
@@ -151,30 +150,48 @@ def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], 
     return violations, base
 
 
-@click.command()
-@click.argument("ray_checkout_dir", required=True, type=str)
-@click.option(
-    "--base-ref",
-    default="origin/master",
-    show_default=True,
-    help="Git ref for the pull-request base branch.",
-)
-@click.option(
-    "--blocking/--no-blocking",
-    default=False,
-    show_default=True,
-    help=(
-        "Exit non-zero on violations. Starts non-blocking (warn only) so the "
-        "false-positive rate can be confirmed before the check becomes required."
-    ),
-)
-def main(ray_checkout_dir: str, base_ref: str, blocking: bool) -> None:
+def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse the command line.
+
+    Uses the standard library only: this check runs in the plain lint container,
+    which has no third-party dependencies installed.
     """
-    Fail a pull request that adds a new @PublicAPI callable, or a new parameter
-    on an existing one, without a docstring Args: entry. Pre-existing gaps are
-    grandfathered; only newly-undocumented params on the changed public surface
-    are reported. Static: parses source, no Ray build or import needed.
-    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Fail a pull request that adds a new @PublicAPI callable, or a new "
+            "parameter on an existing one, without a docstring Args: entry. "
+            "Pre-existing gaps are grandfathered; only newly-undocumented params "
+            "on the changed public surface are reported. Static: parses source, "
+            "no Ray build or import needed."
+        )
+    )
+    parser.add_argument(
+        "ray_checkout_dir",
+        help="Path to the Ray checkout to scan.",
+    )
+    parser.add_argument(
+        "--base-ref",
+        default="origin/master",
+        help="Git ref for the pull-request base branch. (default: origin/master)",
+    )
+    parser.add_argument(
+        "--blocking",
+        action="store_true",
+        help=(
+            "Exit non-zero on violations. Off by default (warn only) so the "
+            "false-positive rate can be confirmed before the check becomes "
+            "required."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    args = _parse_args(argv)
+    ray_checkout_dir = args.ray_checkout_dir
+    base_ref = args.base_ref
+    blocking = args.blocking
+
     try:
         violations, base = find_violations(ray_checkout_dir, base_ref)
     except RuntimeError as e:

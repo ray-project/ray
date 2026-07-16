@@ -41,7 +41,7 @@ def test_documented_params_reads_args_block():
 
         Args:
             a: the a.
-            b (int): the b.
+            b (int): the b.  # noqa: this typed arg is intentional test data
 
         Returns:
             nothing.
