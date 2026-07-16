@@ -258,24 +258,37 @@ def _get_read_task(
     def _generate_tables() -> Iterable[pa.Table]:
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
-            from pyiceberg.io.pyarrow import ArrowScan
+            from pyiceberg.io.pyarrow import ArrowScan, schema_to_pyarrow
 
-            # Initialize scanner with Iceberg metadata and query parameters
-            scanner = ArrowScan(
-                table_metadata=table_metadata,
-                io=table_io,
-                row_filter=row_filter,
-                projected_schema=schema,
-                case_sensitive=case_sensitive,
-                limit=limit,
-            )
+            def _create_scanner(scan_limit: Optional[int]) -> ArrowScan:
+                return ArrowScan(
+                    table_metadata=table_metadata,
+                    io=table_io,
+                    row_filter=row_filter,
+                    projected_schema=schema,
+                    case_sensitive=case_sensitive,
+                    limit=scan_limit,
+                )
 
-            # Convert scanned data to Arrow Table format
-            result_table = scanner.to_table(tasks=tasks)
+            target_schema = schema_to_pyarrow(schema, include_field_ids=False)
+            rows_remaining = limit
+            scanner = _create_scanner(None) if rows_remaining is None else None
+            for task in tasks:
+                if rows_remaining is not None and rows_remaining <= 0:
+                    break
 
-            # Stream results as RecordBatches for memory efficiency
-            for batch in result_table.to_batches():
-                yield pa.Table.from_batches([batch])
+                # Scan one file at a time. ArrowScan.to_record_batches() materializes
+                # all batches for each FileScanTask in its thread pool, so passing the
+                # full task chunk can retain several files before yielding any output.
+                # Singleton calls can reread delete files shared by multiple data
+                # files, but avoid relying on PyIceberg's private scan APIs.
+                if rows_remaining is not None:
+                    scanner = _create_scanner(rows_remaining)
+                assert scanner is not None
+                for batch in scanner.to_record_batches(tasks=(task,)):
+                    if rows_remaining is not None:
+                        rows_remaining -= len(batch)
+                    yield pa.Table.from_batches([batch.cast(target_schema)])
 
         else:
             # Legacy implementation using project_table (PyIceberg <0.9.0)
