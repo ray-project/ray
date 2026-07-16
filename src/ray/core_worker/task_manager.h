@@ -830,27 +830,30 @@ class TaskManager : public TaskManagerInterface {
       std::optional<int32_t> attempt_number = std::nullopt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Mark the stream is ended.
-  /// The EOF-region refs are materialized with the terminal error recorded for
-  /// the stream: END_OF_STREAMING_GENERATOR for clean completion, or the real
-  /// failure for cancellation / actor death / worker death.
-  ///
-  /// \param generator_id The object ref id of the streaming
-  /// generator task.
-  /// \param end_of_stream_index The index of the end of the stream.
-  /// If -1 is specified, it will mark the current last index as end of stream.
-  /// this should be used when a task fails (which means we know the task won't
-  /// report any more generator return values).
-  /// \param error_type The terminal error to write to the EOF-region objects
-  /// (the sentinel and any refs peeked past EOF). Defaults to
-  /// END_OF_STREAMING_GENERATOR for a clean completion; failure paths pass the
-  /// real error (TASK_CANCELLED, ACTOR_DIED, ...) so an eager consumer that
-  /// waits on a not-yet-produced ref surfaces the real reason. Recorded once
-  /// (first-writer-wins), so the first path to end the stream determines it.
-  /// \param error_info Optional rich error info for error_type. May be nullptr.
-  /// \param error_return_object Optional inlined generator completion error to
-  /// copy to EOF-region refs. Used only when task failure produced no stream
-  /// item, so eagerly peeked refs retain the task's serialized exception.
+  /**
+   * Mark the stream is ended.
+   *
+   * The EOF-region refs are materialized with the terminal error recorded for
+   * the stream: END_OF_STREAMING_GENERATOR for clean completion, or the real
+   * failure for cancellation / actor death / worker death.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] end_of_stream_index The index of the end of the stream. If -1 is
+   * specified, it will mark the current last index as end of stream. This
+   * should be used when a task fails (which means we know the task won't report
+   * any more generator return values).
+   * \param[in] error_type The terminal error to write to the EOF-region objects
+   * (the sentinel and any refs peeked past EOF). Defaults to
+   * END_OF_STREAMING_GENERATOR for a clean completion; failure paths pass the
+   * real error (TASK_CANCELLED, ACTOR_DIED, ...) so an eager consumer that waits
+   * on a not-yet-produced ref surfaces the real reason. Recorded once
+   * (first-writer-wins), so the first path to end the stream determines it.
+   * \param[in] error_info Optional rich error info for error_type. May be
+   * nullptr.
+   * \param[in] error_return_object Optional inlined generator completion error
+   * to copy to EOF-region refs. Used only when task failure produced no stream
+   * item, so eagerly peeked refs retain the task's serialized exception.
+   */
   void MarkEndOfStream(
       const ObjectID &generator_id,
       int64_t end_of_stream_index,

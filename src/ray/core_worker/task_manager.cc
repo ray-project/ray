@@ -174,11 +174,13 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items,
         generator_id_.Hex()));
   }
 
-  // Before EOF, cursor progress is generated progress even when reports arrive
-  // out of order. After EOF, only indexes before the EOF sentinel count, except
-  // when cancellation raced with a report that populated the sentinel index.
-  // That collision is a real generated value, while later EOF-region refs are
-  // synthetic errors and must not count toward backpressure.
+  // Backpressure tracks generated items, not cursor distance. Before EOF every
+  // advanced index is a generated item (even if reports arrived out of order).
+  // After EOF, later EOF-region refs are synthetic errors, so only indexes
+  // before the sentinel count — except when cancellation sets EOF at an index
+  // that a generator report also wrote a real value into; that real value must
+  // still count. Therefore num_generated_items_consumed may be less than
+  // num_items when this call advances past EOF.
   int64_t num_generated_items_consumed = num_items;
   if (end_of_stream_index_ != -1) {
     const int64_t remaining_generated_items =
@@ -911,7 +913,6 @@ std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
 
   // Temporarily own refs since the corresponding references are probably
   // not reported yet.
-  //
   for (const std::pair<ObjectID, bool> &result : results) {
     TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
                                                      generator_id);
