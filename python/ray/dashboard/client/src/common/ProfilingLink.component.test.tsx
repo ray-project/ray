@@ -3,7 +3,43 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import "@testing-library/jest-dom";
 import { TEST_APP_WRAPPER } from "../util/test-utils";
-import { ProfilerButton } from "./ProfilingLink";
+import {
+  __resetProfilingCacheForTest,
+  CpuProfilingLink,
+  CpuStackTraceLink,
+  DEFAULT_PROFILING_DEFAULTS,
+  ProfilerButton,
+  ProfilingDefaults,
+  TaskCpuStackTraceLink,
+} from "./ProfilingLink";
+
+// The link components (unlike ProfilerButton) fetch /api/profiling_enabled to
+// decide whether profiling is on and to seed their dialog defaults. Mock fetch
+// so those tests are deterministic, and clear ProfilingLink's module-level fetch
+// cache so each test controls the response independently.
+const mockProfiling = (
+  enabled: boolean,
+  defaults: Partial<ProfilingDefaults> = {},
+) => {
+  __resetProfilingCacheForTest();
+  (global as any).fetch = jest.fn(() =>
+    Promise.resolve({
+      json: () =>
+        Promise.resolve({
+          data: {
+            profilingEnabled: enabled,
+            profilingDefaults: defaults,
+          },
+        }),
+    }),
+  );
+};
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete (global as any).fetch;
+  __resetProfilingCacheForTest();
+});
 
 describe("ProfilerButton", () => {
   const mockProps = {
@@ -55,8 +91,10 @@ describe("ProfilerButton", () => {
     });
   });
 
-  it('selects "flamegraph" as the default format', async () => {
+  it("builds the memory profiling URL from the default params", async () => {
     const user = userEvent.setup();
+    // No `defaults` prop -> falls back to DEFAULT_PROFILING_DEFAULTS
+    // (memoryDuration=10, leaks on, native off, allocators off, flamegraph).
     render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
     await user.click(button);
@@ -65,7 +103,103 @@ describe("ProfilerButton", () => {
     expect(formatSelect).toBeInTheDocument();
     expect(screen.getByText(/Generate report/)).toHaveAttribute(
       "href",
-      `${mockProps.profilerUrl}&format=flamegraph&duration=5&leaks=1&native=0&trace_python_allocators=0`,
+      `${mockProps.profilerUrl}&format=flamegraph&duration=${DEFAULT_PROFILING_DEFAULTS.memoryDuration}` +
+        `&leaks=1&native=0&trace_python_allocators=0`,
+    );
+  });
+
+  it("seeds the dialog from the provided defaults", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProfilerButton
+        {...mockProps}
+        defaults={{
+          ...DEFAULT_PROFILING_DEFAULTS,
+          native: true,
+          leaks: false,
+          memoryDuration: 30,
+          memoryFormat: "table",
+        }}
+      />,
+      { wrapper: TEST_APP_WRAPPER },
+    );
+    await user.click(screen.getByLabelText(/Memory Profiling/));
+
+    expect(screen.getByText(/Generate report/)).toHaveAttribute(
+      "href",
+      `${mockProps.profilerUrl}&format=table&duration=30` +
+        `&leaks=0&native=1&trace_python_allocators=0`,
+    );
+  });
+});
+
+describe("CpuStackTraceLink (worker)", () => {
+  const props = { pid: 1234, nodeId: "node-abc", type: "" };
+
+  it("does not send a hardcoded native=0 and reflects the default", async () => {
+    mockProfiling(true, { native: true });
+    const user = userEvent.setup();
+    render(<CpuStackTraceLink {...props} />, { wrapper: TEST_APP_WRAPPER });
+
+    // Wait for the profiling-enabled fetch to flip the link on, then open the
+    // dialog. The trigger is the anchor labelled with the dialog title.
+    const trigger = await screen.findByLabelText(/Stack Trace Config/);
+    await user.click(trigger);
+
+    const link = await screen.findByText(/Get stack trace/);
+    const href = link.getAttribute("href");
+    // Native default is true here, so it must serialize as native=1 -- and there
+    // must never be a stray hardcoded native=0.
+    expect(href).toBe(
+      `worker/traceback?pid=1234&node_id=node-abc&native=1&subprocesses=0`,
+    );
+    expect(href).not.toContain("native=0");
+  });
+
+  it("shows a disabled label when profiling is off", async () => {
+    mockProfiling(false);
+    render(<CpuStackTraceLink {...props} />, { wrapper: TEST_APP_WRAPPER });
+    // Disabled label renders as plain (non-link) text.
+    expect(await screen.findByText(/Stack Trace/)).toBeInTheDocument();
+    expect(screen.queryByText(/Get stack trace/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CpuProfilingLink (worker)", () => {
+  it("builds a cpu_profile URL with duration, format, and flags", async () => {
+    mockProfiling(true, {
+      cpuDuration: 7,
+      cpuFormat: "speedscope",
+      idle: true,
+    });
+    const user = userEvent.setup();
+    render(<CpuProfilingLink pid={99} nodeId="n1" type="" />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await user.click(await screen.findByLabelText(/CPU Profiling Config/));
+    const link = await screen.findByText(/Generate report/);
+    expect(link.getAttribute("href")).toBe(
+      `worker/cpu_profile?pid=99&node_id=n1&duration=7&format=speedscope` +
+        `&native=0&idle=1&subprocesses=0`,
+    );
+  });
+});
+
+describe("TaskCpuStackTraceLink", () => {
+  it("builds a task/traceback URL and reflects defaults", async () => {
+    mockProfiling(true, { subprocesses: true });
+    const user = userEvent.setup();
+    render(
+      <TaskCpuStackTraceLink taskId="t1" attemptNumber={0} nodeId="n2" />,
+      { wrapper: TEST_APP_WRAPPER },
+    );
+
+    await user.click(await screen.findByLabelText(/Stack Trace Config/));
+    const link = await screen.findByText(/Get stack trace/);
+    expect(link.getAttribute("href")).toBe(
+      `task/traceback?task_id=t1&attempt_number=0&node_id=n2` +
+        `&native=0&subprocesses=1`,
     );
   });
 });
