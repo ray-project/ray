@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    VLLMConnectorBackend,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
-class MultiConnectorBackend(BaseConnectorBackend):
+class MultiConnectorBackend(VLLMConnectorBackend):
     """Wraps multiple sub-connectors.
 
     The P/D protocol (``prepare_prefill_request`` / ``prepare_decode_request`` and

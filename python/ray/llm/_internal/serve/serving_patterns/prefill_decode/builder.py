@@ -166,13 +166,100 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _validate_kv_transfer_config(self):
-        """Validate that kv_transfer_config is set for both prefill and decode configs."""
+    def _validate_same_engine(self):
+        """Prefill and decode must use the same ``llm_engine``.
+
+        The decode orchestrator drives both sides through one connector protocol;
+        a mixed pair (e.g. prefill vLLM + decode SGLang) passes the per-side
+        transfer checks but has no compatible P/D wiring and fails at runtime.
+        Reject it up front.
+        """
+        if self.prefill_config.llm_engine != self.decode_config.llm_engine:
+            raise ValueError(
+                "P/D prefill and decode must use the same llm_engine "
+                f"(got prefill={self.prefill_config.llm_engine!r}, "
+                f"decode={self.decode_config.llm_engine!r})."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_transfer_config(self):
+        """Each engine needs its own PD transfer config.
+
+        vLLM requires ``kv_transfer_config``; SGLang requires
+        ``disaggregation_transfer_backend``.
+        """
         for config in [self.prefill_config, self.decode_config]:
-            if config.engine_kwargs.get("kv_transfer_config") is None:
+            if config.llm_engine == "SGLang":
+                if not config.engine_kwargs.get("disaggregation_transfer_backend"):
+                    raise ValueError(
+                        "disaggregation_transfer_backend is required for SGLang "
+                        "P/D disaggregation"
+                    )
+            elif config.engine_kwargs.get("kv_transfer_config") is None:
                 raise ValueError(
                     "kv_transfer_config is required for P/D disaggregation"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_sglang_data_parallel(self):
+        """SGLang P/D with data_parallel_size>1 is not supported yet.
+
+        DP P/D uses DPPD{Prefill,Decode}Server, whose gang scheduling comes from
+        DPServer.get_deployment_options / __init__ — both read engine-config
+        fields (accelerator, placement_bundles) the minimal SGLangEngineConfig
+        does not carry. Rather than silently drop gang scheduling, fail fast.
+        Tracked as a follow-up (see RFC "Out of Scope").
+        """
+        for label, config in (
+            ("prefill_config", self.prefill_config),
+            ("decode_config", self.decode_config),
+        ):
+            if config.llm_engine != "SGLang":
+                continue
+            dp_size = config.engine_kwargs.get("data_parallel_size", 1)
+            if isinstance(dp_size, int) and dp_size > 1:
+                raise NotImplementedError(
+                    f"SGLang P/D disaggregation does not support "
+                    f"data_parallel_size>1 yet (got {dp_size} on {label}). "
+                    "Use data_parallel_size=1."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _set_sglang_disaggregation_mode(self):
+        """Auto-set disaggregation_mode so users never set it by hand."""
+        if self.prefill_config.llm_engine == "SGLang":
+            self.prefill_config.engine_kwargs.setdefault(
+                "disaggregation_mode", "prefill"
+            )
+        if self.decode_config.llm_engine == "SGLang":
+            self.decode_config.engine_kwargs.setdefault("disaggregation_mode", "decode")
+        return self
+
+    @model_validator(mode="after")
+    def _default_decode_sglang_bootstrap_port_base(self):
+        """Shift decode's SGLang bootstrap port base off prefill's default so a
+        colocated P+D pair doesn't collide (mirrors the NIXL/MoRIIO shifts).
+
+        The decode engine runs a (mostly unused) bootstrap server too; pinning a
+        distinct port avoids a same-node bind clash on 8998.
+        """
+        if self.decode_config.llm_engine != "SGLang":
+            return self
+        from ray.llm._internal.serve.engines.sglang.kv_transfer.pd_connector import (
+            BOOTSTRAP_PORT_BASE_KEY,
+            DEFAULT_BOOTSTRAP_PORT_BASE,
+        )
+
+        # Shift the decode BASE (not the final port): the connector adds a
+        # per-replica offset on top, so colocated decode replicas still get
+        # distinct ports. The +1000 stride is well above any realistic
+        # tp_size*pp_size offset. Mirrors _default_decode_moriio_port_base.
+        self.decode_config.experimental_configs.setdefault(
+            BOOTSTRAP_PORT_BASE_KEY, DEFAULT_BOOTSTRAP_PORT_BASE + 1000
+        )
         return self
 
     @model_validator(mode="after")
