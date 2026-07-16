@@ -91,17 +91,12 @@ llms_txt_title = "Ray"
 # agents may skip to save context). Empty for v1.
 llms_txt_optional_sections = []
 
-# Normally we skip the agent manifests on Read the Docs PR previews (they aren't
+# Skip the agent manifests on Read the Docs PR previews (they aren't
 # review-critical and the full-source read is wasted work), generating them only
 # on published builds (master, release tags) and local builds. `external` is
 # RtD's version type for PR builds — the same signal `.readthedocs.yaml` keys
 # the incremental-vs-full build off of. (DOC-1048)
-#
-#     llms_txt_build = os.getenv("READTHEDOCS_VERSION_TYPE") != "external"
-#
-# TEMPORARY (DOC-1130 review): forced on so llms.txt and llms-full.txt render on
-# this PR's RtD preview for review. REVERT to the gated line above before merge.
-llms_txt_build = True
+llms_txt_build = os.getenv("READTHEDOCS_VERSION_TYPE") != "external"
 
 # Blockquote summary for llms.txt, kept as editable prose in a sibling file so
 # it can be updated without touching conf.py. `.txt` isn't a Sphinx source
