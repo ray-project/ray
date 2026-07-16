@@ -33,10 +33,12 @@ class DataConfig:
             execution_options: Optional Ray Data execution options. When set, they are
                 applied to dataset shards. When ``None`` (the default), Train applies
                 :meth:`default_ingest_options` to each dataset shard. Can be either:
+
                 1. A single ExecutionOptions object applied to all datasets.
                 2. A dict mapping dataset names to ExecutionOptions for per-dataset
                    overrides. Datasets not present in the dict use
                    :meth:`default_ingest_options`.
+
                 NOTE: For exclude_resources and resource_limits, those options only affect
                 Ray Data *after* train performs its cluster resource reservation.
                 So if you specify exclude_resources, it will exclude the resources
