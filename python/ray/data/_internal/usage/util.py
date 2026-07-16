@@ -26,9 +26,9 @@ _recorded_operators_lock = threading.Lock()
 
 # Bounded timeout for the Prometheus counter HTTP queries
 _PROMETHEUS_QUERY_TIMEOUT_S = 1.0
-# Timeout for join_metric_sample: how long the callback waits for a background
-# cluster sample before giving up.
-_SAMPLE_JOIN_TIMEOUT_S = 1.0
+# Ceiling for one poll cycle: how long the poller waits for its concurrent
+# samples before publishing the snapshot with whatever finished.
+_POLL_CYCLE_TIMEOUT_S = 1.0
 
 
 def _prometheus_host() -> str:
@@ -83,12 +83,11 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
 
 def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
     """Run ``sample_fn`` on a daemon thread so a blocking metric query runs
-    concurrently with execution instead of blocking the caller (e.g. the
-    execution start path).
+    concurrently instead of blocking the caller.
 
-    Returns a ``Future``; pass it to ``join_metric_sample`` once the result is
+    Returns a ``Future``; pass it to ``join_samples`` once the results are
     needed. The thread is a daemon (not a ThreadPoolExecutor worker, which is
-    non-daemon) so a reader that hangs past its own timeout can never block
+    non-daemon) so a reader that hangs past its timeout can never block
     interpreter shutdown, as usage collection must never block execution.
     """
     future: "Future[T]" = Future()
@@ -103,40 +102,24 @@ def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
     return future
 
 
-def join_metric_sample(
-    future: Optional["Future[T]"],
-    timeout: float = _SAMPLE_JOIN_TIMEOUT_S,
-) -> Optional[T]:
-    """Wait up to ``timeout`` seconds (default ``_SAMPLE_JOIN_TIMEOUT_S``) for
-    the sample started by ``start_metric_sample`` and return its result.
-
-    Returns ``None`` if the sample was never started (``future is None``), is
-    still running (hung) past ``timeout``, or raised. A stuck or missing
-    reader degrades gracefully instead of blocking teardown.
-    """
-    if future is None:
-        return None
-    try:
-        return future.result(timeout=timeout)
-    except Exception:
-        return None
-
-
-def join_metric_samples(
+def join_samples(
     futures: Sequence[Optional["Future[T]"]],
-    timeout: float = _SAMPLE_JOIN_TIMEOUT_S,
+    timeout: float = _POLL_CYCLE_TIMEOUT_S,
 ) -> List[Optional[T]]:
     """Join several samples started by ``start_metric_sample`` under a single
     ``timeout`` ceiling and return their results in order.
 
-    Unlike calling ``join_metric_sample`` in a loop (which waits up to
-    ``timeout`` per future and can block for ``timeout * len(futures)`` if every
-    reader hangs), this waits for all futures concurrently, then drains each
-    result without further blocking. Any future that is missing (``None``), is
-    still running past ``timeout``, or raised degrades to ``None``.
+    Waits for all futures concurrently, then drains each result without further
+    blocking. Any future that is missing (``None``), still running past
+    ``timeout``, or raised degrades to ``None``.
     """
     wait([f for f in futures if f is not None], timeout=timeout)
-    results = [join_metric_sample(f, timeout=0.0) for f in futures]
+    results: List[Optional[T]] = []
+    for f in futures:
+        try:
+            results.append(f.result(timeout=0.0) if f is not None else None)
+        except Exception:
+            results.append(None)
     return results
 
 

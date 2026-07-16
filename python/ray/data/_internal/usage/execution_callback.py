@@ -10,11 +10,10 @@ are captured even if they fail.
 import logging
 import time
 import uuid
-from concurrent.futures import Future
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.usage import collector, util
+from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.collector import (
     OpConfig,
     PipelinePerf,
@@ -45,20 +44,10 @@ class UsageCallback(ExecutionCallback):
         # logical plan, so they're computed once in the start, cached for the execution end
         self._workload: Optional[WorkloadInfo] = None
         self._started_at: Optional[float] = None
-        self._spilled_at_start: Optional[int] = None
-        self._spilled_at_end: Optional[int] = None
-        self._dead_nodes_at_start: Optional[int] = None
-        self._dead_nodes_at_end: Optional[int] = None
-        self._oom_kills_at_start: Optional[int] = None
-        self._oom_kills_at_end: Optional[int] = None
-        self._unexpected_worker_kills_at_start: Optional[int] = None
-        self._unexpected_worker_kills_at_end: Optional[int] = None
-        # Cluster metrics are sampled on background threads off the start path.
-        # Each reader's start sample is fired before execution starts and joined at execution end.
-        self._spilled_sample: Optional[Future] = None
-        self._dead_nodes_sample: Optional[Future] = None
-        self._oom_kills_sample: Optional[Future] = None
-        self._unexpected_worker_kills_sample: Optional[Future] = None
+        # Snapshots of the cluster metric poller at execution start/end; the
+        # per-execution deltas are computed from these.
+        self._samples_at_start: Optional[Dict[str, Optional[int]]] = None
+        self._samples_at_end: Optional[Dict[str, Optional[int]]] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
 
@@ -112,61 +101,22 @@ class UsageCallback(ExecutionCallback):
 
     def on_collection_start(self, executor: "StreamingExecutor") -> None:
         """Called once before execution starts. Records start timing and the
-        cluster metric baselines used to compute per-execution deltas."""
+        cluster metric baseline (the poller's latest snapshot) used to compute
+        per-execution deltas."""
         self._started_at = time.time()
-        # Fire every cluster reader on its own background thread so they run
-        # concurrently (and during execution) instead of blocking the start
-        # path; each is joined at execution end.
-        self._spilled_sample = util.start_metric_sample(collector.cluster_spilled_bytes)
-        self._dead_nodes_sample = util.start_metric_sample(
-            collector.cluster_dead_node_count
-        )
-        self._oom_kills_sample = util.start_metric_sample(collector.cluster_oom_kills)
-        self._unexpected_worker_kills_sample = util.start_metric_sample(
-            collector.cluster_unexpected_worker_kills
-        )
+        p = poller.get_poller()
+        p.ensure_running()
+        self._samples_at_start = p.latest()
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
     ) -> None:
         """Called once after execution succeeds or fails. Records the ending
-        cluster metric samples. ``error`` is the failure (or ``None`` on
-        success); subclasses may override to capture it."""
-        # Fire every metric reader concurrently for the execution end samples,
-        # so they overlap with the joins for the start samples below
-        end_spilled = util.start_metric_sample(collector.cluster_spilled_bytes)
-        end_dead_nodes = util.start_metric_sample(collector.cluster_dead_node_count)
-        end_oom_kills = util.start_metric_sample(collector.cluster_oom_kills)
-        end_unexpected_worker_kills = util.start_metric_sample(
-            collector.cluster_unexpected_worker_kills
-        )
-
-        # Join all start, end samples concurrently under a single timeout
-        # ceiling. Joining sequentially would block for up to
-        # timeout * n_samples if every reader hangs. Results unpack positionally,
-        # so the targets below must stay in the same order as the samples passed in.
-        # Tuple unpacking syntax
-        (
-            self._spilled_at_start,
-            self._dead_nodes_at_start,
-            self._oom_kills_at_start,
-            self._unexpected_worker_kills_at_start,
-            self._spilled_at_end,
-            self._dead_nodes_at_end,
-            self._oom_kills_at_end,
-            self._unexpected_worker_kills_at_end,
-        ) = util.join_metric_samples(
-            [
-                self._spilled_sample,
-                self._dead_nodes_sample,
-                self._oom_kills_sample,
-                self._unexpected_worker_kills_sample,
-                end_spilled,
-                end_dead_nodes,
-                end_oom_kills,
-                end_unexpected_worker_kills,
-            ],
-        )
+        cluster metric snapshot (the poller's latest). ``error`` is the failure
+        (or ``None`` on success); subclasses may override to capture it."""
+        p = poller.get_poller()
+        p.ensure_running()
+        self._samples_at_end = p.latest()
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
@@ -179,19 +129,24 @@ class UsageCallback(ExecutionCallback):
             )
         performance = None
         if self._finished:
+            start = self._samples_at_start or {}
+            end = self._samples_at_end or {}
             performance = PipelinePerf(
                 bytes_spilled=collector.compute_delta(
-                    self._spilled_at_start, self._spilled_at_end
+                    start.get(collector.METRIC_BYTES_SPILLED),
+                    end.get(collector.METRIC_BYTES_SPILLED),
                 ),
                 node_deaths=collector.compute_delta(
-                    self._dead_nodes_at_start, self._dead_nodes_at_end
+                    start.get(collector.METRIC_NODE_DEATHS),
+                    end.get(collector.METRIC_NODE_DEATHS),
                 ),
                 oom_kills=collector.compute_delta(
-                    self._oom_kills_at_start, self._oom_kills_at_end
+                    start.get(collector.METRIC_OOM_KILLS),
+                    end.get(collector.METRIC_OOM_KILLS),
                 ),
                 unexpected_worker_kills=collector.compute_delta(
-                    self._unexpected_worker_kills_at_start,
-                    self._unexpected_worker_kills_at_end,
+                    start.get(collector.METRIC_UNEXPECTED_WORKER_KILLS),
+                    end.get(collector.METRIC_UNEXPECTED_WORKER_KILLS),
                 ),
             )
         # Both are populated before this runs: on_collection_start sets

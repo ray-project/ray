@@ -3,14 +3,24 @@
 import json
 import sys
 import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
 from ray.data._internal.issue_detection.issue_detector import IssueType
-from ray.data._internal.usage import collector, util
+from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.execution_callback import UsageCallback
+
+
+def _wait_until(predicate, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition not met within timeout")
 
 
 @pytest.fixture
@@ -327,41 +337,103 @@ def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
     assert util.query_prometheus_counter("q") is None
 
 
-def test_metric_sample_round_trip():
-    """start/join returns the sampled value when the query finishes in time."""
-    future = util.start_metric_sample(lambda: (2, 5))
-    result = util.join_metric_sample(future)  # pyrefly: ignore[bad-argument-type]
-    assert result == (2, 5)
+def test_join_samples_round_trip():
+    """join_samples returns each sampled value when the queries finish in time."""
+    futures = [util.start_metric_sample(lambda: 2), util.start_metric_sample(lambda: 5)]
+    assert util.join_samples(futures) == [2, 5]
 
 
-def test_metric_sample_hung_returns_none():
-    """If the sampler outlives the join timeout, the sample degrades to None."""
+def test_join_samples_hung_returns_none():
+    """A sample that outlives the timeout ceiling degrades to None."""
     release = threading.Event()
 
     def slow():
         release.wait(5)
-        return (1, 1)
+        return 1
 
-    future = util.start_metric_sample(slow)
+    futures = [util.start_metric_sample(slow)]
     try:
-        assert util.join_metric_sample(future, timeout=0.05) is None
+        assert util.join_samples(futures, timeout=0.05) == [None]
     finally:
         # Let the worker thread finish so it doesn't linger past the test.
         release.set()
 
 
-def test_join_metric_samples_preserves_order_and_gaps():
+def test_join_samples_preserves_order_and_gaps():
     """Results come back in input order; a missing (None) future degrades."""
     futures = [
-        util.start_metric_sample(lambda: (1, 1)),
+        util.start_metric_sample(lambda: 1),
         None,
-        util.start_metric_sample(lambda: (3, 3)),
+        util.start_metric_sample(lambda: 3),
     ]
-    assert util.join_metric_samples(futures) == [
-        (1, 1),
-        None,
-        (3, 3),
-    ]
+    assert util.join_samples(futures) == [1, None, 3]
+
+
+def test_session_scoped_metric_query():
+    """The query sums the metric, scoped by SessionName plus any extra labels."""
+    assert (
+        collector._session_scoped_metric_query("m", "sess")
+        == "sum(m{SessionName='sess'})"
+    )
+    assert (
+        collector._session_scoped_metric_query("m", "sess", {"State": "Spilled"})
+        == "sum(m{State='Spilled',SessionName='sess'})"
+    )
+    # No session -> unscoped, but extra labels still apply.
+    assert collector._session_scoped_metric_query("m", None) == "sum(m)"
+    assert (
+        collector._session_scoped_metric_query("m", None, {"State": "Spilled"})
+        == "sum(m{State='Spilled'})"
+    )
+
+
+def test_poller_poll_once_publishes_snapshot():
+    """poll_once samples every metric and publishes them under their names."""
+    p = poller.ClusterMetricsPoller({"a": lambda: 1, "b": lambda: 2})
+    assert p.latest() == {}
+    p.poll_once()
+    assert p.latest() == {"a": 1, "b": 2}
+
+
+def test_poller_failing_sampler_degrades_to_none():
+    """A sampler that raises degrades to None without dropping the snapshot."""
+
+    def boom():
+        raise RuntimeError("no prometheus")
+
+    p = poller.ClusterMetricsPoller({"ok": lambda: 5, "bad": boom})
+    p.poll_once()
+    assert p.latest() == {"ok": 5, "bad": None}
+
+
+def test_poller_latest_returns_copy():
+    """latest() returns a copy so callers can't mutate the cached snapshot."""
+    p = poller.ClusterMetricsPoller({"a": lambda: 1})
+    p.poll_once()
+    snapshot = p.latest()
+    snapshot["a"] = 999
+    assert p.latest() == {"a": 1}
+
+
+def test_poller_ensure_running_is_idempotent():
+    """A second ensure_running while alive reuses the same thread."""
+    p = poller.ClusterMetricsPoller({"a": lambda: 1}, idle_timeout_s=60)
+    p.ensure_running()
+    first = p._thread
+    p.ensure_running()
+    assert p._thread is first
+
+
+def test_poller_stops_when_idle_and_restarts():
+    """The poll thread exits after the idle timeout and restarts on demand."""
+    p = poller.ClusterMetricsPoller(
+        {"a": lambda: 1}, interval_s=0.01, idle_timeout_s=0.0
+    )
+    p.ensure_running()
+    _wait_until(lambda: p._thread is None)
+    # A fresh execution restarts the poller.
+    p.ensure_running()
+    assert p._thread is not None
 
 
 if __name__ == "__main__":

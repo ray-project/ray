@@ -19,15 +19,12 @@ from dataclasses import asdict, dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
-import ray
 from ray._common.usage.usage_lib import (
     TagKey,
     record_extra_usage_tag,
     usage_stats_enabled,
 )
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.worker import global_worker
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.util import (
@@ -45,10 +42,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bounded timeout for the GCS RPC calls.
-_GCS_RPC_TIMEOUT_S = 1.0
-# Cumulative raylet worker-kill counters (Prometheus metric names). Scoped to
-# the current session at query time via ``_worker_kill_query``.
+# Cumulative cluster-wide counters (Prometheus metric names), scoped to the
+# current session at query time via ``_session_scoped_metric_query``.
+_SPILLED_BYTES_METRIC = "ray_spill_manager_objects_bytes"
+_NODE_FAILURE_METRIC = "ray_node_failure_total"
 _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
 _UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
 
@@ -91,6 +88,14 @@ class WorkloadInfo:
 @dataclass(frozen=True)
 class EnvInfo:
     pyarrow: Optional[str]
+
+
+# Metric names shared by the poller (snapshot keys), the execution callback,
+# and the PipelinePerf fields below. Keep these equal to the field names.
+METRIC_BYTES_SPILLED = "bytes_spilled"
+METRIC_NODE_DEATHS = "node_deaths"
+METRIC_OOM_KILLS = "oom_kills"
+METRIC_UNEXPECTED_WORKER_KILLS = "unexpected_worker_kills"
 
 
 @dataclass(frozen=True)
@@ -146,41 +151,23 @@ def usage_collection_disabled() -> bool:
 
 
 def cluster_spilled_bytes() -> Optional[int]:
-    """Cluster-wide cumulative spilled bytes from Ray core's store_stats.
-
-    Returns None on any failure — usage collection must never break execution.
+    """Cluster-wide cumulative spilled bytes from Prometheus, scoped to this
+    session. None if the query failed.
     """
-    if not ray.is_initialized():
-        return None
-    try:
-        reply = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address),
-            timeout_seconds=_GCS_RPC_TIMEOUT_S,
+    return query_prometheus_counter(
+        _session_scoped_metric_query(
+            _SPILLED_BYTES_METRIC, _session_name(), {"State": "Spilled"}
         )
-        return int(reply.store_stats.spilled_bytes_total)
-    except Exception:
-        logger.debug("Failed to read cluster spilled bytes", exc_info=True)
-        return None
+    )
 
 
 def cluster_dead_node_count() -> Optional[int]:
-    """Number of dead nodes in the GCS node table.
-
-    Queries GCS with a bounded timeout and a server-side DEAD state filter.
-    Returns None on any failure.
+    """Cluster-wide cumulative node failures from Prometheus, scoped to this
+    session. None if the query failed.
     """
-    if not ray.is_initialized():
-        return None
-    try:
-        gcs_client = global_worker.gcs_client  # pyrefly: ignore[missing-attribute]
-        dead_nodes = gcs_client.get_all_node_info(
-            timeout=_GCS_RPC_TIMEOUT_S,
-            state_filter=GcsNodeInfo.GcsNodeState.DEAD,
-        )
-        return len(dead_nodes)
-    except Exception:
-        logger.debug("Failed to read cluster dead node count", exc_info=True)
-        return None
+    return query_prometheus_counter(
+        _session_scoped_metric_query(_NODE_FAILURE_METRIC, _session_name())
+    )
 
 
 def _session_name() -> Optional[str]:
@@ -193,12 +180,23 @@ def _session_name() -> Optional[str]:
     return node.session_name
 
 
-def _session_scoped_metric_query(metric: str, session_name: Optional[str]) -> str:
-    """Cluster-wide ``sum`` of a metric counter, scoped to this
-    session via the ``SessionName`` label. Falls back to an unscoped sum when the
-    session name is unknown.
+def _session_scoped_metric_query(
+    metric: str,
+    session_name: Optional[str],
+    extra_labels: Optional[Dict[str, str]] = None,
+) -> str:
+    """Cluster-wide ``sum`` of a metric counter, scoped to this session via the
+    ``SessionName`` label plus any ``extra_labels``. Falls back to an unscoped
+    sum when the session name is unknown.
     """
-    selector = f"{metric}{{SessionName='{session_name}'}}" if session_name else metric
+    labels = dict(extra_labels or {})
+    if session_name:
+        labels["SessionName"] = session_name
+    if labels:
+        matchers = ",".join(f"{k}='{v}'" for k, v in labels.items())
+        selector = f"{metric}{{{matchers}}}"
+    else:
+        selector = metric
     return f"sum({selector})"
 
 
