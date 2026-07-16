@@ -109,6 +109,27 @@ class SGLangServer:
         # is set.
         if self._llm_config.log_engine_metrics:
             self.engine_kwargs["enable_metrics"] = True
+            # Tag engine metrics with the Serve deployment/replica so the
+            # out-of-process scheduler series can be grouped per deployment
+            # (they can't be joined to the Serve counter on WorkerId).
+            from ray import serve
+            from ray.serve.exceptions import RayServeException
+
+            try:
+                rid = serve.get_replica_context().replica_id
+                self.engine_kwargs.setdefault(
+                    "extra_metric_labels",
+                    {
+                        "application": rid.deployment_id.app_name,
+                        "deployment": rid.deployment_id.name,
+                        "replica": rid.unique_id,
+                    },
+                )
+            except RayServeException:
+                logger.warning(
+                    "No Serve replica context; SGLang metrics will not carry "
+                    "deployment/replica labels."
+                )
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
