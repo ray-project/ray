@@ -34,9 +34,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
-    ShuffleFetchError,
-)
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
@@ -147,13 +144,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
         remote_args["num_returns"] = "streaming"
-        # max_retries + retry_exceptions together let a ``ShuffleFetchError``
-        # (raised when the manager's actor is unreachable and in-task recovery
-        # fails) trigger a Ray-Core retry, whose arg re-resolution picks up a
-        # lineage-recovered mapper handle. Default retry_exceptions is False
-        # (system failures only), which would defeat that.
-        remote_args.setdefault("max_retries", 3)
-        remote_args["retry_exceptions"] = [ShuffleFetchError]
         return remote_args
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
