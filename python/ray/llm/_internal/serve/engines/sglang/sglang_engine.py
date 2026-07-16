@@ -103,14 +103,12 @@ class SGLangServer:
                 "dependencies."
             ) from e
 
-        engine_kwargs = dict(self.engine_kwargs)
-
         # Route SGLang engine metrics through Ray's metric agent (Ray's
         # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
         # actors and auto-wires the Ray-backed stat_loggers when enable_metrics
-        # is set, matching vLLM's single-flag behaviour.
+        # is set.
         if self._llm_config.log_engine_metrics:
-            engine_kwargs["enable_metrics"] = True
+            self.engine_kwargs["enable_metrics"] = True
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
@@ -123,7 +121,7 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = Engine(**engine_kwargs)
+            self.engine = Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -650,12 +648,20 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            # RayEngine assigns tp/pp ranks to bundles by node index, so all
-            # local GPUs go in one node-sized bundle (see ray-project/ray#62888).
+            # RayEngine spawns all tp/pp SchedulerActors onto a single bundle
+            # per node (it indexes the PG with `bundle_for_node[node_idx]` and
+            # reuses that same bundle_idx for every rank on that node). Default
+            # to one bundle with all local GPUs; multi-node deployments must
+            # provide an explicit placement_group_config with one bundle per
+            # node (each containing that node's share of GPUs).
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
                 "GPU": num_devices,
             }
+
+            if ray_actor_options.get("num_gpus"):
+                replica_bundle["GPU"] += ray_actor_options["num_gpus"]
+
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
