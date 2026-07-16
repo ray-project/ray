@@ -65,6 +65,23 @@ def binary_array():
 
 
 @pytest.fixture
+def string_view_array():
+    # Mix of long (out-of-line), short (inlined in the view), and null values.
+    return pa.array(
+        ["foo" * 10, "bar", None, "quux" * 10, "inline"] * 200,
+        type=pa.string_view(),
+    )
+
+
+@pytest.fixture
+def binary_view_array():
+    return pa.array(
+        [b"foo" * 10, b"bar", None, b"quux" * 10] * 250,
+        type=pa.binary_view(),
+    )
+
+
+@pytest.fixture
 def fixed_size_binary_array():
     return pa.array([b"foo", b"bar", b"baz", None, b"qux"] * 200, type=pa.binary(3))
 
@@ -285,6 +302,17 @@ pytest_custom_serialization_arrays = [
     # Array of pickled objects
     (lazy_fixture("pickled_objects_array"), 0.1),
 ]
+
+if get_pyarrow_version() >= parse_version("16.0.0"):
+    # View types were added in Arrow 16.0.0. Variadic data buffers can't be
+    # truncated when slicing (views hold absolute offsets into them), so the
+    # serialized-size cap is looser than for regular string/binary arrays.
+    pytest_custom_serialization_arrays += [
+        # String view array
+        (lazy_fixture("string_view_array"), 1.0),
+        # Binary view array
+        (lazy_fixture("binary_view_array"), 1.0),
+    ]
 
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
