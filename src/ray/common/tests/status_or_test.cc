@@ -43,6 +43,23 @@ class Derived : public Base {
 StatusOr<int> GetErrorStatus() { return Status::Invalid("Invalid error status."); }
 StatusOr<int> GetValue() { return 1; }
 
+// Counts live instances so a test can assert no value was destroyed on, or
+// moved into, unconstructed storage: alive should return to 0 once every
+// StatusOr<Counted> goes out of scope. Independent of any sanitizer.
+struct Counted {
+  static int alive;
+  int value;
+  explicit Counted(int v = 0) : value(v) { ++alive; }
+  Counted(const Counted &o) : value(o.value) { ++alive; }
+  Counted(Counted &&o) noexcept : value(o.value) { ++alive; }
+  // Assignment reuses the existing object, so alive is unchanged.
+  Counted &operator=(const Counted &o) = default;
+  Counted &operator=(Counted &&o) noexcept = default;
+  ~Counted() { --alive; }
+};
+
+int Counted::alive = 0;
+
 }  // namespace
 
 TEST(StatusOrTest, AssignTest) {
@@ -267,6 +284,97 @@ TEST(StatusOrTest, MoveAssignment) {
     StatusOr<int> val = Status::InvalidArgument("error");
     StatusOr<int> moved = std::move(val);
     EXPECT_EQ(moved.code(), StatusCode::InvalidArgument);
+  }
+}
+
+// Cover the error/value combinations for copy and move assignment. Each inner
+// scope must end with Counted::alive == 0 (see Counted above).
+TEST(StatusOrTest, AssignmentAcrossStates) {
+  // error <- value: destination has no value yet, so it must not destroy its
+  // unconstructed storage before taking the new value.
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> dst = Status::InvalidArgument("error");
+      StatusOr<Counted> src{Counted{1}};
+      dst = src;
+      ASSERT_TRUE(dst.ok());
+      EXPECT_EQ(dst.value().value, 1);
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+  // value <- error: destination holds a value that must be destroyed.
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> dst{Counted{2}};
+      StatusOr<Counted> src = Status::InvalidArgument("error");
+      dst = src;
+      EXPECT_FALSE(dst.ok());
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+  // error <- value via move: the move counterpart of the first case, and the one
+  // that regresses if move assignment sets status_ before AssignValue.
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> dst = Status::InvalidArgument("error");
+      StatusOr<Counted> src{Counted{3}};
+      dst = std::move(src);
+      ASSERT_TRUE(dst.ok());
+      EXPECT_EQ(dst.value().value, 3);
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+  // value <- value via move.
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> dst{Counted{4}};
+      StatusOr<Counted> src{Counted{5}};
+      dst = std::move(src);
+      ASSERT_TRUE(dst.ok());
+      EXPECT_EQ(dst.value().value, 5);
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+}
+
+TEST(StatusOrTest, Swap) {
+  // value <-> error: exercises both a live and an unconstructed operand.
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> a{Counted{1}};
+      StatusOr<Counted> b = Status::InvalidArgument("error");
+      a.swap(b);
+      EXPECT_FALSE(a.ok());
+      ASSERT_TRUE(b.ok());
+      EXPECT_EQ(b.value().value, 1);
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+  // value <-> value (via the free swap function).
+  {
+    Counted::alive = 0;
+    {
+      StatusOr<Counted> a{Counted{1}};
+      StatusOr<Counted> b{Counted{2}};
+      swap(a, b);
+      ASSERT_TRUE(a.ok() && b.ok());
+      EXPECT_EQ(a.value().value, 2);
+      EXPECT_EQ(b.value().value, 1);
+    }
+    EXPECT_EQ(Counted::alive, 0);
+  }
+  // error <-> error.
+  {
+    StatusOr<Counted> a = Status::InvalidArgument("a");
+    StatusOr<Counted> b = Status::NotFound("b");
+    a.swap(b);
+    EXPECT_EQ(a.code(), StatusCode::NotFound);
+    EXPECT_EQ(b.code(), StatusCode::InvalidArgument);
   }
 }
 

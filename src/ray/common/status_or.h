@@ -94,8 +94,9 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      status_ = Status::OK();
+      // AssignValue destroys the old value only if ok(), so set status_ after it.
       AssignValue(rhs.value());
+      status_ = Status::OK();
       return *this;
     }
     AssignStatus(rhs.status());
@@ -115,8 +116,9 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      status_ = Status::OK();
+      // Set status_ after AssignValue; see the copy-assignment operator.
       AssignValue(std::move(rhs).value());
+      status_ = Status::OK();
       return *this;
     }
     AssignStatus(rhs.status());
@@ -348,9 +350,11 @@ T &&StatusOr<T>::value() && {
 
 template <typename T>
 void StatusOr<T>::swap(StatusOr &rhs) {
-  using std::swap;
-  swap(status_, rhs.status_);
-  swap(data_, rhs.data_);
+  // data_ is only a live T when ok(), so swapping it directly would touch
+  // unconstructed storage. Go through moves, which already guard on ok().
+  StatusOr tmp = std::move(*this);
+  *this = std::move(rhs);
+  rhs = std::move(tmp);
 }
 
 template <typename T>
