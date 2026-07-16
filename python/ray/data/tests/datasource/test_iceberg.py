@@ -1,6 +1,7 @@
 import os
 import random
 from typing import Any, Dict, Generator, List, Tuple, Type
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,10 @@ from pyiceberg.transforms import IdentityTransform
 
 import ray
 from ray.data import read_iceberg
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.datasource.iceberg_datasource import (
+    IcebergDatasource,
+    _IcebergReadTaskSharedState,
+)
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
@@ -203,6 +207,37 @@ def test_get_read_tasks():
     read_tasks = iceberg_ds.get_read_tasks(5)
     assert len(read_tasks) == 5
     assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_get_read_tasks_share_scan_state():
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    state_ref = ray.put(None)
+
+    with (
+        patch(
+            "ray.data._internal.datasource.iceberg_datasource.ray.put",
+            return_value=state_ref,
+        ) as put,
+        patch(
+            "ray.data._internal.datasource.iceberg_datasource._get_read_task_from_shared_state",
+            return_value=[],
+        ) as read,
+    ):
+        read_tasks = iceberg_ds.get_read_tasks(5)
+        for read_task in read_tasks:
+            list(read_task())
+
+    put.assert_called_once()
+    assert isinstance(put.call_args.args[0], _IcebergReadTaskSharedState)
+    assert read.call_count == len(read_tasks)
+    assert all(call.kwargs["state_ref"] == state_ref for call in read.call_args_list)
 
 
 @pytest.mark.skipif(

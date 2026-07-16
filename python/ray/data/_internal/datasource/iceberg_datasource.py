@@ -5,12 +5,14 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 import heapq
 import itertools
 import logging
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import pyarrow as pa
 from packaging import version
 
+import ray
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -83,6 +85,22 @@ if TYPE_CHECKING:
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _IcebergReadTaskSharedState:
+    table_io: "FileIO"
+    table_metadata: "TableMetadata"
+    row_filter: "BooleanExpression"
+    case_sensitive: bool
+    limit: Optional[int]
+    schema: "Schema"
+
+
+def _resolve_shared_read_state(
+    state_ref: "ray.ObjectRef",
+) -> _IcebergReadTaskSharedState:
+    return ray.get(state_ref)
 
 
 class _IcebergExpressionVisitor(
@@ -256,6 +274,22 @@ def _get_read_task(
             yield table
 
     yield from _generate_tables()
+
+
+def _get_read_task_from_shared_state(
+    tasks: Iterable["FileScanTask"],
+    state_ref: "ray.ObjectRef",
+) -> Iterable[Block]:
+    state = _resolve_shared_read_state(state_ref)
+    yield from _get_read_task(
+        tasks=tasks,
+        table_io=state.table_io,
+        table_metadata=state.table_metadata,
+        row_filter=state.row_filter,
+        case_sensitive=state.case_sensitive,
+        limit=state.limit,
+        schema=state.schema,
+    )
 
 
 @DeveloperAPI
@@ -454,27 +488,25 @@ class IcebergDatasource(Datasource):
             logger.warning(
                 f"Reducing the parallelism to {parallelism}, as that is the number of files"
             )
-
-        # Get required properties for reading tasks - table IO, table metadata,
-        # row filter, case sensitivity,limit and projected schema to pass
-        # them directly to `_get_read_task` to avoid capture of `self` reference
-        # within the closure carrying substantial overhead invoking these tasks
+        # Store state shared by all read tasks once in the object store. Capturing
+        # this state in every task duplicates table metadata and projected schema,
+        # which can make large Iceberg scans expensive to construct and spill.
         #
         # See https://github.com/ray-project/ray/issues/49107 for more context
-        table_io = self.table.io
-        table_metadata = self.table.metadata
-        row_filter = self._get_combined_filter()
-        case_sensitive = self._scan_kwargs.get("case_sensitive", True)
-        limit = self._scan_kwargs.get("limit")
+        state_ref = ray.put(
+            _IcebergReadTaskSharedState(
+                table_io=self.table.io,
+                table_metadata=self.table.metadata,
+                row_filter=self._get_combined_filter(),
+                case_sensitive=self._scan_kwargs.get("case_sensitive", True),
+                limit=self._scan_kwargs.get("limit"),
+                schema=projected_schema,
+            )
+        )
 
         get_read_task = partial(
-            _get_read_task,
-            table_io=table_io,
-            table_metadata=table_metadata,
-            row_filter=row_filter,
-            case_sensitive=case_sensitive,
-            limit=limit,
-            schema=projected_schema,
+            _get_read_task_from_shared_state,
+            state_ref=state_ref,
         )
 
         read_tasks = []
