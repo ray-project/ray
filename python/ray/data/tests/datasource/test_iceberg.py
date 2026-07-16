@@ -2,6 +2,7 @@ import os
 import random
 from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from ray.data._internal.datasource.iceberg_datasource import (
     IcebergDatasource,
     _estimate_inmemory_file_size,
     _get_read_task,
+    _IcebergReadTaskSharedState,
 )
 from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
@@ -477,6 +479,37 @@ def test_empty_projection_has_zero_size_estimate():
 
     assert iceberg_ds.estimate_inmemory_data_size() == 0
     assert all(task.metadata.size_bytes == 0 for task in iceberg_ds.get_read_tasks(3))
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_get_read_tasks_share_scan_state():
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    state_ref = ray.put(None)
+
+    with (
+        patch(
+            "ray.data._internal.datasource.iceberg_datasource.ray.put",
+            return_value=state_ref,
+        ) as put,
+        patch(
+            "ray.data._internal.datasource.iceberg_datasource._get_read_task_from_shared_state",
+            return_value=[],
+        ) as read,
+    ):
+        read_tasks = iceberg_ds.get_read_tasks(5)
+        for read_task in read_tasks:
+            list(read_task())
+
+    put.assert_called_once()
+    assert isinstance(put.call_args.args[0], _IcebergReadTaskSharedState)
+    assert read.call_count == len(read_tasks)
+    assert all(call.kwargs["state_ref"] == state_ref for call in read.call_args_list)
 
 
 @pytest.mark.skipif(
