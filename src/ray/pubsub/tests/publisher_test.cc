@@ -312,23 +312,31 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
   ASSERT_TRUE(subscription_index.HasSubscriber(subscriber_id));
 
-  // Erase it and make sure it is erased.
+  // Erase it and make sure it is erased. Only the first erase removes a real
+  // entry and reports true; the rest are duplicates and report nothing removed.
   for (int i = 0; i < 5; i++) {
-    subscription_index.EraseEntry(oid.Binary(), subscriber_id);
+    EXPECT_EQ(subscription_index.EraseEntry(oid.Binary(), subscriber_id), i == 0);
   }
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 
-  // Random mix.
+  // Random mix. AddEntry is idempotent, so the entry is present once: the first
+  // erase removes it (true) and the second finds nothing to remove (false).
   subscription_index.AddEntry(oid.Binary(), subscriber);
   subscription_index.AddEntry(oid.Binary(), subscriber);
-  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
-  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
+  EXPECT_TRUE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
+  EXPECT_FALSE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 
   subscription_index.AddEntry(oid.Binary(), subscriber);
   subscription_index.AddEntry(oid.Binary(), subscriber);
   ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
   ASSERT_TRUE(subscription_index.HasSubscriber(subscriber_id));
+
+  // A subscribe-to-all entry reports its removal the same way: only the first
+  // erase removes it.
+  subscription_index.AddEntry("", subscriber);
+  EXPECT_TRUE(subscription_index.EraseEntry("", subscriber_id));
+  EXPECT_FALSE(subscription_index.EraseEntry("", subscriber_id));
 }
 
 TEST_F(PublisherTest, TestSubscriber) {
@@ -1066,23 +1074,71 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
       << "Register subscription for a valid channel type should succeed.";
   ASSERT_EQ(long_polling_connection_replied, false);
 
-  // Connection should be replied (removed) when the subscriber is unregistered.
-  publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, subscriber_id_, oid.Binary());
+  // Unregistering a live subscription reports it removed something (the signal the
+  // location publish gate decrements its subscriber count on).
+  EXPECT_TRUE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, subscriber_id_, oid.Binary()));
   ASSERT_EQ(long_polling_connection_replied, false);
 
-  // Make sure when the entries don't exist, it doesn't delete anything.
-  publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                     subscriber_id_,
-                                     ObjectID::FromRandom().Binary());
-  publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                     NodeID::FromRandom(),
-                                     oid.Binary());
-  publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                     NodeID::FromRandom(),
-                                     ObjectID::FromRandom().Binary());
+  // When the entry does not exist, nothing is removed and it reports false: a
+  // duplicate unsubscribe of the same subscription, an unknown object, or an
+  // unknown subscriber.
+  EXPECT_FALSE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, subscriber_id_, oid.Binary()));
+  EXPECT_FALSE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+      subscriber_id_,
+      ObjectID::FromRandom().Binary()));
+  EXPECT_FALSE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+      NodeID::FromRandom(),
+      oid.Binary()));
+  EXPECT_FALSE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+      NodeID::FromRandom(),
+      ObjectID::FromRandom().Binary()));
   ASSERT_EQ(long_polling_connection_replied, false);
   // Metadata won't be removed until we unregsiter the subscriber.
+  publisher_->UnregisterSubscriber(subscriber_id_);
+  ASSERT_TRUE(publisher_->CheckNoLeaks());
+}
+
+// A failure publish is terminal for the key: it must reach the subscriber and
+// drop the key's subscriptions, so a later unsubscribe reports nothing removed.
+TEST_F(PublisherTest, TestPublishFailureErasesKeySubscriptions) {
+  std::vector<rpc::PubMessage> received;
+  send_reply_callback = [this, &received](Status status,
+                                          std::function<void()> success,
+                                          std::function<void()> failure) {
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      received.push_back(reply.pub_messages(i));
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
+
+  const auto oid = ObjectID::FromRandom();
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  RAY_CHECK(publisher_
+                ->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                       subscriber_id_,
+                                       oid.Binary())
+                .ok());
+
+  publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                             oid.Binary());
+
+  // The failure reached the subscriber.
+  ASSERT_EQ(received.size(), 1);
+  EXPECT_TRUE(received[0].has_failure_message());
+  EXPECT_EQ(received[0].key_id(), oid.Binary());
+
+  // The subscription did not survive it: a later unsubscribe removes nothing.
+  EXPECT_FALSE(publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, subscriber_id_, oid.Binary()));
+
   publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 }

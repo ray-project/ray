@@ -77,7 +77,9 @@ class PublisherInterface {
   /**
    * @brief Publish to the subscriber that the given key id is not available anymore.
    *
-   * This will invoke the failure callback on the subscriber side.
+   * This will invoke the failure callback on the subscriber side. The failure is
+   * terminal for the key: subscribers give up on it when they receive it, so this
+   * also drops the key's remaining subscriptions from the publisher.
    *
    * @param channel_type The type of the channel.
    * @param key_id The message id to publish.
@@ -93,8 +95,11 @@ class PublisherInterface {
    * @param channel_type The type of the channel.
    * @param subscriber_id The ID of the subscriber.
    * @param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
+   * @return True if a subscription was actually removed. False if there was
+   *         nothing to remove, e.g. a duplicate unsubscribe (the command is
+   *         delivered at-least-once, so the same unsubscribe can arrive twice).
    */
-  virtual void UnregisterSubscription(const rpc::ChannelType channel_type,
+  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const UniqueID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
 

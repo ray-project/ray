@@ -68,10 +68,10 @@ class PostingPublisher : public PublisherInterface {
     return inner_->RegisterSubscription(channel_type, subscriber_id, key_id);
   }
 
-  void UnregisterSubscription(const rpc::ChannelType channel_type,
+  bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override {
-    inner_->UnregisterSubscription(channel_type, subscriber_id, key_id);
+    return inner_->UnregisterSubscription(channel_type, subscriber_id, key_id);
   }
 
   void UnregisterSubscriber(const UniqueID &subscriber_id) override {

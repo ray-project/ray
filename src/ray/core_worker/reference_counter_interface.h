@@ -508,12 +508,21 @@ class ReferenceCounterInterface {
   virtual std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) = 0;
 
-  /// Publish the snapshot of the object location for the given object id.
-  /// Publish the empty locations if object is already evicted or not owned by this
-  /// worker.
+  /// Record a raylet as a subscriber to this object's location and publish it the
+  /// current snapshot. If there is no reference for the object (not yet created
+  /// or already removed), publishes a ref-removed message and a failure instead,
+  /// and records nothing.
   ///
-  /// \param[in] object_id The object whose locations we want.
-  virtual void PublishObjectLocationSnapshot(const ObjectID &object_id) = 0;
+  /// \param[in] object_id The object being subscribed to.
+  virtual void AddObjectLocationSubscriber(const ObjectID &object_id) = 0;
+
+  /// Record that a raylet unsubscribed from this object's location, decrementing
+  /// the per-object subscriber count. Call this only when the publisher actually
+  /// removed a subscription (Publisher::UnregisterSubscription): the unsubscribe is
+  /// delivered at-least-once, so decrementing on a duplicate would under-count.
+  ///
+  /// \param[in] object_id The object being unsubscribed from.
+  virtual void RemoveObjectLocationSubscriber(const ObjectID &object_id) = 0;
 
   /// Fill up the object information.
   ///

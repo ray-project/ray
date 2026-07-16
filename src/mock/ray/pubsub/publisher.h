@@ -40,7 +40,7 @@ class MockPublisher : public PublisherInterface {
               PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id),
               (override));
-  MOCK_METHOD(void,
+  MOCK_METHOD(bool,
               UnregisterSubscription,
               (const rpc::ChannelType channel_type,
                const UniqueID &subscriber_id,

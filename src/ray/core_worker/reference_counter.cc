@@ -1705,6 +1705,10 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  if (it->second.location_subscriber_count == 0) {
+    // No subscriber: skip building an update that would be dropped at the index.
+    return;
+  }
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
   auto object_size = it->second.object_size_;
@@ -1757,7 +1761,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_did_spill(it->second.did_spill);
 }
 
-void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
+void ReferenceCounter::AddObjectLocationSubscriber(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1776,10 +1780,21 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
     return;
   }
 
-  // Always publish the location when subscribed for the first time.
-  // This will ensure that the subscriber will get the first snapshot of the
-  // object location.
+  // Bump before publishing so PushToLocationSubscribers does not gate out this
+  // subscriber's first snapshot.
+  it->second.location_subscriber_count++;
   PushToLocationSubscribers(it);
+}
+
+void ReferenceCounter::RemoveObjectLocationSubscriber(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end() || it->second.location_subscriber_count == 0) {
+    // Backstop, e.g. an all-key unsubscribe (Nil object id) or an unsubscribe
+    // racing an in-flight failure purge. Nothing to decrement.
+    return;
+  }
+  it->second.location_subscriber_count--;
 }
 
 std::string ReferenceCounter::DebugString() const {

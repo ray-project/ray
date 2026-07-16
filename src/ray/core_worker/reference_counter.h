@@ -226,7 +226,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void PublishObjectLocationSnapshot(const ObjectID &object_id) override
+  void AddObjectLocationSubscriber(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void RemoveObjectLocationSubscriber(const ObjectID &object_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void FillObjectInformation(const ObjectID &object_id,
@@ -433,6 +436,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Number of raylets subscribed to this object's location, read under mutex_
+    /// by PushToLocationSubscribers to skip publishing an update no raylet is
+    /// listening for. Maintained by AddObjectLocationSubscriber and
+    /// RemoveObjectLocationSubscriber. Never drops below the live subscriber
+    /// count, so a live subscriber is never skipped. Two mechanisms compose to
+    /// guarantee that: the decrement fires only when the publisher actually
+    /// removes a subscription, and PublishFailure purges a key's subscriptions,
+    /// so a removable subscription is always one that was counted. May
+    /// over-count (reaped or retried subscribes), which is harmless.
+    size_t location_subscriber_count = 0;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before

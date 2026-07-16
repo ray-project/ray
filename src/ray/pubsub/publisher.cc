@@ -94,8 +94,8 @@ void EntityState::AddSubscriber(SubscriberState *subscriber) {
   subscribers_.emplace(subscriber->id(), subscriber);
 }
 
-void EntityState::RemoveSubscriber(const UniqueID &subscriber_id) {
-  subscribers_.erase(subscriber_id);
+bool EntityState::RemoveSubscriber(const UniqueID &subscriber_id) {
+  return subscribers_.erase(subscriber_id) > 0;
 }
 
 const absl::flat_hash_map<UniqueID, SubscriberState *> &EntityState::Subscribers() const {
@@ -188,22 +188,23 @@ void SubscriptionIndex::EraseSubscriber(const UniqueID &subscriber_id) {
   subscribers_to_key_id_.erase(subscribing_key_it);
 }
 
-void SubscriptionIndex::EraseEntry(const std::string &key_id,
+bool SubscriptionIndex::EraseEntry(const std::string &key_id,
                                    const UniqueID &subscriber_id) {
-  // Erase the subscriber of all keys.
+  // Erase the subscriber of all keys. Subscribe-to-all entries never appear in
+  // the per-key maps below.
   if (key_id.empty()) {
-    subscribers_to_all_->RemoveSubscriber(subscriber_id);
+    return subscribers_to_all_->RemoveSubscriber(subscriber_id);
   }
 
   // Erase keys from the subscriber of individual keys.
   auto subscribers_to_key_id_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribers_to_key_id_it == subscribers_to_key_id_.end()) {
-    return;
+    return false;
   }
   auto &objects = subscribers_to_key_id_it->second;
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
-    return;
+    return false;
   }
   objects.erase(object_it);
   if (objects.empty()) {
@@ -213,14 +214,33 @@ void SubscriptionIndex::EraseEntry(const std::string &key_id,
   // Erase subscribers from keys (reverse index).
   auto entity_it = entities_.find(key_id);
   if (entity_it == entities_.end()) {
-    return;
+    return true;
   }
   auto &entity = *entity_it->second;
-  // If code reaches this line, that means the subscriber id was in the index.
   entity.RemoveSubscriber(subscriber_id);
   if (entity.Subscribers().empty()) {
     entities_.erase(entity_it);
   }
+  return true;
+}
+
+bool SubscriptionIndex::EraseKey(const std::string &key_id) {
+  auto entity_it = entities_.find(key_id);
+  if (entity_it == entities_.end()) {
+    return false;
+  }
+  for (const auto &subscriber_it : entity_it->second->Subscribers()) {
+    const auto &subscriber_id = subscriber_it.first;
+    auto it = subscribers_to_key_id_.find(subscriber_id);
+    if (it != subscribers_to_key_id_.end()) {
+      it->second.erase(key_id);
+      if (it->second.empty()) {
+        subscribers_to_key_id_.erase(it);
+      }
+    }
+  }
+  entities_.erase(entity_it);
+  return true;
 }
 
 bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
@@ -419,9 +439,13 @@ StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
 }
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
+  absl::MutexLock lock(&mutex_);
+  PublishInternal(std::move(pub_message));
+}
+
+void Publisher::PublishInternal(rpc::PubMessage pub_message) {
   RAY_CHECK_EQ(pub_message.sequence_id(), 0) << "sequence_id should not be set;";
   const auto channel_type = pub_message.channel_type();
-  absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);
   pub_message.set_sequence_id(++next_sequence_id_);
 
@@ -439,17 +463,27 @@ void Publisher::PublishFailure(const rpc::ChannelType channel_type,
   pub_message.set_key_id(key_id);
   pub_message.set_channel_type(channel_type);
   pub_message.mutable_failure_message();
-  Publish(pub_message);
+  absl::MutexLock lock(&mutex_);
+  PublishInternal(std::move(pub_message));
+  // A failure is terminal for the key: subscribers that receive it give up on it
+  // and unsubscribe. Drop the key's subscriptions in the same critical section,
+  // so no subscription outlives a failure delivered to it (a stale entry's later
+  // unsubscribe would report a removal that was never counted).
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  if (subscription_index_it != subscription_index_map_.end()) {
+    subscription_index_it->second.EraseKey(key_id);
+  }
 }
 
-void Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
+bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
                                        const UniqueID &subscriber_id,
                                        const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
-  if (subscription_index_it != subscription_index_map_.end()) {
-    subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
+  if (subscription_index_it == subscription_index_map_.end()) {
+    return false;
   }
+  return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
 }
 
 void Publisher::UnregisterSubscriber(const UniqueID &subscriber_id) {

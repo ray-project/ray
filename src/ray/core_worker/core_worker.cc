@@ -3943,8 +3943,16 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
     }
 
     if (command.has_unsubscribe_message()) {
-      object_info_publisher_->UnregisterSubscription(
+      const bool removed = object_info_publisher_->UnregisterSubscription(
           command.channel_type(), subscriber_id, command.key_id());
+      if (removed &&
+          command.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
+        // Decrement only on a real removal: this command is delivered
+        // at-least-once, so an ungated decrement could under-count and strand a
+        // live subscriber.
+        reference_counter_->RemoveObjectLocationSubscriber(
+            ObjectID::FromBinary(command.key_id()));
+      }
     } else {  // subscribe_message case
       StatusSet<StatusT::InvalidArgument> result =
           ProcessSubscribeMessage(command.subscribe_message(),
@@ -4096,8 +4104,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     return;
   }
 
-  // Publish the first object location snapshot when subscribed for the first time.
-  reference_counter_->PublishObjectLocationSnapshot(object_id);
+  reference_counter_->AddObjectLocationSubscriber(object_id);
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>

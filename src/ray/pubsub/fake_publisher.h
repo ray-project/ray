@@ -41,9 +41,11 @@ class FakePublisher : public PublisherInterface {
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override {}
 
-  void UnregisterSubscription(const rpc::ChannelType channel_type,
+  bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
-                              const std::optional<std::string> &key_id) override {}
+                              const std::optional<std::string> &key_id) override {
+    return false;
+  }
 
   void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
 

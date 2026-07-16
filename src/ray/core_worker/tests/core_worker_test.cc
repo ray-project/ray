@@ -1121,8 +1121,9 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      object_size,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
-  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
-  // bumps the sequence id by 1
+  // No subscriber is registered on the channel yet, so this update is skipped
+  // entirely (it does not consume a sequence id); the subscriber below is
+  // brought up to date by the registration-time snapshot instead.
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -1190,8 +1191,10 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // AddObjectLocation triggers a publish so the sequence id is bumped by 1
-    EXPECT_EQ(msg.sequence_id(), i + 2);
+    // The two registration-time snapshots are the only publishes, so their
+    // sequence ids are 1 and 2 (the pre-subscribe location update is skipped
+    // and does not consume a sequence id).
+    EXPECT_EQ(msg.sequence_id(), i + 1);
   };
   for (int i = 0; i < 2; i++) {
     if (i == 0) {
@@ -1201,6 +1204,179 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     const auto &msg = long_polling_reply2.pub_messages(i);
     CheckMessage(msg, i);
   }
+}
+
+// The unsubscribe command is delivered at-least-once, so the same unsubscribe can
+// arrive twice. A duplicate delivery must not decrement the location-subscriber
+// count a second time, or a live co-subscriber's updates would be skipped.
+TEST_F(CoreWorkerTest, HandlePubsubDuplicateUnsubscribeKeepsCoSubscriber) {
+  auto subscriber_a = NodeID::FromRandom();
+  auto subscriber_b = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  auto node_id = NodeID::FromRandom();
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     1024,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  auto send_command_batch = [&](const rpc::PubsubCommandBatchRequest &request) {
+    rpc::PubsubCommandBatchReply reply;
+    core_worker_->HandlePubsubCommandBatch(
+        request,
+        &reply,
+        [](const Status &status, std::function<void()>, std::function<void()>) {
+          ASSERT_TRUE(status.ok());
+        });
+  };
+  auto make_subscribe = [&](const NodeID &subscriber_id) {
+    rpc::PubsubCommandBatchRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    auto *command = request.add_commands();
+    command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    command->set_key_id(object_id.Binary());
+    auto *sub_message =
+        command->mutable_subscribe_message()->mutable_worker_object_locations_message();
+    sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    sub_message->set_object_id(object_id.Binary());
+    return request;
+  };
+  auto make_unsubscribe = [&](const NodeID &subscriber_id) {
+    rpc::PubsubCommandBatchRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    auto *command = request.add_commands();
+    command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    command->set_key_id(object_id.Binary());
+    command->mutable_unsubscribe_message();
+    return request;
+  };
+
+  send_command_batch(make_subscribe(subscriber_a));
+  send_command_batch(make_subscribe(subscriber_b));
+
+  // B unsubscribes, and the same command is delivered a second time.
+  send_command_batch(make_unsubscribe(subscriber_b));
+  send_command_batch(make_unsubscribe(subscriber_b));
+
+  // A is still subscribed, so this update must be published to it.
+  reference_counter_->AddObjectLocation(object_id, node_id);
+
+  rpc::PubsubLongPollingRequest poll_request;
+  poll_request.set_subscriber_id(subscriber_a.Binary());
+  poll_request.set_max_processed_sequence_id(0);
+  poll_request.set_publisher_id("");
+  rpc::PubsubLongPollingReply poll_reply;
+  core_worker_->HandlePubsubLongPolling(
+      poll_request,
+      &poll_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // A receives both registration-time snapshots (each snapshot is published on
+  // the object's key, so every subscriber of the key gets it) and, critically,
+  // the post-unsubscribe update.
+  ASSERT_EQ(poll_reply.pub_messages_size(), 3);
+  EXPECT_EQ(poll_reply.pub_messages(0).worker_object_locations_message().node_ids_size(),
+            0);
+  EXPECT_EQ(poll_reply.pub_messages(1).worker_object_locations_message().node_ids_size(),
+            0);
+  const auto &update = poll_reply.pub_messages(2);
+  EXPECT_EQ(update.key_id(), object_id.Binary());
+  ASSERT_EQ(update.worker_object_locations_message().node_ids_size(), 1);
+  EXPECT_EQ(update.worker_object_locations_message().node_ids(0), node_id.Binary());
+}
+
+// A subscribe that arrives before the owner knows the object (e.g. a dynamic
+// return reported late) is rejected with ref-removed + failure. The rejected
+// subscription must not linger in the publisher: its late unsubscribe would
+// otherwise report a real removal that was never counted and steal a live
+// subscriber's count.
+TEST_F(CoreWorkerTest, HandlePubsubSubscribeBeforeRefDoesNotStealCount) {
+  auto rejected_subscriber = NodeID::FromRandom();
+  auto live_subscriber = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  auto node_id = NodeID::FromRandom();
+
+  auto send_command_batch = [&](const rpc::PubsubCommandBatchRequest &request) {
+    rpc::PubsubCommandBatchReply reply;
+    core_worker_->HandlePubsubCommandBatch(
+        request,
+        &reply,
+        [](const Status &status, std::function<void()>, std::function<void()>) {
+          ASSERT_TRUE(status.ok());
+        });
+  };
+  auto make_subscribe = [&](const NodeID &subscriber_id) {
+    rpc::PubsubCommandBatchRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    auto *command = request.add_commands();
+    command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    command->set_key_id(object_id.Binary());
+    auto *sub_message =
+        command->mutable_subscribe_message()->mutable_worker_object_locations_message();
+    sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    sub_message->set_object_id(object_id.Binary());
+    return request;
+  };
+  auto make_unsubscribe = [&](const NodeID &subscriber_id) {
+    rpc::PubsubCommandBatchRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    auto *command = request.add_commands();
+    command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    command->set_key_id(object_id.Binary());
+    command->mutable_unsubscribe_message();
+    return request;
+  };
+
+  // Subscribe before the reference exists: rejected.
+  send_command_batch(make_subscribe(rejected_subscriber));
+
+  // The owner then learns about the object.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     1024,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  // A live subscriber arrives and is counted.
+  send_command_batch(make_subscribe(live_subscriber));
+
+  // The rejected subscription's failure-driven unsubscribe lands late. It must
+  // not decrement the count.
+  send_command_batch(make_unsubscribe(rejected_subscriber));
+
+  // The live subscriber still receives location updates.
+  reference_counter_->AddObjectLocation(object_id, node_id);
+
+  rpc::PubsubLongPollingRequest poll_request;
+  poll_request.set_subscriber_id(live_subscriber.Binary());
+  poll_request.set_max_processed_sequence_id(0);
+  poll_request.set_publisher_id("");
+  rpc::PubsubLongPollingReply poll_reply;
+  core_worker_->HandlePubsubLongPolling(
+      poll_request,
+      &poll_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // Registration-time snapshot, then the update.
+  ASSERT_EQ(poll_reply.pub_messages_size(), 2);
+  EXPECT_EQ(poll_reply.pub_messages(0).worker_object_locations_message().node_ids_size(),
+            0);
+  const auto &update = poll_reply.pub_messages(1);
+  ASSERT_EQ(update.worker_object_locations_message().node_ids_size(), 1);
+  EXPECT_EQ(update.worker_object_locations_message().node_ids(0), node_id.Binary());
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
