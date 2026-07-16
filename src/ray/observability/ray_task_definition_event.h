@@ -32,6 +32,18 @@ template class RayEvent<rpc::events::TaskDefinitionEvent>;
 // event is produced for the same task attempt (each spec-carrying status event produces
 // one), the recorder collapses them to a single event when grouping by
 // (entity_id, event_type).
+//
+// TODO(karticam): this proto is built EAGERLY -- the caller passes a fully-populated
+// TaskDefinitionEvent, constructed at task-submission time. The legacy TaskEventBuffer
+// instead deferred definition-proto building to the flush thread, keeping it off the task
+// submission/execution critical path. Building the proto eagerly here might increase
+// latency in the task submission time. Benchmark this and if it regresses, implement lazy
+// serialization.
+//
+//
+// Definition events are the only ones eligible for deferral since MergeData is a no-op,
+// so the proto need not exist before the recorder's merge step.
+// Lifecycle/profile are mergeable and must stay eager.
 class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent> {
  public:
   RayTaskDefinitionEvent(rpc::events::TaskDefinitionEvent data,
