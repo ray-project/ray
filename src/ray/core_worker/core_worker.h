@@ -114,6 +114,20 @@ class TaskCounter {
                          bool is_retry);
 
  private:
+  /// Records the per-state gauge breakdown for a single RUNNING-state key: the
+  /// RUNNING count (minus its sub-states), the SUBMITTED_TO_WORKER negation that
+  /// cancels the owner's positive count, and the three RUNNING_IN_* sub-states.
+  /// Shared by the on-change callback and the per-tick re-emit in RecordMetrics so
+  /// both go through one implementation.
+  ///
+  /// \param key The (function name, task status type, is_retry) key. Only keys whose
+  /// status is kRunning are recorded; all others are ignored.
+  /// \param running_total The current count for `key`, passed in by the caller
+  /// (which already has it) to avoid a redundant counter lookup.
+  void RecordRunningTaskBreakdown(
+      const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
   CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);

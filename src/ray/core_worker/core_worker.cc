@@ -169,67 +169,87 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
                          ray::observability::MetricInterface &actor_by_state_gauge)
     : task_by_state_gauge_(task_by_state_gauge),
       actor_by_state_gauge_(actor_by_state_gauge) {
+  // On change we only retract keys that just dropped to zero (emit their final 0).
+  // Live keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics,
+  // so emitting them here too would double-record. This split keeps each key
+  // recorded exactly once per tick.
   counter_.SetOnChangeCallback(
-      [this](const std::tuple<std::string, TaskStatusType, bool>
-                 &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-        if (std::get<1>(key) != TaskStatusType::kRunning) {
-          return;
-        }
-        const auto &func_name = std::get<0>(key);
-        const auto is_retry = std::get<2>(key);
-        const int64_t running_total = counter_.Get(key);
-        const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
-        const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
-        const int64_t num_getting_pinning_args =
-            pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
-        const auto is_retry_label = is_retry ? "1" : "0";
-        // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
-        // them out to avoid double-counting.
-        task_by_state_gauge_.Record(
-            running_total - num_in_get - num_in_wait - num_getting_pinning_args,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Negate the metrics recorded from the submitter process for these tasks.
-        task_by_state_gauge_.Record(
-            -running_total,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for get.
-        task_by_state_gauge_.Record(
-            num_in_get,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for wait.
-        task_by_state_gauge_.Record(
-            num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for pending args fetch.
-        task_by_state_gauge_.Record(
-            num_getting_pinning_args,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-      });
+      [this](const std::tuple<std::string, TaskStatusType, bool> &key)
+          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
+            if (counter_.Get(key) == 0) {
+              RecordRunningTaskBreakdown(key, /*running_total=*/0);
+            }
+          });
+}
+
+void TaskCounter::RecordRunningTaskBreakdown(
+    const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total) {
+  if (std::get<1>(key) != TaskStatusType::kRunning) {
+    return;
+  }
+  const auto &func_name = std::get<0>(key);
+  const auto is_retry = std::get<2>(key);
+  const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
+  const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+  const int64_t num_getting_pinning_args =
+      pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
+  const auto is_retry_label = is_retry ? "1" : "0";
+  // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
+  // them out to avoid double-counting.
+  task_by_state_gauge_.Record(
+      running_total - num_in_get - num_in_wait - num_getting_pinning_args,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Negate the metrics recorded from the submitter process for these tasks.
+  task_by_state_gauge_.Record(
+      -running_total,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for get.
+  task_by_state_gauge_.Record(
+      num_in_get,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for wait.
+  task_by_state_gauge_.Record(
+      num_in_wait,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for pending args fetch.
+  task_by_state_gauge_.Record(
+      num_getting_pinning_args,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
 }
 
 void TaskCounter::RecordMetrics() {
   absl::MutexLock l(&mu_);
+  // Re-assert every live RUNNING-state entry each tick, not just transitions: the
+  // metrics backend clears gauge observations after each export (#56405), so a
+  // long-running task that hasn't transitioned would otherwise drop out of the
+  // gauge. FlushOnChangeCallbacks still emits the final 0 for keys that just
+  // dropped to zero (erased from the counter, so ForEachEntry won't visit them).
   counter_.FlushOnChangeCallbacks();
+  counter_.ForEachEntry([this](const std::tuple<std::string, TaskStatusType, bool> &key,
+                               int64_t running_total)
+                            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+                              RecordRunningTaskBreakdown(key, running_total);
+                            });
   if (IsActor()) {
     float running_tasks = 0.0;
     float idle = 0.0;

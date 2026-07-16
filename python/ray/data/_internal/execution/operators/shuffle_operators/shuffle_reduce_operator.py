@@ -20,7 +20,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
     ShuffleMapOp,
     extract_partition_id,
 )
@@ -38,6 +38,13 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
+
+# Isolate shuffle reduce workers into a dedicated worker pool so that
+# ReadParquet/Project tasks don't run on the same workers.  Mirrors the
+# map-side isolation (RAY_DATA_SHUFFLE_MAP_WORKER): without this, shared
+# memory pages from object store accesses (mmap'd during combine_chunks)
+# accumulate across task types and inflate reduce worker RSS.
+_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
 
 
 class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
@@ -138,6 +145,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         remote_args: Dict[str, Any] = {
             "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
             "scheduling_strategy": "SPREAD",
+            "runtime_env": _SHUFFLE_REDUCE_RUNTIME_ENV,
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
@@ -421,14 +429,13 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
-        upstream = self.input_dependencies[0]
-        assert isinstance(upstream, ShuffleMapOp)
-        partition_bytes = upstream.get_partition_bytes()
         memory = 0
-        sizes = [b for b in partition_bytes.values() if b > 0]
-        if sizes:
-            avg_bytes = sum(sizes) / len(sizes)
-            memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+        for upstream in self.input_dependencies:
+            assert isinstance(upstream, ShuffleMapOp)
+            sizes = [b for b in upstream.get_partition_bytes().values() if b > 0]
+            if sizes:
+                avg_bytes = sum(sizes) / len(sizes)
+                memory += int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )

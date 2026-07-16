@@ -804,6 +804,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches",
+    size = "small",
+    srcs = ["tests/test_iter_torch_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iterator",
     size = "small",
     srcs = ["tests/test_iterator.py"],
@@ -2023,6 +2037,20 @@ py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lerobot",
+    size = "medium",
+    srcs = ["tests/datasource/test_lerobot.py"],
     tags = [
         "exclusive",
         "team:data",

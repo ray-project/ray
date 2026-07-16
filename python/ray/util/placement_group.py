@@ -221,7 +221,10 @@ def placement_group(
         stripped_topology_strategy,
     )
 
-    return PlacementGroup(placement_group_id)
+    return PlacementGroup(
+        placement_group_id,
+        bundle_cache=[{k: float(v) for k, v in bundle.items()} for bundle in bundles],
+    )
 
 
 @PublicAPI

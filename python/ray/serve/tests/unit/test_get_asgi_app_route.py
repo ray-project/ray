@@ -1,8 +1,10 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import APIRouter, FastAPI
 
+from ray.serve._private.replica import Replica
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 
 
@@ -280,6 +282,35 @@ def test_redirect_slashes(redirect_slashes: bool):
             )
             is None
         )
+
+
+@pytest.mark.parametrize(
+    ("route_prefix", "method", "path", "expected"),
+    [
+        # A matched ASGI route resolves to its name regardless of prefix.
+        (None, "POST", "/internal/route", "/internal/route"),
+        # A real route prefix passes through unchanged for unmatched paths.
+        ("/", "GET", "/nope", "/"),
+        # The ingress request router has no prefix. Unmatched paths fall back to
+        # "" so the route stays a string for metric tags.
+        (None, "GET", "/nope", ""),
+    ],
+)
+def test_determine_http_route(route_prefix, method, path, expected):
+    """`Replica._determine_http_route` wraps `get_asgi_route_name` with a
+    route-prefix fallback, coercing a missing prefix to "" so the route stays a
+    string."""
+    app = FastAPI()
+
+    @app.post("/internal/route")
+    def route():
+        pass
+
+    fake = MagicMock()
+    fake._route_prefix = route_prefix
+    fake._user_callable_asgi_app = app
+    scope = {"type": "http", "method": method, "path": path}
+    assert Replica._determine_http_route(fake, scope) == expected
 
 
 if __name__ == "__main__":
