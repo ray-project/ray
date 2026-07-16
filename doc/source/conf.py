@@ -132,6 +132,7 @@ llms_txt_exclude = [
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
     "ray-core/api/doc/*",
+    "ray-core/compiled-graph/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
