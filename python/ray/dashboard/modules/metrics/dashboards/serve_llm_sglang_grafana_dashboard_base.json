@@ -66,31 +66,6 @@
         }
       },
       {
-        "name": "workerid",
-        "label": "Worker ID",
-        "type": "query",
-        "hide": 0,
-        "datasource": "${datasource}",
-        "definition": "label_values({{__name__=~\"ray_sglang_.+\", {global_filters}}}, WorkerId)",
-        "query": {
-          "query": "label_values({{__name__=~\"ray_sglang_.+\", {global_filters}}}, WorkerId)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 1,
-        "includeAll": true,
-        "multi": false,
-        "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        }
-      },
-      {
         "name": "deployment",
         "label": "Deployment",
         "type": "query",
@@ -177,7 +152,9 @@
       }
     ]
   },
-  "rayMeta": ["excludesSystemRoutes"],
+  "rayMeta": [
+    "excludesSystemRoutes"
+  ],
   "time": {
     "from": "now-30m",
     "to": "now"
