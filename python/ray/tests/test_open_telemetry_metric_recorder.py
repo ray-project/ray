@@ -13,6 +13,15 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
 )
 
 
+def _gauge_values(recorder):
+    """Returns the recorder's gauge observations with the per-entry TTL timestamp
+    stripped, so tests can assert on the recorded values directly."""
+    return {
+        name: {tag_key: value for tag_key, (value, _ts) in observations.items()}
+        for name, observations in recorder._gauge_observations_by_name.items()
+    }
+
+
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
@@ -31,11 +40,69 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
         tags={"label_key": "label_value"},
         value=42.0,
     )
-    assert recorder._gauge_observations_by_name == {
+    assert _gauge_values(recorder) == {
         "test_gauge": {
             frozenset({("label_key", "label_value")}): 42.0,
         }
     }
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.time.monotonic")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_gauge_value_retained_within_ttl_then_evicted(
+    mock_get_meter, mock_set_meter_provider, mock_monotonic
+):
+    """
+    A gauge value must survive scrapes for the TTL window (not be cleared after the
+    first scrape), and be evicted once it has not been refreshed within the TTL.
+    """
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder(gauge_metric_ttl_seconds=10.0)
+    recorder.register_gauge_metric(name="g", description="g")
+    callback = recorder._create_observable_callback("g", MetricType.GAUGE)
+
+    # Report a value at t=1000.
+    mock_monotonic.return_value = 1000.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # Scrape at t=1005 (within TTL): value is emitted.
+    mock_monotonic.return_value = 1005.0
+    assert [o.value for o in callback(None)] == [7.0]
+
+    # Scrape again at t=1009 without re-reporting: still within TTL, so the value
+    # persists (clear-on-scrape would have dropped it after the first scrape).
+    mock_monotonic.return_value = 1009.0
+    assert [o.value for o in callback(None)] == [7.0]
+
+    # Scrape at t=1011 (>10s since the last report): the value is evicted.
+    mock_monotonic.return_value = 1011.0
+    assert callback(None) == []
+    assert recorder._gauge_observations_by_name["g"] == {}
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.time.monotonic")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_gauge_refresh_extends_ttl(
+    mock_get_meter, mock_set_meter_provider, mock_monotonic
+):
+    """Re-reporting a gauge value refreshes its TTL so it does not get evicted."""
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder(gauge_metric_ttl_seconds=10.0)
+    recorder.register_gauge_metric(name="g", description="g")
+    callback = recorder._create_observable_callback("g", MetricType.GAUGE)
+
+    mock_monotonic.return_value = 1000.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # Re-report at t=1008 (within TTL): refreshes the timestamp.
+    mock_monotonic.return_value = 1008.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # At t=1015 (>10s after the first report, but <10s after the refresh): still live.
+    mock_monotonic.return_value = 1015.0
+    assert [o.value for o in callback(None)] == [7.0]
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
@@ -218,7 +285,7 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
         ],
         global_tags={"global_label_key": "global_label_value"},
     )
-    assert recorder._gauge_observations_by_name == {
+    assert _gauge_values(recorder) == {
         "hi": {
             frozenset(
                 {
