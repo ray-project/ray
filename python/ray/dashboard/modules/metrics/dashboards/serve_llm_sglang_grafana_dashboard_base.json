@@ -71,9 +71,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_sglang_prompt_tokens_total{{{global_filters}}}, WorkerId)",
+        "definition": "label_values({{__name__=~\"ray_sglang_.+\", {global_filters}}}, WorkerId)",
         "query": {
-          "query": "label_values(ray_sglang_prompt_tokens_total{{{global_filters}}}, WorkerId)",
+          "query": "label_values({{__name__=~\"ray_sglang_.+\", {global_filters}}}, WorkerId)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

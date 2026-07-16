@@ -11,11 +11,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 # ---------------------------------------------------------------------------
 # Reusable PromQL fragments
 # ---------------------------------------------------------------------------
-# SGLang metrics are emitted from the tokenizer_manager (replica) and the
-# scheduler actors (separate workers). They carry model_name + WorkerId but not
-# the Serve deployment/replica labels, and ray_serve_deployment_request_counter_total
-# has no model_name label. So SGLang panels group by WorkerId directly instead of
-# joining through the Serve counter (which dropped every scheduler series).
+# SGLang metrics come from two workers: the tokenizer_manager (in the replica,
+# shares the replica WorkerId -> joinable to the Serve counter) and the scheduler
+# actors (separate workers, no matching WorkerId -> WorkerId grouping only).
 _WORKER_JOIN = ""
 
 # Standard SGLang metric filter
@@ -26,9 +24,17 @@ _SGLANG_FILTER = (
 # Filter for ray_serve_* metrics (they have no model_name label).
 _SERVE_FILTER = 'WorkerId=~"$workerid", deployment=~"$deployment", {global_filters}'
 
+# Grafts Serve `deployment` onto tokenizer_manager series via the shared replica
+# WorkerId. Tokenizer metrics only -- scheduler workers have no matching counter.
+_DEP_JOIN_SRC = (
+    "ray_serve_deployment_request_counter_total"
+    '{{deployment=~"$deployment", {global_filters}}} * 0 + 1'
+)
+
 # Legends: SGLang panels key on WorkerId; the Serve requests panel on deployment/replica.
 _WORKER = "{{WorkerId}}"
 _DEP_REPLICA = "{{deployment}}: {{replica}}"
+_DEPLOYMENT = "{{deployment}}"
 
 
 def _mean_with_join(metric_base: str) -> str:
@@ -77,6 +83,39 @@ def _rate_with_join(metric: str, agg_fn: str = "rate") -> str:
     )
 
 
+def _mean_by_deployment(metric_base: str) -> str:
+    """Mean per Serve deployment (WorkerId->deployment join; tokenizer metrics only)."""
+    return (
+        "(\n"
+        "  (\n"
+        f"    sum by(deployment) (rate({metric_base}_sum{{{{{_SGLANG_FILTER}}}}}[$interval]) * on(WorkerId) group_left(deployment) ({_DEP_JOIN_SRC}))\n"
+        "    /\n"
+        f"    sum by(deployment) (rate({metric_base}_count{{{{{_SGLANG_FILTER}}}}}[$interval]) * on(WorkerId) group_left(deployment) ({_DEP_JOIN_SRC}))\n"
+        "  )\n"
+        "  and on(deployment)\n"
+        "  (\n"
+        f"    sum by(deployment) (rate({metric_base}_count{{{{{_SGLANG_FILTER}}}}}[$interval]) * on(WorkerId) group_left(deployment) ({_DEP_JOIN_SRC})) > 0\n"
+        "  )\n"
+        ")"
+    )
+
+
+def _percentile_by_deployment(metric_base: str, quantile: float) -> str:
+    """Percentile per Serve deployment (WorkerId->deployment join; tokenizer metrics only)."""
+    return (
+        "(\n"
+        "  histogram_quantile(\n"
+        f"    {quantile},\n"
+        f"    sum by (le, deployment) (rate({metric_base}_bucket{{{{{_SGLANG_FILTER}}}}}[$interval]) * on(WorkerId) group_left(deployment) ({_DEP_JOIN_SRC}))\n"
+        "  )\n"
+        "  and on(deployment)\n"
+        "  (\n"
+        f"    sum by(deployment) (rate({metric_base}_count{{{{{_SGLANG_FILTER}}}}}[$interval]) * on(WorkerId) group_left(deployment) ({_DEP_JOIN_SRC})) > 0\n"
+        "  )\n"
+        ")"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Histogram helper: Mean / P50 / P90 panels for a given metric
 # ---------------------------------------------------------------------------
@@ -88,15 +127,20 @@ def _histogram_panels(
     unit: str = "s",
     linewidth: int = 2,
     description: str = "",
+    by_deployment: bool = False,
 ) -> list:
-    """Return [Mean, P50, P90] panels for a histogram metric (3-per-row)."""
+    """[Mean, P50, P90] panels for a histogram metric. by_deployment=True groups
+    by Serve deployment (tokenizer metrics only)."""
+    mean_fn = _mean_by_deployment if by_deployment else _mean_with_join
+    pct_fn = _percentile_by_deployment if by_deployment else _percentile_with_join
+    legend = _DEPLOYMENT if by_deployment else _WORKER
     return [
         Panel(
             id=ids[0],
             title=f"{label} -- Mean",
             description=description,
             unit=unit,
-            targets=[Target(expr=_mean_with_join(metric_base), legend=_WORKER)],
+            targets=[Target(expr=mean_fn(metric_base), legend=legend)],
             fill=1,
             linewidth=linewidth,
             stack=False,
@@ -109,7 +153,7 @@ def _histogram_panels(
             unit=unit,
             targets=[
                 Target(
-                    expr=_percentile_with_join(metric_base, 0.5), legend=_WORKER
+                    expr=pct_fn(metric_base, 0.5), legend=legend
                 )
             ],
             fill=1,
@@ -124,7 +168,7 @@ def _histogram_panels(
             unit=unit,
             targets=[
                 Target(
-                    expr=_percentile_with_join(metric_base, 0.9), legend=_WORKER
+                    expr=pct_fn(metric_base, 0.9), legend=legend
                 )
             ],
             fill=1,
@@ -205,9 +249,19 @@ _throughput_panels = [
 # Row 2: Latency (3x3 grid at y=18/26/34)
 # ===================================================================
 _latency_panels_list = [
-    *_histogram_panels("ray_sglang_inter_token_latency_seconds", "TPOT", (6, 7, 8), 18),
     *_histogram_panels(
-        "ray_sglang_time_to_first_token_seconds", "TTFT", (9, 10, 11), 26
+        "ray_sglang_inter_token_latency_seconds",
+        "TPOT",
+        (6, 7, 8),
+        18,
+        by_deployment=True,
+    ),
+    *_histogram_panels(
+        "ray_sglang_time_to_first_token_seconds",
+        "TTFT",
+        (9, 10, 11),
+        26,
+        by_deployment=True,
     ),
     *_histogram_panels(
         "ray_sglang_e2e_request_latency_seconds",
@@ -215,6 +269,7 @@ _latency_panels_list = [
         (12, 13, 14),
         34,
         description="End-to-end request latency (in seconds).",
+        by_deployment=True,
     ),
 ]
 
