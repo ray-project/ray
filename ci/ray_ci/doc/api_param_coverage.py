@@ -146,9 +146,7 @@ class ClassIndex:
     method_own: Dict[str, Dict[str, Set[str]]] = field(
         default_factory=lambda: defaultdict(dict)
     )
-    class_doc: Dict[str, Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
-    )
+    class_doc: Dict[str, Set[str]] = field(default_factory=lambda: defaultdict(set))
 
     def inherited_method_params(
         self, class_name: str, method_name: str, _seen=None
@@ -322,9 +320,7 @@ def new_violations_for_file(
     then new).
     """
     head = public_callables(head_source, head_index)
-    base = (
-        public_callables(base_source, base_index) if base_source is not None else {}
-    )
+    base = public_callables(base_source, base_index) if base_source is not None else {}
 
     violations: List[Violation] = []
     for qual, head_c in head.items():
