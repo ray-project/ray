@@ -98,9 +98,7 @@ class ArrowFlightTransport(TensorTransportManager):
         size = self._core.put(obj_id, table)
 
         backend = _dataplane()
-        fd_sock_path = (
-            self._core.ensure_fd_server() if backend == "shm" else None
-        )
+        fd_sock_path = self._core.ensure_fd_server() if backend == "shm" else None
         return ArrowFlightTransportMetadata(
             tensor_meta=[((table.num_rows,), str(table.schema))],
             tensor_device="cpu",
@@ -132,9 +130,7 @@ class ArrowFlightTransport(TensorTransportManager):
         my_node = ray.get_runtime_context().get_node_id()
         same_node = meta.node_id == my_node
         if same_node and meta.backend == "shm":
-            table = self._core.fetch_via_shm(
-                meta.fd_sock_path, meta.key, meta.ipc_size
-            )
+            table = self._core.fetch_via_shm(meta.fd_sock_path, meta.key, meta.ipc_size)
         elif same_node and sys.platform == "linux":
             table = self._core.fetch_via_vm(meta.flight_uri, meta.key, meta.ipc_size)
         else:

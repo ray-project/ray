@@ -100,6 +100,64 @@ def _close_shm_entry(entry) -> None:
         pass
 
 
+def _serialize_table_bytes(table):
+    """Serialize a table to a contiguous Arrow IPC stream (a pa.Buffer)."""
+    import pyarrow as pa
+    import pyarrow.ipc as ipc
+
+    sink = pa.BufferOutputStream()
+    with ipc.new_stream(sink, table.schema) as w:
+        w.write_table(table)
+    return sink.getvalue()
+
+
+def _write_shm_region(buf):
+    """Copy a buffer-like into a fresh anonymous shm region; (fd, mm, size)."""
+    import mmap
+
+    from ray._raylet import shm_create_buffer
+
+    src = memoryview(buf).cast("B")
+    size = src.nbytes
+    fd = shm_create_buffer(size)
+    try:
+        mm = mmap.mmap(fd, size)
+    except Exception:
+        os.close(fd)
+        raise
+    dst = memoryview(mm).cast("B")
+    try:
+        if size:
+            dst[:] = src
+    finally:
+        dst.release()
+    return (fd, mm, size)
+
+
+class ReceivedManifest:
+    """Segments a consumer received for a manifest table, holding their fds open
+    so they can be forwarded (re-exported) to a downstream stage.
+
+    Each segment is a dict {kind, field, fd, mm, size}. If the caller is not
+    forwarding (final consumer), call close() to drop the fds — the mmaps stay
+    valid and are held alive by the reconstructed table's buffers.
+    """
+
+    def __init__(self, segments):
+        self.segments = segments
+        self._transferred = False
+
+    def close(self) -> None:
+        if self._transferred:
+            return
+        for seg in self.segments:
+            try:
+                os.close(seg["fd"])
+            except OSError:
+                pass
+        self.segments = []
+
+
 def _recv_exact(conn, n: int) -> Optional[bytes]:
     """Read exactly `n` bytes from `conn`, or None if the peer closed early."""
     chunks = []
@@ -144,6 +202,16 @@ class FlightCore:
         # anonymous shared-memory buffer, whose fd is then handed to same-node
         # consumers over an AF_UNIX socket (SCM_RIGHTS) for zero-copy reads.
         self._shm: Dict[str, Any] = {}
+        # Multi-region "manifest" transfer (append-without-recopy). A logical
+        # table is a base region (full-table IPC stream) plus zero or more
+        # single-column regions appended downstream. `_segments` maps a
+        # per-segment key -> (fd, mm, size) that the fd server can hand out;
+        # `_manifests` maps an object key -> the ordered list of segment
+        # descriptors describing how to reconstruct it. A stage that appends a
+        # column re-registers (forwards) the segments it received plus its new
+        # column, so the whole chain's regions are served from this process.
+        self._segments: Dict[str, Any] = {}
+        self._manifests: Dict[str, list] = {}
         self._lock = threading.Lock()
         self._server = None
         self._server_thread = None
@@ -297,6 +365,119 @@ class FlightCore:
         except Exception:
             pass
 
+    # ------------------------------------------------- multi-region manifests
+
+    def store_shared(self, key: str, table) -> dict:
+        """Store `table` as a single-segment manifest; return its locator dict.
+
+        The locator is a small dict (embeddable in the Ray object store) of
+        {fd_sock_path, segments:[descriptor...]} that a same-node consumer
+        passes to fetch_shared."""
+        self.ensure_fd_server()
+        fd, mm, size = _write_shm_region(_serialize_table_bytes(table))
+        seg_key = f"{key}::0"
+        seg = {"seg_key": seg_key, "size": size, "kind": "base", "field": None}
+        with self._lock:
+            self._segments[seg_key] = (fd, mm, size)
+            self._manifests[key] = [seg]
+        return {"fd_sock_path": self._fd_sock_path, "segments": [dict(seg)]}
+
+    def fetch_shared(self, manifest: dict):
+        """Reconstruct a manifest table zero-copy across all its shm regions.
+
+        Returns (table, ReceivedManifest). The handle keeps the segment fds open
+        for forwarding via store_shared_append; a final consumer should call
+        handle.close() (the table keeps the mmaps alive on its own)."""
+        import mmap
+
+        import pyarrow as pa
+        import pyarrow.ipc as ipc
+
+        sock_path = manifest["fd_sock_path"]
+        received = []
+        table = None
+        for seg in manifest["segments"]:
+            fd, size = self._recv_segment_fd(sock_path, seg["seg_key"])
+            mm = mmap.mmap(fd, size, prot=mmap.PROT_READ)
+            seg_table = ipc.open_stream(pa.py_buffer(mm)).read_all()
+            received.append(
+                {
+                    "kind": seg["kind"],
+                    "field": seg["field"],
+                    "fd": fd,
+                    "mm": mm,
+                    "size": size,
+                }
+            )
+            if seg["kind"] == "base":
+                table = seg_table
+            else:
+                table = table.append_column(seg["field"], seg_table.column(0))
+        return table, ReceivedManifest(received)
+
+    def store_shared_append(
+        self, new_key: str, handle: ReceivedManifest, field, column
+    ) -> dict:
+        """Produce a new manifest = the segments in `handle` + one appended
+        column, materializing ONLY the new column into shm. The handle's fds are
+        re-exported from this process (ownership transfers to this manifest), so
+        the base/upstream columns are never re-copied."""
+        self.ensure_fd_server()
+        import pyarrow as pa
+
+        col_table = pa.table({field: column})
+        fd, mm, size = _write_shm_region(_serialize_table_bytes(col_table))
+        out = []
+        with self._lock:
+            for i, seg in enumerate(handle.segments):
+                seg_key = f"{new_key}::{i}"
+                self._segments[seg_key] = (seg["fd"], seg["mm"], seg["size"])
+                out.append(
+                    {
+                        "seg_key": seg_key,
+                        "size": seg["size"],
+                        "kind": seg["kind"],
+                        "field": seg["field"],
+                    }
+                )
+            col_seg_key = f"{new_key}::{len(handle.segments)}"
+            self._segments[col_seg_key] = (fd, mm, size)
+            out.append(
+                {"seg_key": col_seg_key, "size": size, "kind": "column", "field": field}
+            )
+            self._manifests[new_key] = out
+        handle._transferred = True  # fds now owned by self._segments
+        return {"fd_sock_path": self._fd_sock_path, "segments": [dict(s) for s in out]}
+
+    def delete_shared(self, key: str) -> None:
+        with self._lock:
+            segs = self._manifests.pop(key, None)
+            entries = []
+            if segs:
+                for seg in segs:
+                    entry = self._segments.pop(seg["seg_key"], None)
+                    if entry is not None:
+                        entries.append(entry)
+        for entry in entries:
+            _close_shm_entry(entry)
+
+    def _recv_segment_fd(self, sock_path: str, seg_key: str):
+        """Connect to an fd server and receive one segment's fd + size."""
+        key_bytes = seg_key.encode("utf-8")
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(sock_path)
+        try:
+            sock.sendall(struct.pack("<I", len(key_bytes)) + key_bytes)
+            msg, fds, _flags, _addr = socket.recv_fds(sock, 8, 1)
+            if len(msg) < 8:
+                raise OSError(f"short fd-server reply for segment {seg_key}")
+            (size,) = struct.unpack("<q", msg)
+            if size < 0 or not fds:
+                raise KeyError(f"shm segment not found: {seg_key}")
+            return fds[0], size
+        finally:
+            sock.close()
+
     # ----------------------------------------------------------- internals
 
     def _materialize_shm(self, key: str, sink: "_RecordingSink", size: int) -> None:
@@ -349,9 +530,7 @@ class FlightCore:
         import tempfile
 
         # Keep the path short: AF_UNIX sun_path is capped (~104 on macOS).
-        path = os.path.join(
-            tempfile.gettempdir(), f"ray_flt_{os.getpid()}.sock"
-        )
+        path = os.path.join(tempfile.gettempdir(), f"ray_flt_{os.getpid()}.sock")
         try:
             os.unlink(path)
         except OSError:
@@ -391,7 +570,10 @@ class FlightCore:
                 return
             key = key_bytes.decode("utf-8")
             with self._lock:
-                entry = self._shm.get(key)
+                # Single-blob shm objects and manifest segments share one
+                # namespace on the wire; segment keys are prefixed to avoid
+                # collision with object keys.
+                entry = self._segments.get(key) or self._shm.get(key)
             if entry is None:
                 conn.sendall(struct.pack("<q", -1))
                 return

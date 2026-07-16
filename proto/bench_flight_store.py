@@ -68,6 +68,25 @@ def parse_args():
     )
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--sizes-mb", type=int, nargs="+", default=[1, 10, 100])
+    # Append-pipeline mode: a chained N-stage pipeline where each stage appends
+    # a derived column and hands the result to the next stage. Compares the
+    # "copy" baseline (return the full table each hop, through plasma) against
+    # "share" (return a multi-region shm manifest; only the new column is
+    # materialized per hop). Runs instead of the steady-state throughput loop.
+    p.add_argument(
+        "--append-pipeline",
+        action="store_true",
+        help="run the chained append-column pipeline benchmark and exit",
+    )
+    p.add_argument(
+        "--append-strategy", choices=["copy", "share", "both"], default="both"
+    )
+    p.add_argument("--append-stages", type=int, default=4, help="number of append hops")
+    p.add_argument("--rows", type=int, default=1_250_000, help="rows in the base table")
+    p.add_argument(
+        "--base-cols", type=int, default=12, help="columns in the base table"
+    )
+    p.add_argument("--iters", type=int, default=20, help="pipeline iterations to time")
     return p.parse_args()
 
 
@@ -313,8 +332,152 @@ def bench(producers, consumers, size_mb, duration_s, max_in_flight):
     )
 
 
+def run_append_pipeline(args):
+    """Chained N-stage append-column pipeline through real Ray actors.
+
+    copy : each stage returns the full (growing) table -> re-serialized into
+           plasma every hop.
+    share: each stage returns a multi-region shm manifest; only the newly
+           appended column is materialized per hop, upstream regions forwarded.
+    """
+    rows = args.rows
+    base_cols = args.base_cols
+    n = args.append_stages
+
+    def make_base():
+        rng = np.random.default_rng(0)
+        return pa.table({f"c{i}": rng.standard_normal(rows) for i in range(base_cols)})
+
+    def derived(stage):
+        rng = np.random.default_rng(1000 + stage)
+        return pa.array(rng.standard_normal(rows))
+
+    base = make_base()
+    base_mb = base.nbytes / 1e6
+    col_mb = derived(0).nbytes / 1e6
+    final_cols = base_cols + n
+    # Bytes pushed through the Ray object store per iteration for `copy`:
+    # every hop re-serializes the whole (growing) table.
+    copy_store_mb = sum((base_cols + k) for k in range(n + 1)) * (rows * 8) / 1e6
+    del base
+
+    @ray.remote(num_cpus=0)
+    class CopyStage:
+        def produce(self):
+            return make_base()
+
+        def append(self, table, stage):
+            return table.append_column(f"d{stage}", derived(stage))
+
+        def sink(self, table):
+            return table.num_columns
+
+    @ray.remote(num_cpus=0)
+    class ShareStage:
+        def __init__(self):
+            from ray._private.flight_core import get_flight_core
+
+            self._core = get_flight_core()
+            self._prev_key = None
+
+        def _gc_prev(self):
+            if self._prev_key is not None:
+                self._core.delete_shared(self._prev_key)
+                self._prev_key = None
+
+        def produce(self, it):
+            self._gc_prev()
+            key = f"o0:{it}"
+            manifest = self._core.store_shared(key, make_base())
+            self._prev_key = key
+            return manifest
+
+        def append(self, manifest, stage, it):
+            self._gc_prev()
+            # We only need the handle (to forward the upstream segments); the
+            # reconstructed table isn't used here, so let it drop immediately.
+            _, handle = self._core.fetch_shared(manifest)
+            col = derived(stage)
+            key = f"o{stage}:{it}"
+            out = self._core.store_shared_append(key, handle, f"d{stage}", col)
+            self._prev_key = key
+            return out
+
+        def sink(self, manifest):
+            table, handle = self._core.fetch_shared(manifest)
+            ncols = table.num_columns
+            table = None
+            handle.close()
+            return ncols
+
+    def time_pipeline(run_once):
+        run_once(0)  # warmup
+        lat = []
+        result = None
+        for it in range(1, args.iters + 1):
+            t0 = time.perf_counter()
+            result = run_once(it)
+            lat.append(time.perf_counter() - t0)
+        return sorted(lat), result
+
+    def summarize(name, lat, extra):
+        avg = sum(lat) / len(lat) * 1e3
+        p50 = lat[len(lat) // 2] * 1e3
+        p99 = lat[min(len(lat) - 1, int(len(lat) * 0.99))] * 1e3
+        print(
+            f"  {name:6s}  avg={avg:7.2f}ms  p50={p50:7.2f}ms  p99={p99:7.2f}ms  {extra}"
+        )
+
+    print(
+        f"Append pipeline:  base {base_mb:.1f} MB ({base_cols} cols x {rows} rows), "
+        f"{n} append hops, +{col_mb:.1f} MB/hop, final {final_cols} cols"
+    )
+    print(f"Iterations:       {args.iters}")
+    print()
+
+    if args.append_strategy in ("copy", "both"):
+        actors = [CopyStage.remote() for _ in range(n + 2)]
+        producer, appenders, sink = actors[0], actors[1 : 1 + n], actors[1 + n]
+
+        def run_copy(it):
+            ref = producer.produce.remote()
+            for k in range(n):
+                ref = appenders[k].append.remote(ref, k)
+            return ray.get(sink.sink.remote(ref))
+
+        lat, ncols = time_pipeline(run_copy)
+        assert ncols == final_cols, f"copy produced {ncols} cols, expected {final_cols}"
+        summarize("copy", lat, f"objstore={copy_store_mb:.0f} MB/iter")
+
+    if args.append_strategy in ("share", "both"):
+        actors = [ShareStage.remote() for _ in range(n + 2)]
+        producer, appenders, sink = actors[0], actors[1 : 1 + n], actors[1 + n]
+
+        def run_share(it):
+            ref = producer.produce.remote(it)
+            for k in range(n):
+                ref = appenders[k].append.remote(ref, k, it)
+            return ray.get(sink.sink.remote(ref))
+
+        lat, ncols = time_pipeline(run_share)
+        assert (
+            ncols == final_cols
+        ), f"share produced {ncols} cols, expected {final_cols}"
+        # share pushes only tiny manifest dicts + the per-hop column materialized
+        # in shm (not through the object store).
+        summarize("share", lat, f"objstore~0 MB/iter (+{col_mb * n:.0f} MB shm/iter)")
+
+
 def main():
     args = parse_args()
+
+    if args.append_pipeline:
+        ray.init()
+        try:
+            run_append_pipeline(args)
+        finally:
+            ray.shutdown()
+        return
 
     runtime_env = None
     if args.mode in ("arrow-native", "arrow-rdt"):

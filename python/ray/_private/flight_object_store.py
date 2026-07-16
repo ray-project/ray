@@ -37,7 +37,6 @@ class FlightObjectStore:
         """Store a table and return the transfer info dict embedded into the
         Ray object store as the return value."""
         import ray
-
         from ray._private.flight_core import _dataplane
 
         self._core.ensure_server()
@@ -77,9 +76,7 @@ class FlightObjectStore:
         if same_node and backend == "shm":
             # Shared-memory fd passing works on both Linux and macOS.
             path = "shm"
-            table = self._core.fetch_via_shm(
-                info["fd_sock_path"], key, ipc_size
-            )
+            table = self._core.fetch_via_shm(info["fd_sock_path"], key, ipc_size)
         elif same_node and sys.platform == "linux":
             path = "vm"
             table = self._core.fetch_via_vm(flight_uri, key, ipc_size)
