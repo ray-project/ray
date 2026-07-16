@@ -6,17 +6,34 @@ from ci.ray_ci.doc.api import API
 from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.module import Module
 
+# Each team config carries two exemption lists. Both feed the "every
+# @PublicAPI symbol must be documented" check identically (they're unioned at
+# check time), but they mean different things to a human reading the file:
+#
+#   white_list_apis  -- Permanent, intentional exemptions. These symbols are
+#                       correctly absent from the team autosummary and are
+#                       expected to stay on this list: documented elsewhere, an
+#                       intentional alias, or genuinely un-deprecatable. Not
+#                       doc debt.
+#   tracked_doc_debt  -- Known documentation debt: @PublicAPI symbols still
+#                       owed a document-or-deprecate decision. Clearing an entry
+#                       means the decision was made and acted on (documented,
+#                       deprecated, or the erroneous annotation removed).
+#
+# Because both sets are unioned, moving an entry between them never changes
+# what the check accepts -- only whether a reviewer reads it as "correct and
+# permanent" or "we still owe a decision here".
 TEAM_API_CONFIGS = {
     "data": {
         "head_modules": {"ray.data", "ray.data.grouped_data"},
         "head_doc_file": "doc/source/data/api/api.rst",
-        # List of APIs that are not following our API policy, and we will be fixing, or
-        # we cannot deprecate them although we want to
         "white_list_apis": {
-            # not sure what to do
-            "ray.data.dataset.MaterializedDataset",
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
+        },
+        "tracked_doc_debt": {
+            # not sure what to do
+            "ray.data.dataset.MaterializedDataset",
         },
         # Canonical names intentionally documented in more than one place:
         # to_arrow_refs / to_numpy_refs / to_pandas_refs appear on both the
@@ -30,7 +47,8 @@ TEAM_API_CONFIGS = {
     "serve": {
         "head_modules": {"ray.serve"},
         "head_doc_file": "doc/source/serve/api/index.md",
-        "white_list_apis": {
+        "white_list_apis": set(),
+        "tracked_doc_debt": {
             # private versions of request router APIs
             "ray.serve._private.common.ReplicaID",
             "ray.serve._private.request_router.common.PendingRequest",
@@ -45,7 +63,8 @@ TEAM_API_CONFIGS = {
     "core": {
         "head_modules": {"ray"},
         "head_doc_file": "doc/source/ray-core/api/index.rst",
-        "white_list_apis": {
+        "white_list_apis": set(),
+        "tracked_doc_debt": {
             # These APIs will be documented in near future
             "ray.util.scheduling_strategies.DoesNotExist",
             "ray.util.scheduling_strategies.Exists",
@@ -97,6 +116,8 @@ TEAM_API_CONFIGS = {
         "white_list_apis": {
             # Already documented as ray.tune.search.ConcurrencyLimiter
             "ray.tune.search.searcher.ConcurrencyLimiter",
+        },
+        "tracked_doc_debt": {
             # TODO(ml-team): deprecate these APIs
             "ray.tune.utils.log.Verbosity",
         },
@@ -127,8 +148,10 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
     doc_apis = autodoc.get_apis()
     api_in_docs = {api.get_canonical_name() for api in doc_apis}
 
-    # Load the white list APIs
-    white_list_apis = config["white_list_apis"]
+    # Load the white list APIs. Permanent exemptions and tracked doc debt are
+    # kept in separate config keys for readability; the check treats them the
+    # same, so union them here.
+    white_list_apis = config["white_list_apis"] | config.get("tracked_doc_debt", set())
 
     passed = True
 

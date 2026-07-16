@@ -18,6 +18,7 @@ def _run_check_team(
     autosummary_entries,
     autoclass_entries=(),
     white_list_apis=frozenset(),
+    tracked_doc_debt=frozenset(),
     doc_only_whitelist=frozenset(),
     intentional_duplicate_apis=frozenset(),
 ):
@@ -41,6 +42,7 @@ def _run_check_team(
             "head_modules": {_MOCK},
             "head_doc_file": "head.rst",
             "white_list_apis": set(white_list_apis),
+            "tracked_doc_debt": set(tracked_doc_debt),
             "doc_only_whitelist": set(doc_only_whitelist),
             "intentional_duplicate_apis": set(intentional_duplicate_apis),
         }
@@ -63,6 +65,18 @@ def test_undocumented_public_api_fails(monkeypatch):
         monkeypatch,
         autosummary_entries=[],
         autoclass_entries=["MockClass"],
+    )
+
+
+def test_undocumented_public_api_passes_when_tracked_as_debt(monkeypatch):
+    # The same undocumented public API is allowed when carried in
+    # tracked_doc_debt, exactly as if it were in white_list_apis: the two keys
+    # are unioned into the coverage whitelist.
+    assert _run_check_team(
+        monkeypatch,
+        autosummary_entries=[],
+        autoclass_entries=["MockClass"],
+        tracked_doc_debt={_CANONICAL_W00T},
     )
 
 

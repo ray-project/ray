@@ -2437,11 +2437,20 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    allow_pickle: bool = False,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
     The column name defaults to "data".
+
+    .. warning::
+
+        By default, ``allow_pickle`` is ``False`` and object-dtype ``.npy``
+        files that contain pickled Python objects will raise an error. Loading
+        pickled data can execute arbitrary code and is unsafe with untrusted
+        files. Only set ``allow_pickle=True`` if you trust the source of the
+        data.
 
     Examples:
         Read a directory of files in remote storage.
@@ -2488,6 +2497,9 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        allow_pickle: If ``True``, allow loading object-dtype ``.npy`` files
+            that use Python pickle. Defaults to ``False`` because unpickling
+            untrusted data can execute arbitrary code.
         **numpy_load_args: Other options to pass to np.load.
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -2496,6 +2508,7 @@ def read_numpy(
     datasource = NumpyDatasource(
         paths,
         numpy_load_args=numpy_load_args,
+        allow_pickle=allow_pickle,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
