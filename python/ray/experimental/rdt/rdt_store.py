@@ -42,8 +42,10 @@ def __ray_send__(
 def validate_tensor_buffers(
     tensor_buffers: List["torch.Tensor"],
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    device: str,
+    device: Optional[str] = None,
 ):
+    import torch
+
     if len(tensor_buffers) != len(tensor_meta):
         raise ValueError(
             f"Length of tensor_buffers ({len(tensor_buffers)}) does not match length from object metadata ({len(tensor_meta)})."
@@ -52,6 +54,7 @@ def validate_tensor_buffers(
     def tensor_buffer_mismatch_msg(prop, idx, actual, expected):
         return f"{prop} of tensor_buffer at index {idx} ({actual}) does not match {prop.lower()} from object metadata ({expected})."
 
+    expected_device_type = torch.device(device).type if device is not None else None
     for idx, single_buffer in enumerate(tensor_buffers):
         shape, dtype = tensor_meta[idx]
         if single_buffer.shape != shape:
@@ -62,10 +65,13 @@ def validate_tensor_buffers(
             raise ValueError(
                 tensor_buffer_mismatch_msg("Dtype", idx, single_buffer.dtype, dtype)
             )
-        if single_buffer.device.type != device:
+        if (
+            expected_device_type is not None
+            and single_buffer.device.type != expected_device_type
+        ):
             raise ValueError(
                 tensor_buffer_mismatch_msg(
-                    "Device", idx, single_buffer.device.type, device
+                    "Device", idx, single_buffer.device.type, expected_device_type
                 )
             )
         if not single_buffer.is_contiguous():
@@ -78,7 +84,6 @@ def __ray_recv__(
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
-    target_buffers: Optional[List[Any]] = None,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -86,19 +91,10 @@ def __ray_recv__(
     rdt_store = global_worker.rdt_manager.rdt_store
     try:
         tensor_transport_manager = get_tensor_transport_manager(backend)
-        if target_buffers:
-            # Currently only torch tensors are supported as target buffers. We could make this
-            # more generic in the future by adding a pluggable buffer validation function.
-            validate_tensor_buffers(
-                target_buffers,
-                tensor_transport_meta.tensor_meta,
-                tensor_transport_meta.tensor_device,
-            )
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
-            target_buffers,
         )
         assert len(tensors) == len(tensor_transport_meta.tensor_meta)
         rdt_store.add_object(obj_id, tensors)
