@@ -601,7 +601,7 @@ class RDTManager:
                 from ray.experimental.rdt.rdt_store import validate_tensor_buffers
 
                 # The buffers' own device is where the tensors land, so we don't
-                # require it to match the source device (cross-device fetch). The
+                # require it to match the source device (cross-device fetch).
                 # Here we only validate shape/dtype/contiguity.
                 tensor_meta = tensor_transport_meta.tensor_meta
                 validate_tensor_buffers(target_buffers, tensor_meta, device=None)
