@@ -769,58 +769,14 @@ autosummary_filename_map = {
 # pyarrow are installed, so they are not mocked. tensorflow is also installed (a
 # direct requirements-doc entry), but importing it for real breaks the autodoc
 # import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
-autodoc_mock_imports = [
-    "aiohttp",
-    "async_timeout",
-    "backoff",
-    "cachetools",
-    "comet_ml",
-    "composer",
-    "cupy",
-    "dask",
-    "datasets",
-    "fastapi",
-    "filelock",
-    "fsspec",
-    "google",
-    "grpc",
-    "gymnasium",
-    "horovod",
-    "huggingface",
-    "httpx",
-    "joblib",
-    "lightgbm",
-    "lightgbm_ray",
-    "mlflow",
-    "nevergrad",
-    "pandas",
-    "pytorch_lightning",
-    "scipy",
-    "setproctitle",
-    "skimage",
-    "sklearn",
-    "starlette",
-    "tensorflow",
-    "torch",
-    "torchvision",
-    "transformers",
-    "tree",
-    "typer",
-    "uvicorn",
-    "wandb",
-    "watchfiles",
-    "openai",
-    "xgboost",
-    "xgboost_ray",
-    "psutil",
-    "colorama",
-    "grpc",
-    "vllm",
-    # Internal compiled modules
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.serve.generated",
-]
+# The mock list is shared with the API/doc consistency check (ci/ray_ci/doc)
+# via api_mock_imports.py so the check, which imports documented names directly
+# (bypassing Sphinx), applies the same mocks this render does. THIRD_PARTY_MOCK
+# covers uninstalled third-party libraries; BUILD_ONLY_MOCK covers Ray's
+# compiled/generated modules, which are absent only in a source-checkout build.
+from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
+
+autodoc_mock_imports = THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES
 
 for mock_target in autodoc_mock_imports:
     if mock_target in sys.modules:

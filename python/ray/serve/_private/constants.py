@@ -761,9 +761,8 @@ RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
 # HAProxy close-spread-time. Drains the old worker's idle connections over this
 # window at soft-stop so they migrate to the reloaded config instead of lingering
 # until hard-stop-after. None omits it.
-_haproxy_close_spread = os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
-RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
-    int(_haproxy_close_spread) if _haproxy_close_spread else None
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = get_env_int(
+    "RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S", None
 )
 
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
