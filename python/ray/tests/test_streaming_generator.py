@@ -707,11 +707,10 @@ def test_streaming_generator_exception(shutdown_only):
         ray.get(next(g))
 
 
-# payload_size=0 keeps the error inlined by default; the large payload pushes
-# the serialized completion error above the direct-call inline threshold (100KB)
-# so it is plasma-backed. The large case is the one that guards the executor-side
-# inlining (TaskReceiver's InlinePlasmaBackedReturnObject): without it a peeked
-# ref would fall back to a clean EOF marker instead of the real error.
+# payload_size=0 keeps the error under the normal inline threshold; the large
+# payload pushes the serialized completion error above 100KB. Streaming-generator
+# completion errors are force-inlined at allocate time so the owner can copy them
+# onto eagerly peeked EOF refs without a plasma pin the owner would never free.
 @pytest.mark.parametrize("payload_size", [0, 200 * 1024])
 def test_streaming_generator_eager_peek_propagates_failed_dependency(
     shutdown_only, payload_size
