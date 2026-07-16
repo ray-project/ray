@@ -403,7 +403,7 @@ For use cases not covered by the default config class, you can also fully custom
     from ray import train
     from ray.train.torch import TorchTrainer
     from ray.train import DataConfig, ScalingConfig
-    from ray.data import Dataset, DataIterator, NodeIdStr
+    from ray.data import Dataset, DataIterator, NodeIdStr, ExecutionOptions
     from ray.actor import ActorHandle
 
     ds = ray.data.read_text(
