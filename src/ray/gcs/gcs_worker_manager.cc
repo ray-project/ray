@@ -369,6 +369,10 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
   }
   const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
   const size_t total = TotalDeadWorkers();
+  // Steady-state trimming keeps the table at or below the cap, so `overflow` is
+  // normally 0 here. It can be positive only when the persisted (Redis FT) table
+  // was bounded to a larger cap than the current one — i.e. the operator lowered
+  // maximum_gcs_dead_worker_cached_count across a restart.
   size_t overflow = total > cap ? total - cap : 0;
   std::vector<WorkerID> to_evict;
   to_evict.reserve(overflow);
