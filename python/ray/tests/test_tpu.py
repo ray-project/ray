@@ -1918,6 +1918,29 @@ def test_subslice_continues_scheduling_when_kv_lookup_fails():
     assert reached.get("target") == "slice-x"
 
 
+def test_discover_bounds_worker_pg_ready_wait(mock_4x4_pgs):
+    """The worker-PG readiness wait is bounded by head_reservation_timeout_s;
+    if the slice never becomes schedulable the call raises TimeoutError instead
+    of blocking forever.
+    """
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-ready-timeout"
+
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.get", side_effect=ray.exceptions.GetTimeoutError("not ready")),
+    ):
+        with pytest.raises(TimeoutError, match="become ready for subslice"):
+            ray.util.tpu._discover_and_persist_subslices("4x4", "v6e", 4, 1.0)
+
+    # The reserved slice must not have been persisted.
+    assert slice_name not in ray.util.tpu._tpu_subslice_cache
+
+
 def test_find_available_subslice_skips_incomplete_subslices():
     """Subslices with fewer workers than the topology requires are skipped.
 

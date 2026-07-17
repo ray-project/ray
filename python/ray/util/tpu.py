@@ -1141,7 +1141,17 @@ def _discover_and_persist_subslices(
         target_slice_name=target_slice_name,
     )
     try:
-        ray.get(full_slice.placement_group.ready())
+        try:
+            ray.get(
+                full_slice.placement_group.ready(),
+                timeout=head_reservation_timeout_s,
+            )
+        except ray.exceptions.GetTimeoutError as e:
+            raise TimeoutError(
+                f"Timed out after {head_reservation_timeout_s}s waiting for the "
+                f"full '{parent_topology}' slice to become ready for subslice "
+                f"discovery; it may have become busy after being observed idle."
+            ) from e
 
         # All bundle selectors carry the same reserved slice name.
         slice_name = full_slice.bundle_label_selector[0][
