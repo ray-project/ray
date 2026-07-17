@@ -72,6 +72,11 @@ from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
+# If no actor of an operator has ever initialized successfully, treat this many
+# consecutive initialization failures as systemic (e.g. a misconfigured UDF)
+# and fail the job regardless of ``DataContext.max_actor_init_failures``.
+_SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD = 3
+
 _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
@@ -196,6 +201,12 @@ class ActorPoolMapOperator(MapOperator):
         # Locality metrics
         self._locality_hits = 0
         self._locality_misses = 0
+
+        # Actor initialization failures tolerated so far (see
+        # ``DataContext.max_actor_init_failures``), and whether any actor of
+        # this operator has ever initialized successfully.
+        self._actor_init_failures = 0
+        self._any_actor_started = False
 
     @property
     @override
@@ -355,16 +366,58 @@ class ActorPoolMapOperator(MapOperator):
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            has_actor = self._actor_pool.pending_to_running(res_ref) is not None
+            try:
+                has_actor = self._actor_pool.pending_to_running(res_ref) is not None
+            except ray.exceptions.RayError as e:
+                # The actor failed to initialize (the pool has already cleaned
+                # up its internal state before re-raising). Replace it if the
+                # failure budget allows; otherwise re-raise to fail execution.
+                self._on_actor_init_failure(e)
+                return
             if not has_actor:
                 # Actor has already been killed.
                 return
+            self._any_actor_started = True
 
         self._submit_metadata_task(
             res_ref,
             lambda: _task_done_callback(res_ref),
         )
         return actor, res_ref, actor_resource_usage
+
+    def _on_actor_init_failure(self, error: Exception) -> None:
+        """Handle an actor that died during initialization.
+
+        Ray Core doesn't restart actors whose creation task failed (the death
+        is a ``USER_ERROR``, so ``max_restarts`` doesn't apply). Instead, we
+        charge the failure against ``DataContext.max_actor_init_failures`` and
+        rely on the actor autoscaler to start a replacement (the pool is now
+        below its target size). Re-raises ``error`` when the budget is
+        exceeded, or when no actor has ever initialized successfully and the
+        failures look systemic.
+        """
+        self._actor_init_failures += 1
+        budget = self.data_context.max_actor_init_failures
+        budget_exhausted = budget >= 0 and self._actor_init_failures > budget
+        systemic = not self._any_actor_started and self._actor_init_failures >= max(
+            self._actor_pool.initial_size(),
+            _SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD,
+        )
+        if budget_exhausted or systemic:
+            logger.error(
+                f"{self.name}: actor initialization failed "
+                f"{self._actor_init_failures} time(s) "
+                f"(max_actor_init_failures={budget}, "
+                f"any_actor_started={self._any_actor_started}); "
+                "failing execution."
+            )
+            raise error
+        logger.warning(
+            f"{self.name}: an actor failed to initialize and will be replaced "
+            f"({self._actor_init_failures} failure(s) so far; "
+            f"max_actor_init_failures={budget}).",
+            exc_info=error,
+        )
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).

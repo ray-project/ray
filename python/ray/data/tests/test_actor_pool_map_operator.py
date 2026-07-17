@@ -1493,6 +1493,207 @@ def test_actor_init_failure_retry(
             ).take_all()
 
 
+@pytest.mark.parametrize(
+    "budget,num_failures,should_succeed",
+    [
+        # Budget covers both failures: replaced actors, job succeeds.
+        (2, 2, True),
+        # Budget exceeded on the second failure: job fails.
+        (1, 2, False),
+        # Unlimited budget: job succeeds.
+        (-1, 2, True),
+    ],
+)
+def test_actor_init_failure_budget(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    budget,
+    num_failures,
+    should_succeed,
+):
+    """Tests that actor initialization failures are tolerated (by replacing
+    the failed actor) up to DataContext.max_actor_init_failures, and that the
+    original ActorDiedError propagates once the budget is exceeded.
+    """
+    from ray.exceptions import ActorDiedError
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FlakyInitMapper:
+        def __init__(self):
+            # With actor_init_retry_on_errors disabled (default), each
+            # increment corresponds to one actor incarnation.
+            count = ray.get(init_counter.increment.remote())
+            if count <= num_failures:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_actor_init_failures = budget
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    ds = ray.data.range(10).map_batches(FlakyInitMapper, batch_size=1, concurrency=1)
+    if should_succeed:
+        assert len(ds.take_all()) == 10
+    else:
+        with pytest.raises(ActorDiedError, match="init_failed"):
+            ds.take_all()
+
+
+def test_actor_init_failure_systemic_fails_fast(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Tests that an operator whose actors never initialize successfully fails
+    fast even with an unlimited failure budget, instead of replacing actors in
+    an endless crash loop.
+    """
+    from ray.data._internal.execution.operators.actor_pool_map_operator import (
+        _SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD,
+    )
+    from ray.exceptions import ActorDiedError
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+        def get(self):
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class AlwaysFailingInitMapper:
+        def __init__(self):
+            ray.get(init_counter.increment.remote())
+            raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_actor_init_failures = -1
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    with pytest.raises(ActorDiedError, match="init_failed"):
+        ray.data.range(10).map_batches(
+            AlwaysFailingInitMapper, batch_size=1, concurrency=1
+        ).take_all()
+
+    # The systemic guard must trip after a handful of zero-success failures;
+    # allow some slack for replacements already in flight at shutdown.
+    assert ray.get(init_counter.get.remote()) <= (
+        _SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD + 3
+    )
+
+
+def test_actor_init_failure_budget_with_in_actor_retries(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Tests that the pool-level failure budget counts actor incarnations, not
+    in-actor init retry attempts (actor_init_retry_on_errors runs first).
+    """
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FlakyInitMapper:
+        def __init__(self):
+            # Fail the first 3 init attempts. With actor_init_max_retries=1
+            # (2 attempts per incarnation): incarnation 1 fails twice and dies
+            # (1 budget charge); incarnation 2 fails once, then succeeds on
+            # its in-actor retry (no charge).
+            count = ray.get(init_counter.increment.remote())
+            if count <= 3:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.actor_init_retry_on_errors = True
+    ctx.actor_init_max_retries = 1
+    ctx.max_actor_init_failures = 1
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    result = (
+        ray.data.range(10)
+        .map_batches(FlakyInitMapper, batch_size=1, concurrency=1)
+        .take_all()
+    )
+    assert len(result) == 10
+
+
+def test_on_actor_init_failure_unit(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Unit test for ActorPoolMapOperator._on_actor_init_failure: raise timing
+    against the budget, the systemic guard, and re-raise identity.
+    """
+    from ray.exceptions import RayActorError
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_actor_init_failures = 2
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(2)])
+    )
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block_iter: block_iter),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=ActorPoolStrategy(min_size=1),
+    )
+
+    error = RayActorError()
+
+    # With a prior successful actor start, only the budget applies.
+    op._any_actor_started = True
+    op._on_actor_init_failure(error)
+    op._on_actor_init_failure(error)
+    with pytest.raises(RayActorError) as exc_info:
+        op._on_actor_init_failure(error)
+    # The original error object is re-raised unchanged.
+    assert exc_info.value is error
+
+    # Systemic guard: with no successful start ever, failures are fatal at
+    # max(initial_size, _SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD) even with an
+    # unlimited budget.
+    ctx.max_actor_init_failures = -1
+    op._actor_init_failures = 0
+    op._any_actor_started = False
+    op._on_actor_init_failure(error)
+    op._on_actor_init_failure(error)
+    with pytest.raises(RayActorError):
+        op._on_actor_init_failure(error)
+
+
 def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
