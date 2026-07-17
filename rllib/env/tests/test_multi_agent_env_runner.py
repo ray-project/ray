@@ -194,13 +194,18 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Cadence of agent removals == rollout boundary, so a removal reliably
         # lands right on the truncation boundary that triggered the bug.
         remove_interval = 5
+        num_agents = 6
+        num_persistent = 2
+        # Low-id agents (`"0"`, `"1"`) live for the whole episode; the removable
+        # rest (`"2"`..`"5"`) are removed one-by-one on the truncation boundaries.
+        removable_agents = {str(i) for i in range(num_persistent, num_agents)}
         config = (
             PPOConfig()
             .environment(
                 ChangingNumAgentsEnv,
                 env_config={
-                    "num_agents": 6,
-                    "num_persistent": 2,
+                    "num_agents": num_agents,
+                    "num_persistent": num_persistent,
                     "remove_interval": remove_interval,
                 },
             )
@@ -220,11 +225,23 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Several consecutive `sample()` calls: the first fills the cache, and each
         # subsequent one runs the module-to-env pipeline against a `cut()`
         # continuation whose agents changed at the boundary.
+        terminated_agents = set()
         for _ in range(8):
             episodes = env_runner.sample()
             check(sum(len(e) for e in episodes), remove_interval)
+
+            # Check the returned episode data, not just that `sample()` did not
+            # crash: every single-agent episode must carry exactly one reward per
+            # timestep (coherent, well-aligned per-agent rows out of the
+            # connector), and record which agents actually terminated.
+            for episode in episodes:
+                for agent_id, sa_episode in episode.agent_episodes.items():
+                    check(len(sa_episode.get_rewards()), len(sa_episode))
+                    if sa_episode.is_done:
+                        terminated_agents.add(agent_id)
+
             # Regression test for #61602: the env-to-module `AgentToModuleMapping`
-            # filter must keep done/removed agents out of `memorized_map_structure`
+            # filter must keep done/removed agents out of `memorized_map_structure`.
             mms = env_runner._shared_data.get("memorized_map_structure") or {}
             existing = {
                 (e.id_, aid)
@@ -234,6 +251,15 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
             for pairs in mms.values():
                 for eps_id, agent_id in pairs:
                     assert (eps_id, agent_id) in existing, (eps_id, agent_id)
+
+        # The test only exercises #61602 if agents actually terminate on the
+        # truncation boundaries. Assert the exact scenario played out: every
+        # removable agent finished and no persistent agent did. Otherwise the
+        # checks above would pass vacuously on an env that never changed agents.
+        assert terminated_agents == removable_agents, (
+            terminated_agents,
+            removable_agents,
+        )
 
     def _build_config(self, num_agents=2, num_policies=2):
         # Build the configuration and use `PPO`.
