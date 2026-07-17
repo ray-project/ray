@@ -18,7 +18,7 @@ diff --git a/sglang/srt/observability/metrics_collector.py b/sglang/srt/observab
 +++ b/sglang/srt/observability/metrics_collector.py
 @@ -1705,6 +1705,10 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
          self.histogram_time_to_first_token.labels(**labels).observe(value)
- 
+
      def check_time_to_first_token_straggler(self, value: float) -> bool:
 +        # Injected backends (e.g. Ray) route metrics out of process and can't
 +        # introspect prometheus_client buckets here.
@@ -39,12 +39,12 @@ diff --git a/sglang/srt/observability/metrics_collector.py b/sglang/srt/observab
 +            for _ in range(num_new_tokens):
 +                his.observe(adjusted_interval)
 +            return
- 
+
          # A faster version of the Histogram::observe which observes multiple values at the same time.
          # reference: https://github.com/prometheus/client_python/blob/v0.21.1/prometheus_client/metrics.py#L639
 -        his = self.histogram_inter_token_latency.labels(**labels)
          his._sum.inc(internval)
- 
+
          for i, bound in enumerate(his._upper_bounds):
 diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability/ray_wrappers.py
 --- a/sglang/srt/observability/ray_wrappers.py
@@ -52,7 +52,7 @@ diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability
 @@ -142,6 +142,18 @@ class RayPrometheusMetric:
          """
          return re.sub(r"[^a-zA-Z0-9_]", "_", name)
- 
+
 +    @staticmethod
 +    def _get_ascii_documentation(documentation: Optional[str]) -> str:
 +        """ASCII-coerce a description; Ray's metric backend rejects non-ASCII."""
@@ -65,7 +65,7 @@ diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability
 +            .decode("ascii")
 +        )
 +
- 
+
  class RayCounterWrapper(RayPrometheusMetric):
      """``prometheus_client.Counter`` compatible wrapper."""
 @@ -157,7 +169,7 @@ class RayCounterWrapper(RayPrometheusMetric):
@@ -76,7 +76,7 @@ diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability
 +            description=self._get_ascii_documentation(documentation),
              tag_keys=tag_keys,
          )
- 
+
 @@ -186,7 +198,7 @@ class RayGaugeWrapper(RayPrometheusMetric):
          name = self._get_sanitized_opentelemetry_name(name)
          self.metric = ray_metrics.Gauge(
@@ -85,7 +85,7 @@ diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability
 +            description=self._get_ascii_documentation(documentation),
              tag_keys=tag_keys,
          )
- 
+
 @@ -212,7 +224,7 @@ class RayHistogramWrapper(RayPrometheusMetric):
          name = self._get_sanitized_opentelemetry_name(name)
          self.metric = ray_metrics.Histogram(
@@ -106,7 +106,7 @@ diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability
          )
 @@ -305,3 +317,22 @@ class RayExpertDispatchCollector(ExpertDispatchCollector):
      """``ExpertDispatchCollector`` that emits via Ray's metric system."""
- 
+
      _histogram_cls = RayHistogramWrapper
 +
 +
