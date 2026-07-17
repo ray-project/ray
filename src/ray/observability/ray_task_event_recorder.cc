@@ -62,7 +62,8 @@ void RayTaskEventRecorder::AddEvents(
   if (!enabled_) {
     return;
   }
-  if (!RayConfig::instance().enable_ray_event()) {
+  if (!RayConfig::instance().enable_ray_event() ||
+      !RayConfig::instance().enable_ray_task_event_recorder()) {
     return;
   }
   for (auto &event : data_list) {

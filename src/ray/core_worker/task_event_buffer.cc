@@ -609,14 +609,24 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
-  send_ray_events_to_aggregator_enabled_ =
+  // The RayTaskEventRecorder takes over the aggregator send when it is active
+  // (needs both enable_ray_task_event_recorder and enable_ray_event)
+  // When active, disable the task_event_buffer to aggregator path to avoid double
+  // reporting.
+  const bool ray_task_event_recorder_enabled =
+      RayConfig::instance().enable_ray_task_event_recorder() &&
+      RayConfig::instance().enable_ray_event();
+  task_event_buffer_to_aggregator_enabled_ =
+      !ray_task_event_recorder_enabled &&
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
 
   // We want to make sure that only one of the event export mechanism is enabled. And
   // if both are enabled, we will use the event aggregator instead of the export API.
   // This code will be removed when we deprecate the export API implementation.
-  export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
-                                TaskEventBufferImpl::IsExportAPIEnabledTask();
+  const bool task_events_sent_to_aggregator =
+      ray_task_event_recorder_enabled || task_event_buffer_to_aggregator_enabled_;
+  export_event_write_enabled_ =
+      !task_events_sent_to_aggregator && TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -895,7 +905,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
           event->ToRpcTaskEvents(&(itr_task_events->second));
         }
 
-        if (send_ray_events_to_aggregator_enabled_) {
+        if (task_event_buffer_to_aggregator_enabled_) {
           auto [itr_ray_events, _] = agg_ray_events.try_emplace(event->GetTaskAttempt());
           event->ToRpcRayEvents(itr_ray_events->second);
         }
@@ -917,7 +927,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
   }
 
   // Convert to rpc::events::RayEventsData
-  if (send_ray_events_to_aggregator_enabled_) {
+  if (task_event_buffer_to_aggregator_enabled_) {
     auto ray_events_data = CreateRayEventsDataToSend(std::move(agg_ray_events),
                                                      dropped_task_attempts_to_send);
     data_to_send.ray_events_data = std::move(ray_events_data);
@@ -1116,7 +1126,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       data.ray_events_data &&
       (data.ray_events_data->events_size() > 0 ||
        data.ray_events_data->task_events_metadata().dropped_task_attempts_size() > 0);
-  if (send_ray_events_to_aggregator_enabled_ && has_aggregator_payload) {
+  if (task_event_buffer_to_aggregator_enabled_ && has_aggregator_payload) {
     SendRayEventsToAggregator(std::move(data.ray_events_data));
   }
 }
