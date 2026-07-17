@@ -4482,6 +4482,33 @@ def test_ingress_request_router_scaling_only_affects_router(
     check_counts(ds, total=2)
 
 
+def _pinned_node_counts(ds) -> dict:
+    counts = {}
+    for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+        counts[r.target_node_id] = counts.get(r.target_node_id, 0) + 1
+    return counts
+
+
+@patch(
+    "ray.serve._private.deployment_state.RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 2
+)
+def test_ingress_request_router_multiple_replicas_per_node(
+    mock_deployment_state_manager,
+):
+    """RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE pins that many replicas per node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.target_num_replicas == 4
+    check_counts(ds, total=4)
+    assert _pinned_node_counts(ds) == {n1: 2, n2: 2}
+
+
 def test_get_deployment_ids(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm = create_dsm()
