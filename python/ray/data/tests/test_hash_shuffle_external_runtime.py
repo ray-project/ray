@@ -6,6 +6,7 @@ handshake, fetch semantics, and error classification.
 import os
 import socket
 import struct
+import threading
 
 import pytest
 
@@ -13,13 +14,17 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     ShuffleDiskError,
     ShuffleManager,
     ShuffleManagerAnomalyError,
+    _FetchHandler,
     _NodeGroup,
     _NodeMember,
     _PwriteSink,
     _SourceRef,
+    _ThreadingServer,
+    _ThreadingServerV6,
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
     _group_by_manager,
+    _threading_server_for,
     open_shuffle_connection,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -86,6 +91,43 @@ def test_shuffle_manager_lifecycle(ray_start_regular_shared_2_cpus, tmp_path):
 
     s = socket.create_connection((host, port), timeout=5)
     s.close()
+
+
+# ----------------------------------------------------------------- IPv6 support
+def test_threading_server_for_picks_family():
+    # IPv4 literals + hostnames + non-IP strings → default V4 class.
+    assert _threading_server_for("127.0.0.1") is _ThreadingServer
+    assert _threading_server_for("192.168.1.1") is _ThreadingServer
+    assert _threading_server_for("localhost") is _ThreadingServer
+    assert _threading_server_for("not-an-ip") is _ThreadingServer
+    # IPv6 literals → V6 subclass with AF_INET6.
+    assert _threading_server_for("::1") is _ThreadingServerV6
+    assert _threading_server_for("2001:db8::1") is _ThreadingServerV6
+
+
+def test_ipv6_server_binds_and_reachable(tmp_path):
+    try:
+        probe = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        probe.bind(("::1", 0))
+        probe.close()
+    except OSError:
+        pytest.skip("IPv6 not available on this host")
+
+    server = _ThreadingServerV6(("::1", 0), _FetchHandler)
+    server.token = "unused"
+    server.base_dir = str(tmp_path)
+    host, port = server.server_address[:2]
+    assert host == "::1"
+    assert 1024 < port < 65536
+
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    try:
+        s = socket.create_connection((host, port), timeout=5)
+        s.close()
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 # --------------------------------------------------------------------- handshake

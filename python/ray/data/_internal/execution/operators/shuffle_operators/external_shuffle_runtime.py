@@ -18,6 +18,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypedDict,
     Union,
 )
 
@@ -418,7 +419,8 @@ class ShuffleManager:
         self._server = _threading_server_for(ip)((ip, 0), _FetchHandler)
         self._server.token = token
         self._server.base_dir = self.base_dir
-        self._host, self._port = self._server.server_address
+        # IPv6 server_address is (host, port, flowinfo, scopeid); take only host+port.
+        self._host, self._port = self._server.server_address[:2]
         t = threading.Thread(target=self._run_server, daemon=True)
         t.start()
 
@@ -606,8 +608,20 @@ def open_shuffle_connection(
         raise
 
 
-# map / reduce task body
-ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
+class ShuffleHandle(TypedDict, total=False):
+    """Handle written by each mapper task, consumed by reducer.
+
+    Only the fields the runtime consumes are declared; the mapper task can
+    add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
+    """
+    path: str
+    # each partition can have multiple ranges, thus index field is like:
+    # [partition id, [(offset0, length0), (offset1, length1), ...]
+    index: Dict[int, List[Tuple[int, int]]]
+    shuffle_id: str
+    node_id: str
+    token: str
+    schema: Optional["pa.Schema"]
 
 
 class ShuffleDiskError(RuntimeError):
@@ -744,6 +758,7 @@ def _prefetch_node_into(
 
     Actor state drives the recovery policy:
       * Dead (init fail/ray.kill)     -> ``ShuffleManagerAnomalyError`` (terminal)
+      * Unschedulable (node lost)     -> ``ShuffleManagerAnomalyError`` (terminal)
       * Unavailable (restarting)      -> poll until Ray resolves
       * TCP dead, endpoint changed    -> reset sink, reopen, retry in-place
       * TCP dead, endpoint unchanged  -> ``ShuffleManagerAnomalyError`` (network
@@ -848,9 +863,9 @@ def _chunk_members_by_bytes(
     """Yield sub-batches of members whose total requested bytes ≤ ``max_bytes``.
 
     A source's ranges MAY be split across batches: the source appears as
-    multiple pseudo-members with the same ``idx``/``path`` but disjoint
-    range subsets, in the original range order. Individual ranges are
-    NEVER split as each range is one Arrow IPC frame at the mapper, so a
+    multiple pseudo-members with the same ``path`` but disjoint range
+    subsets, in the original range order. Individual ranges are NEVER
+    split as each range is one Arrow IPC frame at the mapper, so a
     sub-range cut would break the reducer's decode.
     """
     batch: List[_NodeMember] = []
@@ -901,7 +916,7 @@ def _handles_to_sources(
             sources.append(
                 _SourceRef(
                     shuffle_id=h["shuffle_id"],
-                    node_id=h.get("node_id", ""),
+                    node_id=h["node_id"],
                     token=h["token"],
                     path=h["path"],
                     ranges=ranges,
