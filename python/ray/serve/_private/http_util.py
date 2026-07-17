@@ -351,10 +351,10 @@ class ASGIReceiveProxy:
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
-        self._queue = None
+        self._queue: Optional[asyncio.Queue] = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
-        self._disconnect_message = None
+        self._disconnect_message: Optional[Message] = None
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -639,6 +639,7 @@ class ASGIAppReplicaWrapper:
     def docs_path(self) -> Optional[str]:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
+        return None
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
@@ -657,7 +658,7 @@ class ASGIAppReplicaWrapper:
         scope: Scope,
         receive: Receive,
         send: Send,
-    ) -> Optional[ASGIApp]:
+    ) -> None:
         """Calls into the wrapped ASGI app."""
         await self._asgi_app(
             scope,
@@ -681,7 +682,7 @@ class ASGIAppReplicaWrapper:
 
 def validate_http_proxy_callback_return(
     middlewares: Any,
-) -> [Middleware]:
+) -> List[Middleware]:
     """Validate the return value of HTTP proxy callback.
 
     Middlewares should be a list of Starlette middlewares. If it is None, we
@@ -953,7 +954,9 @@ def send_http_response_on_exception(
         return []
     return convert_object_to_asgi_messages(
         status.message,
-        status_code=status.code,
+        # `ResponseStatus.code` is a `Union` shared with gRPC, but on the HTTP
+        # path it's always an `int` status code.
+        status_code=status.code,  # type: ignore[arg-type]
     )
 
 
