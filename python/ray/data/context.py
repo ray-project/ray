@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -71,13 +71,17 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION = env_bool(
+    "RAY_DATA_ENABLE_ARROW_BACKED_PANDAS_CONVERSION", True
+)
+
 DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
     "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
 )
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
-DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", False)
+DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
@@ -108,6 +112,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
+
+DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -518,12 +524,10 @@ class DataContext:
         autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
-        scheduling_strategy: The global scheduling strategy. For tasks with large args,
-            ``scheduling_strategy_large_args`` takes precedence.
-        scheduling_strategy_large_args: Scheduling strategy for tasks with large args.
-        large_args_threshold: Size in bytes after which point task arguments are
-            considered large. Choose a value so that the data transfer overhead is
-            significant in comparison to task scheduling (i.e., low tens of ms).
+        scheduling_strategy: Deprecated. Ray Data manages scheduling internally.
+        scheduling_strategy_large_args: Deprecated. Ray Data manages scheduling
+            internally.
+        large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
         eager_free: Whether to eagerly free memory.
@@ -537,12 +541,10 @@ class DataContext:
             driver-side first-file sampling for schema inference,
             ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
             remains the production path while V2 bakes.
-        parquet_chunker_target_chunk_size: Target on-disk bytes per chunk used
-            by ``ParquetFileChunker``. The chunker reads each file's footer at
-            listing time and bundles consecutive row groups until their on-disk
-            size reaches this target (always at least one row group per chunk),
-            so normal-sized row groups map roughly 1:1 to chunks. When ``None``,
-            falls back to ``target_min_block_size``.
+        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
+            ``ParquetFileChunker`` when splitting large Parquet files into
+            multiple read tasks. When ``None``, the chunker's built-in default
+            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -682,6 +684,12 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        enable_arrow_backed_pandas_conversion: Whether ``BlockAccessor.to_pandas``
+            maps standard Arrow types to pandas Arrow-backed dtypes
+            (``pd.ArrowDtype``). When ``False``, standard Arrow types convert to
+            numpy dtypes (the pre-2.56 behavior). Set to ``False`` if pandas UDFs
+            assign multi-dimensional arrays into columns or rely on numpy-only
+            operations (e.g. ``%``) that Arrow-backed columns do not implement.
         batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
@@ -773,6 +781,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the task-based hash-shuffle v2 path for join. When
+    # False, fall back to the legacy actor-based `JoinOperator`.
+    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -804,9 +816,8 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target on-disk bytes per chunk for ``ParquetFileChunker`` (bundles
-    # consecutive row groups up to this size, >= 1 row group). When ``None``,
-    # falls back to ``target_min_block_size``.
+    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
+    # chunker uses its built-in default (currently 1 GiB).
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
@@ -888,6 +899,10 @@ class DataContext:
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
+    enable_arrow_backed_pandas_conversion: bool = (
+        DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION
+    )
+
     batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
 
     _checkpoint_config: Optional[CheckpointConfig] = None
@@ -929,7 +944,38 @@ class DataContext:
         self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if (
+        if name == "scheduling_strategy" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "scheduling_strategy_large_args" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy_large_args` is deprecated and will "
+                "be removed after January 2027. Ray Data manages scheduling "
+                "internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "large_args_threshold" and (
+            name in self.__dict__ or value != DEFAULT_LARGE_ARGS_THRESHOLD
+        ):
+            warnings.warn(
+                "`DataContext.large_args_threshold` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif (
             name == "write_file_retry_on_errors"
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
@@ -982,6 +1028,14 @@ class DataContext:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
+
+        elif name == "join_operator_actor_num_cpus_override" and value is not None:
+            warnings.warn(
+                "`join_operator_actor_num_cpus_override` is deprecated and ignored, "
+                "joins now run on the hash-shuffle v2 path, whose reduce tasks are "
+                "not actor-based.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 

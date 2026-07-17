@@ -1,11 +1,27 @@
+import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
-    _get_shard_batch,
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+    make_partition_sentinel,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    _encode_partition_ipc,
+    _get_shard_batch,
+    _ipc_write_options,
+)
+from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.data.tests.conftest import noop_counter
+from ray.data.tests.util import run_op_tasks_sync
 from ray.exceptions import GetTimeoutError
 from ray.tests.conftest import *  # noqa: F401, F403
 
@@ -33,31 +49,32 @@ def _assert_keys_colocated(per_block):
     ), f"A key landed in more than one block: {per_block}"
 
 
+@pytest.fixture(autouse=True)
+def data_context_use_hash_shuffle_v2(restore_data_context):
+    ctx = restore_data_context
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.use_hash_shuffle_v2 = True
+
+
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
 def test_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
     num_partitions,
 ):
     """No rows are lost or duplicated; key totals are preserved."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(1000, override_num_blocks=10)
-    out = ds.repartition(num_partitions, keys=["id"])
+    out = ds.repartition(num_partitions, keys=["id"]).materialize()
     assert out.count() == 1000
     assert out.sum("id") == sum(range(1000))
 
 
 def test_repartition_block_number_matched(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All-non-empty partitions => exactly num_partitions output blocks."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 1000 distinct keys over 8 buckets => all 8 partitions are non-empty.
     ds = ray.data.range(1000, override_num_blocks=20)
@@ -67,12 +84,9 @@ def test_repartition_block_number_matched(
 
 def test_same_key_lands_in_same_block(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All rows sharing a key should end up in one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"k": row["id"] % 25, "v": row["id"]}
@@ -85,13 +99,10 @@ def test_same_key_lands_in_same_block(
 
 def test_multi_column_keys(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Composite keys hash on all columns: every distinct (a, b) tuple lands in
     exactly one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"a": row["id"] % 5, "b": row["id"] % 7, "v": row["id"]}
@@ -104,13 +115,10 @@ def test_multi_column_keys(
 
 def test_more_partitions_than_keys_emits_empty_blocks(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Requesting more partitions than there are distinct keys emits the extra
     partitions as empty (0-row) blocks that still carry the dataset schema."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 3 distinct keys into 50 partitions => at most 3 non-empty, >=47 empty.
     ds = ray.data.range(600, override_num_blocks=10).map(
@@ -137,12 +145,9 @@ def test_more_partitions_than_keys_emits_empty_blocks(
 
 def test_repartition_empty_dataset(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Empty dataset should still output N blocks"""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(100, override_num_blocks=4).filter(lambda row: False)
     out = ds.repartition(4, keys=["id"]).materialize()
@@ -158,12 +163,9 @@ def test_repartition_empty_dataset(
 
 def test_repartition_with_sort_produces_sorted_partitions(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Check that rows are sorted in every partition."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(200, override_num_blocks=4)
     out = ds.repartition(4, keys=["id"], sort=True)
@@ -228,6 +230,101 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     assert [r.levelname for r in caplog.records].count("ERROR") == 1
     assert "partition 7" in caplog.records[0].message
     ray.cancel(ref, force=True)
+
+
+# --- Multi-input reduce -------------------------------------------------------
+# TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
+# shuffle_tasks tests above) into a dedicated operator/task-level test file --
+# they aren't specific to hash-shuffle-v2.
+def _ipc_shard_bundle(partition_id, table):
+    """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
+    stamped with the partition id."""
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+
+    buf = _encode_partition_ipc(table, _ipc_write_options("none"))
+    meta = BlockMetadata(
+        num_rows=table.num_rows,
+        size_bytes=table.nbytes,
+        exec_stats=None,
+        input_files=make_partition_sentinel(partition_id),
+    )
+    return RefBundle(
+        (
+            BlockEntry(
+                ref=ray.put(buf),  # pyrefly: ignore[bad-argument-type]
+                metadata=meta,
+            ),
+        ),
+        schema=table.schema,
+        owns_blocks=True,
+    )
+
+
+def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
+    ctx = DataContext.get_current()
+    maps = [
+        ShuffleMapOp(
+            InputDataBuffer(ctx, make_ref_bundles([[0]])),
+            ctx,
+            num_partitions=num_partitions,
+            partition_fn=lambda t: {},
+        )
+        for _ in range(num_inputs)
+    ]
+    return ShuffleReduceOp(
+        maps,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        disallow_block_splitting=True,
+    )
+
+
+def _drain_reduce_op(op, feed):
+    """Run `op` over `feed` (bundle, input_index) pairs and return output tables."""
+    op.start(ExecutionOptions(), noop_counter())
+    for bundle, input_index in feed:
+        op.add_input(bundle, input_index)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+    tables = []
+    while op.has_next():
+        for ref in op.get_next().block_refs:
+            tables.append(ray.get(ref))
+    return tables
+
+
+def _concat_inputs_reduce_fn():
+    def _reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        if tables:
+            yield pa.concat_tables(tables)
+
+    return _reduce
+
+
+def test_reduce_op_combines_all_inputs(ray_start_regular_shared_2_cpus):
+    """Both inputs' shards for a partition reach the reducer, in input order."""
+    op = _make_multi_input_reduce_op(_concat_inputs_reduce_fn(), num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"src": ["L"], "v": [1]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"src": ["R"], "v": [2]})), 1),
+    ]
+    out = pa.concat_tables(_drain_reduce_op(op, feed))
+    assert sorted(out.column("src").to_pylist()) == ["L", "R"]
+    assert sorted(out.column("v").to_pylist()) == [1, 2]
+
+
+def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus):
+    """A partition that never receives one input (a block-less side) is still
+    reduced -- the reducer sees an empty shard list for the missing input rather
+    than the op hanging on a never-paired partition."""
+    op = _make_multi_input_reduce_op(_concat_inputs_reduce_fn(), num_inputs=2)
+    # Only input 0 delivers partition 0; input 1 never does.
+    feed = [(_ipc_shard_bundle(0, pa.table({"src": ["L"], "v": [1]})), 0)]
+    out = pa.concat_tables(_drain_reduce_op(op, feed))
+    assert out.column("src").to_pylist() == ["L"]
+    assert op.has_completed()
 
 
 if __name__ == "__main__":

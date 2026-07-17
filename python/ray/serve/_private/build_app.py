@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -40,19 +43,16 @@ class IDDict(dict, Generic[K, V]):
     """
 
     def __getitem__(self, key: K) -> V:
-        if not isinstance(key, int):
-            key = id(key)
-        return super().__getitem__(key)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__getitem__(dict_key)
 
     def __setitem__(self, key: K, value: V):
-        if not isinstance(key, int):
-            key = id(key)
-        return super().__setitem__(key, value)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__setitem__(dict_key, value)
 
     def __delitem__(self, key: K):
-        if not isinstance(key, int):
-            key = id(key)
-        return super().__delitem__(key)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__delitem__(dict_key)
 
     def __contains__(self, key: object):
         if not isinstance(key, int):
@@ -157,8 +157,8 @@ def build_app(
     ):
         raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
-    handles = IDDict()
-    deployment_names = IDDict()
+    handles: IDDict[Application, DeploymentHandle] = IDDict()
+    deployment_names: IDDict[Application, str] = IDDict()
     deployments = _build_app_recursive(
         app,
         app_name=name,
@@ -201,7 +201,7 @@ def build_app(
     return BuiltApplication(
         name=name,
         route_prefix=route_prefix,
-        logging_config=logging_config,
+        logging_config=logging_config,  # type: ignore[arg-type]
         ingress_deployment_name=deployment_names[app],
         deployments=deployments,
         deployment_handles={
@@ -238,7 +238,9 @@ def _build_app_recursive(
         return []
 
     deployments = []
-    scanner = _PyObjScanner(source_type=Application)
+    scanner: _PyObjScanner[Application, DeploymentHandle] = _PyObjScanner(
+        source_type=Application
+    )
     try:
         # Recursively traverse any Application objects bound to init args/kwargs.
         child_apps = scanner.find_nodes(
