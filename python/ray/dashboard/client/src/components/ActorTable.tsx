@@ -105,15 +105,7 @@ const ActorTable = ({
   const { showAcceleratorColumns: globalShowAcceleratorColumns } =
     useContext(GlobalContext);
 
-  const localShowGPUColumn = useMemo(
-    () =>
-      Object.values(actors).some(
-        (a) => (a.gpus && a.gpus.length > 0) || (a.tpus && a.tpus.length > 0),
-      ),
-    [actors],
-  );
-  const showGPUColumn =
-    showGPUColumnProp ?? (globalShowAcceleratorColumns || localShowGPUColumn);
+  const showGPUColumn = showGPUColumnProp ?? globalShowAcceleratorColumns;
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -560,10 +552,12 @@ const ActorTable = ({
               ["processStats.memoryInfo.rss", "Used Memory"],
               ["mem[0]", "Total Memory"],
               ["processStats.cpuPercent", "CPU"],
-              // Fake attribute key used when sorting by GPU utilization and
-              // GRAM usage because aggregate function required on actor key before sorting.
-              [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "GRAM Usage"],
+              ...(showGPUColumn
+                ? ([
+                    [gpuUtilizationSorterKey, "GPU Utilization"],
+                    [gramUsageSorterKey, "GRAM Usage"],
+                  ] as [string, string][])
+                : []),
             ]}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
