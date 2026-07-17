@@ -17,6 +17,12 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
+# Shared rejection message for the removed dynamic generator API.
+DYNAMIC_NUM_RETURNS_ERROR = (
+    "num_returns='dynamic' is no longer supported. "
+    "Use num_returns='streaming' instead."
+)
+
 
 @dataclass
 class Option:
@@ -41,6 +47,22 @@ class Option:
             possible_error_message = self.value_constraint(value)
             if possible_error_message:
                 raise ValueError(possible_error_message)
+
+
+def _num_returns_value_error(x: Any) -> Optional[str]:
+    """Return an error message if num_returns is invalid, else None."""
+    if x is None or x == "streaming" or (isinstance(x, int) and x >= 0):
+        return None
+    if x == "dynamic":
+        return DYNAMIC_NUM_RETURNS_ERROR
+    return (
+        "Default None. When None is passed, "
+        "The default value is 1 for a task and actor task, and "
+        "'streaming' for generator tasks and generator actor tasks. "
+        "The keyword 'num_returns' only accepts None, "
+        "a non-negative integer, or "
+        "'streaming' (for generators)."
+    )
 
 
 def _counting_option(name: str, infinite: bool = True, default_value: Any = None):
@@ -179,14 +201,7 @@ _task_only_options = {
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": Option(
         (int, str, type(None)),
-        lambda x: None
-        if (x is None or x == "streaming" or (isinstance(x, int) and x >= 0))
-        else "Default None. When None is passed, "
-        "The default value is 1 for a task and actor task, and "
-        "'streaming' for generator tasks and generator actor tasks. "
-        "The keyword 'num_returns' only accepts None, "
-        "a non-negative integer, or "
-        "'streaming' (for generators).",
+        _num_returns_value_error,
         default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
@@ -410,11 +425,12 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
 
 def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
-    """Validate num_returns for @ray.remote and @ray.method decorators.
+    """Validate num_returns for @ray.remote, @ray.method, and call-site overrides.
 
     This function validates:
     1. If num_returns is an integer < 0, it should fail fast.
-    2. If num_returns='streaming' is used with a non-generator
+    2. If num_returns='dynamic', it should fail fast with a migration error.
+    3. If num_returns='streaming' is used with a non-generator
        function, it should fail fast.
 
     Args:
@@ -423,8 +439,9 @@ def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
         num_returns: The num_returns value to validate.
 
     Raises:
-        ValueError: If num_returns < 0, or if num_returns is 'streaming'
-            but the callable is not a generator function or async generator function.
+        ValueError: If num_returns < 0, num_returns is 'dynamic', or num_returns
+            is 'streaming' but the callable is not a generator function or async
+            generator function.
     """
     if num_returns is None:
         return
@@ -435,10 +452,7 @@ def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
 
     # The dynamic generator (num_returns="dynamic") has been removed.
     if num_returns == "dynamic":
-        raise ValueError(
-            "num_returns='dynamic' is no longer supported. "
-            "Use num_returns='streaming' instead."
-        )
+        raise ValueError(DYNAMIC_NUM_RETURNS_ERROR)
 
     # Validate num_returns='streaming' for generator functions
     if num_returns == "streaming" and not is_generator_callable:

@@ -969,6 +969,11 @@ class ActorMethod:
                 "call. Use @ray.method(_num_objects_per_yield=...) instead."
             )
 
+        if "num_returns" in options:
+            ray_option_utils.validate_num_returns(
+                self._is_generator, options["num_returns"]
+            )
+
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             from ray.experimental.rdt.util import (
@@ -999,6 +1004,10 @@ class ActorMethod:
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
         )
+
+        if num_returns is None:
+            num_returns = self._num_returns
+        ray_option_utils.validate_num_returns(self._is_generator, num_returns)
 
         # TODO(sang): unify option passing
         options = {
@@ -1085,6 +1094,7 @@ class ActorMethod:
     ):
         if num_returns is None:
             num_returns = self._num_returns
+        ray_option_utils.validate_num_returns(self._is_generator, num_returns)
         if max_task_retries is None:
             max_task_retries = self._max_task_retries
         if max_task_retries is None:
@@ -2544,6 +2554,9 @@ class ActorHandle(Generic[T]):
                 list_args = signature.flatten_args(function_signature, args, kwargs)
             function_descriptor = self._ray_function_descriptor[method_name]
 
+        if num_returns == "dynamic":
+            # Defensive: public entry points should reject this earlier.
+            raise ValueError(ray_option_utils.DYNAMIC_NUM_RETURNS_ERROR)
         if num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.

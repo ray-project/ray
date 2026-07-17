@@ -438,6 +438,9 @@ class RemoteFunction:
             else:
                 num_returns = 1
 
+        if num_returns == "dynamic":
+            # Defensive: public entry points should reject this earlier.
+            raise ValueError(ray_option_utils.DYNAMIC_NUM_RETURNS_ERROR)
         if num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.

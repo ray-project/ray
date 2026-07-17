@@ -1,8 +1,13 @@
 """Tests for @ray.remote and @ray.method decorator validation."""
 
+import re
+
 import pytest
 
 import ray
+from ray._common.ray_option_utils import DYNAMIC_NUM_RETURNS_ERROR
+
+_DYNAMIC_ERROR = re.escape(DYNAMIC_NUM_RETURNS_ERROR)
 
 
 class TestRemoteNumReturns:
@@ -30,14 +35,23 @@ class TestRemoteNumReturns:
 
     def test_num_returns_dynamic_rejected(self):
         """Test that the deprecated num_returns='dynamic' is rejected."""
-        with pytest.raises(
-            ValueError, match="only accepts None, a non-negative integer"
-        ):
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
 
             @ray.remote(num_returns="dynamic")
             def generator_func():
                 for i in range(3):
                     yield i
+
+    def test_num_returns_dynamic_rejected_via_options(self):
+        """Test that f.options(num_returns='dynamic') is rejected."""
+
+        @ray.remote
+        def generator_func():
+            for i in range(3):
+                yield i
+
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
+            generator_func.options(num_returns="dynamic")
 
     def test_num_returns_streaming_with_generator_succeeds(self):
         """Test that num_returns='streaming' with generator function succeeds."""
@@ -111,9 +125,7 @@ class TestMethodNumReturns:
 
     def test_num_returns_dynamic_rejected(self):
         """Test that the deprecated num_returns='dynamic' is rejected."""
-        with pytest.raises(
-            ValueError, match="num_returns='dynamic' is no longer supported"
-        ):
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
 
             @ray.remote
             class TestActor:
@@ -121,6 +133,61 @@ class TestMethodNumReturns:
                 def generator_method(self):
                     for i in range(3):
                         yield i
+
+    def test_num_returns_dynamic_rejected_via_options(self):
+        """Test that actor.method.options(num_returns='dynamic') is rejected."""
+        from ray.actor import ActorMethod
+
+        method = ActorMethod(
+            actor=None,
+            method_name="generator_method",
+            num_returns="streaming",
+            max_task_retries=0,
+            retry_exceptions=False,
+            is_generator=True,
+            generator_backpressure_num_objects=-1,
+            num_objects_per_yield=1,
+            enable_task_events=True,
+        )
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
+            method.options(num_returns="dynamic")
+
+    def test_num_returns_dynamic_rejected_via_remote(self):
+        """Test that actor.method._remote(num_returns='dynamic') is rejected."""
+        from ray.actor import ActorMethod
+
+        method = ActorMethod(
+            actor=None,
+            method_name="generator_method",
+            num_returns="streaming",
+            max_task_retries=0,
+            retry_exceptions=False,
+            is_generator=True,
+            generator_backpressure_num_objects=-1,
+            num_objects_per_yield=1,
+            enable_task_events=True,
+        )
+        # Bypass wrap_auto_init so this unit test does not call ray.init().
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
+            ActorMethod._remote.__wrapped__(method, num_returns="dynamic")
+
+    def test_num_returns_dynamic_rejected_via_bind(self):
+        """Test that actor.method._bind(num_returns='dynamic') is rejected."""
+        from ray.actor import ActorMethod
+
+        method = ActorMethod(
+            actor=None,
+            method_name="generator_method",
+            num_returns="streaming",
+            max_task_retries=0,
+            retry_exceptions=False,
+            is_generator=True,
+            generator_backpressure_num_objects=-1,
+            num_objects_per_yield=1,
+            enable_task_events=True,
+        )
+        with pytest.raises(ValueError, match=_DYNAMIC_ERROR):
+            ActorMethod._bind.__wrapped__(method, num_returns="dynamic")
 
     def test_num_returns_streaming_with_generator_succeeds(self):
         """Test that num_returns='streaming' with generator method succeeds."""
