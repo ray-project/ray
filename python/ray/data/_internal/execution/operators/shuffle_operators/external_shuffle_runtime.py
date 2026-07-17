@@ -3,6 +3,7 @@ ShuffleManager actor, prefetch layout, error hierarchy. Imported by the
 map/reduce task bodies in ``external_shuffle_tasks``."""
 
 import errno
+import ipaddress
 import logging
 import os
 import socket
@@ -209,13 +210,18 @@ class _FetchHandler(socketserver.BaseRequestHandler):
         srv = self.server
         sock = self.request
         _tune_shuffle_socket(sock)
+        sock.settimeout(300.0)
         try:
             if not self._handshake(sock, srv):
                 return
             self._serve_loop(sock, srv)
         except (ConnectionError, OSError):
-            # Peer closed mid-read, or socket dead
+            # Peer closed mid-read, socket dead, or idle timeout.
             pass
+        except Exception:
+            logger.exception(
+                f"Unexpected error handling connection from {self.client_address}"
+            )
 
     # ── handshake ───────────────────────────────────────────────────────
     @staticmethod
@@ -351,12 +357,29 @@ class _FetchHandler(socketserver.BaseRequestHandler):
 
 
 class _ThreadingServer(socketserver.ThreadingTCPServer):
+    # Default family is AF_INET; ``_threading_server_for(ip)`` dynamically
+    # picks the V6 subclass below when the node's advertised address is IPv6
     allow_reuse_address = True
     daemon_threads = True
     # socket.listen() backlog. Default (5) is well below the SYN burst
     # when all reducers fan-out to every manager at once, causing silent
     # SYN drops → ETIMEDOUT. Kernel clamps to ``somaxconn`` if lower.
     request_queue_size = 256
+
+
+class _ThreadingServerV6(_ThreadingServer):
+    address_family = socket.AF_INET6
+
+
+def _threading_server_for(ip: str) -> type:
+    """Pick the ThreadingServer subclass matching ``ip``'s address family.
+    Falls back to V4 for hostnames or unparseable strings — bind will fail
+    fast if the family truly doesn't match."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return _ThreadingServer
+    return _ThreadingServerV6 if isinstance(addr, ipaddress.IPv6Address) else _ThreadingServer
 
 
 # ShuffleManager actor identity. Name is deterministic in (shuffle_id, node_id)
@@ -392,7 +415,7 @@ class ShuffleManager:
         os.makedirs(self.base_dir, exist_ok=True)
         self.token = token
         ip = ray.util.get_node_ip_address()
-        self._server = _ThreadingServer((ip, 0), _FetchHandler)
+        self._server = _threading_server_for(ip)((ip, 0), _FetchHandler)
         self._server.token = token
         self._server.base_dir = self.base_dir
         self._host, self._port = self._server.server_address
@@ -550,15 +573,18 @@ class _ShuffleConnection:
 def open_shuffle_connection(
     endpoint: Tuple[str, int],
     token: str,
+    timeout: float = 60.0,
 ) -> _ShuffleConnection:
     """Open a TCP connection to ``endpoint`` and complete the handshake.
 
     Raises:
         PermissionError: auth token is wrong.
         ShuffleManagerAnomalyError: server returned an unknown status byte.
+        TimeoutError: connect or recv exceeded ``timeout`` seconds.
     """
-    sock = socket.create_connection(endpoint)
+    sock = socket.create_connection(endpoint, timeout=timeout)
     _tune_shuffle_socket(sock)
+    sock.settimeout(timeout)
     try:
         token_bytes = token.encode("utf-8")
         sock.sendall(struct.pack(">H", len(token_bytes)))
