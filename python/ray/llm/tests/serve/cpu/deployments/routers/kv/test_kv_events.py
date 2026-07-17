@@ -103,9 +103,25 @@ class TestConfigureKvEvents:
                 "block_size": 16,
                 "max_num_batched_tokens": 4096,
                 "dp_rank": 0,
+                "data_parallel_size": 1,
                 "replay_endpoint": f"tcp://{node_ip}:6557",
             }
         }
+
+    def test_routing_stats_advertise_data_parallel_size(self, ray_instance):
+        """A DP deployment's configured data_parallel_size is advertised so the
+        selection service learns the worker's real DP group size, not a default
+        of 1 (which would misrepresent a DP-rank worker as a standalone one)."""
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs={"data_parallel_rank": 2, "data_parallel_size": 4}
+        )
+        configure_kv_events_for_kv_routing(llm_config)
+
+        stats = get_kv_event_routing_stats(
+            llm_config, block_size=16, max_num_batched_tokens=4096
+        )
+        assert stats["kv_event_metadata"]["dp_rank"] == 2
+        assert stats["kv_event_metadata"]["data_parallel_size"] == 4
 
     def test_routing_stats_empty_without_kv_events(self):
         """Nothing to advertise when KV-cache events are not enabled."""

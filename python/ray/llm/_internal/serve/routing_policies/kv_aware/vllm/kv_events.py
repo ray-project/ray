@@ -115,6 +115,7 @@ def get_kv_event_routing_stats(
         "block_size": block_size,
         "max_num_batched_tokens": max_num_batched_tokens,
         "dp_rank": llm_config.engine_kwargs.get("data_parallel_rank") or 0,
+        "data_parallel_size": llm_config.engine_kwargs.get("data_parallel_size", 1),
         "replay_endpoint": _get_node_routable_endpoint(
             llm_config, kv_events_config["replay_endpoint"]
         ),
