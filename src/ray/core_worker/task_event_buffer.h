@@ -659,7 +659,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool send_task_events_to_gcs_enabled_ = true;
 
   /// If true, ray events from the event buffer are sent to the event aggregator
-  bool send_ray_events_to_aggregator_enabled_ = false;
+  bool task_event_buffer_to_aggregator_enabled_ = false;
 
   /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";

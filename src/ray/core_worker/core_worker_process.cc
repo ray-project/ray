@@ -321,7 +321,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       observability::kMetricSourceCoreWorker,
       *ray_task_event_recorder_dropped_events_counter_,
       local_node_id);
-  ray_task_event_recorder->StartExportingEvents();
+  // Only start the recorder's export path when it is enabled. If disabled,
+  // task_event_buffer might be used depending on other flags. (see
+  // task_event_buffer.h/cc)
+  if (RayConfig::instance().enable_ray_task_event_recorder()) {
+    ray_task_event_recorder->StartExportingEvents();
+  }
 
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
