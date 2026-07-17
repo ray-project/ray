@@ -13,6 +13,8 @@ from typing import (
     Union,
 )
 
+from fastapi import HTTPException
+
 import ray
 from ray import serve
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -27,6 +29,10 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ModelCard,
+    to_model_metadata,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
@@ -99,6 +105,23 @@ def _merge_replica_actor_and_child_actor_bundles(
     return [merged_first_bundle] + [
         copy.copy(bundle) for bundle in child_actor_bundles[1:]
     ]
+
+
+def _add_openai_models_retrieve_route(app, llm_config: LLMConfig) -> None:
+    """Mount GET /v1/models/{id} on a native engine ASGI app.
+
+    Native engine apps (vLLM, SGLang) expose only GET /v1/models (list). Direct
+    streaming clients call openai_client.models.retrieve(...) like the
+    OpenAiIngress path, so add the single-model retrieve route here.
+    """
+    model_id = llm_config.model_id
+    model_card = to_model_metadata(model_id, llm_config)
+
+    @app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def _get_model(model: str):
+        if model != model_id:
+            raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
+        return model_card
 
 
 class LLMServer(LLMServerProtocol):
@@ -198,27 +221,8 @@ class LLMServer(LLMServerProtocol):
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
     async def __serve_build_asgi_app__(self):
-        from fastapi import HTTPException
-
-        from ray.llm._internal.serve.core.configs.openai_api_models import (
-            ModelCard,
-            to_model_metadata,
-        )
-
         app = await self.engine.build_asgi_app()
-
-        # vLLM's native ASGI app only exposes `GET /v1/models` (list); add
-        # `GET /v1/models/{id}` so direct-streaming clients can call
-        # `openai_client.models.retrieve(...)` like the OpenAiIngress path.
-        model_id = self._llm_config.model_id
-        model_card = to_model_metadata(model_id, self._llm_config)
-
-        @app.get("/v1/models/{model:path}", response_model=ModelCard)
-        async def _get_model(model: str):
-            if model != model_id:
-                raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
-            return model_card
-
+        _add_openai_models_retrieve_route(app, self._llm_config)
         return app
 
     def _init_multiplex_loader(
