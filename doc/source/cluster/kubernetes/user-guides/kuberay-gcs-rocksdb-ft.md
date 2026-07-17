@@ -58,6 +58,13 @@ Apply the following manifest. It creates a `PersistentVolumeClaim` for the GCS d
 RayCluster whose head mounts that claim and sets the two environment variables that enable the
 backend.
 
+```{admonition} Ray image version
+:class: note
+The embedded RocksDB backend isn't in a stable release yet, so the manifest uses the
+`rayproject/ray:nightly` image. Once a release ships with the backend, pin the image to that
+released version (for example, `rayproject/ray:X.Y.Z`) instead of `nightly`.
+```
+
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -81,7 +88,7 @@ spec:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:latest
+          image: rayproject/ray:nightly
           env:
           # Select the embedded RocksDB backend.
           - name: RAY_gcs_storage
@@ -106,7 +113,7 @@ spec:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray:latest
+          image: rayproject/ray:nightly
           env:
           # Keep workers alive while the head Pod restarts and its volume
           # reattaches. Because this setup configures GCS fault tolerance

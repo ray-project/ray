@@ -19,6 +19,9 @@ Persistent Fault Tolerant GCS <kuberay-gcs-persistent-ft>`.
 
 To make the GCS fault tolerant without running Redis, see the alpha
 {ref}`embedded RocksDB backend <kuberay-gcs-rocksdb-ft>`.
+
+For the concepts, the Redis-vs-RocksDB trade-offs, and non-Kubernetes usage, see
+{ref}`fault-tolerance-gcs-rocksdb`.
 ```
 
 ## Use cases
