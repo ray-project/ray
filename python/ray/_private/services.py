@@ -116,8 +116,8 @@ ProcessInfo = collections.namedtuple(
 )
 
 
-def _posix_spawn_can_close_fds() -> bool:
-    """Return whether CPython can use posix_spawn with close_fds=True."""
+def _can_close_fds_without_preexec() -> bool:
+    """Return whether close_fds=True is safe without a preexec_fn path."""
     return hasattr(os, "POSIX_SPAWN_CLOSEFROM")
 
 
@@ -871,7 +871,7 @@ def start_ray_process(
     stdout_file: Optional[IO[AnyStr]] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
-    use_posix_spawn: bool = False,
+    avoid_preexec_fn: bool = False,
 ):
     """Start one of the Ray processes.
 
@@ -903,12 +903,12 @@ def start_ray_process(
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
-        use_posix_spawn: If true on POSIX, avoid preexec_fn so CPython can use
-            its posix_spawn fast path. On runtimes that support closing file
-            descriptors from posix_spawn, keep close_fds=True. Older runtimes
-            need close_fds=False to stay off the fork path. This also skips
-            Ray's SIGINT-masking preexec hook, so it is only safe for
-            subprocesses that do not need fate sharing or that signal mask.
+        avoid_preexec_fn: If true on POSIX, start without preexec_fn so a
+            multi-threaded parent does not take a fork+preexec path. close_fds
+            stays True when the runtime can close fds without preexec_fn;
+            otherwise close_fds is False. The spawning thread temporarily
+            blocks SIGINT so the child inherits that mask. Callers must pass
+            fate_share=False.
 
     Returns:
         Information about the process that was started including a handle to
@@ -974,7 +974,7 @@ def start_ray_process(
         env_updates = {}
     if not isinstance(env_updates, dict):
         raise ValueError("The 'env_updates' argument must be a dictionary.")
-    use_posix_spawn = use_posix_spawn and sys.platform != "win32"
+    avoid_preexec_fn = avoid_preexec_fn and sys.platform != "win32"
 
     modified_env = os.environ.copy()
     modified_env.update(env_updates)
@@ -1027,9 +1027,7 @@ def start_ray_process(
             "kernel-level fate-sharing must only be specified if "
             "detect_fate_sharing_support() has returned True"
         )
-    if use_posix_spawn and fate_share:
-        raise ValueError("'use_posix_spawn' cannot be combined with 'fate_share'.")
-    close_fds = not use_posix_spawn or _posix_spawn_can_close_fds()
+    close_fds = not avoid_preexec_fn or _can_close_fds_without_preexec()
 
     def preexec_fn():
         import signal
@@ -1056,13 +1054,8 @@ def start_ray_process(
             )
 
     previous_sigmask = None
-    should_block_sigint_for_spawn = (
-        use_posix_spawn
-        and hasattr(signal, "pthread_sigmask")
-        and hasattr(signal, "SIG_BLOCK")
-        and hasattr(signal, "SIG_SETMASK")
-    )
-    if should_block_sigint_for_spawn:
+    if avoid_preexec_fn:
+        # Child inherits this mask when preexec_fn is not used.
         previous_sigmask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
     try:
         process = ConsolePopen(
@@ -1073,7 +1066,7 @@ def start_ray_process(
             stderr=stderr_file,
             stdin=subprocess.PIPE if pipe_stdin else None,
             preexec_fn=(
-                None if sys.platform == "win32" or use_posix_spawn else preexec_fn
+                None if sys.platform == "win32" or avoid_preexec_fn else preexec_fn
             ),
             close_fds=close_fds,
             creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
@@ -2503,17 +2496,15 @@ def start_ray_client_server(
     if node_id:
         command.append(f"--node-id={node_id}")
 
-    use_posix_spawn = server_type == "specific-server" and sys.platform != "win32"
+    avoid_preexec_fn = server_type == "specific-server" and sys.platform != "win32"
     # Specific Ray Client servers are spawned by the proxier, which is itself a
     # multi-threaded gRPC server. Avoid a fork+preexec path there: gRPC may have
     # active poller threads and can skip fork handlers, leaving the child to
     # crash before it opens its channel. Specific servers self-terminate after
-    # being idle, monitor stdin EOF from setup_worker for abnormal parent death,
-    # and inherit a temporarily-blocked SIGINT mask from the spawning thread, so
+    # being idle, monitor stdin EOF in-process for abnormal parent death, and
+    # inherit a temporarily-blocked SIGINT mask from the spawning thread, so
     # they can trade kernel fate sharing for a fork-safe spawn path.
-    process_fate_share = False if use_posix_spawn else fate_share
-    if use_posix_spawn:
-        command.append("--monitor-parent-pipe")
+    process_fate_share = False if avoid_preexec_fn else fate_share
 
     process_info = start_ray_process(
         command,
@@ -2522,8 +2513,8 @@ def start_ray_client_server(
         stderr_file=stderr_file,
         fate_share=process_fate_share,
         env_updates=env_updates,
-        pipe_stdin=use_posix_spawn,
-        use_posix_spawn=use_posix_spawn,
+        pipe_stdin=avoid_preexec_fn,
+        avoid_preexec_fn=avoid_preexec_fn,
     )
     return process_info
 

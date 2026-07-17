@@ -202,11 +202,11 @@ def test_start_ray_client_server_redis_password_env_updates(monkeypatch):
             ray_constants.RAY_REDIS_PASSWORD_ENV: "secret123"
         }
         assert captured["kwargs"]["fate_share"] is False
-        assert captured["kwargs"]["use_posix_spawn"] is False
+        assert captured["kwargs"]["avoid_preexec_fn"] is False
         assert ray_constants.RAY_REDIS_PASSWORD_ENV not in os.environ
 
 
-def test_start_ray_client_specific_server_uses_fork_safe_spawn(monkeypatch):
+def test_start_ray_client_specific_server_avoids_preexec_fn(monkeypatch):
     captured = {}
     expected_process_info = object()
 
@@ -232,87 +232,71 @@ def test_start_ray_client_specific_server_uses_fork_safe_spawn(monkeypatch):
         assert process_info is expected_process_info
         assert captured["process_type"] == ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER
         assert "--mode=specific-server" in captured["command"]
-        assert "--monitor-parent-pipe" in captured["command"]
         assert captured["kwargs"]["fate_share"] is False
         assert captured["kwargs"]["pipe_stdin"] is True
-        assert captured["kwargs"]["use_posix_spawn"] is True
+        assert captured["kwargs"]["avoid_preexec_fn"] is True
 
 
-def test_setup_worker_parent_pipe_monitor_starts_subprocess(monkeypatch):
-    from ray._private.workers import setup_worker
+def test_ray_client_specific_server_parent_pipe_monitor_starts_thread(monkeypatch):
+    started = []
 
-    captured = {}
-    expected_process = object()
-    fake_stdin = object()
+    class FakeThread:
+        def __init__(self, target=None, name=None, daemon=None):
+            started.append(
+                {
+                    "target": target,
+                    "name": name,
+                    "daemon": daemon,
+                }
+            )
 
-    def fake_popen(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        return expected_process
-
-    with monkeypatch.context() as m:
-        m.setattr(setup_worker.sys, "stdin", fake_stdin)
-        m.setattr(setup_worker.os, "getpid", lambda: 12345)
-        m.setattr(setup_worker.subprocess, "Popen", fake_popen)
-        process = setup_worker._start_parent_pipe_monitor(True)
-
-    assert process is expected_process
-    assert captured["command"] == [
-        setup_worker.sys.executable,
-        "-c",
-        setup_worker._PARENT_PIPE_MONITOR_SCRIPT,
-        "12345",
-    ]
-    assert captured["kwargs"]["stdin"] is fake_stdin
-    assert captured["kwargs"]["stdout"] == setup_worker.subprocess.DEVNULL
-    assert captured["kwargs"]["stderr"] == setup_worker.subprocess.DEVNULL
-    assert setup_worker._start_parent_pipe_monitor(False) is None
-
-
-def test_ray_client_specific_server_blocks_sigint(monkeypatch):
-    calls = []
-    sig_block = object()
-
-    def fake_pthread_sigmask(how, signals):
-        calls.append((how, signals))
+        def start(self):
+            started[-1]["started"] = True
 
     with monkeypatch.context() as m:
+        m.setattr(ray_client_server.threading, "Thread", FakeThread)
+        ray_client_server._start_parent_pipe_monitor()
+
+    assert len(started) == 1
+    assert started[0]["name"] == "ray-client-parent-pipe-monitor"
+    assert started[0]["daemon"] is True
+    assert started[0]["started"] is True
+    assert callable(started[0]["target"])
+
+
+def test_ray_client_specific_server_parent_pipe_monitor_exits_on_eof(monkeypatch):
+    killed = []
+    read_calls = {"n": 0}
+
+    def fake_read(fd, n):
+        read_calls["n"] += 1
+        if read_calls["n"] == 1:
+            return b""
+        raise AssertionError("read should stop after EOF")
+
+    class ImmediateThread:
+        def __init__(self, target=None, name=None, daemon=None):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    with monkeypatch.context() as m:
+        m.setattr(ray_client_server.os, "read", fake_read)
+        m.setattr(ray_client_server.os, "getpid", lambda: 4242)
         m.setattr(
-            ray_client_server.signal,
-            "pthread_sigmask",
-            fake_pthread_sigmask,
-            raising=False,
+            ray_client_server.os,
+            "kill",
+            lambda pid, sig: killed.append((pid, sig)),
         )
-        m.setattr(ray_client_server.signal, "SIG_BLOCK", sig_block, raising=False)
+        m.setattr(ray_client_server.sys.stdin, "fileno", lambda: 0)
+        m.setattr(ray_client_server.threading, "Thread", ImmediateThread)
+        ray_client_server._start_parent_pipe_monitor()
 
-        ray_client_server._block_sigint_for_specific_server()
-
-    assert calls == [(sig_block, {signal.SIGINT})]
-
-
-def test_ray_client_specific_server_sigint_block_noops_without_posix_signal_support(
-    monkeypatch,
-):
-    calls = []
-
-    def fake_pthread_sigmask(how, signals):
-        calls.append((how, signals))
-
-    with monkeypatch.context() as m:
-        m.setattr(
-            ray_client_server.signal,
-            "pthread_sigmask",
-            fake_pthread_sigmask,
-            raising=False,
-        )
-        m.delattr(ray_client_server.signal, "SIG_BLOCK", raising=False)
-
-        ray_client_server._block_sigint_for_specific_server()
-
-    assert calls == []
+    assert killed == [(4242, signal.SIGTERM)]
 
 
-def test_start_ray_process_posix_spawn_close_fds_when_supported(monkeypatch):
+def test_start_ray_process_avoid_preexec_close_fds_when_supported(monkeypatch):
     captured = {}
     expected_process = object()
 
@@ -330,7 +314,7 @@ def test_start_ray_process_posix_spawn_close_fds_when_supported(monkeypatch):
             [sys.executable],
             ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
             fate_share=False,
-            use_posix_spawn=True,
+            avoid_preexec_fn=True,
         )
 
         assert process_info.process is expected_process
@@ -338,13 +322,11 @@ def test_start_ray_process_posix_spawn_close_fds_when_supported(monkeypatch):
         assert captured["kwargs"]["close_fds"] is True
 
 
-def test_start_ray_process_posix_spawn_blocks_sigint_for_child(monkeypatch):
+def test_start_ray_process_avoid_preexec_blocks_sigint_for_child(monkeypatch):
     captured = {}
     expected_process = object()
     calls = []
     previous_mask = {signal.SIGTERM}
-    sig_block = object()
-    sig_setmask = object()
 
     def fake_console_popen(command, **kwargs):
         captured["command"] = command
@@ -352,38 +334,31 @@ def test_start_ray_process_posix_spawn_blocks_sigint_for_child(monkeypatch):
         return expected_process
 
     def fake_pthread_sigmask(how, signals):
-        calls.append((how, signals))
+        calls.append((how, set(signals) if signals is not None else signals))
         return previous_mask
 
     with monkeypatch.context() as m:
         m.setattr(services.sys, "platform", "linux")
         m.setattr(services.os, "POSIX_SPAWN_CLOSEFROM", object(), raising=False)
-        m.setattr(
-            services.signal,
-            "pthread_sigmask",
-            fake_pthread_sigmask,
-            raising=False,
-        )
-        m.setattr(services.signal, "SIG_BLOCK", sig_block, raising=False)
-        m.setattr(services.signal, "SIG_SETMASK", sig_setmask, raising=False)
+        m.setattr(services.signal, "pthread_sigmask", fake_pthread_sigmask)
         m.setattr(services, "ConsolePopen", fake_console_popen)
 
         process_info = services.start_ray_process(
             [sys.executable],
             ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
             fate_share=False,
-            use_posix_spawn=True,
+            avoid_preexec_fn=True,
         )
 
     assert process_info.process is expected_process
     assert captured["kwargs"]["preexec_fn"] is None
     assert calls == [
-        (sig_block, {signal.SIGINT}),
-        (sig_setmask, previous_mask),
+        (signal.SIG_BLOCK, {signal.SIGINT}),
+        (signal.SIG_SETMASK, previous_mask),
     ]
 
 
-def test_start_ray_process_posix_spawn_leaves_fds_open_for_older_runtime(
+def test_start_ray_process_avoid_preexec_leaves_fds_open_without_closefrom(
     monkeypatch,
 ):
     captured = {}
@@ -403,7 +378,7 @@ def test_start_ray_process_posix_spawn_leaves_fds_open_for_older_runtime(
             [sys.executable],
             ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
             fate_share=False,
-            use_posix_spawn=True,
+            avoid_preexec_fn=True,
         )
 
         assert process_info.process is expected_process

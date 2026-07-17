@@ -9,6 +9,7 @@ import os
 import pickle
 import queue
 import signal
+import sys
 import threading
 import time
 from collections import defaultdict
@@ -852,9 +853,31 @@ def create_ray_handler(address, redis_password, redis_username=None):
     return ray_connect_handler
 
 
-def _block_sigint_for_specific_server() -> None:
-    if hasattr(signal, "pthread_sigmask") and hasattr(signal, "SIG_BLOCK"):
-        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+def _start_parent_pipe_monitor() -> None:
+    """Shut down when inherited stdin reaches EOF (parent process died).
+
+    The proxier keeps the write end of the stdin pipe open while it is alive.
+    When it exits, the OS closes that write end and this thread observes EOF.
+    """
+
+    def _watch() -> None:
+        try:
+            while True:
+                data = os.read(sys.stdin.fileno(), 1)
+                if not data:
+                    break
+        except OSError:
+            return
+        try:
+            os.kill(os.getpid(), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    threading.Thread(
+        target=_watch,
+        name="ray-client-parent-pipe-monitor",
+        daemon=True,
+    ).start()
 
 
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
@@ -909,8 +932,10 @@ def main():
     args, _ = parser.parse_known_args()
     redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
-    if args.mode == "specific-server":
-        _block_sigint_for_specific_server()
+    if args.mode == "specific-server" and sys.platform != "win32":
+        # stdin is a pipe from the proxier; EOF means the proxier is gone.
+        # SIGINT is already blocked via inheritance from the spawning thread.
+        _start_parent_pipe_monitor()
 
     ray_connect_handler = create_ray_handler(
         args.address, redis_password, args.redis_username
