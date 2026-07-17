@@ -62,7 +62,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
-    RAY_SERVE_RECON_DIRTYSET_MIN,
     RAY_SERVE_RECON_SWEEP_FRACTION,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
@@ -4751,29 +4750,14 @@ class DeploymentState:
 
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
-        # Whether the dirty-set slice path is taken this tick (only a subset of
-        # RUNNING is health-checked) -- the healthy gauge below accounts for it.
-        used_dirtyset = False
 
-        # Profile-guided: for the common non-gang case, iterate
-        # RUNNING/PENDING_MIGRATION IN PLACE. Healthy replicas that stay in their state
-        # bucket are never popped+re-added -> eliminates the O(num_replicas) container
-        # churn on the control loop at scale. Gang deployments fall back to the
-        # original pop/re-add path (their force-stop reshuffles the lists).
+        # Non-gang deployments health-check a dirty-set round-robin slice and iterate
+        # RUNNING/PENDING_MIGRATION in place, avoiding the O(num_replicas) pop/re-add
+        # churn at scale. Gang deployments use the pop/re-add path (their force-stop
+        # reshuffles the lists).
         if not self._is_gang_deployment:
             origin: List[ReplicaState] = []
-            used_dirtyset = (
-                self._replicas.count_state(ReplicaState.RUNNING)
-                > RAY_SERVE_RECON_DIRTYSET_MIN
-            )
-            if used_dirtyset:
-                pairs = self._dirty_set_active_pairs()
-            else:
-                pairs = [
-                    (replica, st)
-                    for st in (ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION)
-                    for replica in self._replicas.get([st])
-                ]
+            pairs = self._dirty_set_active_pairs()
             healths = [replica.check_health() for replica, _ in pairs]
             for (replica, st), is_healthy in zip(pairs, healths):
                 self._record_health_check_metrics(replica)
@@ -4788,23 +4772,17 @@ class DeploymentState:
                     self._outstanding_dirty_set.add(replica.replica_id)
                 else:
                     self._outstanding_dirty_set.discard(replica.replica_id)
-                # Re-bucket a healthy replica only if its state changed -- avoiding the
-                # pop/re-add churn is the whole point of the in-place path.
-                # actor_details.state is only set via ReplicaStateContainer.add() and
-                # check_health() never transitions state, so for RUNNING/PENDING_MIGRATION
-                # this is a no-op today; kept as a defensive guard so the in-place path
-                # stays behavior-identical to the pop/re-add path if that ever changes.
+                # Re-bucket only if the state changed. check_health() never transitions
+                # state today, so this is a defensive no-op that keeps the in-place path
+                # identical to pop/re-add should that ever change.
                 if replica.actor_details.state != st:
                     self._replicas.remove({replica.replica_id})
                     self._replicas.add(replica.actor_details.state, replica)
-            # Batch-remove all unhealthy replicas in a single O(num_replicas) pass;
-            # a per-replica remove() would be O(unhealthy * num_replicas) -> O(N^2)
-            # during mass health-check failures (e.g. a node/AZ outage).
+            # Batch-remove unhealthy replicas in one O(num_replicas) pass; per-replica
+            # remove() would be O(unhealthy * num_replicas) during mass failures.
             self._replicas.remove(
                 {replica.replica_id for replica in unhealthy_replicas}
             )
-            for replica in unhealthy_replicas:
-                self._stop_unhealthy_replica(replica)
         else:
             for replica in self._replicas.pop(
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
@@ -4816,9 +4794,9 @@ class DeploymentState:
                 else:
                     unhealthy_replicas.append(replica)
 
-            # Under the RESTART_GANG policy, force-stop all members of any gang that has at
-            # least one unhealthy replica. Replicas handled here are removed from the lists;
-            # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
+            # Under RESTART_GANG, force-stop all members of any gang with >=1 unhealthy
+            # replica; handled replicas leave the lists, the rest respect
+            # FORCE_STOP_UNHEALTHY_REPLICAS.
             if (
                 self._is_gang_deployment
                 and self.get_gang_config().runtime_failure_policy
@@ -4835,9 +4813,9 @@ class DeploymentState:
                 self._replicas.add(replica.actor_details.state, replica)
                 self._process_healthy_replica(replica)
 
-            # Only single-replica scheduling replicas remain.
-            for replica in unhealthy_replicas:
-                self._stop_unhealthy_replica(replica)
+        # Stop every unhealthy replica; both branches already removed them from _replicas.
+        for replica in unhealthy_replicas:
+            self._stop_unhealthy_replica(replica)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
@@ -4850,15 +4828,11 @@ class DeploymentState:
             # deployment/application series. Emit the count of replicas that
             # passed health checks in this iteration so newly promoted replicas
             # are not counted before their first successful health check.
-            if used_dirtyset:
-                # Only a round-robin slice was health-checked this tick, so rebuilding
-                # the set from healthy_replicas would undercount -- add the newly-
-                # confirmed-healthy ids instead. Then drop any id whose replica is no
-                # longer RUNNING/PENDING_MIGRATION: a replica can leave RUNNING without
-                # stopping (e.g. RUNNING->UPDATING on a lightweight reconfigure, which
-                # does not go through _stop_replica's discard), and the incremental set
-                # would otherwise keep counting it. This keeps the gauge equal to what
-                # the else-branch rebuild would produce.
+            if not self._is_gang_deployment:
+                # Only a slice was checked this tick, so add the newly-healthy ids
+                # incrementally (a full rebuild would undercount) and drop any id whose
+                # replica is no longer RUNNING/PENDING_MIGRATION (e.g. a lightweight
+                # RUNNING->UPDATING reconfigure, which skips _stop_replica's discard).
                 self._last_health_check_healthy_replica_ids.update(
                     replica.replica_id.unique_id for replica in healthy_replicas
                 )

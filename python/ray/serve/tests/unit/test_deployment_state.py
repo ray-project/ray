@@ -2241,6 +2241,16 @@ def test_scale_num_replicas(mock_deployment_state_manager, target_capacity_direc
     )
 
 
+def _advance_until(dsm, cond, max_ticks=50):
+    """Run control-loop ticks until cond() holds (the dirty-set sweep may health-check a
+    replica on a later tick, not every tick). Fails if not reached within max_ticks."""
+    for _ in range(max_ticks):
+        if cond():
+            return
+        dsm.update()
+    assert cond(), "condition not reached within the health-check deadline"
+
+
 @pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
 def test_health_check(
     mock_deployment_state_manager, force_stop_unhealthy_replicas: bool
@@ -2276,16 +2286,16 @@ def test_health_check(
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
-    dsm.update()
-    for replica in ds._replicas.get():
-        # Health check shouldn't be called until it's ready.
-        assert replica._actor.health_check_called
+    # Every replica is health-checked within the deadline (the dirty-set sweep may
+    # spread checks across ticks rather than checking all every tick).
+    _advance_until(
+        dsm, lambda: all(r._actor.health_check_called for r in ds._replicas.get())
+    )
 
-    # Mark one replica unhealthy; it should be stopped.
+    # Mark one replica unhealthy; within the deadline it is detected, stopped, and a
+    # replacement is started.
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
-    # SIMULTANEOUSLY a new replica should be started to try to reach
-    # the target number of healthy replicas.
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     check_counts(
         ds,
         total=3,
@@ -2363,15 +2373,14 @@ def test_health_gauge_caching(mock_deployment_state_manager):
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
 
-    # Second update: check_and_update_replicas processes the RUNNING replicas
-    # for the first time, calling check_health() and setting the gauge.
-    dsm.update()
-
+    # Within the deadline every RUNNING replica is health-checked and cached at value 1.
     replica_ids = [r.replica_id.unique_id for r in ds._replicas.get()]
-    # After the second update the cache should have (value=1, timestamp) for both.
-    for rid in replica_ids:
-        cached_value, cached_time = ds._health_gauge_cache[rid]
-        assert cached_value == 1
+    _advance_until(
+        dsm,
+        lambda: all(
+            ds._health_gauge_cache.get(rid, (None,))[0] == 1 for rid in replica_ids
+        ),
+    )
 
     # Track how many times Gauge.set is called using a wrapper.
     original_set = ds.health_check_gauge.set
@@ -2394,20 +2403,17 @@ def test_health_gauge_caching(mock_deployment_state_manager):
         "expected 0 (should be cached)"
     )
 
-    # After the TTL expires, the gauge should be re-reported even though
-    # the value hasn't changed.
+    # After the TTL expires, each replica re-reports its gauge once as it is re-checked
+    # within the deadline.
     timer.advance(RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S + 1)
-    dsm.update()
-    assert call_count == len(replica_ids), (
-        f"Gauge.set was called {call_count} times after TTL expired; "
-        f"expected {len(replica_ids)} (one per replica)"
-    )
+    _advance_until(dsm, lambda: call_count == len(replica_ids))
+    assert call_count == len(replica_ids)
 
-    # Mark one replica unhealthy — gauge should transition to 0.
+    # Mark one replica unhealthy — within the deadline it is detected and its gauge
+    # transitions to 0.
     call_count = 0
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
-    # Gauge.set should have been called at least once (for the now-unhealthy replica).
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     assert call_count >= 1
     # The stopping replica should have cache value 0.
     stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
@@ -2453,14 +2459,13 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
-    dsm.update()
-    for replica in ds._replicas.get():
-        # Health check shouldn't be called until it's ready.
-        assert replica._actor.health_check_called
+    _advance_until(
+        dsm, lambda: all(r._actor.health_check_called for r in ds._replicas.get())
+    )
 
-    # Mark one replica unhealthy. It should be stopped.
+    # Mark one replica unhealthy. Within the deadline it is detected and stopped.
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     check_counts(
         ds,
         total=3,
@@ -2514,7 +2519,7 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
 
     # Mark the remaining running replica of the old version as unhealthy
     ds._replicas.get(states=[ReplicaState.RUNNING])[0]._actor.set_unhealthy()
-    dsm.update()
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.RUNNING]) == 0)
     # A replica of the new version should get started to try to reach
     # the target number of healthy replicas
     check_counts(
@@ -9928,9 +9933,8 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     replica, which is exactly the state a reconfigured replica leaves behind."""
     import ray.serve._private.deployment_state as ds_mod
 
-    # Force the dirty-set path on with just a couple of replicas, and use the
-    # low-cardinality gauge path (the one that maintains the healthy-id set).
-    monkeypatch.setattr(ds_mod, "RAY_SERVE_RECON_DIRTYSET_MIN", 0)
+    # Use the low-cardinality gauge path (the one that maintains the healthy-id set);
+    # non-gang deployments always use the dirty-set sweep.
     monkeypatch.setattr(
         ds_mod, "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", False
     )

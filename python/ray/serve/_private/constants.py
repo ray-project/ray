@@ -264,23 +264,12 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
-# Dirty-set health-check reconcile: instead of health-checking every RUNNING replica
-# each control tick, poll only replicas with an in-flight check plus a round-robin slice
-# sized to sweep the bucket within RAY_SERVE_RECON_SWEEP_FRACTION of the reconcile period
-# -- every replica is still checked on schedule, at O(slice) per tick instead of O(N).
-# Engages automatically above this many RUNNING replicas (smaller deployments keep the
-# full per-tick sweep). See DeploymentState._dirty_set_active_pairs.
-RAY_SERVE_RECON_DIRTYSET_MIN = get_env_int_positive("RAY_SERVE_RECON_DIRTYSET_MIN", 64)
-# Fraction of the reconcile period (min of health_check_period_s and
-# request_routing_stats_period_s) that one full round-robin sweep takes -- i.e. every
-# RUNNING replica is health-checked / routing-stats-pulled at least once per
-# RAY_SERVE_RECON_SWEEP_FRACTION x period. Tunes the staleness/speed tradeoff: SMALLER
-# tightens per-replica staleness (a due check starts within fraction x period of coming
-# due) at the cost of a larger per-tick slice (less controller-tick speedup); LARGER
-# gives more speedup but more staleness. 0.5 sweeps each replica ~twice per period -- a
-# conservative 2x margin so a due check is not missed within the period. A value >= 1.0
-# lets a replica be checked less than once per period; only raise it if health/routing
-# staleness up to ~fraction x period is acceptable in exchange for faster ticks.
+# Dirty-set health-check reconcile: each control tick polls only replicas with an
+# in-flight check plus a round-robin slice, so a tick costs O(slice) instead of O(N).
+# RAY_SERVE_RECON_SWEEP_FRACTION is how long one full sweep takes as a fraction of the
+# reconcile period (min of health_check_period_s and request_routing_stats_period_s):
+# every replica is checked at least once per fraction x period. Smaller = fresher checks
+# but less speedup; larger = more speedup but staler. Default 0.5 = ~2 sweeps per period.
 RAY_SERVE_RECON_SWEEP_FRACTION = get_env_float_positive(
     "RAY_SERVE_RECON_SWEEP_FRACTION", 0.5
 )
