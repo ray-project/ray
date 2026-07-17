@@ -13,6 +13,7 @@ from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check
 
 
@@ -37,6 +38,29 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(algo.config.train_batch_size == 3000)
         algo.train()
         algo.stop()
+
+    def test_multi_agent_shared_module(self):
+        """Multiple agents sharing a single RLModule via a one-entry spec dict."""
+        config = (
+            PPOConfig()
+            .environment(MultiAgentCartPole, env_config={"num_agents": 2})
+            .env_runners(num_env_runners=0)
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda agent_id, *args, **kwargs: "p0",
+            )
+            .rl_module(
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={"p0": RLModuleSpec()},
+                ),
+            )
+        )
+        algo = config.build_algo()
+        try:
+            self.assertEqual(set(algo.env_runner.module.keys()), {"p0"})
+            algo.train()
+        finally:
+            algo.stop()
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
@@ -427,7 +451,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         self.assertRaisesRegex(
             ValueError,
-            "Module_specs cannot be None",
+            "must be a dict",
             lambda: config.rl_module_spec,
         )
 

@@ -33,6 +33,8 @@ If microcheck passes, you'll see a green checkmark on your PR. If it fails, you'
 
 ## Additional tests at merge time
 
-In this workflow, to merge your PR, click the **Enable auto-merge** button (or ask a committer to do so). This triggers additional test cases, and the PR merges automatically once they finish and pass.
+`microcheck` runs on every commit, but the full test suite must pass before a PR can merge. Adding the `go` label triggers the full suite, and committers require the `go` tests to have passed before adding a PR to the merge queue.
 
-Alternatively, you can add a `go` label to manually trigger the full test suite on your PR. Be mindful that this is less recommended, but we understand you know best about the needs of your PR. We anticipate this being rarely needed, but if you require it constantly, please let us know. We're continuously improving the effectiveness of microcheck.
+If you're a committer, add the `go` label to your PR once it's ready, then merge after the full suite passes. Clicking **Enable auto-merge** does both in one step: it adds the `go` label and merges the PR automatically once the suite passes. Pushing a new commit disables auto-merge, so re-enable it afterward. When you review an external contributor's PR, add the `go` label for them, since they can't add it themselves.
+
+If you're an external contributor, adding the `go` label and enabling auto-merge both require write access, so a committer runs the full suite and merges when your PR is ready.

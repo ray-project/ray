@@ -492,7 +492,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -2037,6 +2037,20 @@ py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lerobot",
+    size = "medium",
+    srcs = ["tests/datasource/test_lerobot.py"],
     tags = [
         "exclusive",
         "team:data",
