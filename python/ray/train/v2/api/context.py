@@ -150,6 +150,8 @@ class TrainContext(ABC):
                 )
                 trainer.fit()
 
+        Returns:
+            The number of workers running on this node.
         """
         pass
 
@@ -173,6 +175,8 @@ class TrainContext(ABC):
                 )
                 trainer.fit()
 
+        Returns:
+            The rank of this node among the nodes participating in training.
         """
         pass
 

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Install Ray and its AI libraries with pip across Linux, Windows (beta), and macOS on x86_64, ARM, and Apple silicon hardware.
+
 .. _installation:
 
 Installing Ray
@@ -428,7 +431,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.10)
         :sync: ray (Python 3.10)
 
-        Ray version: nightly (`d60d131 <https://github.com/ray-project/ray/commit/d60d13127df16209bdabab78ea9735f552813698>`_)
+        Ray version: nightly (`cf3939d <https://github.com/ray-project/ray/commit/cf3939d61ace058f973c1bd3e7166c2bbc8a69a3>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py310-cpu.txt
 

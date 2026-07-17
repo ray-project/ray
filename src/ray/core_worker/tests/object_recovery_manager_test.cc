@@ -32,6 +32,7 @@
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -134,7 +135,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(
-            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_)),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
             [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),
@@ -144,6 +145,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*free_object_on_nodes_async=*/
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),
@@ -185,6 +188,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
 
   // Used by memory_store_.
   InstrumentedIOContextWithThread io_context_;
+  Clock clock_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
@@ -546,8 +550,3 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

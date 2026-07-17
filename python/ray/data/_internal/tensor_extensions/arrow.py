@@ -52,7 +52,6 @@ MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR = parse_version("16.0.0")
 # Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
 MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
-
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
@@ -239,10 +238,22 @@ class ArrowConversionError(Exception):
 
     MAX_DATA_STR_LEN = 200
 
-    def __init__(self, data_str: str):
+    def __init__(
+        self,
+        data_str: str,
+        column_name: Optional[str] = None,
+        pa_type: Optional["pa.DataType"] = None,
+    ):
         if len(data_str) > self.MAX_DATA_STR_LEN:
             data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
-        message = f"Error converting data to Arrow: {data_str}"
+        if column_name is not None:
+            type_info = f" (target type: {pa_type})" if pa_type is not None else ""
+            message = (
+                f"Error converting column '{column_name}'{type_info}"
+                f" to Arrow: {data_str}"
+            )
+        else:
+            message = f"Error converting data to Arrow: {data_str}"
         super().__init__(message)
 
 
@@ -333,8 +344,12 @@ def convert_to_pyarrow_array(
             enable_fallback_config is None or not object_ext_type_fallback_allowed
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
             logger.warning(
-                f"Failed to convert column '{column_name}' into pyarrow "
-                f"array due to: {ace}; {object_ext_type_detail}",
+                f"Failed to convert column '{column_name}' into pyarrow array "
+                f"({type(ace).__name__}); {object_ext_type_detail}. "
+                f"To see the full error, set logging level to DEBUG.",
+            )
+            logger.debug(
+                f"Full details for Arrow conversion error on column '{column_name}':",
                 exc_info=ace,
             )
 
@@ -352,6 +367,7 @@ def _convert_to_pyarrow_native_array(
     """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
     Arrow's natively supported types (ie no custom extension types)"""
 
+    pa_type = None
     try:
         # NOTE: Python's `datetime` only supports precision up to us and could
         #       inadvertently lose precision when handling Pandas `Timestamp` type.
@@ -398,7 +414,9 @@ def _convert_to_pyarrow_native_array(
 
         return pa.array(column_values, type=pa_type)
     except Exception as e:
-        raise ArrowConversionError(str(column_values)) from e
+        raise ArrowConversionError(
+            str(column_values), column_name=column_name, pa_type=pa_type
+        ) from e
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(
@@ -1513,12 +1531,27 @@ def unify_tensor_types(
     if len(shapes) == 1:
         return next(iter(types))
 
-    return ArrowVariableShapedTensorType(
+    # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
+    #       derived as the max length of the shapes that are making it up
+    return _get_variable_shaped_tensor_type(
         dtype=value_types.pop(),
-        # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
-        #       derived as the max length of the shapes that are making it up
         ndim=max(len(s) for s in shapes),
     )
+
+
+@functools.lru_cache(maxsize=ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE)
+def _get_variable_shaped_tensor_type(
+    dtype: pa.DataType, ndim: int
+) -> "ArrowVariableShapedTensorType":
+    """Construct (and cache) a variable-shaped tensor type.
+
+    ``ArrowVariableShapedTensorType`` is an immutable value type fully keyed by
+    ``(dtype, ndim)``, but constructing one is expensive: pyarrow's ext-type
+    registration serializes the metadata on every instantiation. Schema
+    unification builds the same handful of types over and over (once per
+    diverging column, per call), so we memoize construction here.
+    """
+    return ArrowVariableShapedTensorType(dtype=dtype, ndim=ndim)
 
 
 @DeveloperAPI(stability="alpha")

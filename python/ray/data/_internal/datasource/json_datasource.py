@@ -187,16 +187,18 @@ class PandasJSONDatasource(FileBasedDatasource):
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         chunksize = self._estimate_chunksize(f)
 
-        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
-        if chunksize is None:
-            # When chunksize=None, pandas returns DataFrame directly (no context manager)
-            df = pd.read_json(stream, chunksize=chunksize, lines=True)
-            yield _cast_range_index_to_string(df)
-        else:
-            # When chunksize is a number, pandas returns JsonReader (supports context manager)
-            with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
-                for df in reader:
-                    yield _cast_range_index_to_string(df)
+        with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+            if chunksize is None:
+                # When chunksize=None, pandas returns DataFrame directly
+                # (no context manager).
+                df = pd.read_json(stream, chunksize=chunksize, lines=True)
+                yield _cast_range_index_to_string(df)
+            else:
+                # When chunksize is a number, pandas returns JsonReader
+                # (supports context manager).
+                with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
+                    for df in reader:
+                        yield _cast_range_index_to_string(df)
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
         """Estimate the chunksize by sampling the first row.
@@ -206,29 +208,36 @@ class PandasJSONDatasource(FileBasedDatasource):
 
         if not f.seekable():
             return self._DEFAULT_CHUNK_SIZE
-        assert f.tell() == 0, "File pointer must be at the beginning"
+
+        # ``_read_stream`` can be recreated on the same file handle when
+        # ``FileBasedDatasource`` retries a transient read error.
+        f.seek(0)
 
         if self._target_output_size_bytes is None:
             return None
 
-        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
-        with pd.read_json(stream, chunksize=1, lines=True) as reader:
-            try:
-                df = _cast_range_index_to_string(next(reader))
-            except StopIteration:
-                return 1
+        try:
+            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+                with pd.read_json(stream, chunksize=1, lines=True) as reader:
+                    try:
+                        df = _cast_range_index_to_string(next(reader))
+                    except StopIteration:
+                        return 1
 
-        block_accessor = PandasBlockAccessor.for_block(df)
-        if block_accessor.num_rows() == 0:
-            chunksize = 1
-        else:
-            bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
-            chunksize = max(round(self._target_output_size_bytes / bytes_per_row), 1)
+            block_accessor = PandasBlockAccessor.for_block(df)
+            if block_accessor.num_rows() == 0:
+                chunksize = 1
+            else:
+                bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
+                chunksize = max(
+                    round(self._target_output_size_bytes / bytes_per_row), 1
+                )
 
-        # Reset file pointer to the beginning.
-        f.seek(0)
-
-        return chunksize
+            return chunksize
+        finally:
+            # Reset file pointer to the beginning for the actual read and for any
+            # subsequent retry that reuses the same file handle.
+            f.seek(0)
 
     def _open_input_source(
         self,
@@ -281,5 +290,4 @@ class StrictBufferedReader(io.RawIOBase):
     def close(self):
         if not self.closed:
             self._file.detach()
-            self._file.close()
             super().close()

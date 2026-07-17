@@ -1,10 +1,11 @@
 """The vLLM engine processor."""
 
+import hashlib
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Optional
 
 import transformers
-from pydantic import ConfigDict, Field, model_validator, root_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -15,7 +16,6 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
     Processor,
     ProcessorBuilder,
@@ -27,7 +27,6 @@ from ray.llm._internal.batch.processor.utils import (
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
-    PrepareImageStage,
     PrepareMultimodalStage,
     TokenizeStage,
     vLLMEngineStage,
@@ -35,13 +34,12 @@ from ray.llm._internal.batch.stages import (
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
-    PrepareImageStageConfig,
     PrepareMultimodalStageConfig,
     TokenizerStageConfig,
     resolve_stage_config,
 )
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
@@ -52,43 +50,6 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
-
-
-class BundleSchema(BaseModelExtended):
-    model_config = ConfigDict(extra="allow")
-    CPU: Optional[int] = Field(default=1, description="The number of CPUs per bundle.")
-    GPU: Optional[int] = Field(default=1, description="The number of GPUs per bundle.")
-
-
-class PlacementGroupSchema(BaseModelExtended):
-    bundle_per_worker: Optional[BundleSchema] = Field(
-        default=None,
-        description="Resource bundle specification for each worker. "
-        "Auto-replicated based on tensor_parallel_size * pipeline_parallel_size. "
-        "Cannot be used together with 'bundles'.",
-    )
-    bundles: Optional[List[BundleSchema]] = Field(
-        default=None, description="The bundles for the placement group."
-    )
-    strategy: Literal["PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"] = Field(
-        default="PACK", description="The strategy for the placement group."
-    )
-
-    @model_validator(mode="after")
-    def validate_bundle_options(self):
-        if self.bundle_per_worker is not None and self.bundles is not None:
-            raise ValueError(
-                "Cannot specify both 'bundle_per_worker' and 'bundles' in "
-                "placement_group_config. Use 'bundle_per_worker' for simple "
-                "per-worker resource specification (auto-replicated by tp*pp), "
-                "or 'bundles' for full control."
-            )
-        if self.bundle_per_worker is None and self.bundles is None:
-            raise ValueError(
-                "placement_group_config must specify either 'bundle_per_worker' "
-                "or 'bundles'."
-            )
-        return self
 
 
 class vLLMEngineProcessorConfig(OfflineProcessorConfig):
@@ -133,7 +94,8 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_task_type(cls, values):
         task_type = values.get("task_type", vLLMTaskType.GENERATE)
         if task_type not in vLLMTaskType.values():
@@ -154,14 +116,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         values["engine_kwargs"] = engine_kwargs
         return values
 
-    @root_validator(pre=True)
-    def validate_placement_group_config(cls, values):
-        placement_group_config = values.get("placement_group_config")
-        if placement_group_config is not None:
-            values["placement_group_config"] = PlacementGroupSchema(
-                **placement_group_config
-            ).model_dump()
-        return values
+    @field_validator("placement_group_config")
+    @classmethod
+    def validate_placement_group_config(cls, value):
+        if value is None:
+            return None
+        # Validate through PlacementGroupConfig, then dump back to dict
+        validated = PlacementGroupConfig(**value)
+        return validated.model_dump()
 
 
 def build_vllm_engine_processor(
@@ -205,33 +167,12 @@ def build_vllm_engine_processor(
         "model_source": config.model_source,
     }
 
-    # Resolve and build PrepareImageStage if enabled
-    image_stage_cfg = resolve_stage_config(
-        config.prepare_image_stage,
-        PrepareImageStageConfig,
-        processor_defaults,
-    )
-
-    # Resolve and build PrepareMultimodalStage if enabled
+    # Resolve and build PrepareMultimodalStage if enabled.
     prepare_multimodal_stage_cfg = resolve_stage_config(
         config.prepare_multimodal_stage,
         PrepareMultimodalStageConfig,
         processor_defaults,
     )
-
-    if image_stage_cfg.enabled and prepare_multimodal_stage_cfg.enabled:
-        raise ValueError(
-            "Cannot enable both 'prepare_image_stage' and 'prepare_multimodal_stage' "
-            "simultaneously. The 'prepare_multimodal_stage' handles image processing "
-            "along with other multimodal inputs. Please disable one of them."
-        )
-
-    if image_stage_cfg.enabled:
-        stages.append(
-            PrepareImageStage(
-                map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
-            )
-        )
 
     if prepare_multimodal_stage_cfg.enabled:
         base_model_config_kwargs = (
@@ -320,9 +261,7 @@ def build_vllm_engine_processor(
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
                     **config.get_concurrency(autoscaling_enabled=True),
-                    max_tasks_in_flight_per_actor=config.experimental.get(
-                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
-                    ),
+                    max_tasks_in_flight_per_actor=config.max_tasks_in_flight_per_actor,
                 ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
@@ -389,6 +328,9 @@ def build_vllm_engine_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            model_id_hash=hashlib.sha256(
+                config.model_source.encode("utf-8")
+            ).hexdigest(),
             processor_config_name=type(config).__name__,
             model_architecture=architecture,
             batch_size=config.batch_size,
@@ -399,6 +341,7 @@ def build_vllm_engine_processor(
                 "pipeline_parallel_size", 1
             ),
             tensor_parallel_size=config.engine_kwargs.get("tensor_parallel_size", 1),
+            data_parallel_size=config.engine_kwargs.get("data_parallel_size", 1),
         )
     )
 

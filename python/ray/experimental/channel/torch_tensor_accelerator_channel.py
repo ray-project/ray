@@ -279,13 +279,16 @@ class TorchTensorAcceleratorChannel(ChannelInterface):
     def _recv_cpu_and_gpu_data(
         self, tensors: List["torch.Tensor"], timeout: Optional[float] = None
     ) -> Any:
-        """
-        Helper method to receive data that contains a mix of CPU and GPU data.
+        """Helper method to receive data that contains a mix of CPU and GPU data.
 
         Args:
             tensors: The GPU data. This is a list of the torch.Tensors that
                 were found in the sent data.
             timeout: Timeout for channel receive.
+
+        Returns:
+            The deserialized non-tensor data with tensor placeholders replaced
+            by the entries of ``tensors``.
         """
         self.serialization_ctx.reset_out_of_band_tensors(tensors)
 
@@ -705,14 +708,18 @@ def _do_get_unique_communication_id(self) -> bool:
 def _get_ranks(
     actors: List[ray.actor.ActorHandle], custom_comm_group: Optional[Communicator]
 ) -> List[int]:
-    """
-    Get ranks for the communicator group to use. If custom_comm_group is specified,
-    return the ranks of the actors in the custom communicator group, in the same
-    order of the actors; otherwise, return list(range(len(actors))).
+    """Get ranks for the communicator group to use.
+
+    If ``custom_comm_group`` is specified, return the ranks of the actors in the
+    custom communicator group, in the same order of the actors; otherwise,
+    return ``list(range(len(actors)))``.
 
     Args:
         actors: A list of actors that participate in the communicator group.
         custom_comm_group: The custom communicator group to use.
+
+    Returns:
+        The list of ranks corresponding to ``actors``.
     """
     if custom_comm_group is None:
         return list(range(len(actors)))
@@ -742,10 +749,10 @@ def _init_communicator(
     accelerator_module_name: Optional[str] = None,
     accelerator_communicator_cls: Optional[Type[Communicator]] = None,
 ) -> str:
-    """
-    Initialize a communicator group with the given actors. If a custom communicator
-    group is provided, then it will be used, otherwise a new communicator group
-    will be created.
+    """Initialize a communicator group with the given actors.
+
+    If a custom communicator group is provided, then it will be used, otherwise
+    a new communicator group will be created.
 
     Args:
         actors: A list of actors that participate in the communicator group.
@@ -755,6 +762,9 @@ def _init_communicator(
                 can be overlapped to improve performance.
         accelerator_module_name: Optional name of the accelerator module to use.
         accelerator_communicator_cls: Optional communicator class for the accelerator.
+
+    Returns:
+        The unique ``group_id`` identifying the initialized communicator group.
     """
     ctx = ChannelContext.get_current()
 

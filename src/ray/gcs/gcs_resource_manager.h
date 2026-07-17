@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_node_manager.h"
@@ -120,9 +120,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
 
   std::string DebugString() const;
 
-  /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> &&listener);
-
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.
@@ -175,8 +172,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
 
   /// Placement group load information that is used for autoscaler.
   std::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
-  /// The resources changed listeners.
-  std::vector<std::function<void()>> resources_changed_listeners_;
 
   /// Debug info.
   enum CountType {

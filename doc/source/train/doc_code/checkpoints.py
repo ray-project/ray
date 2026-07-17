@@ -181,7 +181,7 @@ def train_fn(config):
 
 
 # __lightning_save_example_start__
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from ray import train
 from ray.train.lightning import RayTrainReportCallback
@@ -227,7 +227,7 @@ ray_trainer = TorchTrainer(
 import os
 from tempfile import TemporaryDirectory
 
-from pytorch_lightning.callbacks import Callback
+from lightning.pytorch.callbacks import Callback
 
 import ray
 import ray.train
@@ -307,7 +307,7 @@ def train_func(config):
     # Configure logging, saving, evaluation strategies as usual.
     args = TrainingArguments(
         ...,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         logging_strategy="step",
     )
@@ -402,7 +402,7 @@ from ray.train import Checkpoint
 
 # For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
-example_checkpoint_dir.mkdir()
+example_checkpoint_dir.mkdir(exist_ok=True)
 example_checkpoint_dir.joinpath("model.pt").touch()
 
 # Create the checkpoint, which is a reference to the directory.
@@ -530,6 +530,8 @@ def train_fn(config):
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
             checkpoint_upload_fn=wait_async_save,
+            # As uploading into the experiment directory then don't delete the checkpoint after upload is complete
+            delete_local_checkpoint_after_upload=False,
         )
 
 trainer = TorchTrainer(

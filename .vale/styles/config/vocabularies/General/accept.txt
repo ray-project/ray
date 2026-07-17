@@ -71,6 +71,7 @@ GPTQ
 GPU(s)?
 hostfile
 http
+HAProxy
 HTTP
 Karpenter
 KServe
@@ -98,7 +99,7 @@ NumPy
 NVIDIA
 NVLink
 NVMe
-OOM
+OOM(s)?
 open-source
 Palo
 [Pp][Aa][Cc][Kk]
@@ -135,7 +136,7 @@ superset
 teardown
 tiktoken
 TPU(s)?
-tokenization
+[Tt]okenization
 uncaptured
 URI(s)?
 UUID

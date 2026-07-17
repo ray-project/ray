@@ -1,18 +1,16 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: m5.4xlarge
-    resources:
-        cpu: 0
 
-worker_node_types:
-    - name: worker_node
-      instance_type: m5.12xlarge
-      max_workers: 4
-      min_workers: 4
-      use_spot: false
+worker_nodes:
+    - instance_type: m5.12xlarge
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge), so we must
+      # include `CPU: 48` explicitly to preserve the m5.12xlarge's natural
+      # vCPU count alongside the custom MOCK_GPU resource.
       resources:
-        custom_resources:
-          MOCK_GPU: 4
+        CPU: 48
+        MOCK_GPU: 4
