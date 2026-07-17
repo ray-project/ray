@@ -309,19 +309,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // the process (deps) / CoreWorker (recorder); see core_worker_process.h for lifetime.
   // Created here (before TaskManager / TaskReceiver / queues) so its reference can be
   // plumbed into those producers.
-  ray_event_recorder_aggregator_client_ =
+  ray_task_event_recorder_aggregator_client_ =
       (options.metrics_agent_port > 0)
           ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
                                                              *client_call_manager_)
           : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
-  auto ray_event_recorder = std::make_unique<observability::RayEventRecorder>(
-      *ray_event_recorder_aggregator_client_,
-      PeriodicalRunner::Create(ray_event_recorder_io_context_->GetIoService()),
-      RayConfig::instance().ray_event_recorder_max_queued_events(),
+  auto ray_task_event_recorder = std::make_unique<observability::RayTaskEventRecorder>(
+      *ray_task_event_recorder_aggregator_client_,
+      PeriodicalRunner::Create(ray_task_event_recorder_io_context_->GetIoService()),
+      RayConfig::instance().task_events_max_num_status_events_buffer_on_worker(),
       observability::kMetricSourceCoreWorker,
-      *ray_event_recorder_dropped_events_counter_,
+      *ray_task_event_recorder_dropped_events_counter_,
       local_node_id);
-  ray_event_recorder->StartExportingEvents();
+  ray_task_event_recorder->StartExportingEvents();
 
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
@@ -517,7 +517,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
-      *ray_event_recorder,
+      *ray_task_event_recorder,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -758,7 +758,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   std::move(ray_event_recorder),
+                                   std::move(ray_task_event_recorder),
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_,
@@ -891,10 +891,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // io thread (mirroring TaskEventBuffer's dedicated io thread) for its periodic export.
   // Use `new` + guaranteed copy elision (not make_unique) since ray::stats::Count is not
   // movable; this mirrors how the gauges above are constructed.
-  ray_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
+  ray_task_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
       new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
-  ray_event_recorder_io_context_ =
-      std::make_unique<InstrumentedIOContextWithThread>("ray_event_recorder");
+  ray_task_event_recorder_io_context_ =
+      std::make_unique<InstrumentedIOContextWithThread>("ray_task_event_recorder");
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

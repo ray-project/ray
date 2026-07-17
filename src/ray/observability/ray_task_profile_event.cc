@@ -34,6 +34,10 @@ std::string RayTaskProfileEvent::GetEntityId() const {
   return data_.task_id() + std::to_string(data_.attempt_number());
 }
 
+TaskAttemptId RayTaskProfileEvent::GetTaskAttempt() const {
+  return {data_.task_id(), data_.attempt_number()};
+}
+
 void RayTaskProfileEvent::MergeData(RayEvent<rpc::events::TaskProfileEvents> &&other) {
   auto &&other_event = static_cast<RayTaskProfileEvent &&>(other);
   // Concatenate the profiling span entries; component/task identifiers are identical for

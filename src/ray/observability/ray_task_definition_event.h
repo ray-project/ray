@@ -17,6 +17,7 @@
 #include <string>
 
 #include "ray/observability/ray_event.h"
+#include "ray/observability/task_ray_event_interface.h"
 #include "src/ray/protobuf/public/events_task_definition_event.pb.h"
 
 namespace ray {
@@ -44,12 +45,15 @@ template class RayEvent<rpc::events::TaskDefinitionEvent>;
 // Definition events are the only ones eligible for deferral since MergeData is a no-op,
 // so the proto need not exist before the recorder's merge step.
 // Lifecycle/profile are mergeable and must stay eager.
-class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent> {
+class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent>,
+                               public TaskRayEventInterface {
  public:
   RayTaskDefinitionEvent(rpc::events::TaskDefinitionEvent data,
                          const std::string &session_name);
 
   std::string GetEntityId() const override;
+
+  TaskAttemptId GetTaskAttempt() const override;
 
  protected:
   void MergeData(RayEvent<rpc::events::TaskDefinitionEvent> &&other) override;

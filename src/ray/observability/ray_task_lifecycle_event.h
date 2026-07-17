@@ -17,6 +17,7 @@
 #include <string>
 
 #include "ray/observability/ray_event.h"
+#include "ray/observability/task_ray_event_interface.h"
 #include "src/ray/protobuf/public/events_task_lifecycle_event.pb.h"
 
 namespace ray {
@@ -32,7 +33,8 @@ template class RayEvent<rpc::events::TaskLifecycleEvent>;
 // The nested proto is built by the caller (see the task-event record helpers) and moved
 // in. Multiple lifecycle events for the same task attempt are merged by the recorder into
 // a single time series via MergeData.
-class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent> {
+class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent>,
+                              public TaskRayEventInterface {
  public:
   RayTaskLifecycleEvent(rpc::events::TaskLifecycleEvent data,
                         const std::string &session_name);
@@ -41,6 +43,8 @@ class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent> {
   // two can be associated, and used by the recorder to merge lifecycle events of the same
   // attempt.
   std::string GetEntityId() const override;
+
+  TaskAttemptId GetTaskAttempt() const override;
 
  protected:
   void MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) override;

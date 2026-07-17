@@ -144,7 +144,7 @@ class TaskReceiverTest : public ::testing::Test {
     receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
         task_event_buffer_,
-        ray_event_recorder_,
+        ray_task_event_recorder_,
         execute_task,
         *actor_task_execution_arg_waiter_,
         /* initialize_thread_callback= */ []() { return []() { return; }; });
@@ -174,7 +174,7 @@ class TaskReceiverTest : public ::testing::Test {
 
   instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
-  ray::observability::FakeRayEventRecorder ray_event_recorder_;
+  ray::observability::FakeRayEventRecorder ray_task_event_recorder_;
   std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 };
 

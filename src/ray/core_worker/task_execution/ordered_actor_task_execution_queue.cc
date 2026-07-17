@@ -26,7 +26,7 @@ OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
-    ray::observability::RayEventRecorderInterface &ray_event_recorder,
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds,
     ExecuteTaskCallback execute_task,
@@ -36,7 +36,7 @@ OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      ray_event_recorder_(ray_event_recorder),
+      ray_task_event_recorder_(ray_task_event_recorder),
       pool_manager_(std::move(pool_manager)),
       execute_task_(std::move(execute_task)),
       cancel_task_(std::move(cancel_task)) {}
@@ -126,7 +126,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     worker::RecordTaskStatusEventToRecorderIfNeeded(
-        ray_event_recorder_,
+        ray_task_event_recorder_,
         task_spec.TaskId(),
         task_spec.JobId(),
         task_spec.AttemptNumber(),
@@ -165,7 +165,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                 rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
                 /* include_task_info */ false));
             worker::RecordTaskStatusEventToRecorderIfNeeded(
-                ray_event_recorder_,
+                ray_task_event_recorder_,
                 ready_task_spec.TaskId(),
                 ready_task_spec.JobId(),
                 ready_task_spec.AttemptNumber(),
@@ -187,7 +187,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
     worker::RecordTaskStatusEventToRecorderIfNeeded(
-        ray_event_recorder_,
+        ray_task_event_recorder_,
         task_spec.TaskId(),
         task_spec.JobId(),
         task_spec.AttemptNumber(),

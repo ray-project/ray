@@ -35,6 +35,10 @@ std::string RayTaskDefinitionEvent::GetEntityId() const {
   return data_.task_id() + std::to_string(data_.task_attempt());
 }
 
+TaskAttemptId RayTaskDefinitionEvent::GetTaskAttempt() const {
+  return {data_.task_id(), data_.task_attempt()};
+}
+
 void RayTaskDefinitionEvent::MergeData(
     RayEvent<rpc::events::TaskDefinitionEvent> &&other) {
   // Definition events are static; merging does not change the event.

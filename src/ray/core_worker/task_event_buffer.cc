@@ -556,7 +556,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
 }
 
 void RecordTaskStatusEventToRecorderIfNeeded(
-    ray::observability::RayEventRecorderInterface &ray_event_recorder,
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     const TaskID &task_id,
     const JobID &job_id,
     int32_t attempt_number,
@@ -586,7 +586,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
       node_id,
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       std::move(state_update));
-  ray_event_recorder.AddEvents(event.ToRayEventInterfaces());
+  ray_task_event_recorder.AddEvents(event.ToRayEventInterfaces());
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(

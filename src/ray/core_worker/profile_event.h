@@ -33,7 +33,7 @@ namespace worker {
 class ProfileEvent {
  public:
   ProfileEvent(TaskEventBuffer &task_event_buffer,
-               ray::observability::RayEventRecorderInterface &ray_event_recorder,
+               ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
                WorkerContext &worker_context,
                const std::string &node_ip_address,
                const std::string &event_type,
@@ -53,7 +53,7 @@ class ProfileEvent {
   TaskEventBuffer &task_event_buffer_;
 
   // Records the profile event to the event aggregator (parallel to the TaskEventBuffer).
-  ray::observability::RayEventRecorderInterface &ray_event_recorder_;
+  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
 
   // Clock used to timestamp the start and end of the event.
   ClockInterface &clock_;

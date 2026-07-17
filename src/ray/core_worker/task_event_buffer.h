@@ -286,13 +286,13 @@ class TaskProfileEvent : public TaskEvent {
 };
 
 /// Build and record the RayEventInterface objects for a task status change directly into
-/// `ray_event_recorder`. This is the call-site-parallel path that replaces the legacy
-/// TaskEventBuffer->aggregator send: producers call this alongside their existing
+/// `ray_task_event_recorder`. This is the call-site-parallel path that replaces the
+/// legacy TaskEventBuffer->aggregator send: producers call this alongside their existing
 /// TaskEventBuffer recording. Applies the same per-task gate (spec.EnableTaskEvents()) as
 /// TaskEventBuffer::RecordTaskStatusEventIfNeeded, so it is a no-op when task events are
 /// disabled for the task. The recorder additionally self-gates on RAY_enable_ray_event.
 void RecordTaskStatusEventToRecorderIfNeeded(
-    ray::observability::RayEventRecorderInterface &ray_event_recorder,
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     const TaskID &task_id,
     const JobID &job_id,
     int32_t attempt_number,

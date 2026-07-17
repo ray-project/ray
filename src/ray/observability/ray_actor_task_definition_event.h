@@ -17,6 +17,7 @@
 #include <string>
 
 #include "ray/observability/ray_event.h"
+#include "ray/observability/task_ray_event_interface.h"
 #include "src/ray/protobuf/public/events_actor_task_definition_event.pb.h"
 
 namespace ray {
@@ -31,12 +32,15 @@ template class RayEvent<rpc::events::ActorTaskDefinitionEvent>;
 // TODO(karticam): built EAGERLY like RayTaskDefinitionEvent -- the same benchmark-then-
 // maybe-implement-lazy-serialization follow-up applies here (see RayTaskDefinitionEvent).
 class RayActorTaskDefinitionEvent
-    : public RayEvent<rpc::events::ActorTaskDefinitionEvent> {
+    : public RayEvent<rpc::events::ActorTaskDefinitionEvent>,
+      public TaskRayEventInterface {
  public:
   RayActorTaskDefinitionEvent(rpc::events::ActorTaskDefinitionEvent data,
                               const std::string &session_name);
 
   std::string GetEntityId() const override;
+
+  TaskAttemptId GetTaskAttempt() const override;
 
  protected:
   void MergeData(RayEvent<rpc::events::ActorTaskDefinitionEvent> &&other) override;
