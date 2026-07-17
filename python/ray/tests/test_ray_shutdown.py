@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import platform
+import select
 import signal
 import sys
 import time
@@ -568,11 +569,17 @@ time.sleep(60)
 """
     p = run_string_as_driver_nonblocking(driver)
     try:
-        for _ in range(30):
-            if p.stdout.readline().strip() == b"ready":
-                break
-        else:
-            raise AssertionError("Driver never became ready.")
+        # Bounded wait for readiness: poll stdout with select() so a hung
+        # driver fails the test instead of blocking readline() forever.
+        deadline = time.monotonic() + 60
+        while True:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "Driver never became ready."
+            if select.select([p.stdout], [], [], remaining)[0]:
+                line = p.stdout.readline()
+                assert line, "Driver exited before becoming ready."
+                if line.strip() == b"ready":
+                    break
 
         p.send_signal(signal.SIGTERM)
         # Ray's SIGTERM handler recovers into a graceful exit with code
