@@ -2094,7 +2094,8 @@ def test_find_undiscovered_idle_slice():
             for i, nid in enumerate(node_ids)
         ]
 
-    check = ray.util.tpu._find_undiscovered_idle_slice
+    def check(parents, nodes, avail):
+        return ray.util.tpu._find_undiscovered_idle_slice(parents, nodes, avail, "v6e")
 
     # No nodes at all → None.
     assert check([parent_topo], [], {}) is None
@@ -2189,6 +2190,45 @@ def test_subslice_omitted_chips_per_vm_matches_discovered_parent():
 
     assert captured["parent"] == "4x4"
     assert captured["chips_per_vm"] == 4  # derived from 4x4, not 2x4's 8
+
+
+def test_refresh_cache_from_kv_tolerates_corrupt_json():
+    """Corrupt persisted KV data is best-effort: the decode error is swallowed
+    and the slice is left for fresh discovery rather than aborting the call.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+    nodes = _slice_nodes("slice-c", "4x4")
+
+    with patch(
+        "ray.experimental.internal_kv._internal_kv_get",
+        return_value=b"{not valid json",
+    ):
+        ray.util.tpu._refresh_cache_from_kv(["4x4"], nodes)  # must not raise
+
+    assert "slice-c" not in ray.util.tpu._tpu_subslice_cache
+
+
+def test_find_undiscovered_idle_slice_skips_held_head():
+    """A slice with free chips but a held head resource on worker 0 is not
+    selected, since a full-slice reservation could not actually complete.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+    pod_type = tpu.infer_tpu_pod_type_from_topology("4x4", "TPU-V6E")
+    head_resource = f"TPU-{pod_type}-head"
+
+    nodes = _slice_nodes("slice-h", "4x4")  # workers 0..3, all chips idle
+    avail = {f"slice-h-w{i}": {"TPU": 4} for i in range(4)}
+
+    def check(avail):
+        return ray.util.tpu._find_undiscovered_idle_slice(["4x4"], nodes, avail, "v6e")
+
+    # Head free on worker 0 → slice is selectable.
+    avail["slice-h-w0"] = {"TPU": 4, head_resource: 1}
+    assert check(avail) == ("4x4", "slice-h")
+
+    # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
+    avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
+    assert check(avail) is None
 
 
 if __name__ == "__main__":

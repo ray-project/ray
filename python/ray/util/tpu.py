@@ -1307,10 +1307,12 @@ def _refresh_cache_from_kv(
                 _get_subslice_kv_key(slice_name),
                 namespace=_TPU_SUBSLICE_KV_NAMESPACE,
             )
+            worker_labels = json.loads(existing) if existing else None
         except Exception:
-            # KV is a best-effort cache; a lookup failure (e.g. transient GCS
-            # error) just means we fall back to fresh discovery. Log at debug
-            # to avoid noise since this runs per undiscovered slice per call.
+            # KV is a best-effort cache; a lookup or decode failure (e.g. a
+            # transient GCS error or corrupt persisted value) just means we
+            # fall back to fresh discovery. Log at debug to avoid noise since
+            # this runs per undiscovered slice per call.
             logger.debug(
                 "KV lookup for subslice labels of '%s' failed; "
                 "will fall back to discovery.",
@@ -1318,8 +1320,7 @@ def _refresh_cache_from_kv(
                 exc_info=True,
             )
             continue
-        if existing:
-            worker_labels = json.loads(existing)
+        if worker_labels is not None:
             with _tpu_subslice_cache_lock:
                 _tpu_subslice_cache[slice_name] = worker_labels
             logger.info("Loaded subslice labels for '%s' from KV store.", slice_name)
@@ -1577,18 +1578,49 @@ def _build_slice_worker_to_node(
     }
 
 
+def _slice_head_available(
+    slice_nodes: List[Dict[str, Any]],
+    avail: Dict[str, Dict[str, float]],
+    head_resource: Optional[str],
+) -> bool:
+    """Return whether the slice's head resource on worker 0 is free.
+
+    Chip idleness alone does not guarantee a slice is reservable: another
+    reservation may hold the ``TPU-<pod_type>-head`` resource on worker 0
+    while the chips read as free (e.g. between a head reservation and its
+    worker-bundle placement, or a leaked head PG). Reserving such a slice
+    would then block on the head and time out.
+
+    Conservative: only returns ``False`` when the head resource is explicitly
+    reported as unavailable, so an unknown/unreported head never causes a
+    genuinely idle slice to be skipped.
+    """
+    if head_resource is None:
+        return True
+    for node in slice_nodes:
+        if node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) != "0":
+            continue
+        node_avail = avail.get(node["NodeID"], {})
+        if head_resource in node_avail:
+            return node_avail[head_resource] >= 1
+        return True  # head resource not reported; cannot assess, don't reject
+    return True  # no worker-0 node found; don't reject
+
+
 def _find_undiscovered_idle_slice(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
+    version: str,
 ) -> Optional[Tuple[str, str]]:
     """Return ``(parent_topology, slice_name)`` for the first undiscovered
     (absent from cache), fully idle slice, scanning *parent_topologies*
     smallest-first; else ``None``.
 
-    Returning the specific slice name lets the caller pin discovery to a slice
-    known to be fully idle, rather than letting an untargeted reservation grab
-    any slice's worker 0 (possibly one whose other workers are busy).
+    A slice is idle only when all its chips are free *and* its head resource
+    on worker 0 is free, so the caller can pin discovery to a slice it can
+    actually reserve rather than letting an untargeted reservation grab any
+    slice's worker 0.
 
     Must run after :func:`_refresh_cache_from_kv` so the cache already
     reflects KV-persisted labels; otherwise an already-discovered slice may
@@ -1597,6 +1629,14 @@ def _find_undiscovered_idle_slice(
     parent_set = set(parent_topologies)
     with _tpu_subslice_cache_lock:
         discovered = set(_tpu_subslice_cache)
+
+    # Head resource name (TPU-<pod_type>-head) per parent topology, used to
+    # confirm worker 0's head is free before targeting the slice.
+    accelerator_type = "TPU-" + version.upper()
+    head_resource_by_topo: Dict[str, Optional[str]] = {}
+    for topo in parent_set:
+        pod_type = infer_tpu_pod_type_from_topology(topo, accelerator_type)
+        head_resource_by_topo[topo] = f"TPU-{pod_type}-head" if pod_type else None
 
     # Group alive nodes by (topology, slice_name).
     topo_slice_nodes: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
@@ -1619,7 +1659,9 @@ def _find_undiscovered_idle_slice(
                 if avail.get(node["NodeID"], {}).get("TPU", total) < total:
                     idle = False
                     break
-            if idle:
+            if idle and _slice_head_available(
+                sns, avail, head_resource_by_topo[parent_topology]
+            ):
                 return parent_topology, sname
 
     return None
@@ -1886,7 +1928,9 @@ def subslice_placement_group(
         cached_subslice = _find_available_cached_subslice(
             parent_topologies, subslice_topology, nodes, avail, slice_worker_to_node
         )
-        discoverable = _find_undiscovered_idle_slice(parent_topologies, nodes, avail)
+        discoverable = _find_undiscovered_idle_slice(
+            parent_topologies, nodes, avail, version
+        )
 
         if cached_subslice is None and discoverable is None:
             raise RuntimeError(
