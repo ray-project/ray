@@ -4424,14 +4424,14 @@ class Dataset:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
         if catalog is not None:
-            from ray.data.catalog import AccessMode, ReaderFormat
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
 
             # A catalog resolves a pre-existing, credential-vended location, so
             # directory creation is both unnecessary and unsupported: it requires
             # bucket-level permissions the vended (prefix-scoped) credentials
             # typically lack.
             if try_create_dir:
-                logger.warning(
+                raise ValueError(
                     "`try_create_dir` is not supported when writing through a "
                     "`catalog` and is being overridden to False. The catalog "
                     "resolves an existing location, and directory creation on "
@@ -4441,12 +4441,12 @@ class Dataset:
                 try_create_dir = False
 
             resolved = catalog.resolve(
-                path, reader=ReaderFormat.PARQUET, mode=AccessMode.WRITE
+                path, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
             )
             path = resolved.path
             if resolved.filesystem is not None:
                 if filesystem is not None:
-                    logger.warning(
+                    raise ValueError(
                         "Both `filesystem` and `catalog` were specified. Overriding "
                         "the provided `filesystem` with the catalog-resolved "
                         "credentials."
@@ -4713,19 +4713,21 @@ class Dataset:
         """
         if catalog is not None:
             if catalog_kwargs:
-                logger.warning(
+                raise ValueError(
                     "`catalog` and `catalog_kwargs` are both specified. "
                     "Ignoring `catalog` and using `catalog_kwargs` instead."
                 )
-            else:
-                from ray.data.catalog import AccessMode, ReaderFormat
 
-                resolved = catalog.resolve(
-                    table_identifier, reader=ReaderFormat.ICEBERG, mode=AccessMode.WRITE
-                )
-                catalog_kwargs = resolved.catalog_kwargs or {}
-                if resolved.table_identifier is not None:
-                    table_identifier = resolved.table_identifier
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            resolved = catalog.resolve(
+                table_identifier,
+                reader=ReaderFormat.ICEBERG,
+                mode=CatalogAccessMode.WRITE,
+            )
+            catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
 
         datasink = IcebergDatasink(
             table_identifier=table_identifier,

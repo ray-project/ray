@@ -63,7 +63,7 @@ class ReaderFormat(str, Enum):
 
 
 @DeveloperAPI
-class AccessMode(str, Enum):
+class CatalogAccessMode(str, Enum):
     """Whether the catalog should vend read or write credentials."""
 
     READ = "read"
@@ -74,11 +74,11 @@ class AccessMode(str, Enum):
         # operation), so WRITE maps to READ_WRITE.
         from databricks.sdk.service.catalog import TableOperation
 
-        if self == AccessMode.READ:
+        if self == CatalogAccessMode.READ:
             return TableOperation.READ
-        elif self == AccessMode.WRITE:
+        elif self == CatalogAccessMode.WRITE:
             return TableOperation.READ_WRITE
-        raise ValueError("Unsupported AccessMode for Databricks TableOperation")
+        raise ValueError("Unsupported CatalogAccessMode for Databricks TableOperation")
 
 
 @DeveloperAPI
@@ -116,7 +116,7 @@ class Catalog(ABC):
         table: str,
         *,
         reader: ReaderFormat,
-        mode: AccessMode = AccessMode.READ,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
     ) -> ResolvedSource:
         """Resolve ``table`` for the given ``reader`` and access ``mode``."""
         ...
@@ -196,10 +196,10 @@ class DatabricksUnityCatalog(Catalog):
         table: str,
         *,
         reader: ReaderFormat,
-        mode: AccessMode = AccessMode.READ,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
     ) -> ResolvedSource:
         assert reader is not None and isinstance(reader, ReaderFormat)
-        assert mode is not None and isinstance(mode, AccessMode)
+        assert mode is not None and isinstance(mode, CatalogAccessMode)
         if reader is ReaderFormat.ICEBERG:
             return self._resolve_iceberg(table)
         if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
@@ -209,7 +209,7 @@ class DatabricksUnityCatalog(Catalog):
 
     # ---- storage-credential vending (delta / parquet) ----------------------
     def _resolve_storage(
-        self, table: str, reader: ReaderFormat, mode: AccessMode
+        self, table: str, reader: ReaderFormat, mode: CatalogAccessMode
     ) -> ResolvedSource:
         table_info = self._get_table_info(table)
         creds, table_url = self._get_creds(table_info.table_id, mode)
@@ -229,7 +229,7 @@ class DatabricksUnityCatalog(Catalog):
         #    so the data scan needs an explicit GcsFileSystem.
         filesystem = None
         if creds.aws_temp_credentials is not None and (
-            reader is ReaderFormat.DELTA or mode is AccessMode.WRITE
+            reader is ReaderFormat.DELTA or mode is CatalogAccessMode.WRITE
         ):
             filesystem = self._build_s3_filesystem(creds.aws_temp_credentials)
         elif creds.gcp_oauth_token is not None:
@@ -315,7 +315,7 @@ class DatabricksUnityCatalog(Catalog):
         return self._call_with_token_refresh(lambda w: w.tables.get(full_name=table))
 
     def _get_creds(
-        self, table_id: Optional[str], mode: AccessMode = AccessMode.READ
+        self, table_id: Optional[str], mode: CatalogAccessMode = CatalogAccessMode.READ
     ) -> Tuple["GenerateTemporaryTableCredentialResponse", str]:
         assert table_id is not None
         operation = mode.as_databricks_table_op()

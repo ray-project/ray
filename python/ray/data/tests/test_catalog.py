@@ -12,8 +12,8 @@ import pytest
 
 import ray
 from ray.data.catalog import (
-    AccessMode,
     Catalog,
+    CatalogAccessMode,
     DatabricksUnityCatalog,
     ReaderFormat,
     ResolvedSource,
@@ -267,7 +267,7 @@ class _FakeCatalog(Catalog):
         self._resolved = resolved
         self.calls = []
 
-    def resolve(self, table, *, reader, mode=AccessMode.READ):
+    def resolve(self, table, *, reader, mode=CatalogAccessMode.READ):
         self.calls.append((table, reader, mode))
         return self._resolved
 
@@ -280,7 +280,9 @@ def test_read_parquet_with_catalog(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet("main.db.tbl", catalog=catalog)
 
     assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.PARQUET, AccessMode.READ)]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.PARQUET, CatalogAccessMode.READ)
+    ]
 
 
 @pytest.mark.parametrize("reader", ["parquet", "delta"])
@@ -314,7 +316,9 @@ def test_read_delta_with_catalog(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_delta("main.db.tbl", catalog=catalog)
 
     assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.DELTA, AccessMode.READ)]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.DELTA, CatalogAccessMode.READ)
+    ]
 
 
 def test_read_iceberg_uses_catalog_resolved_kwargs():
@@ -328,7 +332,9 @@ def test_read_iceberg_uses_catalog_resolved_kwargs():
 
     _, kwargs = ds_cls.call_args
     assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.ICEBERG, AccessMode.READ)]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.ICEBERG, CatalogAccessMode.READ)
+    ]
 
 
 def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
@@ -349,13 +355,13 @@ def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
 
 
 # ---------------------------------------------------------------------------
-# AccessMode + write-mode credential vending
+# CatalogAccessMode + write-mode credential vending
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "mode,expected_op",
-    [(AccessMode.READ, "READ"), (AccessMode.WRITE, "READ_WRITE")],
+    [(CatalogAccessMode.READ, "READ"), (CatalogAccessMode.WRITE, "READ_WRITE")],
 )
 def test_access_mode_maps_to_databricks_table_op(mode, expected_op):
     from databricks.sdk.service.catalog import TableOperation
@@ -365,7 +371,7 @@ def test_access_mode_maps_to_databricks_table_op(mode, expected_op):
 
 @pytest.mark.parametrize(
     "mode,expected_op",
-    [(AccessMode.READ, "READ"), (AccessMode.WRITE, "READ_WRITE")],
+    [(CatalogAccessMode.READ, "READ"), (CatalogAccessMode.WRITE, "READ_WRITE")],
 )
 def test_resolve_requests_operation_for_mode(
     uc_catalog, isolated_env, mode, expected_op
@@ -394,7 +400,7 @@ def test_resolve_write_mode_builds_aws_filesystem(uc_catalog, isolated_env):
     patcher = _mock_uc_sdk()
     try:
         resolved = uc_catalog.resolve(
-            "main.sales.txns", reader=ReaderFormat.PARQUET, mode=AccessMode.WRITE
+            "main.sales.txns", reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
         )
     finally:
         patcher.stop()
@@ -417,7 +423,9 @@ def test_write_parquet_with_catalog(ray_start_regular_shared, tmp_path):
     catalog = _FakeCatalog(ResolvedSource(path=out))
     ray.data.range(3).write_parquet("main.db.tbl", catalog=catalog)
 
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.PARQUET, AccessMode.WRITE)]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.PARQUET, CatalogAccessMode.WRITE)
+    ]
     ds = ray.data.read_parquet(out)
     assert sorted(r["id"] for r in ds.take_all()) == [0, 1, 2]
 
@@ -474,7 +482,9 @@ def test_write_iceberg_uses_catalog_resolved_kwargs(ray_start_regular_shared):
     _, kwargs = ds_cls.call_args
     assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
     assert kwargs["table_identifier"] == "db.tbl"
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.ICEBERG, AccessMode.WRITE)]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.ICEBERG, CatalogAccessMode.WRITE)
+    ]
 
 
 def test_write_iceberg_explicit_catalog_kwargs_take_precedence(

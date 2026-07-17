@@ -86,7 +86,7 @@ from ray.data.read_api import (  # noqa: F401
     read_zarr,
 )
 from ray.data.catalog import (
-    AccessMode,
+    CatalogAccessMode,
     Catalog,
     ReaderFormat,
     ResolvedSource,
@@ -203,7 +203,7 @@ __all__ = [
     "read_videos",
     "read_zarr",
     "read_webdataset",
-    "AccessMode",
+    "CatalogAccessMode",
     "Catalog",
     "ReaderFormat",
     "ResolvedSource",
