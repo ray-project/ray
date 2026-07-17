@@ -111,7 +111,9 @@ def main(args: argparse.Namespace) -> None:
             )
 
     def benchmark_fn():
-        # Load the dataset.
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_datasource_v2 = False
+        # Use V1 for this benchmark, since V2 is currently spilling
         ds = ray.data.read_parquet(path)
 
         # Apply the map transformation.
