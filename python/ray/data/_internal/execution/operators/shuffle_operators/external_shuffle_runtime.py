@@ -3,6 +3,7 @@ ShuffleManager actor, prefetch layout, error hierarchy. Imported by the
 map/reduce task bodies in ``external_shuffle_tasks``."""
 
 import errno
+import ipaddress
 import logging
 import os
 import socket
@@ -17,6 +18,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypedDict,
     Union,
 )
 
@@ -209,13 +211,18 @@ class _FetchHandler(socketserver.BaseRequestHandler):
         srv = self.server
         sock = self.request
         _tune_shuffle_socket(sock)
+        sock.settimeout(300.0)
         try:
             if not self._handshake(sock, srv):
                 return
             self._serve_loop(sock, srv)
         except (ConnectionError, OSError):
-            # Peer closed mid-read, or socket dead
+            # Peer closed mid-read, socket dead, or idle timeout.
             pass
+        except Exception:
+            logger.exception(
+                f"Unexpected error handling connection from {self.client_address}"
+            )
 
     # ── handshake ───────────────────────────────────────────────────────
     @staticmethod
@@ -351,12 +358,29 @@ class _FetchHandler(socketserver.BaseRequestHandler):
 
 
 class _ThreadingServer(socketserver.ThreadingTCPServer):
+    # Default family is AF_INET; ``_threading_server_for(ip)`` dynamically
+    # picks the V6 subclass below when the node's advertised address is IPv6
     allow_reuse_address = True
     daemon_threads = True
     # socket.listen() backlog. Default (5) is well below the SYN burst
     # when all reducers fan-out to every manager at once, causing silent
     # SYN drops → ETIMEDOUT. Kernel clamps to ``somaxconn`` if lower.
     request_queue_size = 256
+
+
+class _ThreadingServerV6(_ThreadingServer):
+    address_family = socket.AF_INET6
+
+
+def _threading_server_for(ip: str) -> type:
+    """Pick the ThreadingServer subclass matching ``ip``'s address family.
+    Falls back to V4 for hostnames or unparseable strings — bind will fail
+    fast if the family truly doesn't match."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return _ThreadingServer
+    return _ThreadingServerV6 if isinstance(addr, ipaddress.IPv6Address) else _ThreadingServer
 
 
 # ShuffleManager actor identity. Name is deterministic in (shuffle_id, node_id)
@@ -392,10 +416,11 @@ class ShuffleManager:
         os.makedirs(self.base_dir, exist_ok=True)
         self.token = token
         ip = ray.util.get_node_ip_address()
-        self._server = _ThreadingServer((ip, 0), _FetchHandler)
+        self._server = _threading_server_for(ip)((ip, 0), _FetchHandler)
         self._server.token = token
         self._server.base_dir = self.base_dir
-        self._host, self._port = self._server.server_address
+        # IPv6 server_address is (host, port, flowinfo, scopeid); take only host+port.
+        self._host, self._port = self._server.server_address[:2]
         t = threading.Thread(target=self._run_server, daemon=True)
         t.start()
 
@@ -471,41 +496,6 @@ class _ShuffleConnection:
         except OSError:
             pass
         self._closed = True
-
-    # ── FETCH (returns bytes per source per range) ───────────────────────
-    def fetch(
-        self,
-        sources: List[Tuple[str, List[Tuple[int, int]]]],
-    ) -> List[List[bytes]]:
-        """Single FETCH carrying ``sources`` and returning the matching bytes.
-
-        ``sources`` is a list of ``(path, [(offset, length), ...])`` tuples;
-        the returned list is parallel — index ``i`` corresponds to
-        ``sources[i]``, and each inner list is parallel to that source's
-        ``ranges`` argument. Useful for in-memory consumers (tests, direct
-        ``_read_ipc(buf)`` callers); production reduce path uses
-        :meth:`fetch_into` instead to stream directly onto disk.
-        """
-        self._send_fetch_request(sources)
-        status = _recv_u8(self._sock)
-        if status != _STATUS_OK:
-            self._raise_error_response(status)
-        out: List[List[bytes]] = []
-        for path, ranges in sources:
-            n = _recv_u32(self._sock)
-            if n != len(ranges):
-                # Protocol contract violation: server's per-source range count
-                # must match what we sent.
-                raise RuntimeError(
-                    f"protocol error: server returned {n} ranges for "
-                    f"{path!r}, expected {len(ranges)}"
-                )
-            buf: List[bytes] = []
-            for _ in range(n):
-                length = _recv_u32(self._sock)
-                buf.append(_recvall(self._sock, length))
-            out.append(buf)
-        return out
 
     # ── FETCH (streams response APPENDED into one open file) ────────────
     def fetch_into(
@@ -585,15 +575,27 @@ class _ShuffleConnection:
 def open_shuffle_connection(
     endpoint: Tuple[str, int],
     token: str,
+    timeout: float = 60.0,
 ) -> _ShuffleConnection:
     """Open a TCP connection to ``endpoint`` and complete the handshake.
+
+    Args:
+        endpoint: (host, port) of the target ShuffleManager.
+        token: Per-shuffle auth token; must match the server's stored token.
+        timeout: Per-syscall socket timeout in seconds, applied to connect
+            and all subsequent recv / send calls.
+
+    Returns:
+        A live, handshake'd :class:`_ShuffleConnection` ready for FETCHes.
 
     Raises:
         PermissionError: auth token is wrong.
         ShuffleManagerAnomalyError: server returned an unknown status byte.
+        TimeoutError: connect or recv exceeded ``timeout`` seconds.
     """
-    sock = socket.create_connection(endpoint)
+    sock = socket.create_connection(endpoint, timeout=timeout)
     _tune_shuffle_socket(sock)
+    sock.settimeout(timeout)
     try:
         token_bytes = token.encode("utf-8")
         sock.sendall(struct.pack(">H", len(token_bytes)))
@@ -615,8 +617,20 @@ def open_shuffle_connection(
         raise
 
 
-# map / reduce task body
-ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
+class ShuffleHandle(TypedDict, total=False):
+    """Handle written by each mapper task, consumed by reducer.
+
+    Only the fields the runtime consumes are declared; the mapper task can
+    add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
+    """
+    path: str
+    # each partition can have multiple ranges, thus index field is like:
+    # [partition id, [(offset0, length0), (offset1, length1), ...]
+    index: Dict[int, List[Tuple[int, int]]]
+    shuffle_id: str
+    node_id: str
+    token: str
+    schema: Optional["pa.Schema"]
 
 
 class ShuffleDiskError(RuntimeError):
@@ -680,8 +694,6 @@ class _SourceRef:
 
     Built once per input handle for a given partition_id at reducer start.
     The (shuffle_id, node_id) pair is the manager's named-actor identity;
-    the reducer calls ``_lookup_manager(shuffle_id, node_id)`` when it
-    actually needs an ActorHandle for the fetch RPC.
     """
 
     shuffle_id: str
@@ -693,14 +705,8 @@ class _SourceRef:
 
 @dataclass(slots=True, frozen=True)
 class _NodeMember:
-    """A source's ranges as they appear within a per-node fetch group.
+    """A source's ranges as they appear within a per-node fetch group."""
 
-    ``idx`` is the source's original position across all reducer sources —
-    preserved so ``_PwriteSink``'s sequential pwrite layout stays consistent
-    across FETCH batches (each range lands at its expected offset).
-    """
-
-    idx: int
     path: str
     ranges: List[Tuple[int, int]]
 
@@ -761,6 +767,7 @@ def _prefetch_node_into(
 
     Actor state drives the recovery policy:
       * Dead (init fail/ray.kill)     -> ``ShuffleManagerAnomalyError`` (terminal)
+      * Unschedulable (node lost)     -> ``ShuffleManagerAnomalyError`` (terminal)
       * Unavailable (restarting)      -> poll until Ray resolves
       * TCP dead, endpoint changed    -> reset sink, reopen, retry in-place
       * TCP dead, endpoint unchanged  -> ``ShuffleManagerAnomalyError`` (network
@@ -865,11 +872,10 @@ def _chunk_members_by_bytes(
     """Yield sub-batches of members whose total requested bytes ≤ ``max_bytes``.
 
     A source's ranges MAY be split across batches: the source appears as
-    multiple pseudo-members with the same ``idx``/``path`` but disjoint
-    range subsets, in the original range order. Individual ranges are
-    NEVER split — each range is one Arrow IPC frame at the mapper, so a
-    sub-range cut would break the reducer's decode. A single range larger
-    than ``max_bytes`` therefore still gets its own oversized batch.
+    multiple pseudo-members with the same ``path`` but disjoint range
+    subsets, in the original range order. Individual ranges are NEVER
+    split as each range is one Arrow IPC frame at the mapper, so a
+    sub-range cut would break the reducer's decode.
     """
     batch: List[_NodeMember] = []
     batch_bytes = 0
@@ -879,9 +885,7 @@ def _chunk_members_by_bytes(
             if (batch or pending) and batch_bytes + length > max_bytes:
                 if pending:
                     batch.append(
-                        _NodeMember(
-                            idx=member.idx, path=member.path, ranges=pending
-                        )
+                        _NodeMember(path=member.path, ranges=pending)
                     )
                     pending = []
                 yield batch
@@ -889,9 +893,7 @@ def _chunk_members_by_bytes(
             pending.append((off, length))
             batch_bytes += length
         if pending:
-            batch.append(
-                _NodeMember(idx=member.idx, path=member.path, ranges=pending)
-            )
+            batch.append(_NodeMember(path=member.path, ranges=pending))
     if batch:
         yield batch
 
@@ -923,7 +925,7 @@ def _handles_to_sources(
             sources.append(
                 _SourceRef(
                     shuffle_id=h["shuffle_id"],
-                    node_id=h.get("node_id", ""),
+                    node_id=h["node_id"],
                     token=h["token"],
                     path=h["path"],
                     ranges=ranges,
@@ -935,14 +937,11 @@ def _handles_to_sources(
 def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by manager so each manager gets ONE TCP connection.
 
-    Sources on the same manager share a ``(shuffle_id, node_id)`` — the
-    manager's named-actor identity — which is used as the collapse key.
-    ``idx`` on each member preserves the source's original position across
-    all reducer sources — used to keep the sequential pwrite layout stable
-    across FETCH batches.
+    Sources on the same manager share a ``(shuffle_id, node_id)`` which is
+    used as the collapse key.
     """
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for idx, s in enumerate(sources):
+    for s in sources:
         key = (s.shuffle_id, s.node_id)
         group = by_key.get(key)
         if group is None:
@@ -953,7 +952,7 @@ def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
                 members=[],
             )
             by_key[key] = group
-        group.members.append(_NodeMember(idx=idx, path=s.path, ranges=s.ranges))
+        group.members.append(_NodeMember(path=s.path, ranges=s.ranges))
     return list(by_key.values())
 
 
