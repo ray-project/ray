@@ -310,7 +310,7 @@ class TaskManager : public TaskManagerInterface {
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,
-      ray::observability::RayEventRecorderInterface &ray_event_recorder,
+      ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
       std::function<std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>>(
           const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -327,7 +327,7 @@ class TaskManager : public TaskManagerInterface {
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
-        ray_event_recorder_(ray_event_recorder),
+        ray_task_event_recorder_(ray_task_event_recorder),
         get_actor_rpc_client_callback_(std::move(get_actor_rpc_client_callback)),
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
@@ -1157,7 +1157,7 @@ class TaskManager : public TaskManagerInterface {
   /// Records task events to the event aggregator (the path replacing the direct
   /// TaskEventBuffer->aggregator send). Owned by CoreWorker; recording is gated/no-op'd
   /// by the recorder itself when RAY_enable_ray_event is off.
-  ray::observability::RayEventRecorderInterface &ray_event_recorder_;
+  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
 
   /**
    * Callback to get the actor RPC client.

@@ -339,7 +339,7 @@ CoreWorker::CoreWorker(
     std::unique_ptr<ActorManager> actor_manager,
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-    std::unique_ptr<observability::RayEventRecorderInterface> ray_event_recorder,
+    std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
     ray::observability::MetricInterface &actor_by_state_gauge,
@@ -386,7 +386,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_counter_(task_by_state_gauge, actor_by_state_gauge),
       task_event_buffer_(std::move(task_event_buffer)),
-      ray_event_recorder_(std::move(ray_event_recorder)),
+      ray_task_event_recorder_(std::move(ray_task_event_recorder)),
       pid_(pid),
       actor_shutdown_callback_(options_.actor_shutdown_callback),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
@@ -424,7 +424,7 @@ CoreWorker::CoreWorker(
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
                                                     *task_event_buffer_,
-                                                    *ray_event_recorder_,
+                                                    *ray_task_event_recorder_,
                                                     execute_task,
                                                     *actor_task_execution_arg_waiter_,
                                                     options_.initialize_thread_callback);
@@ -471,7 +471,7 @@ CoreWorker::CoreWorker(
           options_.session_name,
           GetCurrentNodeId(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
-      ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+      ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -633,7 +633,7 @@ void CoreWorker::Disconnect(
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
-    ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+    ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -2843,7 +2843,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
   return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
-                                                *ray_event_recorder_,
+                                                *ray_task_event_recorder_,
                                                 *worker_context_,
                                                 options_.node_ip_address,
                                                 event_name,
@@ -3024,7 +3024,7 @@ Status CoreWorker::ExecuteTask(
                                                         rpc::TaskStatus::RUNNING,
                                                         /*include_task_info=*/false,
                                                         update));
-  worker::RecordTaskStatusEventToRecorderIfNeeded(*ray_event_recorder_,
+  worker::RecordTaskStatusEventToRecorderIfNeeded(*ray_task_event_recorder_,
                                                   task_spec.TaskId(),
                                                   task_spec.JobId(),
                                                   task_spec.AttemptNumber(),
@@ -4942,7 +4942,7 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
   worker::RecordTaskStatusEventToRecorderIfNeeded(
-      *ray_event_recorder_,
+      *ray_task_event_recorder_,
       task_id,
       worker_context_->GetCurrentJobID(),
       attempt_number,
@@ -4974,7 +4974,7 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
   worker::RecordTaskStatusEventToRecorderIfNeeded(
-      *ray_event_recorder_,
+      *ray_task_event_recorder_,
       task_id,
       worker_context_->GetCurrentJobID(),
       attempt_number,
@@ -5003,7 +5003,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
   worker::RecordTaskStatusEventToRecorderIfNeeded(
-      *ray_event_recorder_,
+      *ray_task_event_recorder_,
       task_id,
       worker_context_->GetCurrentJobID(),
       running_task_it->second.AttemptNumber(),

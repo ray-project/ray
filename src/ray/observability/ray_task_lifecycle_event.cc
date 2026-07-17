@@ -35,6 +35,10 @@ std::string RayTaskLifecycleEvent::GetEntityId() const {
   return data_.task_id() + std::to_string(data_.task_attempt());
 }
 
+TaskAttemptId RayTaskLifecycleEvent::GetTaskAttempt() const {
+  return {data_.task_id(), data_.task_attempt()};
+}
+
 void RayTaskLifecycleEvent::MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayTaskLifecycleEvent &&>(other);
   // MergeFrom concatenates the repeated state_transitions (preserving chronological
