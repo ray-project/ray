@@ -187,10 +187,11 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 }
 
 TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
-  // Regression test for the lost-wakeup fixed in #64187: a health-check node
-  // failure must broadcast DEAD on the pub/sub layer *before* (and independent
-  // of) the durable node-table write completing, so that a slow backend (e.g.
-  // RocksDB fsync) cannot delay cluster-wide death detection.
+  // Regression test for the lost-wakeup fixed in this PR (root-cause proof in
+  // the provenance PR #64187, not merged): a health-check node failure must
+  // broadcast DEAD on the pub/sub layer *before* (and independent of) the
+  // durable node-table write completing, so that a slow backend (e.g. RocksDB
+  // fsync) cannot delay cluster-wide death detection.
   std::atomic_int publish_count{0};
   auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
       std::make_unique<RecordingPublisher>(&publish_count));

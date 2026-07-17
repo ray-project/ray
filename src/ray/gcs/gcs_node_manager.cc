@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 
-#include <boost/asio/post.hpp>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -194,15 +193,16 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 
   // Publish node death on the in-memory DEAD transition, decoupled from the
   // (possibly slow) durable write below -- same rationale as
-  // InternalOnNodeFailure (see the detailed comment there and
-  // https://github.com/ray-project/ray/pull/64187). Graceful unregistration is
-  // also a terminal, restart-re-derivable node-death transition, so it must not
-  // gate cluster-wide death detection on persist latency either. Posted onto
-  // io_context_ so it runs outside mutex_ (held here) yet independent of the
-  // persist completing.
-  boost::asio::post(io_context_, [this, node_id, node_info_delta]() {
-    PublishNodeInfoToPubsub(node_id, *node_info_delta);
-  });
+  // InternalOnNodeFailure (see the detailed comment there). Graceful
+  // unregistration is also a terminal, restart-re-derivable node-death
+  // transition, so it must not gate cluster-wide death detection on persist
+  // latency either. Posted onto io_context_ so it runs outside mutex_ (held
+  // here) yet independent of the persist completing.
+  io_context_.post(
+      [this, node_id, node_info_delta]() {
+        PublishNodeInfoToPubsub(node_id, *node_info_delta);
+      },
+      "GcsNodeManager.PublishNodeDeathOnUnregister");
 
   auto on_put_done = [this, node](const Status &status) {
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
@@ -725,7 +725,8 @@ void GcsNodeManager::InternalOnNodeFailure(
     // detection to persist latency: under a slow durable backend (e.g. the
     // RocksDB GCS with per-write fsync) the notification is delayed enough to
     // strand object recovery and hang dynamic-generator reconstruction. See
-    // https://github.com/ray-project/ray/pull/64187 for the full analysis.
+    // the provenance PR #64187 (root-cause proof on the in-memory GCS, not
+    // merged) for the full analysis.
     //
     // This relaxes broadcast-after-durable ordering (a subscriber can observe
     // DEAD before it is persisted), which is safe here because node death is
@@ -735,10 +736,11 @@ void GcsNodeManager::InternalOnNodeFailure(
     //
     // Posted onto io_context_ so it runs outside mutex_ (held by our caller
     // OnNodeFailure) yet independent of the persist completing.
-    boost::asio::post(io_context_,
-                      [this, node_id, node_info_delta = std::move(node_info_delta)]() {
-                        PublishNodeInfoToPubsub(node_id, node_info_delta);
-                      });
+    io_context_.post(
+        [this, node_id, node_info_delta = std::move(node_info_delta)]() {
+          PublishNodeInfoToPubsub(node_id, node_info_delta);
+        },
+        "GcsNodeManager.PublishNodeDeathOnFailure");
 
     auto on_done =
         [this, node_table_updated_callback, node](const Status &status) mutable {
