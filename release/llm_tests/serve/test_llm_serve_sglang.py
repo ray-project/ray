@@ -15,6 +15,7 @@ from ray.util.state import list_actors
 
 from test_utils import get_total_gpu_memory_mb, wait_for_gpu_memory_to_clear
 
+
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b-sglang"
 # Headroom over the pre-deploy GPU baseline that still counts as "cleared".
