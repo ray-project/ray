@@ -748,7 +748,16 @@ class _PwriteSink:
         total = 0
         n_total = len(mv)
         while total < n_total:
-            total += os.pwrite(self._fd, mv[total:], self._pos + total)
+            n = os.pwrite(self._fd, mv[total:], self._pos + total)
+            if n <= 0:
+                # POSIX pwrite of a nonzero buffer should return >0 or raise;
+                # 0 can happen on some FUSE / network filesystems and would
+                # spin this loop forever.
+                raise OSError(
+                    f"pwrite returned {n} on fd {self._fd} "
+                    f"(offset={self._pos + total}, remaining={n_total - total})"
+                )
+            total += n
         self._pos += total
         return total
 
