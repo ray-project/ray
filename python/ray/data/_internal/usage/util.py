@@ -27,7 +27,7 @@ _recorded_operators_lock = threading.Lock()
 # Bounded timeout for the Prometheus counter HTTP queries
 _PROMETHEUS_QUERY_TIMEOUT_S = 1.0
 # Ceiling for one poll cycle: how long the poller waits for its concurrent
-# samples before publishing the snapshot with whatever finished.
+# samples before publishing the metric values with whatever finished.
 _POLL_CYCLE_TIMEOUT_S = 1.0
 
 
@@ -81,33 +81,30 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
         return None
 
 
-def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
-    """Run ``sample_fn`` on a daemon thread so a blocking metric query runs
-    concurrently instead of blocking the caller.
+def run_async(fn: Callable[[], T]) -> "Future[T]":
+    """Run ``fn`` on a daemon thread and return a ``Future`` for its result, so
+    a blocking call runs in the background instead of blocking the caller.
 
-    Returns a ``Future``; pass it to ``join_samples`` once the results are
-    needed. The thread is a daemon (not a ThreadPoolExecutor worker, which is
-    non-daemon) so a reader that hangs past its timeout can never block
-    interpreter shutdown, as usage collection must never block execution.
+    Generic: ``fn`` is any zero-arg callable.
     """
     future: "Future[T]" = Future()
 
     def run():
         try:
-            future.set_result(sample_fn())
+            future.set_result(fn())
         except Exception as exc:
             future.set_exception(exc)
 
-    threading.Thread(target=run, name="data-usage-metric-sample", daemon=True).start()
+    threading.Thread(target=run, name="data-usage-bg", daemon=True).start()
     return future
 
 
-def join_samples(
+def join_async(
     futures: Sequence[Optional["Future[T]"]],
     timeout: float = _POLL_CYCLE_TIMEOUT_S,
 ) -> List[Optional[T]]:
-    """Join several samples started by ``start_metric_sample`` under a single
-    ``timeout`` ceiling and return their results in order.
+    """Join several futures started by ``run_async`` under a single ``timeout``
+    ceiling and return their results in order.
 
     Waits for all futures concurrently, then drains each result without further
     blocking. Any future that is missing (``None``), still running past

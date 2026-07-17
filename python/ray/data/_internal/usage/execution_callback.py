@@ -44,10 +44,9 @@ class UsageCallback(ExecutionCallback):
         # logical plan, so they're computed once in the start, cached for the execution end
         self._workload: Optional[WorkloadInfo] = None
         self._started_at: Optional[float] = None
-        # Snapshots of the cluster metric poller at execution start/end; the
-        # per-execution deltas are computed from these.
-        self._samples_at_start: Optional[Dict[str, Optional[int]]] = None
-        self._samples_at_end: Optional[Dict[str, Optional[int]]] = None
+        # To measure cumulative metrics stored in Prometheus counters/gauges (for e.g. bytes spilled)
+        # we track the delta between the value at execution start and the value at execution end.
+        self._cluster_deltas: Optional[Dict[str, Optional[int]]] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
 
@@ -100,23 +99,20 @@ class UsageCallback(ExecutionCallback):
         return util.anonymize_op_name(op)
 
     def on_collection_start(self, executor: "StreamingExecutor") -> None:
-        """Called once before execution starts. Records start timing and the
-        cluster metric baseline (the poller's latest snapshot) used to compute
-        per-execution deltas."""
+        """Called once before execution starts. Records start timing and asks
+        the poller to capture this execution's baseline in the background."""
         self._started_at = time.time()
-        p = poller.get_poller()
-        p.ensure_running()
-        self._samples_at_start = p.latest()
+        poller.get_poller().record_start(self._execution_id)
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
     ) -> None:
-        """Called once after execution succeeds or fails. Records the ending
-        cluster metric snapshot (the poller's latest). ``error`` is the failure
-        (or ``None`` on success); subclasses may override to capture it."""
-        p = poller.get_poller()
-        p.ensure_running()
-        self._samples_at_end = p.latest()
+        """Called once after execution succeeds or fails. Asks the poller for the
+        per-metric deltas over this execution (latest metric values minus this
+        execution's start baseline).
+        ``executor`` is a reference to the StreamingExecutor and ``error`` is the failure (or ``None`` on success);
+        subclasses may override to capture either."""
+        self._cluster_deltas = poller.get_poller().compute_deltas(self._execution_id)
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
@@ -129,24 +125,13 @@ class UsageCallback(ExecutionCallback):
             )
         performance = None
         if self._finished:
-            start = self._samples_at_start or {}
-            end = self._samples_at_end or {}
+            metric_deltas = self._cluster_deltas or {}
             performance = PipelinePerf(
-                bytes_spilled=collector.compute_delta(
-                    start.get(collector.METRIC_BYTES_SPILLED),
-                    end.get(collector.METRIC_BYTES_SPILLED),
-                ),
-                node_deaths=collector.compute_delta(
-                    start.get(collector.METRIC_NODE_DEATHS),
-                    end.get(collector.METRIC_NODE_DEATHS),
-                ),
-                oom_kills=collector.compute_delta(
-                    start.get(collector.METRIC_OOM_KILLS),
-                    end.get(collector.METRIC_OOM_KILLS),
-                ),
-                unexpected_worker_kills=collector.compute_delta(
-                    start.get(collector.METRIC_UNEXPECTED_WORKER_KILLS),
-                    end.get(collector.METRIC_UNEXPECTED_WORKER_KILLS),
+                bytes_spilled=metric_deltas.get(collector.METRIC_BYTES_SPILLED),
+                node_deaths=metric_deltas.get(collector.METRIC_NODE_DEATHS),
+                oom_kills=metric_deltas.get(collector.METRIC_OOM_KILLS),
+                unexpected_worker_kills=metric_deltas.get(
+                    collector.METRIC_UNEXPECTED_WORKER_KILLS
                 ),
             )
         # Both are populated before this runs: on_collection_start sets

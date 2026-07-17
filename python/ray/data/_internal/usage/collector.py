@@ -90,7 +90,7 @@ class EnvInfo:
     pyarrow: Optional[str]
 
 
-# Metric names shared by the poller (snapshot keys), the execution callback,
+# Metric names shared by the poller (metric-value keys), the execution callback,
 # and the PipelinePerf fields below. Keep these equal to the field names.
 METRIC_BYTES_SPILLED = "bytes_spilled"
 METRIC_NODE_DEATHS = "node_deaths"
