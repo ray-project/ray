@@ -39,6 +39,13 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Isolate shuffle reduce workers into a dedicated worker pool so that
+# ReadParquet/Project tasks don't run on the same workers.  Mirrors the
+# map-side isolation (RAY_DATA_SHUFFLE_MAP_WORKER): without this, shared
+# memory pages from object store accesses (mmap'd during combine_chunks)
+# accumulate across task types and inflate reduce worker RSS.
+_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
+
 
 class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     """Reduce phase of a shuffle.
@@ -138,6 +145,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         remote_args: Dict[str, Any] = {
             "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
             "scheduling_strategy": "SPREAD",
+            "runtime_env": _SHUFFLE_REDUCE_RUNTIME_ENV,
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
