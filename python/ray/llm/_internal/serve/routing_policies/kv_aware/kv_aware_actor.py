@@ -289,7 +289,7 @@ class KVRouterActor:
                 # scoring in the selection service.
                 "max_num_batched_tokens": kv_event_metadata["max_num_batched_tokens"],
                 "data_parallel_start_rank": dp_rank,
-                "data_parallel_size": kv_event_metadata.get("data_parallel_size", 1),
+                "data_parallel_size": kv_event_metadata.get("data_parallel_size") or 1,
                 "kv_events_endpoints": {dp_rank: kv_event_metadata["endpoint"]},
                 # The listener dials this on a sequence gap (slow-joiner) to replay
                 # the events it missed before its SUB connected; without it those
