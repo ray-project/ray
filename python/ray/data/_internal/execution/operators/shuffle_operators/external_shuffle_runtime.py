@@ -579,6 +579,15 @@ def open_shuffle_connection(
 ) -> _ShuffleConnection:
     """Open a TCP connection to ``endpoint`` and complete the handshake.
 
+    Args:
+        endpoint: (host, port) of the target ShuffleManager.
+        token: Per-shuffle auth token; must match the server's stored token.
+        timeout: Per-syscall socket timeout in seconds, applied to connect
+            and all subsequent recv / send calls.
+
+    Returns:
+        A live, handshake'd :class:`_ShuffleConnection` ready for FETCHes.
+
     Raises:
         PermissionError: auth token is wrong.
         ShuffleManagerAnomalyError: server returned an unknown status byte.
