@@ -1369,12 +1369,6 @@ async def _async_reserve_actor_generator_slot(
         await event.wait()
 
 
-def _execute_streaming_generator_sync(context):
-    """Python-callable wrapper so sync generator execution can run in a
-    ThreadPoolExecutor (cdef functions are not valid executor callables)."""
-    execute_streaming_generator_sync(context)
-
-
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
@@ -2098,6 +2092,17 @@ cdef void execute_task(
                                     "Functions with "
                                     "@ray.remote(num_returns=\"streaming\" "
                                     "must return a generator")
+                        if (is_sync_gen
+                                and core_worker.current_actor_is_asyncio()):
+                            # Sync generators block the asyncio actor fiber
+                            # thread (e.g. in backpressure CondVar waits),
+                            # which wedges the actor. Require async generators.
+                            raise ValueError(
+                                "Sync streaming generators are not supported "
+                                "on asyncio actors. Use an async generator "
+                                "(`async def` with `yield`) instead, or define "
+                                "the sync generator on a non-asyncio actor "
+                                "(an actor with no `async def` methods).")
                         context = StreamingGeneratorExecutionContext.make(
                                 returns[0][0].first,  # generator object ID.
                                 task_type,
@@ -2127,25 +2132,6 @@ cdef void execute_task(
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
                                 execute_streaming_generator_async(context),
-                                function_descriptor,
-                                name_of_concurrency_group_to_execute,
-                                task_id=task_id,
-                                task_name=task_name)
-                        elif core_worker.current_actor_is_asyncio():
-                            # Sync generator backpressure waits use absl::CondVar,
-                            # which would block the async actor's fiber thread.
-                            # Run on a worker thread instead (default executor,
-                            # not the single-thread report pool).
-                            async def _run_sync_gen_off():
-                                ctx = contextvars.copy_context()
-                                await asyncio.get_running_loop().run_in_executor(
-                                    None,
-                                    ctx.run,
-                                    _execute_streaming_generator_sync,
-                                    context,
-                                )
-                            core_worker.run_async_func_or_coro_in_event_loop(
-                                _run_sync_gen_off(),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
                                 task_id=task_id,

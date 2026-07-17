@@ -1470,64 +1470,28 @@ def test_actor_generator_backpressure_async_exception_wakes_parked_sibling(
     assert ray.get(reporter.count_tag.remote("waiter")) == 3
 
 
-def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
-    """A sync and an async streaming generator on the same actor share the cap.
+def test_actor_sync_streaming_generator_rejected_on_asyncio_actor(shutdown_only):
+    """Sync streaming generators are not supported on asyncio actors.
 
-    Both methods reserve against the one actor-wide waiter; consumption from
-    either stream frees shared budget for both (sync producers are woken via the
-    condition variable, async producers via the asyncio.Event).
+    An actor with any ``async def`` method is an asyncio actor. Sync generators
+    would block the fiber scheduler thread (e.g. in backpressure CondVar waits).
     """
-    ray.init(num_cpus=4)
-    reporter = TagReporter.remote()
+    ray.init(num_cpus=1)
 
     @ray.remote(_actor_generator_backpressure_num_objects=6)
     class A:
-        def sync_gen(self, rep, tag):
-            for i in range(5):
-                ray.get(rep.report.remote(tag, i))
-                yield i
+        def sync_gen(self):
+            yield 1
 
-        async def async_gen(self, rep, tag):
-            for i in range(5):
-                await rep.report.remote(tag, i)
-                yield i
+        async def async_gen(self):
+            yield 1
 
     a = A.remote()
-    g_sync = a.sync_gen.remote(reporter, "sync")
-    g_async = a.async_gen.remote(reporter, "async")
-
-    # The two streams share one cap of 6 (not 6 each): collectively they park at
-    # 6 produced. The split between the streams is nondeterministic -- one stream
-    # may grab the whole budget -- so we only assert the shared total here.
-    wait_for_condition(
-        lambda: ray.get(reporter.total_len.remote()) == 6,
-        timeout=_ACTOR_GEN_BP_WAIT_S,
-    )
-    time.sleep(1)
-    assert ray.get(reporter.total_len.remote()) == 6
-
-    # Drain both streams concurrently and assert each completes: consuming from
-    # either stream frees shared budget for whichever needs it (sync producers
-    # are woken via the condition variable, async via the asyncio.Event). They
-    # must be drained concurrently because, under an uneven split, one stream can
-    # hold the whole budget until the other is consumed.
-    results = {}
-
-    def drain(gen, tag):
-        results[tag] = [ray.get(ref) for ref in gen]
-
-    threads = [
-        threading.Thread(target=drain, args=(g_sync, "sync"), daemon=True),
-        threading.Thread(target=drain, args=(g_async, "async"), daemon=True),
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=_ACTOR_GEN_BP_WAIT_S)
-    assert all(not t.is_alive() for t in threads), "mixed generators deadlocked"
-    assert results["sync"] == list(range(5))
-    assert results["async"] == list(range(5))
-    assert ray.get(reporter.total_len.remote()) == 10
+    with pytest.raises(
+        ray.exceptions.RayTaskError,
+        match="Sync streaming generators are not supported on asyncio actors",
+    ):
+        ray.get(next(a.sync_gen.remote()))
 
 
 @pytest.mark.skipif(

@@ -331,10 +331,6 @@ def test_sync_async_mix_regression_test(shutdown_only):
             for _ in range(10):
                 yield payload
 
-        async def aio_stream(self):
-            for _ in range(10):
-                yield 1
-
     a = A.remote()
     b = B.remote(a)
     ray.get(b.start.remote())
@@ -353,7 +349,7 @@ def test_cancel(shutdown_only, use_asyncio):
     intermediate indices to appear would hang the caller."""
 
     @ray.remote
-    class Actor:
+    class SyncActor:
         def ready(self):
             return
 
@@ -373,6 +369,11 @@ def test_cancel(shutdown_only, use_asyncio):
                     # signal while the task is still running.
                     done_at = time.time() + 1
 
+    @ray.remote
+    class AsyncActor:
+        def ready(self):
+            return
+
         async def async_stream(self, signal):
             cancelled_ref = signal.wait.remote()
 
@@ -390,11 +391,13 @@ def test_cancel(shutdown_only, use_asyncio):
                     done_at = time.time() + 1
 
     signal = SignalActor.remote()
-    a = Actor.remote()
-    ray.get(a.ready.remote())
     if use_asyncio:
+        a = AsyncActor.remote()
+        ray.get(a.ready.remote())
         gen = a.async_stream.remote(signal)
     else:
+        a = SyncActor.remote()
+        ray.get(a.ready.remote())
         gen = a.stream.remote(signal)
 
     try:

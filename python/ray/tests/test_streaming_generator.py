@@ -457,15 +457,23 @@ def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 def test_actor_streaming_generator(shutdown_only, store_in_plasma):
-    """Test actor/async actor with sync/async generator interfaces."""
+    """Test sync actor and asyncio actor streaming generator interfaces.
+
+    Sync streaming generators are only allowed on non-asyncio actors.
+    """
     ray.init()
 
     @ray.remote
-    class Actor:
+    class SyncActor:
         def f(self, ref):
             for i in range(3):
                 yield i
 
+        def g(self):
+            return 3
+
+    @ray.remote
+    class AsyncActor:
         async def async_f(self, ref):
             for i in range(3):
                 await asyncio.sleep(0.1)
@@ -474,14 +482,15 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
         def g(self):
             return 3
 
-    a = Actor.remote()
+    sync_a = SyncActor.remote()
+    async_a = AsyncActor.remote()
     if store_in_plasma:
         arr = np.random.rand(5 * 1024 * 1024)
     else:
         arr = 3
 
     def verify_sync_task_executor():
-        generator = a.f.remote(ray.put(arr))
+        generator = sync_a.f.remote(ray.put(arr))
         # Verify it works with next.
         assert isinstance(generator, ObjectRefGenerator)
         assert ray.get(next(generator)) == 0
@@ -491,26 +500,26 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             ray.get(next(generator))
 
         # Verify it works with for.
-        generator = a.f.remote(ray.put(3))
+        generator = sync_a.f.remote(ray.put(3))
         for index, ref in enumerate(generator):
             assert index == ray.get(ref)
 
     def verify_async_task_executor():
         # Verify it works with next.
-        generator = a.async_f.remote(ray.put(arr))
+        generator = async_a.async_f.remote(ray.put(arr))
         assert isinstance(generator, ObjectRefGenerator)
         assert ray.get(next(generator)) == 0
         assert ray.get(next(generator)) == 1
         assert ray.get(next(generator)) == 2
 
         # Verify it works with for.
-        generator = a.f.remote(ray.put(3))
+        generator = async_a.async_f.remote(ray.put(3))
         for index, ref in enumerate(generator):
             assert index == ray.get(ref)
 
     async def verify_sync_task_async_generator():
         # Verify anext
-        async_generator = a.f.remote(ray.put(arr))
+        async_generator = sync_a.f.remote(ray.put(arr))
         assert isinstance(async_generator, ObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
@@ -519,7 +528,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             await async_generator.__anext__()
 
         # Verify async for.
-        async_generator = a.f.remote(ray.put(arr))
+        async_generator = sync_a.f.remote(ray.put(arr))
         expected = 0
         async for ref in async_generator:
             value = await ref
@@ -527,7 +536,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             expected += 1
 
     async def verify_async_task_async_generator():
-        async_generator = a.async_f.remote(ray.put(arr))
+        async_generator = async_a.async_f.remote(ray.put(arr))
         assert isinstance(async_generator, ObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
@@ -536,7 +545,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             await async_generator.__anext__()
 
         # Verify async for.
-        async_generator = a.async_f.remote(ray.put(arr))
+        async_generator = async_a.async_f.remote(ray.put(arr))
         expected = 0
         async for ref in async_generator:
             value = await ref
@@ -676,17 +685,19 @@ def test_streaming_generator_exception(shutdown_only):
     ray.init()
 
     @ray.remote
-    class Actor:
+    class SyncActor:
         def f(self):
             raise ValueError
             yield 1  # noqa
 
+    @ray.remote
+    class AsyncActor:
         async def async_f(self):
             raise ValueError
             yield 1  # noqa
 
-    a = Actor.remote()
-    g = a.f.remote()
+    sync_a = SyncActor.remote()
+    g = sync_a.f.remote()
     with pytest.raises(ValueError):
         ray.get(next(g))
 
@@ -696,7 +707,8 @@ def test_streaming_generator_exception(shutdown_only):
     with pytest.raises(StopIteration):
         ray.get(next(g))
 
-    g = a.async_f.remote()
+    async_a = AsyncActor.remote()
+    g = async_a.async_f.remote()
     with pytest.raises(ValueError):
         ray.get(next(g))
 
