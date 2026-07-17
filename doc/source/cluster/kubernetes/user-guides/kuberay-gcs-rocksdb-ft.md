@@ -123,6 +123,16 @@ spec:
 fast at startup if `RAY_gcs_storage_path` is unset or points at a path that isn't writable.
 ```
 
+```{admonition} Size the volume for throughput, not just capacity
+:class: warning
+On most cloud providers, a volume's IOPS and throughput scale with its provisioned size (for
+example, AWS `gp3` and GCP `pd-balanced` grant more baseline throughput to larger disks).
+Because the GCS syncs every mutating write to disk, an undersized volume can throttle GCS
+write latency even when it has plenty of free capacity. Provision the volume for the disk
+throughput your workload needs rather than for the metadata footprint alone, and consult your
+`StorageClass` and provider documentation for the size-to-throughput relationship.
+```
+
 ## Verify recovery
 
 Confirm the head Pod is running, then delete it to simulate a GCS crash and watch KubeRay
