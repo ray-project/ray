@@ -264,6 +264,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  private:
   /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The
   /// fetched cluster ID is set to client_call_manager_.
+  ///
+  /// The underlying RPC retries timed-out attempts with bounded per-attempt
+  /// deadlines and jittered backoff within `timeout_ms` (see
+  /// RetryableGrpcClient::RetryOnTimeoutPolicy): a timed-out read of this
+  /// immutable value (e.g. queueing delay on a GCS busy with a node
+  /// registration storm) should degrade to slow, not fatal. `timeout_ms` must
+  /// be positive.
   Status FetchClusterId(int64_t timeout_ms);
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();

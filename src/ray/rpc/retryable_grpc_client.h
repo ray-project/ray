@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -24,7 +25,9 @@
 #include <utility>
 
 #include "absl/container/btree_map.h"
+#include "absl/random/random.h"
 #include "absl/strings/str_format.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/grpc_client.h"
@@ -79,6 +82,22 @@ namespace ray::rpc {
  * destructor is called and the client is shut down.
  */
 class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcClient> {
+ public:
+  /// Per-call policy: retry attempts that fail with TimedOut (DEADLINE_EXCEEDED)
+  /// using bounded per-attempt deadlines and jittered exponential backoff, until
+  /// the call's overall timeout_ms budget is exhausted. TimedOut is deliberately
+  /// not in IsGrpcRetryableStatus (it usually means the server is up but slow,
+  /// and blindly requeueing every timed-out call feeds an unbounded retry
+  /// queue), so this is per-call opt-in: use it only for cheap idempotent reads
+  /// whose timeout is more likely queueing delay on a busy server than payload
+  /// cost (e.g. NodeInfoGcsService.GetClusterId during mass cluster bring-up).
+  /// Requires the call to have a finite positive timeout_ms.
+  struct RetryOnTimeoutPolicy {
+    /// Deadline for each individual attempt; must be positive. The last attempt
+    /// is clamped to the remaining overall budget.
+    int64_t per_attempt_timeout_ms;
+  };
+
  private:
   /**
    * Represents a single retryable grpc request.
@@ -98,7 +117,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         std::string call_name,
         Request request,
         ClientCallback<Reply> callback,
-        int64_t timeout_ms);
+        int64_t timeout_ms,
+        std::optional<RetryOnTimeoutPolicy> retry_on_timeout);
 
     RetryableGrpcRequest(const RetryableGrpcRequest &) = delete;
     RetryableGrpcRequest &operator=(const RetryableGrpcRequest &) = delete;
@@ -112,21 +132,67 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
     int64_t GetTimeoutMs() const { return timeout_ms_; }
 
+    /// Deadline for the next attempt: the full call timeout, or, when
+    /// retry_on_timeout is set, the per-attempt deadline clamped to the
+    /// remaining overall budget.
+    int64_t NextAttemptTimeoutMs() const {
+      if (!retry_on_timeout_.has_value()) {
+        return timeout_ms_;
+      }
+      const int64_t remaining_ms =
+          absl::ToInt64Milliseconds(overall_deadline_ - absl::Now());
+      return std::max<int64_t>(
+          1, std::min(retry_on_timeout_->per_attempt_timeout_ms, remaining_ms));
+    }
+
+    /// Whether a failed attempt should be retried under the retry_on_timeout
+    /// policy: the attempt timed out and overall budget remains.
+    bool ShouldRetryOnTimeout(const ray::Status &status) const {
+      return retry_on_timeout_.has_value() && status.IsTimedOut() &&
+             absl::Now() < overall_deadline_;
+    }
+
+    /// Returns the number of the attempt that just failed (0-based) and
+    /// advances the counter. Only used by the retry_on_timeout path.
+    uint64_t NextAttemptNumber() { return attempt_number_++; }
+
+    const std::string &GetCallName() const { return call_name_; }
+
    private:
     RetryableGrpcRequest(
         std::function<void(std::shared_ptr<RetryableGrpcRequest> request)> executor,
         std::function<void(ray::Status)> failure_callback,
+        std::string call_name,
         size_t request_bytes,
-        int64_t timeout_ms)
+        int64_t timeout_ms,
+        std::optional<RetryOnTimeoutPolicy> retry_on_timeout)
         : executor_(std::move(executor)),
           failure_callback_(std::move(failure_callback)),
+          call_name_(std::move(call_name)),
           request_bytes_(request_bytes),
-          timeout_ms_(timeout_ms) {}
+          timeout_ms_(timeout_ms),
+          retry_on_timeout_(retry_on_timeout),
+          overall_deadline_(timeout_ms > 0 ? absl::Now() + absl::Milliseconds(timeout_ms)
+                                           : absl::InfiniteFuture()) {
+      if (retry_on_timeout_.has_value()) {
+        RAY_CHECK_GT(timeout_ms, static_cast<int64_t>(0))
+            << call_name_
+            << ": RetryOnTimeoutPolicy requires a finite positive overall timeout.";
+        RAY_CHECK_GT(retry_on_timeout_->per_attempt_timeout_ms, static_cast<int64_t>(0))
+            << call_name_ << ": per_attempt_timeout_ms must be positive.";
+      }
+    }
 
     std::function<void(std::shared_ptr<RetryableGrpcRequest> request)> executor_;
     std::function<void(ray::Status)> failure_callback_;
+    const std::string call_name_;
     const size_t request_bytes_;
     const int64_t timeout_ms_;
+    const std::optional<RetryOnTimeoutPolicy> retry_on_timeout_;
+    /// Absolute deadline for the whole call including retries.
+    const absl::Time overall_deadline_;
+    /// Number of attempts sent so far under the retry_on_timeout policy.
+    uint64_t attempt_number_ = 0;
   };
 
  public:
@@ -161,9 +227,15 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                   std::string call_name,
                   Request request,
                   ClientCallback<Reply> callback,
-                  int64_t timeout_ms);
+                  int64_t timeout_ms,
+                  std::optional<RetryOnTimeoutPolicy> retry_on_timeout = std::nullopt);
 
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
+
+  /// Re-sends a request whose attempt failed with TimedOut (see
+  /// RetryOnTimeoutPolicy) after a jittered exponential backoff delay.
+  void RetryAfterJitteredBackoff(std::shared_ptr<RetryableGrpcRequest> request,
+                                 const ray::Status &status);
 
   // Return the number of active (pending or inflight) requests.
   size_t NumActiveRequests() const { return num_active_requests_; }
@@ -229,6 +301,16 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
 
+  // Backoff parameters for RetryOnTimeoutPolicy retries: full jitter over an
+  // exponentially growing cap. Small relative to any realistic call budget;
+  // the point is decorrelating retries from many clients that timed out on the
+  // same overloaded server at the same moment.
+  static constexpr uint64_t kRetryOnTimeoutBackoffBaseMs = 100;
+  static constexpr uint64_t kRetryOnTimeoutBackoffMaxMs = 2000;
+  // Jitter source for RetryOnTimeoutPolicy backoff; only used on the
+  // io_context thread.
+  absl::BitGen bit_gen_;
+
   // Number of retries while the server is unavailable across all requests. Reset to 0
   // when the server is available.
   uint32_t attempt_number_ = 0;
@@ -244,7 +326,8 @@ void RetryableGrpcClient::CallMethod(
     std::string call_name,
     Request request,
     ClientCallback<Reply> callback,
-    int64_t timeout_ms) {
+    int64_t timeout_ms,
+    std::optional<RetryOnTimeoutPolicy> retry_on_timeout) {
   num_active_requests_++;
   RetryableGrpcRequest::Create(weak_from_this(),
                                std::move(prepare_async_function),
@@ -252,7 +335,8 @@ void RetryableGrpcClient::CallMethod(
                                std::move(call_name),
                                std::move(request),
                                std::move(callback),
-                               timeout_ms)
+                               timeout_ms,
+                               retry_on_timeout)
       ->CallMethod();
 }
 
@@ -265,7 +349,8 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
     std::string call_name,
     Request request,
     ClientCallback<Reply> callback,
-    int64_t timeout_ms) {
+    int64_t timeout_ms,
+    std::optional<RetryOnTimeoutPolicy> retry_on_timeout) {
   RAY_CHECK(callback != nullptr);
   RAY_CHECK(grpc_client.get() != nullptr);
 
@@ -274,7 +359,7 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
   auto executor = [weak_retryable_grpc_client = std::move(weak_retryable_grpc_client),
                    prepare_async_function = std::move(prepare_async_function),
                    grpc_client = std::move(grpc_client),
-                   call_name = std::move(call_name),
+                   call_name,
                    request = std::move(request),
                    callback](std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>
                                  retryable_grpc_request) {
@@ -284,6 +369,12 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
         [weak_retryable_grpc_client, retryable_grpc_request, callback](
             const ray::Status &status, Reply &&reply) {
           auto retryable_grpc_client = weak_retryable_grpc_client.lock();
+          if (retryable_grpc_client && !status.ok() &&
+              retryable_grpc_request->ShouldRetryOnTimeout(status)) {
+            retryable_grpc_client->RetryAfterJitteredBackoff(retryable_grpc_request,
+                                                             status);
+            return;
+          }
           if (status.ok() || !IsGrpcRetryableStatus(status) || !retryable_grpc_client) {
             callback(status, std::move(reply));
             if (retryable_grpc_client) {
@@ -294,7 +385,7 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           retryable_grpc_client->Retry(retryable_grpc_request);
         },
         call_name,
-        retryable_grpc_request->GetTimeoutMs());
+        retryable_grpc_request->NextAttemptTimeoutMs());
   };
 
   auto failure_callback = [weak_retryable_grpc_client,
@@ -309,8 +400,12 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
   return std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>(
       // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
       // invoke private constructors.
-      new RetryableGrpcClient::RetryableGrpcRequest(
-          std::move(executor), std::move(failure_callback), request_bytes, timeout_ms));
+      new RetryableGrpcClient::RetryableGrpcRequest(std::move(executor),
+                                                    std::move(failure_callback),
+                                                    std::move(call_name),
+                                                    request_bytes,
+                                                    timeout_ms,
+                                                    retry_on_timeout));
 }
 
 }  // namespace ray::rpc

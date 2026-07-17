@@ -3044,7 +3044,10 @@ cdef class GcsClient:
 
     def __cinit__(self, address: str,
                   cluster_id: Optional[str] = None):
-        # For timeout (DEADLINE_EXCEEDED): retries once with timeout_ms.
+        # For timeout (DEADLINE_EXCEEDED): the cluster-ID fetch inside connect
+        # retries with bounded per-attempt deadlines and jittered backoff until
+        # the timeout_ms budget is exhausted (see RetryOnTimeoutPolicy on
+        # GcsRpcClient::GetClusterId), then raises.
         #
         # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
         # thinks GCS is down and kills the whole process.
