@@ -105,7 +105,7 @@ To merge a contribution, complete the following steps:
    git pull . upstream/master
    ```
 
-2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to create a git hook that runs the linter before you push your changes.
+2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to install git hooks that run the linter before you push and add the `Signed-off-by` trailer to each commit. Every commit needs that trailer to pass the Developer Certificate of Origin (DCO) check. If you skip the hook, sign off manually with `git commit -s`.
 3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Document public functions, and remember to provide a usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch. Don't use rebase, because it's less friendly to the GitHub review tool. We squash all commits on merge.
