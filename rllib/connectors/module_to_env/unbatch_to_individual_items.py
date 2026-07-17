@@ -99,17 +99,24 @@ class UnBatchToIndividualItems(ConnectorV2):
                         # already done (terminated/truncated) or is no longer part of
                         # this episode. Neither should be the case for a freshly reset
                         # `MultiAgentEpisode` (hence the `not episode.is_done` guard).
+                        # Invariant established by the env-to-module
+                        # `AgentToModuleMapping` done-agent filter (GH #61602): only
+                        # live (non-done) agents reach the module-to-env pipeline, so
+                        # each agent in `memorized_map_structure` must still be present
+                        # and not done. If this trips, that filter did not run or
+                        # regressed -- fail loudly rather than silently dropping (or
+                        # forwarding a stale) action.
                         if episode.agent_episodes and not episode.is_done:
-                            # `sa_episode` is None when `agent_id` is no longer in
-                            # `episode.agent_episodes`. This happens when the agent
-                            # terminated exactly at a `truncate_episodes` rollout
-                            # boundary: `MultiAgentEpisode.cut()` drops the just-done
-                            # agent from the continuation chunk, yet the cached
-                            # `memorized_map_structure` (built before the cut) still
-                            # references it. See issue #61602.
                             sa_episode = episode.agent_episodes.get(agent_id)
                             if sa_episode is None or sa_episode.is_done:
-                                continue
+                                raise ValueError(
+                                    f"Agent {agent_id!r} in `memorized_map_structure` "
+                                    f"is missing or already done for episode "
+                                    f"{episode.id_!r}, but only live agents should "
+                                    f"reach the module-to-env pipeline. The "
+                                    f"env-to-module `AgentToModuleMapping` done-agent "
+                                    f"filter did not run or regressed (see GH #61602)."
+                                )
 
                         new_column_data[key].append(column_data[i])
                     module_data[column] = dict(new_column_data)
