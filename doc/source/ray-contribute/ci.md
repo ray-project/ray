@@ -39,6 +39,22 @@ If you're a committer, add the `go` label to your PR once it's ready, then merge
 
 If you're an external contributor, adding the `go` label and enabling auto-merge both require write access, so a committer runs the full suite and merges when your PR is ready.
 
+## Documentation CI steps
+
+When your PR changes documentation, an additional set of steps runs alongside `microcheck`. Ray builds the docs in three places that share one Sphinx configuration.
+
+* **The Sphinx build.** `make -C doc/ html` generates the HTML with warnings treated as errors, so any Sphinx warning fails the build.
+* **The Read the Docs render gate.** Read the Docs runs the same Sphinx build on your PR and reports the `docs/readthedocs.com:anyscale-ray` check. Because the build fails on any warning, this check is the effective render gate for documentation changes. A PR that changes no documentation files skips the preview build, so the check reports green without rebuilding.
+* **The Buildkite doc steps.** These run when your PR changes doc-affecting files, selected by the `doc` test tag.
+
+The Buildkite doc steps are:
+
+* **API annotation and consistency checks** verify that the documented API surface matches the `@PublicAPI` annotations in the code. The consistency check builds the docs as part of its run. See [Running the API consistency check locally](#running-the-api-consistency-check-locally).
+* **Per-team doc tests** run the code examples in each library's docstrings and user guides. These execute the `doctest`, `testcode`, and `literalinclude` examples described in [How to write code snippets](writing-code-snippets.md). Each library, including core, data, ml, rllib, serve, and llm, owns its own doc-tests step.
+* **Always-on lints** run on every PR, not just documentation changes: a ban on new `.rst` files, since new pages must be MyST Markdown, a README check, and a documentation style linter.
+
+Two heavier steps don't run on your PR. The `doc: build` step, which also uploads a build cache, and `linkcheck` run on the `master` branch after merge, not premerge. For how to build and preview the docs on your own machine, see [Contributing to the Ray documentation](docs.md).
+
 ## Running the API consistency check locally
 
 The `doc: check API doc consistency` premerge step (the `api_policy_check` function in `ci/lint/lint.sh`) runs `ci/ray_ci/doc/cmd_check_api_discrepancy.py`, which compares each team's documented API surface against the annotated (`@PublicAPI`/`@DeveloperAPI`/`@Deprecated`) surface in the code. It imports Ray's own symbols for real, so it needs an environment where Ray installs and imports. This is the opposite of the docs *build* environment, which deliberately doesn't install Ray (see [Building the Ray documentation](docs.md)). The optional third-party backends that some surfaces pull in at import time (for example the vLLM and SGLang stack behind `ray.data.llm` and `ray.serve.llm`, or the deep-learning backends behind `ray.train`, `ray.tune`, and `ray.rllib`) don't have to be installed: the check mocks any that are absent, reading the list from `doc/source/api_mock_imports.py`, the same source of truth the docs build uses for `autodoc_mock_imports`.
