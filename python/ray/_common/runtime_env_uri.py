@@ -94,12 +94,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # is preserved so is_zip_uri / is_jar_uri keep working. Compound
             # extensions (.tar.gz, .tar.bz2) are kept intact so archive-type
             # detection downstream still works.
-            if uri.path.endswith(".tar.gz"):
+            # netloc + path covers URIs where the filename has no path
+            # component (e.g., s3://package.zip puts "package.zip" in netloc).
+            raw = uri.netloc + uri.path
+            if raw.endswith(".tar.gz"):
                 suffix = ".tar.gz"
-            elif uri.path.endswith(".tar.bz2"):
+            elif raw.endswith(".tar.bz2"):
                 suffix = ".tar.bz2"
             else:
-                suffix = pathlib.Path(uri.path).suffix
+                suffix = pathlib.Path(raw).suffix
             digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
             package_name = f"{protocol.value}_{digest}{suffix}"
     else:

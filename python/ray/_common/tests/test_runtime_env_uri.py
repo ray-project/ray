@@ -194,11 +194,18 @@ class TestParseUri:
         _, name_b = parse_uri("s3://bucket/b.zip")
         assert name_a != name_b
 
-    @pytest.mark.parametrize("ext", [".tar.gz", ".tar.bz2"])
-    def test_parse_uri_remote_preserves_compound_extension(self, ext):
-        """Compound extensions are kept intact so downstream archive-type
-        detection keeps working after the URI has been hashed."""
-        _, name = parse_uri(f"s3://bucket/package{ext}")
+    @pytest.mark.parametrize(
+        "uri_template",
+        [
+            "s3://bucket/package{ext}",  # extension in path
+            "s3://package{ext}",  # extension in netloc (no path component)
+        ],
+    )
+    @pytest.mark.parametrize("ext", [".zip", ".tar.gz", ".tar.bz2"])
+    def test_parse_uri_remote_preserves_extension(self, uri_template, ext):
+        """Extensions are kept intact after hashing, whether the filename
+        is in the path or the netloc."""
+        _, name = parse_uri(uri_template.format(ext=ext))
         assert name.endswith(ext)
 
 
