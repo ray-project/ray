@@ -213,17 +213,16 @@ TEAM_API_CONFIGS = {
             "ray.rllib.connectors.env_to_module.observation_preprocessor.ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor",
             "ray.rllib.connectors.env_to_module.observation_preprocessor.ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor",
             # Documented private / dunder members flagged non-public. Document
-            # the public surface instead, then drop these.
+            # the public surface instead, then drop these. The documented
+            # override hooks that used to sit here (RLModule._forward*) are now
+            # exempted by their @OverrideToImplementCustomLogic marker in
+            # API.split_resolvable_and_broken_doc_apis, so they need no entry.
             "ray.rllib.core.learner.learner.Learner._check_is_built",
             "ray.rllib.core.learner.learner.Learner._make_module",
             "ray.rllib.core.learner.learner.Learner._check_registered_optimizer",
             "ray.rllib.core.learner.learner.Learner._set_optimizer_lr",
             "ray.rllib.core.learner.learner.Learner._get_clip_function",
             "ray.rllib.utils.schedules.scheduler.Scheduler._create_tensor_variable",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_inference",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_train",
             "ray.rllib.offline.offline_data.OfflineData.__init__",
             "ray.rllib.offline.offline_prelearner.OfflinePreLearner.__init__",
             "ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__",
