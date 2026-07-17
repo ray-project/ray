@@ -76,7 +76,7 @@ The unified compiled lock is produced by a single `bash` function in `ci/ci.sh`:
 
 | Function | Output | Source set |
 |---|---|---|
-| `compile_pip_dependencies` (`ci/ci.sh:16`) | `python/requirements_compiled.txt` | shared `python/requirements/**` files (test, cloud, docker, `ml/*` including `ml-requirements.txt` and `third_party.txt`, security) |
+| `compile_pip_dependencies` (`ci/ci.sh:16`) | `python/requirements_compiled.txt` | `python/requirements.txt` and shared `python/requirements/**` files (test, cloud, docker, `ml/*` including `ml-requirements.txt` and `third_party.txt`, security) |
 
 There is one source requirement set and one compiled lock shared across all Python versions; per-version differences are expressed with `python_version` markers in the source files (see *Marker preservation* below), not with separate override directories or a separate compile function.
 
