@@ -6,7 +6,6 @@ python/ray/data/_internal/batcher.py
 python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
 python/ray/data/_internal/cluster_autoscaler/default_autoscaling_coordinator.py
-python/ray/data/_internal/cluster_autoscaler/default_cluster_autoscaler.py
 python/ray/data/_internal/cluster_autoscaler/default_cluster_autoscaler_v2.py
 python/ray/data/_internal/dataset_repr.py
 python/ray/data/_internal/datasource/bigquery_datasource.py
@@ -26,6 +25,8 @@ python/ray/data/_internal/datasource/json_datasource.py
 python/ray/data/_internal/datasource/kafka_datasource.py
 python/ray/data/_internal/datasource/lance_datasink.py
 python/ray/data/_internal/datasource/lance_datasource.py
+python/ray/data/_internal/datasource/_lerobot_compat.py
+python/ray/data/_internal/datasource/lerobot_datasource.py
 python/ray/data/_internal/datasource/mongo_datasource.py
 python/ray/data/_internal/datasource/numpy_datasink.py
 python/ray/data/_internal/datasource/parquet_datasink.py
@@ -211,6 +212,7 @@ python/ray/data/tests/datasource/test_file_datasink.py
 python/ray/data/tests/datasource/test_huggingface.py
 python/ray/data/tests/datasource/test_iceberg.py
 python/ray/data/tests/datasource/test_image.py
+python/ray/data/tests/datasource/test_lerobot.py
 python/ray/data/tests/datasource/test_numpy.py
 python/ray/data/tests/datasource/test_pandas.py
 python/ray/data/tests/datasource/test_parquet.py
@@ -251,7 +253,7 @@ python/ray/data/tests/test_agg_e2e.py
 python/ray/data/tests/test_arrow_block.py
 python/ray/data/tests/test_arrow_serialization.py
 python/ray/data/tests/test_auto_parallelism.py
-python/ray/data/tests/test_autoscaler.py
+python/ray/data/tests/test_actor_autoscaler.py
 python/ray/data/tests/test_autoscaling_coordinator.py
 python/ray/data/tests/test_backpressure_e2e.py
 python/ray/data/tests/test_backpressure_policies.py
@@ -285,6 +287,7 @@ python/ray/data/tests/test_idempotency_optimizer_guards.py
 python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
+python/ray/data/tests/test_iter_torch_batches.py
 python/ray/data/tests/test_iterator.py
 python/ray/data/tests/test_join.py
 python/ray/data/tests/test_jumbo_arrow_block.py
@@ -360,9 +363,3 @@ python/ray/data/tests/datasource/test_kafka.py
 python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
 python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
 python/ray/data/_internal/execution/bundle_queue/base.py
-python/ray/data/_internal/datasource_v2/tests/test_file_partitioners.py
-python/ray/data/_internal/datasource_v2/tests/test_parquet_datasource_v2.py
-python/ray/data/tests/datasource/test_read_parquet_v2.py
-python/ray/data/tests/unit/datasource_v2/test_file_chunker.py
-python/ray/data/tests/unit/datasource_v2/test_file_indexer.py
-python/ray/data/tests/unit/datasource_v2/test_list_files_op.py
