@@ -540,5 +540,48 @@ def test_kill_actor_after_restart(shutdown_only):
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signals only.")
+def test_sigterm_during_slow_graceful_exit_does_not_abort():
+    """Regression test for https://github.com/ray-project/ray/issues/64829.
+
+    Ray registers SIGTERM with abseil's failure signal handler, which arms a
+    3s SIGALRM abort timer before chaining into Ray's graceful SIGTERM
+    handler. If the graceful exit outlives that timer (e.g. a driver-owned
+    local node being torn down after a process-group SIGTERM, as on a Jupyter
+    kernel restart), the driver used to die with SIGABRT and dump core into
+    the working directory instead of exiting cleanly.
+    """
+    driver = """
+import atexit
+import time
+
+import ray
+
+ray.init(num_cpus=1)
+
+# Registered after ray.init() so it runs before Ray's atexit shutdown hook;
+# simulates a graceful exit that outlives abseil's 3s abort timer.
+atexit.register(time.sleep, 5)
+
+print("ready", flush=True)
+time.sleep(60)
+"""
+    p = run_string_as_driver_nonblocking(driver)
+    try:
+        for _ in range(30):
+            if p.stdout.readline().strip() == b"ready":
+                break
+        else:
+            raise AssertionError("Driver never became ready.")
+
+        p.send_signal(signal.SIGTERM)
+        # Ray's SIGTERM handler recovers into a graceful exit with code
+        # SIGTERM (15). Before the fix, abseil's abort timer killed the
+        # driver with SIGABRT ~3s after the SIGTERM (negative returncode).
+        assert p.wait(timeout=60) == signal.SIGTERM
+    finally:
+        p.kill()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
