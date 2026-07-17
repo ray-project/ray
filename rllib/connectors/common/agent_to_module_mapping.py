@@ -177,23 +177,14 @@ class AgentToModuleMapping(ConnectorV2):
         # agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")
         # Store in shared data, which module IDs map to which episode/agent, such
         # that the module-to-env pipeline can map the data back to agents.
-        # In the env-to-module pipeline, only agents that still need to send an
-        # action to the next `env.step()` call should reach the RLModule. Agents
-        # whose `SingleAgentEpisode` terminated/truncated this step have "stepped"
-        # (they own a final observation, which upstream connectors -- e.g. obs
-        # normalization or write-back -- have already processed), but they must NOT
-        # get a forward pass and must NOT enter `memorized_map_structure`. Otherwise
-        # that (cached) structure goes stale the moment `MultiAgentEpisode.cut()`
-        # drops the done agent from the continuation chunk, and the module-to-env
-        # pipeline can no longer map the module output back to agents (GH #61602).
-        # In the Learner pipeline we must keep ALL agents (done agents' data is
-        # needed for training), so this filter is disabled there.
         if self._as_learner_connector:
             agents_to_act = None
         else:
             agents_to_act = {
                 (episode.id_, agent_id)
                 for episode in episodes
+                # In the env-to-module pipeline, only agents that still need to send an
+                # action to the next `env.step()` call should reach the RLModule.
                 for agent_id in episode.get_agents_to_act()
             }
 
@@ -229,8 +220,6 @@ class AgentToModuleMapping(ConnectorV2):
                 agent_id,
                 module_id,
             ), values_batch_or_list in agent_data.items():
-                # Skip agents that no longer act (see `_keep` above); keeps this
-                # module-keyed batch consistent with `memorized_map_structure`.
                 if not _keep(eps_id, agent_id):
                     continue
                 assert isinstance(values_batch_or_list, list)

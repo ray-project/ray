@@ -219,16 +219,12 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         env_runner = MultiAgentEnvRunner(config=config)
         # Several consecutive `sample()` calls: the first fills the cache, and each
         # subsequent one runs the module-to-env pipeline against a `cut()`
-        # continuation whose agents changed at the boundary. Pre-fix, this raised
-        # `KeyError` on the 2nd call.
+        # continuation whose agents changed at the boundary.
         for _ in range(8):
             episodes = env_runner.sample()
             check(sum(len(e) for e in episodes), remove_interval)
-            # Root-cause guard (GH #61602): the env-to-module `AgentToModuleMapping`
+            # Regression test for #61602: the env-to-module `AgentToModuleMapping`
             # filter must keep done/removed agents out of `memorized_map_structure`
-            # entirely, so every agent it references still exists in a live episode
-            # (i.e. was not dropped by `MultiAgentEpisode.cut()`). With only the
-            # module-to-env skip, a done agent would appear here and fail this.
             mms = env_runner._shared_data.get("memorized_map_structure") or {}
             existing = {
                 (e.id_, aid)

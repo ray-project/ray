@@ -94,18 +94,6 @@ class UnBatchToIndividualItems(ConnectorV2):
                                 "shared_data['vector_env_episodes_map'] for a missing ",
                                 "mapping.",
                             )
-                        # If an episode has not just started, do not return an action
-                        # to `env.step()` for an agent whose `SingleAgentEpisode` is
-                        # already done (terminated/truncated) or is no longer part of
-                        # this episode. Neither should be the case for a freshly reset
-                        # `MultiAgentEpisode` (hence the `not episode.is_done` guard).
-                        # Invariant established by the env-to-module
-                        # `AgentToModuleMapping` done-agent filter (GH #61602): only
-                        # live (non-done) agents reach the module-to-env pipeline, so
-                        # each agent in `memorized_map_structure` must still be present
-                        # and not done. If this trips, that filter did not run or
-                        # regressed -- fail loudly rather than silently dropping (or
-                        # forwarding a stale) action.
                         if episode.agent_episodes and not episode.is_done:
                             sa_episode = episode.agent_episodes.get(agent_id)
                             if sa_episode is None or sa_episode.is_done:

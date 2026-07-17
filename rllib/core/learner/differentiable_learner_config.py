@@ -131,8 +131,6 @@ class DifferentiableLearnerConfig:
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
-                        # Learner pipeline: keep ALL agents (incl. done ones); their
-                        # data is needed for training.
                         as_learner_connector=True,
                     )
                 )
