@@ -2,7 +2,6 @@ import enum
 import hashlib
 import pathlib
 import urllib.parse
-from pathlib import Path
 from typing import Tuple
 from urllib.parse import urlparse
 
@@ -100,7 +99,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             elif uri.path.endswith(".tar.bz2"):
                 suffix = ".tar.bz2"
             else:
-                suffix = Path(uri.path).suffix
+                suffix = pathlib.Path(uri.path).suffix
             digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
             package_name = f"{protocol.value}_{digest}{suffix}"
     else:
