@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 from .backpressure_policy import BackpressurePolicy
 from ray._common.utils import env_float
 from ray.data._internal.execution.resource_manager import (
+    _BLOCKING_MATERIALIZING_OPERATORS,
     ResourceManager,
 )
 from ray.data.context import DataContext
@@ -167,6 +168,13 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         if self._resource_manager._is_blocking_materializing_op(op):
             # Operator is materializing, so no need to perform backpressure.
+            return True
+
+        if any(
+            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            for downstream_op in self._resource_manager.get_downstream_eligible_ops(op)
+        ):
+            # Downstream capacity is materializing, so don't backpressure against it.
             return True
 
         return False

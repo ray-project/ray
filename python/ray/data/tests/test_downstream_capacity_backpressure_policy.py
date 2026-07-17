@@ -16,6 +16,9 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -176,6 +179,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm._get_downstream_ineligible_ops = types.MethodType(
             ResourceManager._get_downstream_ineligible_ops, rm
         )
+        rm.get_downstream_eligible_ops = types.MethodType(
+            ResourceManager.get_downstream_eligible_ops, rm
+        )
         rm._is_blocking_materializing_op = types.MethodType(
             ResourceManager._is_blocking_materializing_op, rm
         )
@@ -266,6 +272,65 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    def test_backpressure_skipped_when_downstream_capacity_is_materializing(self):
+        """Test that an upstream op isn't backpressured by an eligible materializer."""
+        op, op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_operator(
+            op_class=HashShufflingOperatorBase,
+            obj_store_mem_pending_task_inputs=100,
+        )
+        materializing_op.__class__ = HashShufflingOperatorBase
+        op.output_dependencies = [materializing_op]
+
+        topology = {op: op_state, materializing_op: materializing_op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        )
+        assert rm.is_op_eligible(materializing_op)
+        assert queue_ratio > context.downstream_capacity_backpressure_ratio
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+        assert policy.can_add_input(op) is True
+
+    def test_backpressure_applied_when_materializer_is_beyond_capacity_op(self):
+        """Test that a later materializer doesn't disable normal backpressure."""
+        op, op_state = self._mock_task_pool_map_operator()
+        downstream_op, downstream_op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_materializing_operator()
+        op.output_dependencies = [downstream_op]
+        downstream_op.output_dependencies = [materializing_op]
+
+        topology = {
+            op: op_state,
+            downstream_op: downstream_op_state,
+            materializing_op: materializing_op_state,
+        }
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        )
+        assert queue_ratio > context.downstream_capacity_backpressure_ratio
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+        assert policy.can_add_input(op) is False
 
     def test_backpressure_skipped_for_low_utilization(self):
         """Test backpressure skipped when utilized budget fraction is low."""
