@@ -401,7 +401,7 @@ def test_write_large_data_numpy(shutdown_only, tmp_path):
         tmp_path,
         "numpy",
         Dataset.write_numpy,
-        ray.data.read_numpy,
+        lambda path: ray.data.read_numpy(path, allow_pickle=True),
         use_bytes=False,
         write_kwargs={"column": "one"},
     )

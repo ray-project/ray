@@ -58,7 +58,7 @@ def _plan_gpu_shuffle_repartition(
     )
 
 
-def _plan_hash_shuffle_repartition(
+def _plan_hash_shuffle_repartition_v2(
     data_context: DataContext,
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
@@ -107,6 +107,27 @@ def _plan_hash_shuffle_repartition(
         ),
     )
     return reduce_op
+
+
+def _plan_hash_shuffle_repartition(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.execution.operators.hash_shuffle import (
+        HashShuffleOperator,
+    )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
+
+    return HashShuffleOperator(
+        input_physical_op,
+        data_context,
+        key_columns=tuple(normalized_key_columns),
+        num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
+    )
 
 
 def _plan_hash_shuffle_aggregate(
@@ -217,6 +238,10 @@ def plan_all_to_all_op(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+                if data_context.use_hash_shuffle_v2:
+                    return _plan_hash_shuffle_repartition_v2(
+                        data_context, op, input_physical_dag
+                    )
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
