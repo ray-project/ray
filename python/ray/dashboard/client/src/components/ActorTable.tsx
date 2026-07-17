@@ -18,9 +18,10 @@ import Autocomplete from "@mui/material/Autocomplete";
 import { orange } from "@mui/material/colors";
 import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
-import React, { useMemo, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
+import { GlobalContext } from "../App";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
@@ -101,17 +102,18 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState<number | undefined>(10);
+  const { showAcceleratorColumns: globalShowAcceleratorColumns } =
+    useContext(GlobalContext);
 
-  const computedShowGPUColumn = useMemo(
+  const localShowGPUColumn = useMemo(
     () =>
       Object.values(actors).some(
-        (a) =>
-          (a.gpus && a.gpus.length > 0) ||
-          (a.tpus && a.tpus.length > 0),
+        (a) => (a.gpus && a.gpus.length > 0) || (a.tpus && a.tpus.length > 0),
       ),
     [actors],
   );
-  const showGPUColumn = showGPUColumnProp ?? computedShowGPUColumn;
+  const showGPUColumn =
+    showGPUColumnProp ?? (globalShowAcceleratorColumns || localShowGPUColumn);
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
