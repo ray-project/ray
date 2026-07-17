@@ -159,34 +159,26 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         return False
 
-    def _get_output_ratio(self, op: "PhysicalOperator") -> float:
-        """Get ratio of buffered outputs to downstream inputs.
-
-        Uses get_mem_op_outputs (BlockRefCounter bytes only, excludes
-        pending_task_outputs) because pending_task_outputs are blocks
-        still being generated, not buffered outputs waiting for
-        downstream consumption.
-
-        BlockRefCounter tracks blocks from production until freed:
-
-            output_bytes = op_output_queues + downstream_input_queue
-                         + downstream_pending_task_inputs
-
-        Subtract 1 to remove the downstream_pending_task_inputs overlap:
-
-            ratio = output_bytes / downstream_pending_task_inputs - 1
-                  ≈ (op_output_queues + downstream_input_queue)
-                    / downstream_pending_task_inputs
+    def _get_queue_size_bytes(self, op: "PhysicalOperator") -> int:
+        """Get the output current queue size
+        (this operator + ineligible downstream operators) in bytes for the given operator.
         """
+        op_outputs_usage = self._topology[op].output_queue_bytes()
+        # Also account the downstream ineligible operators' memory usage.
+        op_outputs_usage += sum(
+            self._resource_manager.get_op_usage(next_op).object_store_memory
+            for next_op in self._resource_manager._get_downstream_ineligible_ops(op)
+        )
+        return op_outputs_usage
+
+    def _get_queue_ratio(self, op: "PhysicalOperator") -> float:
+        """Get queue/capacity ratio for the operator."""
+        queue_size_bytes = self._get_queue_size_bytes(op)
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
-
-        output_size_bytes = self._resource_manager.get_mem_op_outputs(
-            op, include_ineligible_downstream=True
-        )
-        return (output_size_bytes / downstream_capacity_size_bytes) - 1
+        return queue_size_bytes / downstream_capacity_size_bytes
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
         """Check if backpressure should be applied for the operator.
@@ -199,7 +191,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
-        output_ratio = self._get_output_ratio(op)
+        queue_ratio = self._get_queue_ratio(op)
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -207,15 +199,16 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            result = output_ratio > self._backpressure_capacity_ratio
+            # Apply backpressure if queue ratio exceeds the threshold.
+            result = queue_ratio > self._backpressure_capacity_ratio
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
-            output_size_bytes = self._resource_manager.get_mem_op_outputs(op)
+            queue_size_bytes = self._get_queue_size_bytes(op)
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"(output_ratio={output_ratio:.2f}, {output_size_bytes=}, "
+                f"(queue_ratio={queue_ratio:.2f}, {queue_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result
