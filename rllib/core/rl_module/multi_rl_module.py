@@ -549,7 +549,7 @@ class MultiRLModuleSpec:
     model_config: Optional[dict] = None
     #: A dictionary mapping ModuleIDs to the RLModuleSpec used for each individual
     #: module.
-    rl_module_specs: Dict[ModuleID, RLModuleSpec] = None
+    rl_module_specs: Optional[Dict[ModuleID, RLModuleSpec]] = None
 
     # TODO (sven): Deprecate these in favor of using the pure Checkpointable APIs for
     #  loading and saving state.
