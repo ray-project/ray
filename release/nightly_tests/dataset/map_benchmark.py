@@ -112,7 +112,17 @@ def main(args: argparse.Namespace) -> None:
 
     def benchmark_fn():
         # Load the dataset.
-        ds = ray.data.read_parquet(path)
+        #
+        # Under DataSource V2 the Parquet read is a task-based map operator that
+        # fuses into a downstream actor-pool ``map_batches``, which serializes
+        # the reads behind the actor pool and causes a large regression (e.g.
+        # ``map_batches_autoscaling_actors_numpy_once``). Give the read a
+        # non-default ``num_cpus`` so its remote args are incompatible with the
+        # default (num_cpus=1) map op — fusion canonicalizes a missing
+        # ``num_cpus`` to 1 — which keeps the read a separate operator.
+        ctx = ray.data.DataContext.get_current()
+        read_num_cpus = 0.99 if ctx.use_datasource_v2 else None
+        ds = ray.data.read_parquet(path, num_cpus=read_num_cpus)
 
         # Apply the map transformation.
         if args.api == "map":
