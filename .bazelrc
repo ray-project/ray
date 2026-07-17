@@ -126,6 +126,13 @@ build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 build:tsan --no//:jemalloc_flag
+# RocksDB is a static library built by an out-of-band CMake action
+# (bazel/rocksdb.BUILD via rules_foreign_cc), so the --copt/--per_file_copt
+# above never reach it. Propagate a define that the RocksDB build reads to
+# turn on its native WITH_TSAN option (-fsanitize=thread), so ThreadSanitizer
+# can observe RocksDB's lock-free synchronization instead of reporting false
+# races on its uninstrumented memtable skiplist.
+build:tsan --define=ray_rocksdb_tsan=true
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
