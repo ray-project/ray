@@ -88,7 +88,11 @@ class ResourceRequest {
   void Clear() { resources_.Clear(); }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->resources_ == other.resources_;
+    // Compare every field: two requests with equal quantities but different
+    // label selectors or object-store-memory flags are not interchangeable.
+    return this->resources_ == other.resources_ &&
+           this->requires_object_store_memory_ == other.requires_object_store_memory_ &&
+           this->label_selector_ == other.label_selector_;
   }
 
   bool operator<=(const ResourceRequest &other) const {
@@ -99,9 +103,7 @@ class ResourceRequest {
     return this->resources_ >= other.resources_;
   }
 
-  bool operator!=(const ResourceRequest &other) const {
-    return this->resources_ != other.resources_;
-  }
+  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   ResourceRequest operator+(const ResourceRequest &other) const {
     ResourceRequest res = *this;
