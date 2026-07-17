@@ -410,10 +410,11 @@ class ExecutionOptions:
         Args:
             resource_limits: Limit on logical resources a Dataset can use.
                 Defaults to auto-detected limits.
-            exclude_resources: Resources to exclude from Ray Data.
+            exclude_resources: Deprecated. Use ``label_selector`` to constrain Ray
+                Data work to labeled nodes.
             preserve_order: Whether to preserve block processing order.
-            actor_locality_enabled: Whether to enable locality-aware dispatch for
-                stateful map and streaming split operations.
+            actor_locality_enabled: Deprecated. Ray Data manages actor locality
+                internally.
             verbose_progress: Whether to report progress per operator. If None,
                 read from ``RAY_DATA_VERBOSE_PROGRESS``.
             label_selector: Per-Dataset label selector applied to every task and
