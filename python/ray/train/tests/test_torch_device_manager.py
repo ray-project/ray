@@ -129,7 +129,11 @@ def test_cuda_device_manager(ray_2_node_2_gpu):
         ),
     )
 
-    trainer.fit()
+    if torch.cuda.is_available():
+        trainer.fit()
+    else:
+        with pytest.raises(TrainingFailedError):
+            trainer.fit()
 
 
 def test_npu_device_manager(ray_2_node_2_npus):
