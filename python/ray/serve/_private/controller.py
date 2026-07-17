@@ -204,6 +204,8 @@ class ServeController:
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         # Last full set of ingress-port tuples fed to update_ports (for the per-tick set-diff).
         self._last_ingress_port_tuples: set = set()
+        # Last ingress membership version seen; -1 forces the first tick to run.
+        self._last_ingress_membership_version: int = -1
         if self._ha_proxy_enabled:
             logger.info(
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
@@ -691,6 +693,16 @@ class ServeController:
         """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
+            # Skip the whole O(replicas) port reconcile on ticks where no ingress
+            # replica's membership/node/ports changed and no quarantined port is awaiting
+            # reclaim. The membership version is a monotonic counter (immune to the
+            # same-tick clear of the per-deployment broadcast dirty flag).
+            version = self.deployment_state_manager.get_ingress_membership_version()
+            if (
+                version == self._last_ingress_membership_version
+                and not NodePortManager.any_pending_quarantine()
+            ):
+                return
             # Update port values for ingress replicas.
             # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
@@ -709,6 +721,11 @@ class ServeController:
             # Clean up stale ports
             # get all alive replica ids and their node ids.
             NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+            # Mark this membership version reconciled only after update_ports +
+            # prune succeed. If either raised, the version is left unchanged so the
+            # control loop retries the reconcile next tick instead of skipping it.
+            self._last_ingress_membership_version = version
 
     def broadcast_target_groups_if_changed(self) -> None:
         """Broadcast target groups over long poll if they have changed.
