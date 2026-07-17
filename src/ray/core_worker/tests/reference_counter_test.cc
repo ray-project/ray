@@ -948,6 +948,61 @@ TEST_F(ReferenceCountTest, TestLocationSubscriberCountMultipleSubscribers) {
   rc->RemoveLocalReference(obj, nullptr);
 }
 
+// Erasing a reference nobody subscribed to must not publish a terminal failure;
+// erasing one with a live subscriber still must.
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscriberCount) {
+  auto unwatched = ObjectID::FromRandom();
+  auto watched = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+
+  for (const auto &obj : {unwatched, watched}) {
+    rc->AddOwnedObject(obj,
+                       {},
+                       address,
+                       "file.py:42",
+                       100,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                       /*add_local_ref=*/true);
+  }
+
+  // No subscriber: the reference is erased without a failure publish.
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unwatched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unwatched));
+
+  // Live subscriber: erasing the reference still publishes the failure.
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(watched);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  EXPECT_CALL(
+      *publisher_,
+      PublishFailure(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, watched.Binary()))
+      .Times(1);
+  rc->RemoveLocalReference(watched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(watched));
+
+  // Subscriber gone by death time: the gate observes the decrement and skips.
+  auto unsubscribed = ObjectID::FromRandom();
+  rc->AddOwnedObject(unsubscribed,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(unsubscribed);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  rc->RemoveObjectLocationSubscriber(unsubscribed);
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unsubscribed, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unsubscribed));
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.

@@ -438,7 +438,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<NodeID> locations;
     /// Number of raylets subscribed to this object's location, read under mutex_
     /// by PushToLocationSubscribers to skip publishing an update no raylet is
-    /// listening for. Maintained by AddObjectLocationSubscriber and
+    /// listening for, and by EraseReference to skip the terminal failure publish
+    /// when nobody is listening. Maintained by AddObjectLocationSubscriber and
     /// RemoveObjectLocationSubscriber. Never drops below the live subscriber
     /// count, so a live subscriber is never skipped. Two mechanisms compose to
     /// guarantee that: the decrement fires only when the publisher actually

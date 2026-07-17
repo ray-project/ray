@@ -1377,6 +1377,24 @@ TEST_F(CoreWorkerTest, HandlePubsubSubscribeBeforeRefDoesNotStealCount) {
   const auto &update = poll_reply.pub_messages(1);
   ASSERT_EQ(update.worker_object_locations_message().node_ids_size(), 1);
   EXPECT_EQ(update.worker_object_locations_message().node_ids(0), node_id.Binary());
+
+  // The rejected subscriber was notified at rejection time: the ref-removed
+  // snapshot, then the terminal failure.
+  rpc::PubsubLongPollingRequest rejected_poll;
+  rejected_poll.set_subscriber_id(rejected_subscriber.Binary());
+  rejected_poll.set_max_processed_sequence_id(0);
+  rejected_poll.set_publisher_id("");
+  rpc::PubsubLongPollingReply rejected_reply;
+  core_worker_->HandlePubsubLongPolling(
+      rejected_poll,
+      &rejected_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(rejected_reply.pub_messages_size(), 2);
+  EXPECT_TRUE(
+      rejected_reply.pub_messages(0).worker_object_locations_message().ref_removed());
+  EXPECT_TRUE(rejected_reply.pub_messages(1).has_failure_message());
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
