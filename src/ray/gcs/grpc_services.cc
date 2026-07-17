@@ -49,10 +49,15 @@ void NodeInfoGrpcService::InitServerCallFactories(
     GrpcServerMetrics &server_metrics) {
   // We only allow one cluster ID in the lifetime of a client.
   // So, if a client connects, it should not have a pre-existing different ID.
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeInfoGcsService,
-                                  GetClusterId,
-                                  max_active_rpcs_per_handler_,
-                                  ClusterIdAuthType::EMPTY_AUTH);
+  // GetClusterId runs on the dedicated lightweight-reads io_context: every
+  // client's Connect() blocks on it, and dispatching it through the
+  // (single-threaded) node_manager io_context lets mass RegisterNode /
+  // GetAllNodeInfo storms delay a constant-value read past client deadlines.
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_IN_IO_CONTEXT(NodeInfoGcsService,
+                                                GetClusterId,
+                                                max_active_rpcs_per_handler_,
+                                                ClusterIdAuthType::EMPTY_AUTH,
+                                                lightweight_reads_io_service_);
   RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
       NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)

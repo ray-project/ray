@@ -32,8 +32,16 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(                                                      \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS, PASS_GRPC_PEER)  \
+/// \param IO_CONTEXT The io_context the handler is posted to. All handlers of a
+/// service normally share the service's main_service_; pass a different
+/// io_context to isolate a handler from queueing behind the others.
+#define _RPC_SERVICE_HANDLER_IN_IO_CONTEXT(SERVICE,                                \
+                                           HANDLER,                                \
+                                           MAX_ACTIVE_RPCS,                        \
+                                           AUTH_TYPE,                              \
+                                           RECORD_METRICS,                         \
+                                           PASS_GRPC_PEER,                         \
+                                           IO_CONTEXT)                             \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                       \
       new ServerCallFactoryImpl<SERVICE,                                           \
                                 SERVICE##Handler,                                  \
@@ -46,7 +54,7 @@ namespace rpc {
           service_handler_,                                                        \
           &SERVICE##Handler::Handle##HANDLER,                                      \
           cq,                                                                      \
-          main_service_,                                                           \
+          IO_CONTEXT,                                                              \
           #SERVICE ".grpc_server." #HANDLER,                                       \
           AUTH_TYPE == ClusterIdAuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
           auth_token,                                                              \
@@ -54,6 +62,16 @@ namespace rpc {
           RECORD_METRICS,                                                          \
           server_metrics));                                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
+
+#define _RPC_SERVICE_HANDLER(                                                     \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS, PASS_GRPC_PEER) \
+  _RPC_SERVICE_HANDLER_IN_IO_CONTEXT(SERVICE,                                     \
+                                     HANDLER,                                     \
+                                     MAX_ACTIVE_RPCS,                             \
+                                     AUTH_TYPE,                                   \
+                                     RECORD_METRICS,                              \
+                                     PASS_GRPC_PEER,                              \
+                                     main_service_)
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
@@ -79,6 +97,16 @@ namespace rpc {
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
   _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false)
+
+/// Like RPC_SERVICE_HANDLER_CUSTOM_AUTH, but posts the handler to an explicit
+/// io_context instead of the service's main_service_. Use this to isolate a
+/// cheap, latency-sensitive handler (e.g. NodeInfoGcsService.GetClusterId, a
+/// constant-time read on every client's Connect() path) from queueing behind
+/// heavyweight handlers that share the service's io_context.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_IN_IO_CONTEXT(        \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, IO_CONTEXT) \
+  _RPC_SERVICE_HANDLER_IN_IO_CONTEXT(                         \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true, false, IO_CONTEXT)
 
 class GrpcService;
 

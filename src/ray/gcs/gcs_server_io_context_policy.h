@@ -42,6 +42,12 @@ struct IOContextMetadata {
   bool used_for_health_check;
 };
 
+/// Tag type keying the dedicated io_context that runs trivial, constant-time
+/// RPC read handlers (currently NodeInfoGcsService.GetClusterId). These
+/// handlers sit on every client's Connect() path and must never queue behind
+/// heavyweight control-plane handlers; see NodeInfoGrpcService.
+struct GcsLightweightRpcReads {};
+
 struct GcsServerIOContextPolicy {
   GcsServerIOContextPolicy() = delete;
 
@@ -64,6 +70,8 @@ struct GcsServerIOContextPolicy {
       return IndexOf("internal_kv_io_context");
     } else if constexpr (std::is_same_v<T, GcsNodeManager>) {
       return IndexOf("node_manager_io_context");
+    } else if constexpr (std::is_same_v<T, GcsLightweightRpcReads>) {
+      return IndexOf("lightweight_rpc_reads_io_context");
     } else {
       // default io context
       return -1;
@@ -74,7 +82,7 @@ struct GcsServerIOContextPolicy {
   // and a complete set of those returned from GetDedicatedIOContextIndex. Or you
   // can get runtime crashes when accessing a missing name, or get leaks by
   // creating unused threads.
-  constexpr static std::array<IOContextMetadata, 7> kAllDedicatedIOContexts{{
+  constexpr static std::array<IOContextMetadata, 8> kAllDedicatedIOContexts{{
       // task_io_context only runs GcsTaskManager, which ingests and serves
       // task-state events (observability) and drops events under load by design.
       // It is not on the GCS control plane, so a backlog here (e.g. under a
@@ -97,6 +105,11 @@ struct GcsServerIOContextPolicy {
        /*enable_lag_probe=*/true,
        /*used_for_health_check=*/true},
       {"node_manager_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/true},
+      // Only runs constant-time RPC read handlers (GetClusterId), which sit on
+      // every client's Connect() path — hence health-check critical.
+      {"lightweight_rpc_reads_io_context",
        /*enable_lag_probe=*/true,
        /*used_for_health_check=*/true},
   }};

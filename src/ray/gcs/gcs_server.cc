@@ -425,6 +425,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
+      io_context_provider_.GetIOContext<GcsLightweightRpcReads>(),
       *gcs_node_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }

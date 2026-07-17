@@ -251,5 +251,95 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
   }
 }
 
+// Fixture for handlers bound to a dedicated io_context via
+// RPC_SERVICE_HANDLER_CUSTOM_AUTH_IN_IO_CONTEXT: the service's main io_context
+// is constructed but its event loop is NEVER run, so any reply proves the
+// handler was posted to the dedicated io_context instead of the service's.
+class TestGrpcServerDedicatedIoContextFixture : public ::testing::Test {
+ public:
+  void SetUp() override {
+    grpc_server_.reset(new GrpcServer("test-dedicated-io-context", 0, true));
+    grpc_server_->RegisterService(
+        std::make_unique<TestGrpcServiceWithDedicatedIoContext>(
+            main_handler_io_service_, dedicated_io_service_, test_service_handler_),
+        false);
+    grpc_server_->Run();
+    while (grpc_server_->GetPort() == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    dedicated_thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+          dedicated_io_service_work_(dedicated_io_service_.get_executor());
+      dedicated_io_service_.run();
+    });
+
+    client_thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+          client_io_service_work_(client_io_service_.get_executor());
+      client_io_service_.run();
+    });
+    client_call_manager_.reset(
+        new ClientCallManager(client_io_service_, false, /*local_address=*/""));
+    grpc_client_.reset(new GrpcClient<TestService>(
+        "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
+  }
+
+  void TearDown() override {
+    grpc_client_.reset();
+    client_call_manager_.reset();
+    client_io_service_.stop();
+    if (client_thread_->joinable()) {
+      client_thread_->join();
+    }
+    dedicated_io_service_.stop();
+    if (dedicated_thread_->joinable()) {
+      dedicated_thread_->join();
+    }
+    grpc_server_->Shutdown();
+  }
+
+  // Sends a Ping and waits for the reply with a bounded deadline; returns
+  // whether the reply arrived in time.
+  bool PingAndWait(int64_t deadline_ms) {
+    PingRequest request;
+    std::atomic<bool> done(false);
+    Ping(request, [&done](const Status &status, const PingReply &reply) {
+      RAY_LOG(INFO) << "Ping replied, status=" << status;
+      ASSERT_TRUE(status.ok()) << status;
+      done = true;
+    });
+    for (int waited_ms = 0; waited_ms < deadline_ms; waited_ms += 10) {
+      if (done) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done;
+  }
+
+ protected:
+  VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, /*method_timeout_ms*/ -1, )
+  // Server; NOTE: main_handler_io_service_ is intentionally never run.
+  TestServiceHandler test_service_handler_;
+  instrumented_io_context main_handler_io_service_;
+  instrumented_io_context dedicated_io_service_;
+  std::unique_ptr<std::thread> dedicated_thread_;
+  std::unique_ptr<GrpcServer> grpc_server_;
+  // Client
+  instrumented_io_context client_io_service_;
+  std::unique_ptr<std::thread> client_thread_;
+  std::unique_ptr<ClientCallManager> client_call_manager_;
+  std::unique_ptr<GrpcClient<TestService>> grpc_client_;
+};
+
+TEST_F(TestGrpcServerDedicatedIoContextFixture,
+       DedicatedIoContextHandlerRepliesWhileServiceIoContextNeverRuns) {
+  // The service's main io_context has no thread running it; only a handler
+  // posted to the dedicated io_context can produce a reply.
+  ASSERT_TRUE(PingAndWait(/*deadline_ms=*/10000));
+  ASSERT_EQ(test_service_handler_.request_count, 1);
+}
+
 }  // namespace rpc
 }  // namespace ray

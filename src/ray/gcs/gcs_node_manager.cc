@@ -95,6 +95,9 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
 void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
                                         rpc::GetClusterIdReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // Runs on the dedicated lightweight-reads io_context, concurrently with the
+  // node_manager io_context, so it must stay a lock-free read of the immutable
+  // `cluster_id_` and must not touch any other GcsNodeManager state.
   reply->set_cluster_id(cluster_id_.Binary());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

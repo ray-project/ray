@@ -65,10 +65,15 @@ class ActorInfoGrpcService : public GrpcService {
 
 class NodeInfoGrpcService : public GrpcService {
  public:
+  /// \param lightweight_reads_io_service Dedicated io_context for trivial,
+  /// constant-time read handlers (GetClusterId) so they cannot queue behind
+  /// heavyweight handlers (RegisterNode, GetAllNodeInfo, ...) on \p io_service.
   explicit NodeInfoGrpcService(instrumented_io_context &io_service,
+                               instrumented_io_context &lightweight_reads_io_service,
                                NodeInfoGcsServiceHandler &service_handler,
                                int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
+        lightweight_reads_io_service_(lightweight_reads_io_service),
         service_handler_(service_handler),
         max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
 
@@ -84,6 +89,7 @@ class NodeInfoGrpcService : public GrpcService {
 
  private:
   NodeInfoGcsService::AsyncService service_;
+  instrumented_io_context &lightweight_reads_io_service_;
   NodeInfoGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };

@@ -106,5 +106,42 @@ class TestGrpcService : public GrpcService {
   TestServiceHandler &service_handler_;
 };
 
+/// Same as TestGrpcService, but Ping is posted to a separate dedicated
+/// io_context (RPC_SERVICE_HANDLER_CUSTOM_AUTH_IN_IO_CONTEXT) instead of the
+/// service's main io_context.
+class TestGrpcServiceWithDedicatedIoContext : public GrpcService {
+ public:
+  TestGrpcServiceWithDedicatedIoContext(instrumented_io_context &handler_io_service,
+                                        instrumented_io_context &dedicated_io_service,
+                                        TestServiceHandler &handler)
+      : GrpcService(handler_io_service),
+        dedicated_io_service_(dedicated_io_service),
+        service_handler_(handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) override {
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH_IN_IO_CONTEXT(TestService,
+                                                  Ping,
+                                                  /*max_active_rpcs=*/1,
+                                                  ClusterIdAuthType::NO_AUTH,
+                                                  dedicated_io_service_);
+  }
+
+ private:
+  /// The grpc async service object.
+  TestService::AsyncService service_;
+  /// The io_context Ping is posted to; never the service's main io_context.
+  instrumented_io_context &dedicated_io_service_;
+  /// The service handler that actually handle the requests.
+  TestServiceHandler &service_handler_;
+};
+
 }  // namespace rpc
 }  // namespace ray

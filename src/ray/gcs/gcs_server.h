@@ -138,6 +138,12 @@ class GcsServer {
   static constexpr char kRedisStorage[] = "redis";
   static constexpr char kRocksDbStorage[] = "rocksdb";
 
+  /// Test-only: the io_context GcsNodeManager handlers are posted to. Lets
+  /// tests simulate a backlogged node_manager event loop.
+  instrumented_io_context &GetNodeManagerIOContextInTest() {
+    return io_context_provider_.GetIOContext<GcsNodeManager>();
+  }
+
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message) {

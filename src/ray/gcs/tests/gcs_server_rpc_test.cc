@@ -604,4 +604,28 @@ TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
                                   std::chrono::seconds(30)));
 }
 
+TEST_F(GcsServerTest, GetClusterIdNotDelayedByNodeManagerIoContextBacklog) {
+  // Occupy the (single-threaded) node_manager io_context with a task that
+  // waits until released, simulating an event loop backlogged behind mass
+  // RegisterNode / GetAllNodeInfo storms. GetClusterId is posted to the
+  // dedicated lightweight-reads io_context, so a 2s deadline must still
+  // suffice. Pre-fix (GetClusterId shared the node_manager io_context), this
+  // call fails with DEADLINE_EXCEEDED.
+  std::promise<void> release;
+  // Captured by value: the blocking task may still be waking up when this test
+  // returns and destroys `release`.
+  std::shared_future<void> released = release.get_future().share();
+  gcs_server_->GetNodeManagerIOContextInTest().post([released]() { released.wait(); },
+                                                    "BlockNodeManagerIOContextForTest");
+
+  rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  auto status =
+      client_->SyncGetClusterId(std::move(request), &reply, /*timeout_ms=*/2000);
+  release.set_value();
+
+  ASSERT_TRUE(status.ok()) << status;
+  ASSERT_FALSE(ClusterID::FromBinary(reply.cluster_id()).IsNil());
+}
+
 }  // namespace ray
