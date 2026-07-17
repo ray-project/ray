@@ -841,6 +841,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_torch_device_manager.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    main = "tests/test_torch_device_manager.py",
     tags = [
         "exclusive",
         "team:ml",
