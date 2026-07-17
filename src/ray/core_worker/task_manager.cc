@@ -461,6 +461,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
+      RAY_LOG(DEBUG).WithField(task_id)
+          << "Task is already submitted/running, skipping resubmit";
       return std::nullopt;
     } else {
       // Going to resubmit the task now.
@@ -552,6 +554,7 @@ void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
 
 void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   TaskSpecification spec;
+  RAY_LOG(DEBUG).WithField(task_id) << "Marking generator failed and resubmitting";
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
