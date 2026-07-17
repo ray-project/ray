@@ -51,5 +51,8 @@ class TPUTorchDeviceManager(TorchDeviceManager):
             import torch_tpu._loader
 
             torch_tpu._loader.load()
-        except ImportError:
-            pass
+        except ImportError as e:
+            raise ImportError(
+                "The `torch_tpu` module is required to use PyTorch TPU distributed training. "
+                "Please install it or ensure it is available in your environment."
+            ) from e

@@ -22,7 +22,6 @@ from ray.train.constants import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
-from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
@@ -196,48 +195,15 @@ def _validate_tpu_resources(worker_group: BaseWorkerGroup):
             "`resources_per_worker={'TPU': 1}`."
         )
 
-
-def _set_tpu_env_on_worker(env_vars: Dict[str, str]):
-    for k, v in env_vars.items():
-        os.environ[k] = v
-
-
-def _setup_tpu_multislice_env(worker_group: BaseWorkerGroup, master_addr: str):
-    if not hasattr(worker_group, "get_worker_group_context"):
-        return
-
-    num_slices = worker_group.get_worker_group_context().num_slices
-    if num_slices <= 1:
-        return
-
-    if (
-        hasattr(worker_group, "_train_run_context")
-        and worker_group._train_run_context.scaling_config
-    ):
-        scaling_config = worker_group._train_run_context.scaling_config
-        workers_per_slice, _ = get_tpu_worker_resources(
-            topology=scaling_config.topology,
-            accelerator_type=scaling_config.accelerator_type,
-            resources_per_unit=scaling_config.resources_per_worker,
-            num_slices=1,
-        )
-    else:
-        workers_per_slice = max(1, len(worker_group) // num_slices)
-
-    for i in range(len(worker_group)):
-        slice_id = min(i // workers_per_slice, num_slices - 1)
-        slice_local_worker_id = i % workers_per_slice
-        env_vars = get_tpu_coordinator_env_vars(
-            coordinator_address=master_addr,
-            num_slices=num_slices,
-            slice_id=slice_id,
-        )
-        env_vars["TPU_WORKER_ID"] = str(slice_local_worker_id)
-        worker_group.execute_single(
-            i,
-            _set_tpu_env_on_worker,
-            env_vars=env_vars,
-        )
+    if hasattr(worker_group, "get_worker_group_context"):
+        num_slices = worker_group.get_worker_group_context().num_slices
+        if num_slices > 1:
+            # TODO (ryanaoleary): Once TorchTPU supports multi-slice, remove this ValueError
+            # and implement multi-slice TPU coordinator setup.
+            raise ValueError(
+                "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported. "
+                "For now, please restrict Torch TPU training to a single slice."
+            )
 
 
 class _TorchBackend(Backend):
@@ -266,7 +232,6 @@ class _TorchBackend(Backend):
 
             if backend == "tpu_dist":
                 _validate_tpu_resources(worker_group)
-                _setup_tpu_multislice_env(worker_group, master_addr)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):

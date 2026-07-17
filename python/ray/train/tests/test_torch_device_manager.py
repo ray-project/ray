@@ -1,5 +1,6 @@
 import os
 import sys
+from unittest.mock import patch
 
 # Disable torch backend autoload to prevent torch_tpu from crashing the process
 # on import due to ABI mismatches when running on a CPU-only head/worker node.
@@ -244,6 +245,41 @@ def test_tpu_torch_validation_error(ray_2_node_2_tpus):
         trainer.fit()
 
     assert "exactly 1 TPU device" in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    not is_v2_enabled(),
+    reason="TPU device manager and backend are V2-only features.",
+)
+def test_tpu_torch_multislice_validation_error(ray_2_node_2_tpus):
+    # PyTorch TPU currently does not support training across multiple slices.
+    # We specify a topology that requires 8 workers, but request 16 workers, which implies 2 slices.
+    trainer = TorchTrainer(
+        train_loop_per_worker=lambda: None,
+        scaling_config=ScalingConfig(
+            num_workers=16,
+            use_tpu=True,
+            topology="2x4",
+            accelerator_type="TPU-V6E",
+            resources_per_worker={"TPU": 1},
+        ),
+    )
+
+    with pytest.raises(TrainingFailedError) as exc_info:
+        trainer.fit()
+
+    assert (
+        "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported"
+        in str(exc_info.value)
+    )
+
+
+def test_tpu_torch_import_error():
+    with patch.dict(sys.modules, {"torch_tpu._loader": None}):
+        with pytest.raises(ImportError) as exc_info:
+            TPUTorchDeviceManager.register_custom_torch_dist_backend()
+
+    assert "The `torch_tpu` module is required" in str(exc_info.value)
 
 
 if __name__ == "__main__":
