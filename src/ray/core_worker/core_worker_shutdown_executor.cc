@@ -80,8 +80,8 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
 
   // Flush and stop the task-event RayEventRecorder before its dedicated io thread (owned
   // by CoreWorkerProcessImpl) is torn down.
-  if (core_worker->ray_event_recorder_ != nullptr) {
-    core_worker->ray_event_recorder_->StopExportingEvents();
+  if (core_worker->ray_task_event_recorder_ != nullptr) {
+    core_worker->ray_task_event_recorder_->StopExportingEvents();
   }
 
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
@@ -351,7 +351,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
         core_worker->options_.session_name,
         core_worker->GetCurrentNodeId());
-    core_worker->ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+    core_worker->ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
     core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 

@@ -174,6 +174,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        ":task_ray_event_interface",
         "//src/ray/protobuf/public:events_task_definition_event_cc_proto",
     ],
 )
@@ -188,6 +189,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        ":task_ray_event_interface",
         "//src/ray/protobuf/public:events_actor_task_definition_event_cc_proto",
     ],
 )
@@ -202,6 +204,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        ":task_ray_event_interface",
         "//src/ray/protobuf/public:events_task_lifecycle_event_cc_proto",
     ],
 )
@@ -216,6 +219,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        ":task_ray_event_interface",
         "//src/ray/protobuf:events_task_profile_events_cc_proto",
     ],
 )

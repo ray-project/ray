@@ -151,7 +151,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -164,8 +164,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   JobID job_id = JobID::FromInt(1);
   TaskID task_id_1 = TaskID::FromRandom(job_id);
   TaskSpecification task_spec_without_dependency;
@@ -224,7 +230,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -237,8 +243,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
@@ -261,7 +273,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -286,7 +298,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   OrderedActorTaskExecutionQueue queue(io_service,
                                        waiter,
                                        task_event_buffer,
-                                       ray_event_recorder,
+                                       ray_task_event_recorder,
                                        pool_manager,
                                        1,
                                        execute_task_blocking,
@@ -318,7 +330,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -331,8 +343,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec_without_dependency;
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   TaskSpecification task_spec_with_dependency;
@@ -378,7 +396,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -391,8 +409,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec_without_dependency;
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   TaskSpecification task_spec_with_dependency;
@@ -422,7 +446,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -435,8 +459,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec));
@@ -464,7 +494,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -477,8 +507,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
     n_canceled++;
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 1, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   EnqueueWithFetch(queue, waiter, 2, 2, MakeTaskToExecute(task_spec));
@@ -521,7 +557,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
@@ -537,8 +573,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
     reject_seq_nos.push_back(task.TaskSpec().ConcurrencyGroupSequenceNumber());
   };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 2, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
 
   // Submitting 0 with dep, 1, 3 (retry of 2), and 4 (with client_processed_up_to = 2 bc 2
   // failed to send), 6 (retry of 5) with dep.
@@ -578,7 +620,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"a", 1, {}},
                                                    ConcurrencyGroup{"b", 1, {}}};
   auto pool_manager =
@@ -594,8 +636,14 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   };
   auto cancel_task = [](const TaskToExecute &, const Status &) { FAIL(); };
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, ray_event_recorder, pool_manager, 2, execute_task, cancel_task);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
 
   auto make_task = [](const std::string &group, int64_t seq_no) {
     auto spec = CreateActorTaskSpec(seq_no);
@@ -641,7 +689,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
@@ -657,7 +705,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   UnorderedActorTaskExecutionQueue queue(io_service,
                                          waiter,
                                          task_event_buffer,
-                                         ray_event_recorder,
+                                         ray_task_event_recorder,
                                          pool_manager,
                                          /*fiber_state_manager=*/nullptr,
                                          /*is_asyncio=*/false,
@@ -745,12 +793,12 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
     n_canceled++;
   };
 
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,
-      ray_event_recorder,
+      ray_task_event_recorder,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
@@ -836,12 +884,12 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
     }
   };
 
-  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_event_recorder;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,
-      ray_event_recorder,
+      ray_task_event_recorder,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
