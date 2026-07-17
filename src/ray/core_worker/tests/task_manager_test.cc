@@ -3219,7 +3219,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadIgnoresLateReportPastEof) {
   // Peek past EOF so the bulk path can consume an EOF-region ref, then finish
   // the generator (EOF at index 1).
   ASSERT_EQ(manager_.PeekObjectRefStreamN(generator_id, 2).size(), 2UL);
-  CompletePendingStreamingTask(spec, caller_address, /*num_streaming_generator_returns=*/1);
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
 
   // Cursor advances to 2 while EOF is at 1.
   ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
