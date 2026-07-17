@@ -472,41 +472,6 @@ class _ShuffleConnection:
             pass
         self._closed = True
 
-    # ── FETCH (returns bytes per source per range) ───────────────────────
-    def fetch(
-        self,
-        sources: List[Tuple[str, List[Tuple[int, int]]]],
-    ) -> List[List[bytes]]:
-        """Single FETCH carrying ``sources`` and returning the matching bytes.
-
-        ``sources`` is a list of ``(path, [(offset, length), ...])`` tuples;
-        the returned list is parallel — index ``i`` corresponds to
-        ``sources[i]``, and each inner list is parallel to that source's
-        ``ranges`` argument. Useful for in-memory consumers (tests, direct
-        ``_read_ipc(buf)`` callers); production reduce path uses
-        :meth:`fetch_into` instead to stream directly onto disk.
-        """
-        self._send_fetch_request(sources)
-        status = _recv_u8(self._sock)
-        if status != _STATUS_OK:
-            self._raise_error_response(status)
-        out: List[List[bytes]] = []
-        for path, ranges in sources:
-            n = _recv_u32(self._sock)
-            if n != len(ranges):
-                # Protocol contract violation: server's per-source range count
-                # must match what we sent.
-                raise RuntimeError(
-                    f"protocol error: server returned {n} ranges for "
-                    f"{path!r}, expected {len(ranges)}"
-                )
-            buf: List[bytes] = []
-            for _ in range(n):
-                length = _recv_u32(self._sock)
-                buf.append(_recvall(self._sock, length))
-            out.append(buf)
-        return out
-
     # ── FETCH (streams response APPENDED into one open file) ────────────
     def fetch_into(
         self,
@@ -680,8 +645,6 @@ class _SourceRef:
 
     Built once per input handle for a given partition_id at reducer start.
     The (shuffle_id, node_id) pair is the manager's named-actor identity;
-    the reducer calls ``_lookup_manager(shuffle_id, node_id)`` when it
-    actually needs an ActorHandle for the fetch RPC.
     """
 
     shuffle_id: str
@@ -693,14 +656,8 @@ class _SourceRef:
 
 @dataclass(slots=True, frozen=True)
 class _NodeMember:
-    """A source's ranges as they appear within a per-node fetch group.
+    """A source's ranges as they appear within a per-node fetch group."""
 
-    ``idx`` is the source's original position across all reducer sources —
-    preserved so ``_PwriteSink``'s sequential pwrite layout stays consistent
-    across FETCH batches (each range lands at its expected offset).
-    """
-
-    idx: int
     path: str
     ranges: List[Tuple[int, int]]
 
@@ -867,9 +824,8 @@ def _chunk_members_by_bytes(
     A source's ranges MAY be split across batches: the source appears as
     multiple pseudo-members with the same ``idx``/``path`` but disjoint
     range subsets, in the original range order. Individual ranges are
-    NEVER split — each range is one Arrow IPC frame at the mapper, so a
-    sub-range cut would break the reducer's decode. A single range larger
-    than ``max_bytes`` therefore still gets its own oversized batch.
+    NEVER split as each range is one Arrow IPC frame at the mapper, so a
+    sub-range cut would break the reducer's decode.
     """
     batch: List[_NodeMember] = []
     batch_bytes = 0
@@ -879,9 +835,7 @@ def _chunk_members_by_bytes(
             if (batch or pending) and batch_bytes + length > max_bytes:
                 if pending:
                     batch.append(
-                        _NodeMember(
-                            idx=member.idx, path=member.path, ranges=pending
-                        )
+                        _NodeMember(path=member.path, ranges=pending)
                     )
                     pending = []
                 yield batch
@@ -889,9 +843,7 @@ def _chunk_members_by_bytes(
             pending.append((off, length))
             batch_bytes += length
         if pending:
-            batch.append(
-                _NodeMember(idx=member.idx, path=member.path, ranges=pending)
-            )
+            batch.append(_NodeMember(path=member.path, ranges=pending))
     if batch:
         yield batch
 
@@ -935,14 +887,11 @@ def _handles_to_sources(
 def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by manager so each manager gets ONE TCP connection.
 
-    Sources on the same manager share a ``(shuffle_id, node_id)`` — the
-    manager's named-actor identity — which is used as the collapse key.
-    ``idx`` on each member preserves the source's original position across
-    all reducer sources — used to keep the sequential pwrite layout stable
-    across FETCH batches.
+    Sources on the same manager share a ``(shuffle_id, node_id)`` which is
+    used as the collapse key.
     """
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for idx, s in enumerate(sources):
+    for s in sources:
         key = (s.shuffle_id, s.node_id)
         group = by_key.get(key)
         if group is None:
@@ -953,7 +902,7 @@ def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
                 members=[],
             )
             by_key[key] = group
-        group.members.append(_NodeMember(idx=idx, path=s.path, ranges=s.ranges))
+        group.members.append(_NodeMember(path=s.path, ranges=s.ranges))
     return list(by_key.values())
 
 

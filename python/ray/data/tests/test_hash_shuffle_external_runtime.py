@@ -111,53 +111,37 @@ def test_handshake_unreachable_endpoint_raises_connection_error():
         s.close()
 
 
-# -------------------------------------------------------------- fetch (bytes)
-def test_fetch_returns_expected_bytes(ray_start_regular_shared_2_cpus, tmp_path):
-    # Cover the three request shapes (single range, multi range, multi source)
-    # against one manager over one keep-alive connection.
-    _actor, endpoint = _make_manager(tmp_path, token="t")
-    p_a = _write_source_file(tmp_path, "a.bin", b"abcdefghijklmnopqrst")  # 20B
-    p_b = _write_source_file(
-        tmp_path, "b.bin", b"".join(bytes([i]) * 8 for i in range(10))  # 80B
-    )
-    p_c = _write_source_file(tmp_path, "c.bin", b"BBBBBBBB")
-
-    with open_shuffle_connection(endpoint, "t") as conn:
-        # Single source, single range.
-        out = conn.fetch([(p_a, [(3, 5)])])
-        assert out == [[b"defgh"]]
-
-        # Single source, multiple ranges.
-        out = conn.fetch([(p_b, [(0, 8), (16, 8), (56, 8)])])
-        assert out[0][0] == bytes([0]) * 8
-        assert out[0][1] == bytes([2]) * 8
-        assert out[0][2] == bytes([7]) * 8
-
-        # Multiple sources in one FETCH.
-        out = conn.fetch([(p_a, [(0, 6)]), (p_c, [(2, 4)])])
-        assert out[0][0] == b"abcdef"
-        assert out[1][0] == b"BBBB"
-
-
+# --------------------------------------------- fetch_into (streaming to sink)
 def test_fetch_error_paths(ray_start_regular_shared_2_cpus, tmp_path):
     # Missing path → FileNotFoundError; path outside base_dir → PermissionError.
+    # Errors fire on the response status byte, before anything hits the sink.
     _actor, endpoint = _make_manager(tmp_path, token="t")
 
-    with open_shuffle_connection(endpoint, "t") as conn:
-        with pytest.raises(FileNotFoundError):
-            conn.fetch([(str(tmp_path / "missing.bin"), [(0, 4)])])
-
-    outside = tmp_path.parent / "outside.bin"
-    outside.write_bytes(b"secret")
+    sink_path = tmp_path / "sink.bin"
+    fd = os.open(str(sink_path), os.O_RDWR | os.O_CREAT, 0o644)
     try:
+        os.ftruncate(fd, 16)
+        sink = _PwriteSink(fd, base_offset=0)
+
         with open_shuffle_connection(endpoint, "t") as conn:
-            with pytest.raises(PermissionError):
-                conn.fetch([(str(outside), [(0, 6)])])
+            with pytest.raises(FileNotFoundError):
+                conn.fetch_into(
+                    [(str(tmp_path / "missing.bin"), [(0, 4)])], sink
+                )
+
+        outside = tmp_path.parent / "outside.bin"
+        outside.write_bytes(b"secret")
+        try:
+            with open_shuffle_connection(endpoint, "t") as conn:
+                with pytest.raises(PermissionError):
+                    conn.fetch_into([(str(outside), [(0, 6)])], sink)
+        finally:
+            outside.unlink(missing_ok=True)
     finally:
-        outside.unlink(missing_ok=True)
+        os.close(fd)
 
 
-# --------------------------------------------- fetch_into (streaming to sink)
+
 def test_fetch_into_wire_format(ray_start_regular_shared_2_cpus, tmp_path):
     # fetch_into writes a flat (u32 len + bytes)* stream to the sink.
     _actor, endpoint = _make_manager(tmp_path, token="t")
@@ -215,9 +199,9 @@ def test_fetch_into_reset_and_retry(ray_start_regular_shared_2_cpus, tmp_path):
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,
     # and single-range-larger-than-budget (must stand alone as its own batch).
-    m1 = _NodeMember(idx=0, path="a", ranges=[(0, 10), (10, 10)])   # 20 total
-    m2 = _NodeMember(idx=1, path="b", ranges=[(0, 30)])             # 30 total
-    m3 = _NodeMember(idx=2, path="c", ranges=[(0, 5), (5, 5)])      # 10 total
+    m1 = _NodeMember(path="a", ranges=[(0, 10), (10, 10)])   # 20 total
+    m2 = _NodeMember(path="b", ranges=[(0, 30)])             # 30 total
+    m3 = _NodeMember(path="c", ranges=[(0, 5), (5, 5)])      # 10 total
 
     # Budget 100 -> everything fits in one batch.
     batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=100))
@@ -228,7 +212,7 @@ def test_chunk_members_by_bytes():
     batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=25))
     assert len(batches) == 3
     assert batches[0] == [m1]
-    assert batches[1] == [_NodeMember(idx=1, path="b", ranges=[(0, 30)])]
+    assert batches[1] == [_NodeMember(path="b", ranges=[(0, 30)])]
     assert batches[2] == [m3]
 
     # Empty input -> no batches.
@@ -237,7 +221,6 @@ def test_chunk_members_by_bytes():
 
 def test_group_by_manager():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
-    # Members' idx preserves original source order across the flat input.
     s0 = _SourceRef("sh", "n1", "tok", "a", [(0, 4)])
     s1 = _SourceRef("sh", "n2", "tok", "b", [(0, 8)])
     s2 = _SourceRef("sh", "n1", "tok", "c", [(0, 2)])
@@ -246,23 +229,19 @@ def test_group_by_manager():
     by_node = {g.node_id: g for g in groups}
     assert set(by_node) == {"n1", "n2"}
 
-    # n1 got s0 and s2 with their original idx (0 and 2).
-    n1_members = by_node["n1"].members
-    assert [m.idx for m in n1_members] == [0, 2]
-    assert [m.path for m in n1_members] == ["a", "c"]
-
-    # n2 got only s1 with idx=1.
-    assert [(m.idx, m.path) for m in by_node["n2"].members] == [(1, "b")]
+    # Members within a group are in original input order.
+    assert [m.path for m in by_node["n1"].members] == ["a", "c"]
+    assert [m.path for m in by_node["n2"].members] == ["b"]
 
 
 def test_compute_prefetch_layout():
     # Each range contributes 4 (u32 len prefix) + range_length to the group's
     # size. base_offsets are the running cumulative sum.
     g0 = _NodeGroup("sh", "n1", "tok", members=[
-        _NodeMember(idx=0, path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
+        _NodeMember(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
     ])
     g1 = _NodeGroup("sh", "n2", "tok", members=[
-        _NodeMember(idx=1, path="b", ranges=[(0, 100)]),           # 4+100 = 104
+        _NodeMember(path="b", ranges=[(0, 100)]),           # 4+100 = 104
     ])
     total, base_offsets, sizes = _compute_prefetch_layout([g0, g1])
     assert sizes == [28, 104]
