@@ -18,12 +18,6 @@ from ray._private.test_utils import (
     wait_for_dashboard_agent_available,
 )
 
-SLOW_METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 3000,
-    }
-}
-
 
 def tasks_by_state(info, timeseries: PrometheusTimeseries, flush: bool = False) -> dict:
     if flush:
@@ -666,10 +660,10 @@ ray.get([a.f.remote() for _ in range(40)])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_metrics_export_now(shutdown_only, ray_start_cluster):
+def test_metrics_export_now(monkeypatch, shutdown_only, ray_start_cluster):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "3000")
     cluster = ray_start_cluster
     cluster.add_node(
-        **SLOW_METRIC_CONFIG,
         num_cpus=2,
     )
     wait_for_dashboard_agent_available(cluster)
