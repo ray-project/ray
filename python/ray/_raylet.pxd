@@ -141,6 +141,9 @@ cdef class CoreWorker:
         dict _task_id_to_future
         object event_loop_executor
         object _gc_thread
+        c_vector[CObjectID] _pending_ref_removals
+        object _ref_removal_flush_thread
+        c_bool _ref_removal_shutdown
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef put_serialized_object_and_increment_local_ref(

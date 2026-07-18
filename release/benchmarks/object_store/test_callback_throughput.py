@@ -59,6 +59,9 @@ def test_callback_pipeline(num_blocks, timeout_s=60):
             drop_times[ref.binary()] = time.perf_counter()
             del ref
 
+    # Flush any remaining batched ref removals so their OOS callbacks fire.
+    core_worker.flush_pending_ref_removals()
+
     if not done.wait(timeout=timeout_s):
         raise TimeoutError(
             f"Only {len(latencies)}/{num_blocks} callbacks fired within {timeout_s}s"

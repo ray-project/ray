@@ -472,6 +472,19 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   RemoveLocalReferenceInternal(object_id, deleted);
 }
 
+void ReferenceCounter::RemoveLocalReferenceBatch(const std::vector<ObjectID> &object_ids,
+                                                 std::vector<ObjectID> *deleted) {
+  if (object_ids.empty()) {
+    return;
+  }
+  absl::MutexLock lock(&mutex_);
+  for (const auto &object_id : object_ids) {
+    if (!object_id.IsNil()) {
+      RemoveLocalReferenceInternal(object_id, deleted);
+    }
+  }
+}
+
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
                                                     std::vector<ObjectID> *deleted) {
   RAY_CHECK(!object_id.IsNil());
