@@ -44,8 +44,7 @@ void RayTaskLifecycleEvent::MergeData(RayEvent<rpc::events::TaskLifecycleEvent> 
   // MergeFrom concatenates the repeated state_transitions (preserving chronological
   // order, since the recorder merges later events into the earlier accumulator) and
   // overlays the dynamic scalar/message fields (node_id, worker_id, error_info, etc.)
-  // that individual lifecycle events set. This reproduces the per-attempt coalescing that
-  // the legacy TaskEventBuffer flush did by repeatedly populating one proto.
+  // that individual lifecycle events set.
   data_.MergeFrom(other_event.data_);
 }
 
