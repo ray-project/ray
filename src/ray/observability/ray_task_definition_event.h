@@ -25,9 +25,9 @@ namespace observability {
 
 template class RayEvent<rpc::events::TaskDefinitionEvent>;
 
-// RayTaskDefinitionEvent wraps a rpc::events::TaskDefinitionEvent (the static metadata of
-// a non-actor task attempt: function, resources, runtime env, parent, etc.) as a
-// RayEventInterface for recording through RayEventRecorder.
+// RayTaskDefinitionEvent wraps a rpc::events::TaskDefinitionEvent (the static
+// metadata of a non-actor task attempt as RayEventInterface for recording
+// through RayEventRecorder.
 //
 // Definition events are static, so MergeData is a no-op: if more than one definition
 // event is produced for the same task attempt (each spec-carrying status event produces
@@ -39,11 +39,8 @@ template class RayEvent<rpc::events::TaskDefinitionEvent>;
 // instead deferred definition-proto building to the flush thread, keeping it off the task
 // submission/execution critical path. Building the proto eagerly here might increase
 // latency in the task submission time. Benchmark this and if it regresses, implement lazy
-// serialization.
-//
-//
-// Definition events are the only ones eligible for deferral since MergeData is a no-op,
-// so the proto need not exist before the recorder's merge step.
+// serialization. Definition events are the only ones eligible for deferral since
+// MergeData is a no-op, so the proto need not exist before the recorder's merge step.
 // Lifecycle/profile are mergeable and must stay eager.
 class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent>,
                                public TaskRayEventInterface {
