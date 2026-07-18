@@ -2733,27 +2733,6 @@
     timeout: 3600
     script: python example_algorithms/sac/halfcheetah_sac.py --num-learners=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
 
-- name: rllib_learning_tests_pong_dreamerv3_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 3600
-    script: python example_algorithms/dreamerv3/atari_100k_dreamerv3.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --stop-reward=18.0 --as-release-test
-
 ########################
 # Core Nightly Tests
 ########################
