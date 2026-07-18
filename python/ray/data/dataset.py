@@ -4433,9 +4433,9 @@ class Dataset:
             if try_create_dir:
                 raise ValueError(
                     "`try_create_dir` is not supported when writing through a "
-                    "`catalog`. The catalog resolves an existing location, and "
-                    "directory creation on object storage needs bucket-level "
-                    "access that the vended credentials may not have."
+                    "`catalog`. The catalog resolves an existing location with "
+                    "vended credentials, and directory creation on object storage "
+                    "needs bucket-level access that the credentials may not have."
                 )
 
             resolved = catalog.resolve(
