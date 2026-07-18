@@ -42,33 +42,34 @@ def ray_2_node_2_npus():
 
 
 @pytest.fixture
-def ray_2_node_2_tpus():
+def ray_tpu_cluster():
     cluster = Cluster()
 
-    # 1. Single-host TPU node (v6e-8 / 2x4 topology)
-    cluster.add_node(
-        num_cpus=4,
-        resources={
-            "TPU": 8,
-            "accelerator_type:TPU-V6E": 1,
-            "TPU-v6e-8-head": 1,
-        },
-        env_vars={
-            "TPU_NAME": "slice-single",
-            "TPU_WORKER_ID": "0",
-            "TPU_ACCELERATOR_TYPE": "v6e-8",
-            "TPU_TOPOLOGY": "2x4",
-        },
-        labels={
-            "ray.io/tpu-slice-name": "slice-single",
-            "ray.io/tpu-worker-id": "0",
-            "ray.io/tpu-pod-type": "v6e-8",
-        },
-    )
+    # 1. Two single-host TPU nodes (v6e-8 / 2x4 topology)
+    for i in range(2):
+        cluster.add_node(
+            num_cpus=16,
+            resources={
+                "TPU": 8,
+                "accelerator_type:TPU-V6E": 1,
+                "TPU-v6e-8-head": 1,
+            },
+            env_vars={
+                "TPU_NAME": f"slice-single-{i}",
+                "TPU_WORKER_ID": "0",
+                "TPU_ACCELERATOR_TYPE": "v6e-8",
+                "TPU_TOPOLOGY": "2x4",
+            },
+            labels={
+                "ray.io/tpu-slice-name": f"slice-single-{i}",
+                "ray.io/tpu-worker-id": "0",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+        )
 
-    # 2. Multi-host TPU nodes (v6e-16 / 2x8 topology / 4 nodes / 4 chips each)
+    # 2. Multi-host TPU slice (v6e-16 / 4x4 topology / 4 nodes / 4 chips each)
     pod_type = "v6e-16"
-    topology = "2x8"
+    topology = "4x4"
     for i in range(4):
         slice_env = {
             "TPU_NAME": "slice-A",
@@ -96,9 +97,7 @@ def ray_2_node_2_tpus():
         )
 
     ray.init(address=cluster.address)
-
     yield
-
     ray.shutdown()
     cluster.shutdown()
 
@@ -164,10 +163,10 @@ def test_npu_device_manager(ray_2_node_2_npus):
     "num_workers,topology,accelerator_type",
     [
         (8, "2x4", "v6e"),
-        (16, "2x8", "v6e"),
+        (16, "4x4", "v6e"),
     ],
 )
-def test_tpu_device_manager(ray_2_node_2_tpus, num_workers, topology, accelerator_type):
+def test_tpu_device_manager(ray_tpu_cluster, num_workers, topology, accelerator_type):
     def train_fn():
 
         assert isinstance(get_torch_device_manager_by_context(), TPUTorchDeviceManager)
@@ -226,7 +225,7 @@ def test_device_manager_conflict(ray_1_node_1_gpu_1_npu):
     not is_v2_enabled(),
     reason="TPU device manager and backend are V2-only features.",
 )
-def test_tpu_torch_validation_error(ray_2_node_2_tpus):
+def test_tpu_torch_validation_error(ray_tpu_cluster):
 
     # PyTorch TPU requires exactly 1 TPU per worker.
     # We specify a topology that requires 4 workers, but request 2 TPUs per worker to trigger a failure.
@@ -251,7 +250,7 @@ def test_tpu_torch_validation_error(ray_2_node_2_tpus):
     not is_v2_enabled(),
     reason="TPU device manager and backend are V2-only features.",
 )
-def test_tpu_torch_multislice_validation_error(ray_2_node_2_tpus):
+def test_tpu_torch_multislice_validation_error(ray_tpu_cluster):
     # PyTorch TPU currently does not support training across multiple slices.
     # We specify a topology that requires 8 workers, but request 16 workers, which implies 2 slices.
     trainer = TorchTrainer(
