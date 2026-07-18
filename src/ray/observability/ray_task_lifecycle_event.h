@@ -30,8 +30,7 @@ template class RayEvent<rpc::events::TaskLifecycleEvent>;
 // RayEventInterface so it can be recorded through RayEventRecorder and sent to the event
 // aggregator.
 //
-// The nested proto is built by the caller (see the task-event record helpers) and moved
-// in. Multiple lifecycle events for the same task attempt are merged by the recorder into
+// Multiple lifecycle events for the same task attempt are merged by the recorder into
 // a single time series via MergeData.
 class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent>,
                               public TaskRayEventInterface {

@@ -18,6 +18,8 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/ray_config.h"
+
 namespace ray {
 namespace core {
 
@@ -62,11 +64,10 @@ ProfileEvent::~ProfileEvent() {
   }
   event_->SetEndTime(clock_.NowUnixNanos());
   // Record to the event aggregator before moving the event into the buffer.
-
-  // TODO(karticam): skip building/recording when RayConfig::instance().enable_ray_event()
-  // is off (see RecordTaskStatusEventToRecorderIfNeeded) — the recorder currently drops
-  // it in AddEvents() only after we build the proto + wrapper.
-  ray_task_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
+  if (RayConfig::instance().enable_ray_event() &&
+      RayConfig::instance().enable_ray_task_event_recorder()) {
+    ray_task_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
+  }
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));
 }

@@ -41,7 +41,7 @@ TaskAttemptId RayTaskProfileEvent::GetTaskAttempt() const {
 void RayTaskProfileEvent::MergeData(RayEvent<rpc::events::TaskProfileEvents> &&other) {
   auto &&other_event = static_cast<RayTaskProfileEvent &&>(other);
   // Concatenate the profiling span entries; component/task identifiers are identical for
-  // the same attempt so MergeFrom's scalar overlay is a no-op for them.
+  // the same attempt so MergeFrom's overwrite is a no-op for them.
   data_.MergeFrom(other_event.data_);
 }
 
