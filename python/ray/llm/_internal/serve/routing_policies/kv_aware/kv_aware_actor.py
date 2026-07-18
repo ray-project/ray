@@ -183,7 +183,7 @@ class KVRouterActor:
         """Run a coroutine on the actor's event loop, holding a reference until
         it completes.
         """
-        task = asyncio.ensure_future(coro)
+        task = asyncio.create_task(coro)
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
