@@ -226,10 +226,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void AddObjectLocationSubscriber(const ObjectID &object_id) override
+  void AddObjectLocationSubscriber(const ObjectID &object_id,
+                                   const NodeID &subscriber_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RemoveObjectLocationSubscriber(const ObjectID &object_id) override
+  void RemoveObjectLocationSubscriber(const ObjectID &object_id,
+                                      const NodeID &subscriber_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void FillObjectInformation(const ObjectID &object_id,
@@ -436,17 +438,32 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// Number of raylets subscribed to this object's location, read under mutex_
-    /// by PushToLocationSubscribers to skip publishing an update no raylet is
-    /// listening for, and by EraseReference to skip the terminal failure publish
-    /// when nobody is listening. Maintained by AddObjectLocationSubscriber and
-    /// RemoveObjectLocationSubscriber. Never drops below the live subscriber
-    /// count, so a live subscriber is never skipped. Two mechanisms compose to
-    /// guarantee that: the decrement fires only when the publisher actually
-    /// removes a subscription, and PublishFailure purges a key's subscriptions,
-    /// so a removable subscription is always one that was counted. May
-    /// over-count (reaped or retried subscribes), which is harmless.
-    size_t location_subscriber_count = 0;
+    /// Raylets currently subscribed to this object's location, by raylet id;
+    /// null until the first subscriber. Kept on the row rather than queried
+    /// from the publisher because every publish decision here already holds
+    /// mutex_, while asking the publisher's index would take its lock on the
+    /// application threads (the contention #63983 removed). Read by
+    /// PushToLocationSubscribers and EraseReference to skip publishes no
+    /// raylet is listening for; the maintenance contract is on
+    /// Add/RemoveObjectLocationSubscriber in reference_counter_interface.h.
+    /// May retain a raylet that died without unsubscribing until the node
+    /// removal is processed (ResetObjectsOnRemovedNode); until then this
+    /// object's publishes are built and dropped at delivery.
+    std::unique_ptr<absl::flat_hash_set<NodeID>> location_subscribers;
+
+    bool HasLocationSubscribers() const {
+      return location_subscribers != nullptr && !location_subscribers->empty();
+    }
+
+    void EraseLocationSubscriber(const NodeID &subscriber_id) {
+      if (location_subscribers == nullptr) {
+        return;
+      }
+      location_subscribers->erase(subscriber_id);
+      if (location_subscribers->empty()) {
+        location_subscribers.reset();
+      }
+    }
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -713,7 +730,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                  const Reference &ref,
                                  bool decrement) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Publish object locations to all subscribers.
+  /// Publish object locations to the object's subscribers, if it has any.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)

@@ -508,21 +508,29 @@ class ReferenceCounterInterface {
   virtual std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) = 0;
 
-  /// Record a raylet as a subscriber to this object's location and publish it the
-  /// current snapshot. If there is no reference for the object (not yet created
-  /// or already removed), publishes a ref-removed message and a failure instead,
+  /// Record a raylet as a subscriber to this object's location and publish the
+  /// current snapshot on the object's key (delivered to every subscriber of
+  /// the object). If there is no reference for the object (not yet created or
+  /// already removed), publishes a ref-removed message and a failure instead,
   /// and records nothing.
   ///
   /// \param[in] object_id The object being subscribed to.
-  virtual void AddObjectLocationSubscriber(const ObjectID &object_id) = 0;
+  /// \param[in] subscriber_id The raylet subscribing.
+  virtual void AddObjectLocationSubscriber(const ObjectID &object_id,
+                                           const NodeID &subscriber_id) = 0;
 
-  /// Record that a raylet unsubscribed from this object's location, decrementing
-  /// the per-object subscriber count. Call this only when the publisher actually
-  /// removed a subscription (Publisher::UnregisterSubscription): the unsubscribe is
-  /// delivered at-least-once, so decrementing on a duplicate would under-count.
+  /// Erase a raylet from this object's location subscribers. Erasure is by
+  /// identity: only an unsubscribe carrying the same subscriber id removes an
+  /// entry, so a redelivered unsubscribe, or one from a subscriber that was
+  /// never recorded (a rejected subscribe), erases nothing. This relies on
+  /// each subscriber's commands arriving in order with duplicates only
+  /// consecutive, which the subscriber guarantees by keeping one command
+  /// batch in flight per publisher (see pubsub/subscriber.cc).
   ///
   /// \param[in] object_id The object being unsubscribed from.
-  virtual void RemoveObjectLocationSubscriber(const ObjectID &object_id) = 0;
+  /// \param[in] subscriber_id The raylet unsubscribing.
+  virtual void RemoveObjectLocationSubscriber(const ObjectID &object_id,
+                                              const NodeID &subscriber_id) = 0;
 
   /// Fill up the object information.
   ///

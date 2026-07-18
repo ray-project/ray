@@ -279,11 +279,9 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     }
   }
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) override {
-    return false;
-  }
+                              const std::optional<std::string> &key_id_binary) override {}
 
   void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
 
@@ -845,6 +843,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
 TEST_F(ReferenceCountTest, TestSkipsLocationPublishWithoutSubscribers) {
   auto obj = ObjectID::FromRandom();
   auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1.2.3.4");
 
@@ -864,12 +863,12 @@ TEST_F(ReferenceCountTest, TestSkipsLocationPublishWithoutSubscribers) {
 
   // Subscribing records a subscriber and publishes; later updates then publish.
   EXPECT_CALL(*publisher_, Publish).Times(2);
-  rc->AddObjectLocationSubscriber(obj);
+  rc->AddObjectLocationSubscriber(obj, raylet);
   rc->AddObjectLocation(obj, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
 
   // After the subscriber goes away, updates are skipped again.
-  rc->RemoveObjectLocationSubscriber(obj);
+  rc->RemoveObjectLocationSubscriber(obj, raylet);
   EXPECT_CALL(*publisher_, Publish).Times(0);
   rc->RemoveObjectLocation(obj, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
@@ -877,12 +876,13 @@ TEST_F(ReferenceCountTest, TestSkipsLocationPublishWithoutSubscribers) {
   rc->RemoveLocalReference(obj, nullptr);
 }
 
-// A per-object subscriber only gates that object: an update to an object nobody
-// is subscribed to is skipped even while another owned object has a subscriber.
-TEST_F(ReferenceCountTest, TestPerObjectLocationSubscriberGate) {
+// The skip is per object: an update to an object nobody is subscribed to is
+// skipped even while another owned object has a subscriber.
+TEST_F(ReferenceCountTest, TestLocationPublishSkipIsPerObject) {
   auto watched = ObjectID::FromRandom();
   auto ignored = ObjectID::FromRandom();
   auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1.2.3.4");
 
@@ -898,7 +898,7 @@ TEST_F(ReferenceCountTest, TestPerObjectLocationSubscriberGate) {
 
   // Subscribe to `watched` only, which records the subscriber and publishes.
   EXPECT_CALL(*publisher_, Publish).Times(2);
-  rc->AddObjectLocationSubscriber(watched);
+  rc->AddObjectLocationSubscriber(watched, raylet);
   rc->AddObjectLocation(watched, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
 
@@ -907,16 +907,19 @@ TEST_F(ReferenceCountTest, TestPerObjectLocationSubscriberGate) {
   rc->AddObjectLocation(ignored, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
 
-  rc->RemoveObjectLocationSubscriber(watched);
+  rc->RemoveObjectLocationSubscriber(watched, raylet);
   rc->RemoveLocalReference(watched, nullptr);
   rc->RemoveLocalReference(ignored, nullptr);
 }
 
-// The gate tracks a count, not a bool: with two raylets subscribed to one
-// object, one unsubscribing must not stop location publishes for the other.
-TEST_F(ReferenceCountTest, TestLocationSubscriberCountMultipleSubscribers) {
+// The gate tracks the set of subscribed raylets, not a bool: with two raylets
+// subscribed to one object, one unsubscribing must not stop location publishes
+// for the other.
+TEST_F(ReferenceCountTest, TestLocationSubscribersMultipleRaylets) {
   auto obj = ObjectID::FromRandom();
   auto node = NodeID::FromRandom();
+  auto raylet_a = NodeID::FromRandom();
+  auto raylet_b = NodeID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1.2.3.4");
   rc->AddOwnedObject(obj,
@@ -927,20 +930,23 @@ TEST_F(ReferenceCountTest, TestLocationSubscriberCountMultipleSubscribers) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
 
-  // Two raylets subscribe: the count is 2.
+  // Two raylets subscribe.
   EXPECT_CALL(*publisher_, Publish).Times(2);
-  rc->AddObjectLocationSubscriber(obj);
-  rc->AddObjectLocationSubscriber(obj);
+  rc->AddObjectLocationSubscriber(obj, raylet_a);
+  rc->AddObjectLocationSubscriber(obj, raylet_b);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
 
-  // One unsubscribes: the count drops to 1, so updates still publish.
-  rc->RemoveObjectLocationSubscriber(obj);
+  // One unsubscribes, and its unsubscribe is delivered a second time
+  // (at-least-once): the duplicate erases nothing, the other raylet is still
+  // subscribed, and updates still publish.
+  rc->RemoveObjectLocationSubscriber(obj, raylet_a);
+  rc->RemoveObjectLocationSubscriber(obj, raylet_a);
   EXPECT_CALL(*publisher_, Publish).Times(1);
   rc->AddObjectLocation(obj, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
 
-  // The last subscriber unsubscribes: the count is 0, so updates are skipped.
-  rc->RemoveObjectLocationSubscriber(obj);
+  // The last raylet unsubscribes: updates are skipped again.
+  rc->RemoveObjectLocationSubscriber(obj, raylet_b);
   EXPECT_CALL(*publisher_, Publish).Times(0);
   rc->RemoveObjectLocation(obj, node);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
@@ -948,11 +954,74 @@ TEST_F(ReferenceCountTest, TestLocationSubscriberCountMultipleSubscribers) {
   rc->RemoveLocalReference(obj, nullptr);
 }
 
+// A retried subscribe records the same raylet once, so a single unsubscribe
+// fully removes it: command redelivery cannot leave a stale entry behind.
+TEST_F(ReferenceCountTest, TestDuplicateSubscribeSingleUnsubscribe) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  // The same raylet subscribes twice (each subscribe publishes its snapshot).
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // One unsubscribe is enough: updates are skipped afterwards.
+  rc->RemoveObjectLocationSubscriber(obj, raylet);
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// Removing a node erases its raylet from every object's location subscribers:
+// a raylet that died mid-subscription must not hold publishes open for the
+// rest of the row's lifetime.
+TEST_F(ReferenceCountTest, TestNodeRemovalErasesLocationSubscriber) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // The subscriber's node dies without unsubscribing.
+  rc->ResetObjectsOnRemovedNode(raylet);
+
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
 // Erasing a reference nobody subscribed to must not publish a terminal failure;
 // erasing one with a live subscriber still must.
-TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscriberCount) {
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscribers) {
   auto unwatched = ObjectID::FromRandom();
   auto watched = ObjectID::FromRandom();
+  auto raylet = NodeID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1.2.3.4");
 
@@ -974,7 +1043,7 @@ TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscriberCount) {
 
   // Live subscriber: erasing the reference still publishes the failure.
   EXPECT_CALL(*publisher_, Publish).Times(1);
-  rc->AddObjectLocationSubscriber(watched);
+  rc->AddObjectLocationSubscriber(watched, raylet);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
   EXPECT_CALL(
       *publisher_,
@@ -984,7 +1053,7 @@ TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscriberCount) {
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
   ASSERT_FALSE(rc->HasReference(watched));
 
-  // Subscriber gone by death time: the gate observes the decrement and skips.
+  // Subscriber gone by death time: the gate observes the empty set and skips.
   auto unsubscribed = ObjectID::FromRandom();
   rc->AddOwnedObject(unsubscribed,
                      {},
@@ -994,9 +1063,9 @@ TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscriberCount) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
   EXPECT_CALL(*publisher_, Publish).Times(1);
-  rc->AddObjectLocationSubscriber(unsubscribed);
+  rc->AddObjectLocationSubscriber(unsubscribed, raylet);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
-  rc->RemoveObjectLocationSubscriber(unsubscribed);
+  rc->RemoveObjectLocationSubscriber(unsubscribed, raylet);
   EXPECT_CALL(*publisher_, PublishFailure).Times(0);
   rc->RemoveLocalReference(unsubscribed, nullptr);
   ::testing::Mock::VerifyAndClearExpectations(publisher_.get());

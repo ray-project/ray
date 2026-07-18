@@ -75,9 +75,8 @@ class EntityState {
    * @brief Remove a subscriber from this entity.
    *
    * @param subscriber_id The ID of the subscriber to remove.
-   * @return True if the subscriber was present and removed.
    */
-  bool RemoveSubscriber(const UniqueID &subscriber_id);
+  void RemoveSubscriber(const UniqueID &subscriber_id);
 
   /**
    * @brief Gets the current set of subscribers, keyed by subscriber IDs.
@@ -159,20 +158,8 @@ class SubscriptionIndex {
    *
    * @param key_id The key to unsubscribe from. When empty, unsubscribes from all keys.
    * @param subscriber_id The ID of the subscriber to erase.
-   * @return True if a subscription (the keyed entry, or the subscribe-to-all
-   *         entry when key_id is empty) was actually removed. False if there was
-   *         nothing to remove, e.g. a duplicate unsubscribe (the command is
-   *         delivered at-least-once).
    */
-  bool EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
-
-  /**
-   * @brief Erase all subscriptions to the given key.
-   *
-   * @param key_id The key to erase.
-   * @return True if the key had subscriptions to erase.
-   */
-  bool EraseKey(const std::string &key_id);
+  void EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
 
   /**
    * @brief Returns true if the entity id exists in the index.
@@ -419,7 +406,7 @@ class Publisher : public PublisherInterface {
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
@@ -461,7 +448,6 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionExisted);
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
-  FRIEND_TEST(PublisherTest, TestPublishFailureErasesKeySubscriptions);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   friend class MockPublisher;
@@ -470,10 +456,6 @@ class Publisher : public PublisherInterface {
   /// Testing only. Binds clock_ to a process-wide real clock; subclasses that use
   /// this ctor (mocks/fakes) do not read the clock.
   Publisher() : clock_(TestOnlyDefaultClock()), publish_batch_size_(-1) {}
-
-  /// Assign the sequence id and deliver the message to the channel's
-  /// subscription index.
-  void PublishInternal(rpc::PubMessage pub_message) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Testing only. A shared real clock used solely to satisfy the clock_ reference
   /// in the default constructor.

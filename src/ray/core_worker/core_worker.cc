@@ -3911,7 +3911,8 @@ StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
   if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {  // worker_object_locations_message case
-    ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
+    ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message(),
+                                    subscriber_id);
   }
   return StatusT::OK();
 }
@@ -3943,15 +3944,11 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
     }
 
     if (command.has_unsubscribe_message()) {
-      const bool removed = object_info_publisher_->UnregisterSubscription(
+      object_info_publisher_->UnregisterSubscription(
           command.channel_type(), subscriber_id, command.key_id());
-      if (removed &&
-          command.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
-        // Decrement only on a real removal: this command is delivered
-        // at-least-once, so an ungated decrement could under-count and strand a
-        // live subscriber.
+      if (command.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
         reference_counter_->RemoveObjectLocationSubscriber(
-            ObjectID::FromBinary(command.key_id()));
+            ObjectID::FromBinary(command.key_id()), subscriber_id);
       }
     } else {  // subscribe_message case
       StatusSet<StatusT::InvalidArgument> result =
@@ -4091,7 +4088,7 @@ void CoreWorker::RemoveObjectLocationOwner(const ObjectID &object_id,
 }
 
 void CoreWorker::ProcessSubscribeObjectLocations(
-    const rpc::WorkerObjectLocationsSubMessage &message) {
+    const rpc::WorkerObjectLocationsSubMessage &message, const NodeID &subscriber_id) {
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   const auto object_id = ObjectID::FromBinary(message.object_id());
 
@@ -4104,7 +4101,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     return;
   }
 
-  reference_counter_->AddObjectLocationSubscriber(object_id);
+  reference_counter_->AddObjectLocationSubscriber(object_id, subscriber_id);
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
