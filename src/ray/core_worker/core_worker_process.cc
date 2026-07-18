@@ -303,12 +303,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
-  // Create the task-event RayEventRecorder. It owns a second EventAggregatorClient (the
-  // TaskEventBuffer keeps its own during the migration; this one becomes the sole sender
-  // once the buffer's aggregator path is removed). The recorder + its deps are owned by
-  // the process (deps) / CoreWorker (recorder); see core_worker_process.h for lifetime.
-  // Created here (before TaskManager / TaskReceiver / queues) so its reference can be
-  // plumbed into those producers.
+  // Create the task-event RayEventRecorder. A second aggregator client is owned by the
+  // task event buffer which will be removed later. This is passed to other consumers
+  // like TaskManager, TaskReceiver, queues etc.
   ray_task_event_recorder_aggregator_client_ =
       (options.metrics_agent_port > 0)
           ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
@@ -321,9 +318,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       observability::kMetricSourceCoreWorker,
       *ray_task_event_recorder_dropped_events_counter_,
       local_node_id);
-  // Only start the recorder's export path when it is enabled. If disabled,
+
+  // Start the recorder's export path as per the flag. If disabled,
   // task_event_buffer might be used depending on other flags. (see
-  // task_event_buffer.h/cc)
+  // task_event_buffer.h/.cc)
   if (RayConfig::instance().enable_ray_task_event_recorder()) {
     ray_task_event_recorder->StartExportingEvents();
   }
@@ -892,10 +890,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
-  // Dependencies for the task-event RayEventRecorder. The recorder gets its own dedicated
-  // io thread (mirroring TaskEventBuffer's dedicated io thread) for its periodic export.
-  // Use `new` + guaranteed copy elision (not make_unique) since ray::stats::Count is not
-  // movable; this mirrors how the gauges above are constructed.
+  // Dependencies for the RayTaskEventRecorder.
   ray_task_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
       new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
   ray_task_event_recorder_io_context_ =

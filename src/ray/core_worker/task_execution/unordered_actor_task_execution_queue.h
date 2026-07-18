@@ -80,7 +80,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   std::thread::id main_thread_id_;
   ActorTaskExecutionArgWaiterInterface &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
-  /// Records task events to the event aggregator (parallel to the TaskEventBuffer path).
+  /// Records task events to the event aggregator.
   ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;

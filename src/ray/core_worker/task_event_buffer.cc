@@ -394,8 +394,8 @@ TaskStatusEvent::ToRayEventInterfaces() {
   std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(timestamp_);
 
-  // Definition event (static metadata): only when the task spec is attached, mirroring
-  // ToRpcRayEvents. The recorder de-dups definition events per attempt via no-op merge.
+  // Definition event (static metadata): only when the task spec is attached.
+  // The recorder de-dups definition events per attempt via no-op merge.
   if (task_spec_) {
     if (is_actor_task_event_) {
       rpc::events::ActorTaskDefinitionEvent definition_event_data;
