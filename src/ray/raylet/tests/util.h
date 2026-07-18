@@ -149,7 +149,7 @@ class MockWorker : public WorkerInterface {
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
 
-  void ActorCallArgWaitComplete(int64_t tag) override {
+  void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override {
     RAY_CHECK(false) << "Method unused";
   }
 
