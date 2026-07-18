@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,10 +27,11 @@ template class RayEvent<rpc::events::ActorTaskDefinitionEvent>;
 
 // RayActorTaskDefinitionEvent wraps a rpc::events::ActorTaskDefinitionEvent (the static
 // metadata of an actor-task attempt) as a RayEventInterface for recording through
-// RayEventRecorder. Like the non-actor definition event, MergeData is a no-op (static).
+// RayTaskEventRecorder. Like the task definition event, MergeData is a no-op (static).
 //
-// TODO(karticam): built EAGERLY like RayTaskDefinitionEvent -- the same benchmark-then-
-// maybe-implement-lazy-serialization follow-up applies here (see RayTaskDefinitionEvent).
+// TODO(karticam): built EAGERLY like RayTaskDefinitionEvent. Benchmark if this adds
+// latency and then maybe implement lazy serialization. (see RayTaskDefinitionEvent. same
+// followup applies there as well.
 class RayActorTaskDefinitionEvent
     : public RayEvent<rpc::events::ActorTaskDefinitionEvent>,
       public TaskRayEventInterface {

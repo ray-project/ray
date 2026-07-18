@@ -62,6 +62,7 @@ ProfileEvent::~ProfileEvent() {
   }
   event_->SetEndTime(clock_.NowUnixNanos());
   // Record to the event aggregator before moving the event into the buffer.
+
   // TODO(karticam): skip building/recording when RayConfig::instance().enable_ray_event()
   // is off (see RecordTaskStatusEventToRecorderIfNeeded) — the recorder currently drops
   // it in AddEvents() only after we build the proto + wrapper.

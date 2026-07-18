@@ -964,9 +964,7 @@ class TaskManager : public TaskManagerInterface {
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
 
-  /// Records task events to the event aggregator (the path replacing the direct
-  /// TaskEventBuffer->aggregator send). Owned by CoreWorker; recording is gated/no-op'd
-  /// by the recorder itself when RAY_enable_ray_event is off.
+  /// Records task events to the event aggregator.
   ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
 
   /// Callback to get the actor RPC client.

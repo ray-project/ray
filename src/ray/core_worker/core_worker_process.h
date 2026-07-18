@@ -182,11 +182,7 @@ class CoreWorkerProcessImpl {
   /// This is used by the CoreWorker and the MetricsAgentClient.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  /// Dependencies of the task-event RayEventRecorder (the path that is replacing the
-  /// direct TaskEventBuffer->aggregator send). The recorder itself is owned by
-  /// CoreWorker, but these must out-live it, so they are declared here (before
-  /// core_worker_) and torn down after it. The recorder runs its periodic export on its
-  /// own dedicated thread, mirroring TaskEventBuffer's dedicated io thread.
+  /// Dependencies of the RayTaskEventRecorder
   std::unique_ptr<InstrumentedIOContextWithThread> ray_task_event_recorder_io_context_;
   std::unique_ptr<ray::stats::Count> ray_task_event_recorder_dropped_events_counter_;
   std::unique_ptr<rpc::EventAggregatorClient> ray_task_event_recorder_aggregator_client_;

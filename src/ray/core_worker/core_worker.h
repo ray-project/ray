@@ -2141,11 +2141,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 
-  /// Records task events and exports them to the event aggregator. This is the path that
-  /// is replacing the direct TaskEventBuffer->aggregator send (see
-  /// TASK_EVENTS_OUT_OF_GCS.md). Its deps (io thread, metric, aggregator client) are
-  /// owned by CoreWorkerProcessImpl and out-live this recorder. May be nullptr in tests
-  /// that do not inject a recorder.
+  /// Records task events and exports them to the event aggregator.
   std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder_ =
       nullptr;
 
