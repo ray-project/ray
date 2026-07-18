@@ -442,18 +442,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
-    if (!deleted.empty()) {
-      memory_store_->Delete(deleted);
-    }
-  }
-
-  /// Batch version: remove multiple local references under a single lock.
-  void RemoveLocalReferenceBatch(const std::vector<ObjectID> &object_ids) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveLocalReferenceBatch(object_ids, &deleted);
-    if (!deleted.empty()) {
-      memory_store_->Delete(deleted);
-    }
+    memory_store_->Delete(deleted);
   }
 
   /// Register a callback to fire when an object goes out of scope or is freed.

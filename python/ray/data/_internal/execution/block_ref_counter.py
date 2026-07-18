@@ -73,3 +73,13 @@ class BlockRefCounter:
         """Total bytes of live blocks attributed to producer_id."""
         with self._lock:
             return self._bytes_by_producer.get(producer_id, 0)
+
+    def clear(self) -> None:
+        """Reset all accounting, e.g. on executor shutdown.
+
+        Any previously registered Ray Core callbacks firing after clear()
+        will be silently ignored because _registered_ids is empty.
+        """
+        with self._lock:
+            self._registered_ids.clear()
+            self._bytes_by_producer.clear()

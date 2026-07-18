@@ -3167,24 +3167,6 @@ cdef class CoreWorker:
             self._gc_thread = PythonGCThread()
             self._gc_thread.start()
 
-        # Background thread flushes batched ObjectRef removals every 10ms.
-        self._ref_removal_shutdown = False
-        self._ref_removal_flush_thread = threading.Thread(
-            target=self._ref_removal_flush_loop,
-            name="ref_removal_flush",
-            daemon=True,
-        )
-        self._ref_removal_flush_thread.start()
-
-    def _ref_removal_flush_loop(self):
-        while not self._ref_removal_shutdown:
-            time.sleep(0.01)
-            try:
-                self.flush_pending_ref_removals()
-            except Exception:
-                # CoreWorker may already be destroyed during process exit.
-                break
-
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
@@ -3192,11 +3174,6 @@ cdef class CoreWorker:
         # Instead, we use the cached `is_driver` flag to test if it's a
         # driver.
         assert self.is_driver
-        self._ref_removal_shutdown = True
-        if self._ref_removal_flush_thread is not None:
-            self._ref_removal_flush_thread.join(timeout=1.0)
-            self._ref_removal_flush_thread = None
-        self.flush_pending_ref_removals()
         if self._gc_thread is not None:
             self._gc_thread.stop()
             self._gc_thread = None
@@ -4457,23 +4434,13 @@ cdef class CoreWorker:
             object_ref.native())
 
     def remove_object_ref_reference(self, ObjectRef object_ref):
-        # Batch removals to amortize the C++ mutex acquisition cost.
-        # Flushes when the batch reaches 100 items.
-        self._pending_ref_removals.push_back(object_ref.native())
-        if self._pending_ref_removals.size() >= 100:
-            self.flush_pending_ref_removals()
-
-    def flush_pending_ref_removals(self):
-        """Flush any pending batched ObjectRef removals to C++."""
-        if self._pending_ref_removals.empty():
-            return
-        # Swap into a local so _pending_ref_removals is safe for other
-        # threads to push_back while we release the GIL below.
-        cdef c_vector[CObjectID] batch
-        batch.swap(self._pending_ref_removals)
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+        # We need to release the gil since object destruction may call the
+        # unhandled exception handler.
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReferenceBatch(
-                batch)
+            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                c_object_id)
 
     def add_object_out_of_scope_callback(
             self, ObjectRef object_ref, callback: Callable[[bytes], None]):

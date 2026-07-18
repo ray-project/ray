@@ -80,11 +80,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                             std::vector<ObjectID> *deleted) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Batch version of RemoveLocalReference. Acquires mutex_ once for all IDs.
-  void RemoveLocalReferenceBatch(const std::vector<ObjectID> &object_ids,
-                                 std::vector<ObjectID> *deleted)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
   void UpdateSubmittedTaskReferences(
       const std::vector<ObjectID> &return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
