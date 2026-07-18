@@ -416,12 +416,14 @@ def test_resolve_write_mode_builds_aws_filesystem(uc_catalog, isolated_env):
 def test_write_parquet_with_catalog(ray_start_regular_shared, tmp_path):
     # write_parquet resolves the table identifier on the driver and writes to the
     # catalog-resolved physical location, requesting WRITE access. The location is
-    # pre-created here because a catalog write forces try_create_dir=False (a real
-    # catalog location always pre-exists).
+    # pre-created and try_create_dir=False, since a catalog write targets an
+    # existing location (try_create_dir=True with a catalog is rejected).
     out = str(tmp_path / "out")
     os.makedirs(out)
     catalog = _FakeCatalog(ResolvedSource(path=out))
-    ray.data.range(3).write_parquet("main.db.tbl", catalog=catalog)
+    ray.data.range(3).write_parquet(
+        "main.db.tbl", catalog=catalog, try_create_dir=False
+    )
 
     assert catalog.calls == [
         ("main.db.tbl", ReaderFormat.PARQUET, CatalogAccessMode.WRITE)
@@ -430,41 +432,29 @@ def test_write_parquet_with_catalog(ray_start_regular_shared, tmp_path):
     assert sorted(r["id"] for r in ds.take_all()) == [0, 1, 2]
 
 
-def test_write_parquet_catalog_overrides_try_create_dir(
-    ray_start_regular_shared, tmp_path
-):
-    # A catalog write forces try_create_dir=False (the location pre-exists and the
-    # vended, prefix-scoped credentials can't do the bucket-level metadata call
-    # directory creation needs), warning the user.
-    out = str(tmp_path / "out")
-    os.makedirs(out)
-    catalog = _FakeCatalog(ResolvedSource(path=out))
-
-    with mock.patch.object(ray.data.dataset.logger, "warning") as warn:
-        ray.data.range(1).write_parquet(
-            "main.db.tbl", catalog=catalog, try_create_dir=True
-        )
-
-    assert any("try_create_dir" in str(c) for c in warn.call_args_list)
+def test_write_parquet_catalog_rejects_try_create_dir(ray_start_regular_shared):
+    # try_create_dir=True (the default) with a catalog is rejected: the catalog
+    # targets an existing location, and directory creation on object storage needs
+    # bucket-level access the vended, prefix-scoped credentials may not have.
+    catalog = _FakeCatalog(ResolvedSource(path="s3://bucket/prefix"))
+    with pytest.raises(ValueError, match="try_create_dir"):
+        ray.data.range(1).write_parquet("main.db.tbl", catalog=catalog)
+    assert catalog.calls == []  # rejected before the catalog is consulted
 
 
-def test_write_parquet_catalog_filesystem_overrides_with_warning(
-    ray_start_regular_shared, tmp_path
-):
-    # A catalog-resolved filesystem overrides a user-supplied one (with a warning).
-    out = str(tmp_path / "out")
-    os.makedirs(out)
-    fs = pafs.LocalFileSystem()
-    catalog = _FakeCatalog(ResolvedSource(path=out, filesystem=fs))
-
-    with mock.patch.object(ray.data.dataset.logger, "warning") as warn:
-        ray.data.range(1).write_parquet(
-            "main.db.tbl", catalog=catalog, filesystem=pafs.LocalFileSystem()
-        )
-
-    assert any(
-        "Overriding the provided `filesystem`" in str(c) for c in warn.call_args_list
+def test_write_parquet_catalog_rejects_filesystem(ray_start_regular_shared):
+    # Passing both `filesystem` and `catalog` is rejected — the catalog resolves
+    # the filesystem itself with the appropriate credentials.
+    catalog = _FakeCatalog(
+        ResolvedSource(path="s3://bucket/prefix", filesystem=pafs.LocalFileSystem())
     )
+    with pytest.raises(ValueError, match="filesystem"):
+        ray.data.range(1).write_parquet(
+            "main.db.tbl",
+            catalog=catalog,
+            try_create_dir=False,
+            filesystem=pafs.LocalFileSystem(),
+        )
 
 
 def test_write_iceberg_uses_catalog_resolved_kwargs(ray_start_regular_shared):
@@ -487,23 +477,16 @@ def test_write_iceberg_uses_catalog_resolved_kwargs(ray_start_regular_shared):
     ]
 
 
-def test_write_iceberg_explicit_catalog_kwargs_take_precedence(
-    ray_start_regular_shared,
-):
-    # When both catalog and catalog_kwargs are given, catalog is ignored.
+def test_write_iceberg_rejects_catalog_kwargs_with_catalog(ray_start_regular_shared):
+    # Passing both `catalog` and `catalog_kwargs` is rejected.
     catalog = _FakeCatalog(ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u"}))
-    with mock.patch("ray.data.dataset.IcebergDatasink") as ds_cls, mock.patch.object(
-        ray.data.Dataset, "write_datasink"
-    ):
+    with pytest.raises(ValueError, match="catalog_kwargs"):
         ray.data.range(1).write_iceberg(
             "main.db.tbl",
             catalog=catalog,
             catalog_kwargs={"type": "sql", "uri": "explicit"},
         )
-
-    _, kwargs = ds_cls.call_args
-    assert kwargs["catalog_kwargs"] == {"type": "sql", "uri": "explicit"}
-    assert catalog.calls == []  # catalog was not consulted
+    assert catalog.calls == []  # rejected before the catalog is consulted
 
 
 # ---------------------------------------------------------------------------
