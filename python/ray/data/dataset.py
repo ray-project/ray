@@ -4433,12 +4433,10 @@ class Dataset:
             if try_create_dir:
                 raise ValueError(
                     "`try_create_dir` is not supported when writing through a "
-                    "`catalog` and is being overridden to False. The catalog "
-                    "resolves an existing location, and directory creation on "
-                    "object storage needs bucket-level access that the vended "
-                    "credentials may not have."
+                    "`catalog`. The catalog resolves an existing location, and "
+                    "directory creation on object storage needs bucket-level "
+                    "access that the vended credentials may not have."
                 )
-                try_create_dir = False
 
             resolved = catalog.resolve(
                 path, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
@@ -4447,9 +4445,9 @@ class Dataset:
             if resolved.filesystem is not None:
                 if filesystem is not None:
                     raise ValueError(
-                        "Both `filesystem` and `catalog` were specified. Overriding "
-                        "the provided `filesystem` with the catalog-resolved "
-                        "credentials."
+                        "`filesystem` cannot be specified with `catalog`. The "
+                        "`catalog` will resolve the `filesystem` with appropriate "
+                        "credentials automatically."
                     )
                 filesystem = resolved.filesystem
 
@@ -4713,10 +4711,7 @@ class Dataset:
         """
         if catalog is not None:
             if catalog_kwargs:
-                raise ValueError(
-                    "`catalog` and `catalog_kwargs` are both specified. "
-                    "Ignoring `catalog` and using `catalog_kwargs` instead."
-                )
+                raise ValueError("`catalog_kwargs` cannot be specified with `catalog`.")
 
             from ray.data.catalog import CatalogAccessMode, ReaderFormat
 
