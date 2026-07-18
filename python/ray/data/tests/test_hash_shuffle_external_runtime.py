@@ -167,9 +167,7 @@ def test_fetch_error_paths(ray_start_regular_shared_2_cpus, tmp_path):
 
         with open_shuffle_connection(endpoint, "t") as conn:
             with pytest.raises(FileNotFoundError):
-                conn.fetch_into(
-                    [(str(tmp_path / "missing.bin"), [(0, 4)])], sink
-                )
+                conn.fetch_into([(str(tmp_path / "missing.bin"), [(0, 4)])], sink)
 
         outside = tmp_path.parent / "outside.bin"
         outside.write_bytes(b"secret")
@@ -181,7 +179,6 @@ def test_fetch_error_paths(ray_start_regular_shared_2_cpus, tmp_path):
             outside.unlink(missing_ok=True)
     finally:
         os.close(fd)
-
 
 
 def test_fetch_into_wire_format(ray_start_regular_shared_2_cpus, tmp_path):
@@ -241,9 +238,9 @@ def test_fetch_into_reset_and_retry(ray_start_regular_shared_2_cpus, tmp_path):
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,
     # and single-range-larger-than-budget (must stand alone as its own batch).
-    m1 = _NodeMember(path="a", ranges=[(0, 10), (10, 10)])   # 20 total
-    m2 = _NodeMember(path="b", ranges=[(0, 30)])             # 30 total
-    m3 = _NodeMember(path="c", ranges=[(0, 5), (5, 5)])      # 10 total
+    m1 = _NodeMember(path="a", ranges=[(0, 10), (10, 10)])  # 20 total
+    m2 = _NodeMember(path="b", ranges=[(0, 30)])  # 30 total
+    m3 = _NodeMember(path="c", ranges=[(0, 5), (5, 5)])  # 10 total
 
     # Budget 100 -> everything fits in one batch.
     batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=100))
@@ -279,12 +276,22 @@ def test_group_by_manager():
 def test_compute_prefetch_layout():
     # Each range contributes 4 (u32 len prefix) + range_length to the group's
     # size. base_offsets are the running cumulative sum.
-    g0 = _NodeGroup("sh", "n1", "tok", members=[
-        _NodeMember(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
-    ])
-    g1 = _NodeGroup("sh", "n2", "tok", members=[
-        _NodeMember(path="b", ranges=[(0, 100)]),           # 4+100 = 104
-    ])
+    g0 = _NodeGroup(
+        "sh",
+        "n1",
+        "tok",
+        members=[
+            _NodeMember(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
+        ],
+    )
+    g1 = _NodeGroup(
+        "sh",
+        "n2",
+        "tok",
+        members=[
+            _NodeMember(path="b", ranges=[(0, 100)]),  # 4+100 = 104
+        ],
+    )
     total, base_offsets, sizes = _compute_prefetch_layout([g0, g1])
     assert sizes == [28, 104]
     assert base_offsets == [0, 28]

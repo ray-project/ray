@@ -203,10 +203,11 @@ def _drop_pagecache(fd: int, offset: int, length: int) -> None:
 
 # Fetch helper class used by file server actor
 class _FetchHandler(socketserver.BaseRequestHandler):
-    """ Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
+    """Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
     Each FETCH can carry multiple source paths, so a reducer with N sources on
     this node pays only one TCP round-trip handshake/setup overhead.
     """
+
     def handle(self):
         srv = self.server
         sock = self.request
@@ -380,7 +381,11 @@ def _threading_server_for(ip: str) -> type:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return _ThreadingServer
-    return _ThreadingServerV6 if isinstance(addr, ipaddress.IPv6Address) else _ThreadingServer
+    return (
+        _ThreadingServerV6
+        if isinstance(addr, ipaddress.IPv6Address)
+        else _ThreadingServer
+    )
 
 
 # ShuffleManager actor identity. Name is deterministic in (shuffle_id, node_id)
@@ -449,6 +454,7 @@ def _cleanup_shuffle_dir(base_dir: str, expected_node_id: str) -> None:
     if ray.get_runtime_context().get_node_id() != expected_node_id:
         return
     import shutil
+
     shutil.rmtree(base_dir, ignore_errors=True)
 
 
@@ -623,6 +629,7 @@ class ShuffleHandle(TypedDict, total=False):
     Only the fields the runtime consumes are declared; the mapper task can
     add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
     """
+
     path: str
     # each partition can have multiple ranges, thus index field is like:
     # [partition id, [(offset0, length0), (offset1, length1), ...]
@@ -641,7 +648,8 @@ class ShuffleDiskError(RuntimeError):
 # errno values that indicate the reducer's local disk is exhausted.
 # EDQUOT is glibc's quota-exceeded error; not all platforms expose it.
 _DISK_EXHAUSTED_ERRNOS = frozenset(
-    e for e in (
+    e
+    for e in (
         errno.ENOSPC,
         getattr(errno, "EDQUOT", None),
     )
@@ -673,7 +681,6 @@ class ShuffleManagerAnomalyError(RuntimeError):
     - TCP failed but the endpoint is unchanged and Ray RPC still works, which is
       often a network-configuration problem (``NetworkPolicy``, firewall, routing).
     """
-
 
 
 # Process-global cache of ShuffleManager endpoints: {actor_name: (ip, port)}.
@@ -893,9 +900,7 @@ def _chunk_members_by_bytes(
         for off, length in member.ranges:
             if (batch or pending) and batch_bytes + length > max_bytes:
                 if pending:
-                    batch.append(
-                        _NodeMember(path=member.path, ranges=pending)
-                    )
+                    batch.append(_NodeMember(path=member.path, ranges=pending))
                     pending = []
                 yield batch
                 batch, batch_bytes = [], 0
