@@ -76,5 +76,28 @@ inline ray::stats::Count GetGrpcClientReqFailedCounterMetric() {
       /*tag_keys=*/{"Method"});
 }
 
+struct GrpcServerMetrics {
+  GrpcServerMetrics()
+      : req_process_time_ms(GetGrpcServerReqProcessTimeMsHistogramMetric()),
+        req_new(GetGrpcServerReqNewCounterMetric()),
+        req_handling(GetGrpcServerReqHandlingCounterMetric()),
+        req_finished(GetGrpcServerReqFinishedCounterMetric()),
+        req_succeeded(GetGrpcServerReqSucceededCounterMetric()),
+        req_failed(GetGrpcServerReqFailedCounterMetric()) {}
+
+  ray::stats::Histogram req_process_time_ms;
+  ray::stats::Count req_new;
+  ray::stats::Count req_handling;
+  ray::stats::Count req_finished;
+  ray::stats::Count req_succeeded;
+  ray::stats::Count req_failed;
+};
+
+struct GrpcClientMetrics {
+  GrpcClientMetrics() : req_failed(GetGrpcClientReqFailedCounterMetric()) {}
+
+  ray::stats::Count req_failed;
+};
+
 }  // namespace rpc
 }  // namespace ray

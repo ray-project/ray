@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Quickstart paths for Ray: scale ML workloads with the AI libraries, parallelize Python with Ray Core, or deploy to the cloud with Ray Clusters."
+---
+
 (gentle-intro)=
 
 # Getting Started

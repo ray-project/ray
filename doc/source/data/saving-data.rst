@@ -14,27 +14,30 @@ This guide shows you how to:
 Writing data to files
 =====================
 
-Ray Data writes to local disk and cloud storage.
+Ray Data writes to shared local storage and cloud storage.
 
-Writing data to local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Writing data to shared local storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To save your :class:`~ray.data.dataset.Dataset` to local disk, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>`  and specify a local
-directory with the `local://` scheme.
+To save your :class:`~ray.data.dataset.Dataset` to a shared local filesystem,
+use storage such as NFS, and mount that storage at the same path on every Ray
+node. Then, call a method like
+:meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the
+mounted directory.
 
 .. warning::
 
-    If your cluster contains multiple nodes and you don't use `local://`, Ray Data
-    writes different partitions of data to different nodes.
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
-    ds.write_parquet("local:///tmp/iris/")
+    ds.write_parquet("/mnt/cluster_storage/iris")
 
 To write data to formats other than Parquet, see the
 :ref:`Saving Data API <saving-data-api>`.
@@ -117,25 +120,6 @@ To write data to formats other than Parquet, see the :ref:`Saving Data API <savi
         Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
-
-Writing data to NFS
-~~~~~~~~~~~~~~~~~~~
-
-To save your :class:`~ray.data.dataset.Dataset` to NFS file systems, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a
-mounted directory.
-
-.. testcode::
-    :skipif: True
-
-    import ray
-
-    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-
-    ds.write_parquet("/mnt/cluster_storage/iris")
-
-To write data to formats other than Parquet, see the
-:ref:`Saving Data API <saving-data-api>`.
 
 .. _changing-number-output-files:
 

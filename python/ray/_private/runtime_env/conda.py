@@ -13,6 +13,7 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import (
     get_or_create_event_loop,
     try_to_create_directory,
@@ -25,8 +26,8 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
