@@ -785,6 +785,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the task-based on-disk hash-shuffle path for repartition;
+    # when False, fall back to v2 (in-memory) hash-shuffle implementation.
+    use_external_hash_shuffle: bool = False
+
     # Whether to use the task-based hash-shuffle v2 path for join. When
     # False, fall back to the legacy actor-based `JoinOperator`.
     use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
