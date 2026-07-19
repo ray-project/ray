@@ -729,8 +729,9 @@ class ReplicaHealthPushRegistry:
         if prev is not None and checked_at <= prev[0]:
             return  # A delayed report must not clobber a newer observation.
         if len(self._state) > self._PRUNE_THRESHOLD:
+            # Age by controller-clock arrival time (v[1]), immune to replica skew.
             cutoff = time.time() - self._PRUNE_MAX_AGE_S
-            self._state = {k: v for k, v in self._state.items() if v[0] >= cutoff}
+            self._state = {k: v for k, v in self._state.items() if v[1] >= cutoff}
         self._state[replica_unique_id] = (
             checked_at,
             time.time(),
