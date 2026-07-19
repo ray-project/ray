@@ -627,6 +627,28 @@ def test_streaming_split_count_not_equal_raises(ray_start_10_cpus_shared):
         i1.count()
 
 
+def test_streaming_split_count_during_execution_raises(ray_start_10_cpus_shared):
+    """`count()` raises while the split is actively being iterated, since it
+    would otherwise race with the in-progress executor."""
+    ds = ray.data.range(100)
+    it = ds.streaming_split(1, equal=True)[0]
+
+    started = threading.Event()
+
+    def consume():
+        for i, batch in enumerate(it.iter_batches(batch_size=1)):
+            started.set()
+            if i > 3:
+                break
+
+    t = threading.Thread(target=consume)
+    t.start()
+    started.wait(timeout=10)
+    with pytest.raises(RuntimeError, match="active dataset execution"):
+        it.count()
+    t.join()
+
+
 def test_streaming_split_context(ray_start_10_cpus_shared):
     """Test that get_context() returns a valid DataContext from the coordinator."""
     ds = ray.data.range(10)

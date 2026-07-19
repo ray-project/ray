@@ -395,6 +395,10 @@ class DataIterator(abc.ABC):
         <ray.data.Dataset.streaming_split>` with ``equal=True``, this returns the
         number of rows in that shard (``total_rows // num_splits``).
 
+        For a shard obtained with ``equal=False``, the per-split count can't be
+        determined ahead of execution, so this raises ``NotImplementedError``;
+        call ``count()`` on the source :class:`Dataset <ray.data.Dataset>` instead.
+
         Note that computing the count may trigger execution for datasets whose
         row count can't be determined from metadata alone (e.g. datasets that
         were filtered). Datasets that only read Parquet files can determine the

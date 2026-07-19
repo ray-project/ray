@@ -177,7 +177,8 @@ class StreamSplitDataIterator(DataIterator):
         return ray.get(self._coord_actor.get_dataset_context.remote())
 
     def count(self) -> int:
-        """Implements DataIterator. Only supported for ``equal=True`` splits."""
+        """Implements DataIterator. Raises ``NotImplementedError`` unless the
+        split was created with ``equal=True``."""
         return ray.get(self._coord_actor.count.remote())
 
     def world_size(self) -> int:
