@@ -40,9 +40,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_factory.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -1802,7 +1802,8 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   auto message =
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   auto object_ids = FlatbufferToObjectIds(*message->object_ids());
-  int64_t tag = message->tag();
+  const TaskID task_id = TaskID::FromBinary(message->task_id()->str());
+  const int32_t attempt_number = message->attempt_number();
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
@@ -1810,20 +1811,21 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
-  wait_manager_.Wait(object_ids,
-                     -1,
-                     object_ids.size(),
-                     [this, client, tag](const std::vector<ObjectID> &ready,
-                                         const std::vector<ObjectID> &remaining) {
-                       RAY_CHECK(remaining.empty());
-                       std::shared_ptr<WorkerInterface> worker =
-                           worker_pool_.GetRegisteredWorker(client);
-                       if (!worker) {
-                         RAY_LOG(ERROR) << "Lost worker for wait request " << client;
-                       } else {
-                         worker->ActorCallArgWaitComplete(tag);
-                       }
-                     });
+  wait_manager_.Wait(
+      object_ids,
+      -1,
+      object_ids.size(),
+      [this, client, task_id, attempt_number](const std::vector<ObjectID> &ready,
+                                              const std::vector<ObjectID> &remaining) {
+        RAY_CHECK(remaining.empty());
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.GetRegisteredWorker(client);
+        if (!worker) {
+          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+        } else {
+          worker->ActorCallArgWaitComplete(task_id, attempt_number);
+        }
+      });
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
@@ -2255,7 +2257,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
-        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdle();
+        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdleForDrain();
     if (is_idle) {
       cluster_resource_scheduler_.GetLocalResourceManager().SetLocalNodeDraining(request);
       reply->set_is_accepted(true);
@@ -3159,18 +3161,20 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-                user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+            StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                        StatusT::NotFound>
+                user_and_system_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            if (user_and_system_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot =
+                  user_and_system_slice_memory_snapshot_or.value().first;
             } else {
               RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Failed to take user and system slice memory snapshot due to: %s. "
                   "Falling back to host system memory snapshot.",
-                  user_slice_memory_snapshot_or.message());
+                  user_and_system_slice_memory_snapshot_or.message());
             }
           }
 
