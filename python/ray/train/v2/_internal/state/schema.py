@@ -317,11 +317,33 @@ class DataExecutionOptions(BaseModel):
 
 
 @DeveloperAPI
+class SplitConfig(BaseModel):
+    """Per-dataset split settings for a Ray Train run."""
+
+    equal: bool = Field(
+        description="Whether the dataset should be split equally across workers."
+    )
+    enable_shard_locality: bool = Field(
+        description="Whether shard locality optimization is enabled for the dataset."
+    )
+
+
+@DeveloperAPI
 class DataConfig(BaseModel):
     """Configuration for dataset splitting and execution options within Ray Train."""
 
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names."
+    )
+    unequal_split_datasets: List[str] = Field(
+        default_factory=list,
+        description="Datasets that should use unequal splitting (equal=False). "
+        "By default, all datasets use equal splitting (equal=True) for backward compatibility. "
+        "List datasets here that should NOT drop rows during splitting.",
+    )
+    dataset_split_configs: Dict[str, SplitConfig] = Field(
+        default_factory=dict,
+        description="Detailed per-dataset split settings for dict-based datasets_to_split.",
     )
     execution_options: Optional[Dict] = Field(
         default=None,

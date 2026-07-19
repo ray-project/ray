@@ -18,7 +18,7 @@ from ray.air.result import Result
 
 # Import this first so it can be used in other modules
 from ray.train._checkpoint import Checkpoint
-from ray.train._internal.data_config import DataConfig
+from ray.train._internal.data_config import DataConfig, SplitConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
 from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
@@ -85,6 +85,7 @@ __all__ = [
     "Result",
     "RunConfig",
     "ScalingConfig",
+    "SplitConfig",
     "SyncConfig",
     "TrainContext",
     "TrainingFailedError",
@@ -103,6 +104,7 @@ FailureConfig.__module__ = "ray.train"
 Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
+SplitConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainContext.__module__ = "ray.train"
 TrainingFailedError.__module__ = "ray.train"
