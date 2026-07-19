@@ -683,6 +683,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
               TestStopWaitsForInflightThenFlushes);
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
+  FRIEND_TEST(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend);
 };
 
 }  // namespace worker
