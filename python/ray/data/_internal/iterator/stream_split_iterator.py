@@ -49,17 +49,20 @@ class StreamSplitDataIterator(DataIterator):
             },
         ).remote(base_dataset, n, locality_hints)
 
-        return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]
+        equal = getattr(base_dataset._logical_plan.dag, "equal", False)
+        return [StreamSplitDataIterator(coord_actor, i, n, equal) for i in range(n)]
 
     def __init__(
         self,
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
+        equal: bool = False,
     ):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
+        self._equal = equal
         self._iter_stats = DatasetStats(metadata={}, parent=None)
         # Epoch this split is currently consuming. Set by ``gen_blocks``
         # once ``start_epoch`` returns (on the async-prefetch filling
@@ -177,8 +180,22 @@ class StreamSplitDataIterator(DataIterator):
         return ray.get(self._coord_actor.get_dataset_context.remote())
 
     def count(self) -> int:
-        """Implements DataIterator. Raises ``NotImplementedError`` unless the
-        split was created with ``equal=True``."""
+        """Implements DataIterator.
+
+        Raises ``NotImplementedError`` for ``equal=False`` splits (the per-split
+        count is only known at runtime) and ``RuntimeError`` if called while the
+        split is being actively iterated.
+        """
+        # Fail fast locally for non-equal splits so the user gets a plain
+        # NotImplementedError rather than one wrapped in a RayTaskError, and to
+        # avoid a needless round-trip to the coordinator actor.
+        if not self._equal:
+            raise NotImplementedError(
+                "count() is only supported for streaming splits created with "
+                "`equal=True`. When `equal=False`, the number of rows per split "
+                "is determined at runtime. Call `count()` on the source Dataset "
+                "to get the total number of rows instead."
+            )
         return ray.get(self._coord_actor.count.remote())
 
     def world_size(self) -> int:
@@ -218,6 +235,9 @@ class SplitCoordinator:
         self._lock = threading.RLock()
         self._dataset_state_lock = threading.Lock()
         self._schema = None
+        # Memoized row count of the pre-split source dataset, shared across all
+        # splits. Guarded by self._dataset_state_lock.
+        self._source_row_count: Optional[int] = None
         self._current_executor = None
 
         # Guarded by self._lock.
@@ -285,17 +305,8 @@ class SplitCoordinator:
         rows per split is only determined at runtime, so this raises
         ``NotImplementedError``.
         """
-        # ``_base_dataset`` is the dataset with a terminal ``StreamingSplit``
-        # operator; its single input dependency is the source to count.
-        split_op = self._base_dataset._logical_plan.dag
-        if not getattr(split_op, "equal", False):
-            raise NotImplementedError(
-                "count() is only supported for streaming splits created with "
-                "`equal=True`. When `equal=False`, the number of rows per split "
-                "is determined at runtime. Call `count()` on the source Dataset "
-                "to get the total number of rows instead."
-            )
-
+        # ``equal=False`` is rejected by the caller (StreamSplitDataIterator),
+        # so this only handles equal splits.
         with self._dataset_state_lock:
             if self._current_executor is not None and self._current_executor.is_alive():
                 raise RuntimeError(
@@ -303,20 +314,32 @@ class SplitCoordinator:
                     "Call count() before or after iterating over the dataset, or "
                     "call count() directly on the source Dataset object."
                 )
-            total_rows = self._source_dataset_count(split_op)
+            total_rows = self._source_dataset_count()
 
         # With ``equal=True``, the output splitter drops the remainder so that
         # every split yields exactly ``total_rows // num_splits`` rows.
         return total_rows // self._n
 
-    def _source_dataset_count(self, split_op) -> int:
-        """Count the rows of the pre-split source dataset."""
+    def _source_dataset_count(self) -> int:
+        """Count the rows of the pre-split source dataset (memoized).
+
+        Must be called while holding ``self._dataset_state_lock``. The result is
+        cached so multiple splits sharing this coordinator don't each trigger a
+        potentially expensive ``Dataset.count()``.
+        """
+        if self._source_row_count is not None:
+            return self._source_row_count
+
         from ray.data.dataset import Dataset
 
+        # ``_base_dataset`` has a terminal ``StreamingSplit`` operator; its
+        # single input dependency is the source to count.
+        split_op = self._base_dataset._logical_plan.dag
         source_dag = split_op.input_dependencies[0]
         source_plan = LogicalPlan(source_dag, self._data_context)
         source_ds = Dataset._from_parent(self._base_dataset, source_plan)
-        return source_ds.count()
+        self._source_row_count = source_ds.count()
+        return self._source_row_count
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
