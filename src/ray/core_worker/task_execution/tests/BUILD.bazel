@@ -46,6 +46,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:ray_config",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
