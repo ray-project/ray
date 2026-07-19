@@ -626,27 +626,46 @@ def test_streaming_split_count_not_equal_raises(ray_start_10_cpus_shared):
     with pytest.raises(NotImplementedError, match="equal=True"):
         i1.count()
 
+    # The coordinator actor guards against non-equal splits too, so bypassing
+    # the iterator wrapper still fails loudly instead of returning a bogus count.
+    with pytest.raises(NotImplementedError, match="equal=True"):
+        ray.get(i1._coord_actor.count.remote())
+
 
 def test_streaming_split_count_during_execution_raises(ray_start_10_cpus_shared):
     """`count()` raises while the split is actively being iterated, since it
     would otherwise race with the in-progress executor."""
-    ds = ray.data.range(100)
+
+    # A slow transform over many blocks keeps the executor's dispatch thread
+    # genuinely running, and holding the consumer open (via ``release``) keeps
+    # it from finishing, so the guard is exercised deterministically rather
+    # than relying on a small dataset draining slowly enough.
+    def slow(batch):
+        time.sleep(0.1)
+        return batch
+
+    ds = ray.data.range(200, override_num_blocks=20).map_batches(slow, batch_size=10)
     it = ds.streaming_split(1, equal=True)[0]
 
     started = threading.Event()
+    release = threading.Event()
 
     def consume():
-        for i, batch in enumerate(it.iter_batches(batch_size=1)):
+        for _ in it.iter_batches(batch_size=10):
             started.set()
-            if i > 3:
-                break
+            # Pause after the first batch so the executor stays active while
+            # the main thread probes count().
+            release.wait(timeout=30)
 
     t = threading.Thread(target=consume)
     t.start()
-    started.wait(timeout=10)
-    with pytest.raises(RuntimeError, match="active dataset execution"):
-        it.count()
-    t.join()
+    try:
+        assert started.wait(timeout=30), "consumer never produced a batch"
+        with pytest.raises(RuntimeError, match="active dataset execution"):
+            it.count()
+    finally:
+        release.set()
+        t.join()
 
 
 def test_streaming_split_context(ray_start_10_cpus_shared):

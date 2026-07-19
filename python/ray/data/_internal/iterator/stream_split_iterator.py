@@ -231,6 +231,7 @@ class SplitCoordinator:
 
         self._base_dataset = dataset
         self._n = n
+        self._equal = getattr(dataset._logical_plan.dag, "equal", False)
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._dataset_state_lock = threading.Lock()
@@ -305,8 +306,16 @@ class SplitCoordinator:
         rows per split is only determined at runtime, so this raises
         ``NotImplementedError``.
         """
-        # ``equal=False`` is rejected by the caller (StreamSplitDataIterator),
-        # so this only handles equal splits.
+        # ``StreamSplitDataIterator.count()`` already fails fast for non-equal
+        # splits, but guard here too so a direct actor call can't silently
+        # return a bogus ``total_rows // n`` for a split that isn't equal.
+        if not self._equal:
+            raise NotImplementedError(
+                "count() is only supported for streaming splits created with "
+                "`equal=True`. When `equal=False`, the number of rows per split "
+                "is determined at runtime. Call `count()` on the source Dataset "
+                "to get the total number of rows instead."
+            )
         with self._dataset_state_lock:
             if self._current_executor is not None and self._current_executor.is_alive():
                 raise RuntimeError(
