@@ -1360,3 +1360,113 @@ class TestCythonImplementationEdgeCases:
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+class TestSelfHealthPush:
+    """The replica-side self-health task stores the local result and heartbeats
+    it to the controller only when metric report pushes are not carrying it."""
+
+    def _manager(self, pushing_reports=False):
+        import threading
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from ray.serve._private.replica import ReplicaMetricsManager
+
+        m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
+        m._self_healthy = None
+        m._self_health_checked_at = None
+        m._self_health_timeout_s = 1.0
+        m._pushing_metric_reports = pushing_reports
+        m._pending_health_push_ref = None
+        m._self_consecutive_failures = 0
+        m._metrics_push_lock = threading.Lock()
+        m._controller_handle = Mock()
+        m._replica_id = SimpleNamespace(unique_id="r1")
+        return m
+
+    @pytest.mark.asyncio
+    async def test_healthy_eval_heartbeats(self):
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is True
+        args = m._controller_handle.record_replica_health.remote.call_args.args
+        assert args[0] == "r1" and args[2] is True
+
+    @pytest.mark.asyncio
+    async def test_failing_eval_heartbeats_unhealthy(self):
+        m = self._manager()
+
+        async def bad():
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is False
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
+    @pytest.mark.asyncio
+    async def test_hanging_eval_times_out_unhealthy(self):
+        m = self._manager()
+        m._self_health_timeout_s = 0.05
+
+        async def hang():
+            await asyncio.sleep(10)
+
+        m._eval_self_health_fn = hang
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is False
+
+    @pytest.mark.asyncio
+    async def test_no_heartbeat_when_metric_reports_carry_health(self):
+        m = self._manager(pushing_reports=True)
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is True
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_latches_unhealthy_at_threshold(self):
+        from ray.serve._private.constants import (
+            REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+        )
+
+        m = self._manager(pushing_reports=True)
+        evals = []
+
+        async def bad():
+            evals.append(1)
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        for _ in range(REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 2):
+            await m._eval_and_push_self_health()
+        assert m._self_healthy is False
+        # The user check stops running at the threshold; pushes continue.
+        assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+
+    @pytest.mark.asyncio
+    async def test_in_flight_heartbeat_skips_next(self, monkeypatch):
+        import ray.serve._private.replica as replica_mod
+
+        m = self._manager()
+        m._pending_health_push_ref = "in_flight"
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_not_called()

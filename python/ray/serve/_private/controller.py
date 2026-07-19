@@ -400,17 +400,22 @@ class ServeController:
                 replica_metric_report.health_checked_at
                 or replica_metric_report.timestamp,
                 replica_metric_report.healthy,
+                replica_metric_report.health_consecutive_failures,
             )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
         )
 
     def record_replica_health(
-        self, replica_unique_id: str, checked_at: float, healthy: bool
+        self,
+        replica_unique_id: str,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
     ):
         """Self-health heartbeat from replicas that do not push metric reports."""
         self._replica_health_push_registry.record(
-            replica_unique_id, checked_at, healthy
+            replica_unique_id, checked_at, healthy, consecutive_failures
         )
 
     def record_autoscaling_metrics_from_handle(

@@ -9788,6 +9788,7 @@ class TestPushedHealth:
         w._replica_id = "test_replica"
         w._pushed_health = None
         w._last_consumed_push_ts = 0.0
+        w._last_push_consume_time = 0.0
         w._version = SimpleNamespace(
             deployment_config=SimpleNamespace(health_check_period_s=10.0)
         )
@@ -9800,7 +9801,7 @@ class TestPushedHealth:
         assert w.check_health() is True
         w._actor_handle.check_health.remote.assert_not_called()
         assert w._health_check_ref is None
-        assert w._last_health_check_time > 0.0
+        assert w._last_push_consume_time > 0.0  # probe gated while pushes flow
 
     def test_stale_push_falls_back_to_pull_probe(self):
         w = self._wrapper()
@@ -9827,6 +9828,13 @@ class TestPushedHealth:
         w.check_health()
         assert w._consecutive_health_check_failures == 1
 
+    def test_pushed_count_is_mirrored(self):
+        w = self._wrapper()
+        w.record_pushed_health(time.time(), False, 7)
+        w.check_health()
+        assert w._consecutive_health_check_failures == 7
+        assert w._healthy is False
+
     def test_healthy_push_resets_failure_count(self):
         w = self._wrapper()
         w.record_pushed_health(time.time(), False)
@@ -9846,7 +9854,7 @@ def test_apply_pushed_health_hands_off_to_wrapper():
     rep.replica_id.unique_id = "r1"
     ds._health_push_registry.record("r1", 123.0, True)
     DeploymentState._apply_pushed_health(ds, rep)
-    rep.record_pushed_health.assert_called_once_with(123.0, True)
+    rep.record_pushed_health.assert_called_once_with(123.0, True, None)
 
     rep2 = Mock()
     rep2.replica_id.unique_id = "r2"

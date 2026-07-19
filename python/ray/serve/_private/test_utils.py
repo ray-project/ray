@@ -778,8 +778,10 @@ class MockReplicaActorWrapper:
         self.health_check_called = True
         return self.healthy
 
-    def record_pushed_health(self, checked_at: float, healthy: bool):
-        self.pushed_health = (checked_at, healthy)
+    def record_pushed_health(
+        self, checked_at: float, healthy: bool, consecutive_failures=None
+    ):
+        self.pushed_health = (checked_at, healthy, consecutive_failures)
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}

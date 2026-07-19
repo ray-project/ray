@@ -85,6 +85,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     RECORD_REPLICA_METADATA_METHOD,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -358,6 +359,7 @@ class ReplicaMetricsManager:
 
     PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
     RECORD_METRICS_TASK_NAME = "record_metrics"
+    PUSH_SELF_HEALTH_TASK_NAME = "push_self_health"
     SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
     def __init__(
@@ -390,6 +392,17 @@ class ReplicaMetricsManager:
         # Tracks in-flight metrics push to controller. Skip if new one is sent.
         self._pending_metrics_push_ref: Optional[ObjectRef] = None
         self._metrics_push_lock = threading.Lock()
+
+        # Self-health push state: the latest local health-check result rides on
+        # metric report pushes, or on a lightweight heartbeat when this replica
+        # does not push metric reports.
+        self._self_healthy: Optional[bool] = None
+        self._self_health_checked_at: Optional[float] = None
+        self._eval_self_health_fn: Optional[Callable] = None
+        self._self_health_timeout_s: float = 0.0
+        self._pushing_metric_reports = False
+        self._self_consecutive_failures = 0
+        self._pending_health_push_ref: Optional[ObjectRef] = None
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -648,6 +661,7 @@ class ReplicaMetricsManager:
 
     def start_metrics_pusher(self):
         self._metrics_pusher.start()
+        self._pushing_metric_reports = True
 
         # Push autoscaling metrics to the controller periodically.
         self._metrics_pusher.register_or_update_task(
@@ -665,6 +679,59 @@ class ReplicaMetricsManager:
             self._add_autoscaling_metrics_point_async,
             min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
+
+    def start_self_health_pusher(
+        self, eval_fn: Callable, period_s: float, timeout_s: float
+    ):
+        """Periodically run the local health check and push the result.
+
+        eval_fn is an async callable that raises when unhealthy (the replica's
+        own check_health).
+        """
+        self._eval_self_health_fn = eval_fn
+        self._self_health_timeout_s = timeout_s
+        self._metrics_pusher.start()
+        self._metrics_pusher.register_or_update_task(
+            self.PUSH_SELF_HEALTH_TASK_NAME,
+            self._eval_and_push_self_health,
+            period_s,
+        )
+
+    async def _eval_and_push_self_health(self):
+        if self._self_consecutive_failures >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
+            # Latched: the controller will replace this replica; stop re-running
+            # the user check (parity with pull probes, which cease at the
+            # threshold) but keep reporting unhealthy.
+            healthy = False
+        else:
+            healthy = True
+            try:
+                await asyncio.wait_for(
+                    self._eval_self_health_fn(), timeout=self._self_health_timeout_s
+                )
+            except Exception:
+                healthy = False
+            self._self_consecutive_failures = (
+                0 if healthy else self._self_consecutive_failures + 1
+            )
+        self._self_healthy = healthy
+        self._self_health_checked_at = time.time()
+
+        if self._pushing_metric_reports:
+            # Health rides on the metric report pushes.
+            return
+        with self._metrics_push_lock:
+            if self._pending_health_push_ref is not None:
+                if not check_obj_ref_ready_nowait(self._pending_health_push_ref):
+                    return  # Previous heartbeat still in flight.
+            self._pending_health_push_ref = (
+                self._controller_handle.record_replica_health.remote(
+                    self._replica_id.unique_id,
+                    self._self_health_checked_at,
+                    healthy,
+                    self._self_consecutive_failures,
+                )
+            )
 
     def should_collect_ongoing_requests(self) -> bool:
         """Determine if replicas should collect ongoing request metrics.
@@ -948,6 +1015,9 @@ class ReplicaMetricsManager:
             timestamp=time.time(),
             aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
+            healthy=self._self_healthy,
+            health_checked_at=self._self_health_checked_at,
+            health_consecutive_failures=self._self_consecutive_failures,
         )
         with self._metrics_push_lock:
             if self._pending_metrics_push_ref is not None:
@@ -1076,6 +1146,11 @@ class Replica:
 
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
+        # Self-health task state: once active, check_health() serves the cached
+        # result instead of re-running the user check.
+        self._self_health_active = False
+        self._self_health_evaluated = False
+        self._last_self_health_error: Optional[str] = None
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
@@ -1876,6 +1951,9 @@ class Replica:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
+            # From here on the periodic self-health task is the sole caller of
+            # the user health check; remote probes read its cached result.
+            self._start_self_health_pusher()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -1903,6 +1981,8 @@ class Replica:
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
             )
+            if self._user_callable_initialized:
+                self._start_self_health_pusher()
             self._metrics_manager.set_max_ongoing_requests(
                 deployment_config.max_ongoing_requests
             )
@@ -2138,7 +2218,16 @@ class Replica:
             extra={"log_to_stderr": False},
         )
 
-    async def check_health(self):
+    def _start_self_health_pusher(self):
+        """Push local health on the deployment's health-check cadence."""
+        self._self_health_active = True
+        self._metrics_manager.start_self_health_pusher(
+            self._run_user_health_check,
+            self._deployment_config.health_check_period_s,
+            self._deployment_config.health_check_timeout_s,
+        )
+
+    async def _run_user_health_check(self):
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2152,7 +2241,21 @@ class Replica:
         except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False
+            self._last_self_health_error = repr(e)
             raise e from None
+        finally:
+            self._self_health_evaluated = True
+
+    async def check_health(self):
+        # While the self-health task is the active observer, serve its cached
+        # result -- concurrent callers must not re-run the user health check.
+        if self._self_health_active and self._self_health_evaluated:
+            if not self._healthy:
+                raise RuntimeError(
+                    self._last_self_health_error or "Replica self health check failed."
+                )
+            return
+        await self._run_user_health_check()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         try:

@@ -1065,6 +1065,7 @@ class ReplicaMetricReport:
     # controller then falls back to pull probes).
     healthy: Optional[bool] = None
     health_checked_at: Optional[float] = None
+    health_consecutive_failures: Optional[int] = None
 
 
 @dataclass
