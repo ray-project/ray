@@ -322,7 +322,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // Start the recorder's export path as per the flag. If disabled,
   // task_event_buffer might be used depending on other flags. (see
   // task_event_buffer.h/.cc)
-  if (RayConfig::instance().enable_ray_task_event_recorder()) {
+  if (observability::RayTaskEventRecorder::Enabled()) {
     ray_task_event_recorder->StartExportingEvents();
   }
 

@@ -24,6 +24,7 @@
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/observability/ray_actor_task_definition_event.h"
 #include "ray/observability/ray_task_definition_event.h"
+#include "ray/observability/ray_task_event_recorder.h"
 #include "ray/observability/ray_task_lifecycle_event.h"
 #include "ray/observability/ray_task_profile_event.h"
 #include "ray/util/graceful_shutdown.h"
@@ -567,8 +568,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
     bool include_task_info,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
   // Skip building the event objects when the recorder path is disabled.
-  if (!RayConfig::instance().enable_ray_event() ||
-      !RayConfig::instance().enable_ray_task_event_recorder()) {
+  if (!observability::RayTaskEventRecorder::Enabled()) {
     return;
   }
   if (!spec.EnableTaskEvents()) {
@@ -613,8 +613,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   // When active, disable the task_event_buffer to aggregator path to avoid double
   // reporting.
   const bool ray_task_event_recorder_enabled =
-      RayConfig::instance().enable_ray_task_event_recorder() &&
-      RayConfig::instance().enable_ray_event();
+      observability::RayTaskEventRecorder::Enabled();
   task_event_buffer_to_aggregator_enabled_ =
       !ray_task_event_recorder_enabled &&
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
