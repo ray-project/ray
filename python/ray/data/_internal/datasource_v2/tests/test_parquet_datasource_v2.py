@@ -86,6 +86,62 @@ def test_infer_schema_with_include_paths(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
+def test_infer_schema_with_custom_path_column(tmp_path):
+    """Test that custom path_column is respected in V2 path."""
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
+
+    # Test with custom path_column
+    datasource = ParquetDatasourceV2(
+        [str(file_path)], include_paths=True, path_column="source_file"
+    )
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+
+    assert "source_file" in schema.names
+    assert schema.field("source_file").type == pa.string()
+    # Verify default "path" is NOT in schema when custom name is used
+    assert "path" not in schema.names
+
+    # Test with existing "path" column in data - custom name should avoid conflict
+    file_with_path = tmp_path / "data_with_path.parquet"
+    _write_parquet(str(file_with_path), pa.table({"a": [1, 2], "path": ["x", "y"]}))
+    datasource2 = ParquetDatasourceV2(
+        [str(file_with_path)], include_paths=True, path_column="file_path"
+    )
+    schema2 = datasource2.infer_schema(_manifest_of([str(file_with_path)]))
+
+    assert "file_path" in schema2.names
+    assert "path" in schema2.names  # Original data column preserved
+    assert schema2.field("file_path").type == pa.string()
+
+
+def test_infer_schema_with_explicit_none_path_column(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
+
+    datasource = ParquetDatasourceV2(
+        [str(file_path)], include_paths=True, path_column=None
+    )
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+
+    assert "path" in schema.names
+    assert schema.field("path").type == pa.string()
+
+
+def test_infer_schema_ignores_path_column_when_include_paths_disabled(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
+
+    datasource = ParquetDatasourceV2(
+        [str(file_path)], include_paths=False, path_column="source_file"
+    )
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+
+    assert "a" in schema.names
+    assert "path" not in schema.names
+    assert "source_file" not in schema.names
+
+
 def test_infer_schema_returns_empty_schema_on_empty_manifest(tmp_path):
     datasource = ParquetDatasourceV2([str(tmp_path)])
     empty = FileManifest.construct_manifest([], [], [])

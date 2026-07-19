@@ -151,6 +151,7 @@ class FileBasedDatasource(Datasource):
         ignore_missing_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
+        path_column: Optional[str] = None,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -172,6 +173,7 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        self._path_column = path_column or "path"
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
@@ -296,7 +298,9 @@ class FileBasedDatasource(Datasource):
                             block = _add_partitions(block, partitions)
                         if self._include_paths:
                             block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.fill_column("path", read_path)
+                            block = block_accessor.fill_column(
+                                self._path_column, read_path
+                            )
                         yield block
 
         def create_read_task_fn(read_paths, num_threads):
