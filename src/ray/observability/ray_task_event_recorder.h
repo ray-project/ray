@@ -56,6 +56,10 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
   // TaskRayEventInterface.
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
+  // Whether the task-event recorder path is enabled: only when both enable_ray_event and
+  // enable_ray_task_event_recorder are set.
+  static bool Enabled();
+
  private:
   void ExportEvents() override;
 

@@ -212,6 +212,7 @@ ray_cc_library(
         "//src/ray/observability:ray_event_interface",
         "//src/ray/observability:ray_event_recorder_interface",
         "//src/ray/observability:ray_task_definition_event",
+        "//src/ray/observability:ray_task_event_recorder",
         "//src/ray/observability:ray_task_lifecycle_event",
         "//src/ray/observability:ray_task_profile_event",
         "//src/ray/protobuf:export_task_event_cc_proto",
@@ -362,6 +363,7 @@ ray_cc_library(
     deps = [
         ":core_worker_context",
         ":task_event_buffer",
+        "//src/ray/observability:ray_task_event_recorder",
         "//src/ray/util:clock",
     ],
 )

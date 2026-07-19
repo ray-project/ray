@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/observability/ray_task_event_recorder.h"
 
 namespace ray {
 namespace core {
@@ -64,8 +65,7 @@ ProfileEvent::~ProfileEvent() {
   }
   event_->SetEndTime(clock_.NowUnixNanos());
   // Record to the event aggregator before moving the event into the buffer.
-  if (RayConfig::instance().enable_ray_event() &&
-      RayConfig::instance().enable_ray_task_event_recorder()) {
+  if (observability::RayTaskEventRecorder::Enabled()) {
     ray_task_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
   }
   // Add task event to the task event buffer
