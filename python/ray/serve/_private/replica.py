@@ -400,6 +400,7 @@ class ReplicaMetricsManager:
         self._self_health_checked_at: Optional[float] = None
         self._eval_self_health_fn: Optional[Callable] = None
         self._self_health_timeout_s: float = 0.0
+        self._self_health_period_s: float = 0.0
         self._pushing_metric_reports = False
         self._self_consecutive_failures = 0
         self._pending_health_push_ref: Optional[ObjectRef] = None
@@ -690,6 +691,7 @@ class ReplicaMetricsManager:
         """
         self._eval_self_health_fn = eval_fn
         self._self_health_timeout_s = timeout_s
+        self._self_health_period_s = period_s
         self._metrics_pusher.start()
         self._metrics_pusher.register_or_update_task(
             self.PUSH_SELF_HEALTH_TASK_NAME,
@@ -717,8 +719,16 @@ class ReplicaMetricsManager:
         self._self_healthy = healthy
         self._self_health_checked_at = time.time()
 
-        if self._pushing_metric_reports:
-            # Health rides on the metric report pushes.
+        if (
+            self._pushing_metric_reports
+            and self._autoscaling_config is not None
+            and self._autoscaling_config.metrics_interval_s
+            <= self._self_health_period_s
+        ):
+            # Metric-report pushes carry health at least as often as it is
+            # evaluated; a separate heartbeat would be redundant. When the
+            # metric cadence is slower than the health period, heartbeat
+            # anyway so freshness at the controller never lapses.
             return
         with self._metrics_push_lock:
             if self._pending_health_push_ref is not None:

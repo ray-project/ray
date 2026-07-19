@@ -1378,6 +1378,10 @@ class TestSelfHealthPush:
         m._self_health_checked_at = None
         m._self_health_timeout_s = 1.0
         m._pushing_metric_reports = pushing_reports
+        m._autoscaling_config = (
+            SimpleNamespace(metrics_interval_s=10.0) if pushing_reports else None
+        )
+        m._self_health_period_s = 10.0
         m._pending_health_push_ref = None
         m._self_consecutive_failures = 0
         m._metrics_push_lock = threading.Lock()
@@ -1455,6 +1459,21 @@ class TestSelfHealthPush:
         assert m._self_healthy is False
         # The user check stops running at the threshold; pushes continue.
         assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+
+    @pytest.mark.asyncio
+    async def test_heartbeats_when_metric_pushes_too_infrequent(self):
+        from types import SimpleNamespace
+
+        m = self._manager(pushing_reports=True)
+        m._autoscaling_config = SimpleNamespace(metrics_interval_s=30.0)
+        m._self_health_period_s = 10.0  # health evaluated 3x per metric push
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_in_flight_heartbeat_skips_next(self, monkeypatch):
