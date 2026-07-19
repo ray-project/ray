@@ -715,7 +715,8 @@ class ReplicaHealthPushRegistry:
     _PRUNE_MAX_AGE_S = 600.0
 
     def __init__(self):
-        self._state: Dict[str, Tuple[float, bool, Optional[int]]] = {}
+        # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
+        self._state: Dict[str, Tuple[float, float, bool, Optional[int]]] = {}
 
     def record(
         self,
@@ -724,18 +725,22 @@ class ReplicaHealthPushRegistry:
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ):
+        prev = self._state.get(replica_unique_id)
+        if prev is not None and checked_at <= prev[0]:
+            return  # A delayed report must not clobber a newer observation.
         if len(self._state) > self._PRUNE_THRESHOLD:
             cutoff = time.time() - self._PRUNE_MAX_AGE_S
             self._state = {k: v for k, v in self._state.items() if v[0] >= cutoff}
         self._state[replica_unique_id] = (
             checked_at,
+            time.time(),
             healthy,
             consecutive_failures,
         )
 
     def get(
         self, replica_unique_id: str
-    ) -> Optional[Tuple[float, bool, Optional[int]]]:
+    ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
         return self._state.get(replica_unique_id)
 
 
@@ -828,7 +833,7 @@ class ActorReplicaWrapper:
         self._outbound_deployments: Optional[List[DeploymentID]] = None
 
         # Latest replica-pushed self-health, consumed by check_health().
-        self._pushed_health: Optional[Tuple[float, bool, Optional[int]]] = None
+        self._pushed_health: Optional[Tuple[float, float, bool, Optional[int]]] = None
         self._last_consumed_push_ts: float = 0.0
         self._last_push_consume_time: float = 0.0
 
@@ -1718,12 +1723,22 @@ class ActorReplicaWrapper:
     def record_pushed_health(
         self,
         checked_at: float,
+        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
-        """Stash the replica's latest pushed self-health observation."""
+        """Stash the replica's latest pushed self-health observation.
+
+        checked_at is replica-clock (used only for ordering/dedupe);
+        received_at is controller-clock (used for freshness, immune to skew).
+        """
         if checked_at > self._last_consumed_push_ts:
-            self._pushed_health = (checked_at, healthy, consecutive_failures)
+            self._pushed_health = (
+                checked_at,
+                received_at,
+                healthy,
+                consecutive_failures,
+            )
 
     def _take_fresh_pushed_health(self) -> Optional[bool]:
         """Consume the pushed self-health observation, if fresh.
@@ -1733,13 +1748,14 @@ class ActorReplicaWrapper:
         """
         if self._pushed_health is None:
             return None
-        checked_at, healthy, consecutive_failures = self._pushed_health
+        checked_at, received_at, healthy, consecutive_failures = self._pushed_health
         self._pushed_health = None
         self._last_consumed_push_ts = checked_at
         # Freshness window: 1.5x the period with a 1s floor -- push->ingest->
         # consume latency must not flip sub-second periods onto the pull path
-        # (two interleaved observers would double-count flaky checks).
-        if time.time() - checked_at > max(self.health_check_period_s * 1.5, 1.0):
+        # (two interleaved observers would double-count flaky checks). Measured
+        # against the controller-clock arrival time, immune to replica clock skew.
+        if time.time() - received_at > max(self.health_check_period_s * 1.5, 1.0):
             return None
         self._last_push_consume_time = time.time()
         return healthy, consecutive_failures
@@ -1754,8 +1770,15 @@ class ActorReplicaWrapper:
             2) Determining the replica health based on the health check results.
             3) Kicking off a new health check if needed.
         """
-        pushed = self._take_fresh_pushed_health()
         response: ReplicaHealthCheckResponse = self._check_active_health_check()
+        # Consume the pushed observation only when no pull probe resolved this
+        # tick -- otherwise leave it stashed so a fresh push is never discarded
+        # in favor of an older in-flight probe result.
+        pushed = (
+            self._take_fresh_pushed_health()
+            if response is ReplicaHealthCheckResponse.NONE
+            else None
+        )
         if response is ReplicaHealthCheckResponse.NONE and pushed is not None:
             # No pull probe resolved this tick; use the pushed observation. The
             # replica reports its own consecutive-failure count, so mirror it
@@ -2157,11 +2180,14 @@ class DeploymentReplica:
     def record_pushed_health(
         self,
         checked_at: float,
+        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
         """Stash the replica's pushed self-health for the next health check."""
-        self._actor.record_pushed_health(checked_at, healthy, consecutive_failures)
+        self._actor.record_pushed_health(
+            checked_at, received_at, healthy, consecutive_failures
+        )
 
     def check_health(self) -> bool:
         """Check if the replica is healthy.

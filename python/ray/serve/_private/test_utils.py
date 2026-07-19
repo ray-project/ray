@@ -779,9 +779,13 @@ class MockReplicaActorWrapper:
         return self.healthy
 
     def record_pushed_health(
-        self, checked_at: float, healthy: bool, consecutive_failures=None
+        self,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures=None,
     ):
-        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self.pushed_health = (checked_at, received_at, healthy, consecutive_failures)
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
