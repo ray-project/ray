@@ -604,6 +604,29 @@ def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
     assert "id" in schema.names
 
 
+def test_streaming_split_count_equal(ray_start_10_cpus_shared):
+    """`count()` returns the per-split row count for equal splits."""
+    ds = ray.data.range(100)
+    i1, i2 = ds.streaming_split(2, equal=True)
+    assert i1.count() == 50
+    assert i2.count() == 50
+
+    # Non-evenly-divisible total drops the remainder for equal splits.
+    ds = ray.data.range(101)
+    i1, i2 = ds.streaming_split(2, equal=True)
+    assert i1.count() == 50
+    assert i2.count() == 50
+
+
+def test_streaming_split_count_not_equal_raises(ray_start_10_cpus_shared):
+    """`count()` is not supported for non-equal splits, since the per-split
+    row count is only determined at runtime."""
+    ds = ray.data.range(100)
+    i1, i2 = ds.streaming_split(2, equal=False)
+    with pytest.raises(NotImplementedError, match="equal=True"):
+        i1.count()
+
+
 def test_streaming_split_context(ray_start_10_cpus_shared):
     """Test that get_context() returns a valid DataContext from the coordinator."""
     ds = ray.data.range(10)
