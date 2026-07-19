@@ -1719,7 +1719,19 @@ class ActorReplicaWrapper:
 
         if self._should_start_new_health_check():
             self._last_health_check_time = time.time()
-            self._health_check_ref = self._actor_handle.check_health.remote()
+            if self._should_record_routing_stats():
+                # Task submission dominates a probe's controller-side cost, so
+                # coalesce both probes into one RPC when both are due. The shared
+                # ref resolves each probe's slot independently; if the health
+                # check fails, the stats side sees the same error (stats really
+                # were not retrieved).
+                self._last_record_routing_stats_time = self._last_health_check_time
+                self._health_check_ref = (
+                    self._actor_handle.check_health_and_record_routing_stats.remote()
+                )
+                self._record_routing_stats_ref = self._health_check_ref
+            else:
+                self._health_check_ref = self._actor_handle.check_health.remote()
 
         return self._healthy
 

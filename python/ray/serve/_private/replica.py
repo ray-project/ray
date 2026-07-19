@@ -2164,6 +2164,11 @@ class Replica:
             logger.warning("Replica record routing stats failed.")
             raise e from None
 
+    async def check_health_and_record_routing_stats(self) -> Dict[str, Any]:
+        """Both probes in one RPC; a health failure raises and drops the stats."""
+        await self.check_health()
+        return await self.record_routing_stats()
+
     @property
     def max_queued_requests(self) -> int:
         return self._deployment_config.max_queued_requests
@@ -3287,6 +3292,9 @@ class ReplicaActor:
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
+
+    async def check_health_and_record_routing_stats(self) -> Dict[str, Any]:
+        return await self._replica_impl.check_health_and_record_routing_stats()
 
     async def reconfigure(
         self, deployment_config, rank: ReplicaRank, route_prefix: Optional[str] = None

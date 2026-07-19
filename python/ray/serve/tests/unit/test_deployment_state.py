@@ -1,10 +1,12 @@
 import sys
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any, List, Optional, Tuple
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -9767,3 +9769,75 @@ def test_ingress_membership_version_ignores_non_ingress_deployment(
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+class TestCombinedHealthRoutingProbe:
+    """When the health check and routing-stats pull are due together, one RPC covers
+    both; each probe's slot still resolves independently off the shared ref."""
+
+    def _wrapper(self, has_stats_method=True):
+        w = ActorReplicaWrapper.__new__(ActorReplicaWrapper)
+        w._actor_handle = Mock()
+        w._actor_handle.check_health.remote.return_value = "health_ref"
+        w._actor_handle.check_health_and_record_routing_stats.remote.return_value = (
+            "combined_ref"
+        )
+        w._actor_handle.record_routing_stats.remote.return_value = "stats_ref"
+        w._has_user_routing_stats_method = has_stats_method
+        w._health_check_ref = None
+        w._record_routing_stats_ref = None
+        w._last_health_check_time = 0.0
+        w._last_record_routing_stats_time = 0.0
+        w._consecutive_health_check_failures = 0
+        w._healthy = True
+        w._routing_stats = {}
+        w._replica_id = "test_replica"
+        w._routing_stats_delay_histogram = Mock()
+        w._routing_stats_error_counter = Mock()
+        w._version = SimpleNamespace(
+            deployment_config=SimpleNamespace(
+                health_check_period_s=10.0,
+                request_router_config=SimpleNamespace(
+                    request_routing_stats_period_s=10.0,
+                    request_routing_stats_timeout_s=30.0,
+                ),
+            )
+        )
+        return w
+
+    def test_fires_single_combined_rpc_when_both_due(self, monkeypatch):
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        w = self._wrapper()
+        assert w.check_health() is True
+        assert w._health_check_ref == "combined_ref"
+        assert w._record_routing_stats_ref == "combined_ref"
+        w._actor_handle.check_health_and_record_routing_stats.remote.assert_called_once()
+        w._actor_handle.check_health.remote.assert_not_called()
+        w._actor_handle.record_routing_stats.remote.assert_not_called()
+        # The stats side must not double-fire while the shared ref is in flight.
+        w.get_routing_stats()
+        w._actor_handle.record_routing_stats.remote.assert_not_called()
+
+    def test_solo_health_when_stats_probe_in_flight(self):
+        w = self._wrapper()
+        w._record_routing_stats_ref = "in_flight"
+        w.check_health()
+        assert w._health_check_ref == "health_ref"
+        w._actor_handle.check_health_and_record_routing_stats.remote.assert_not_called()
+
+    def test_solo_health_without_user_stats_method(self):
+        w = self._wrapper(has_stats_method=False)
+        w.check_health()
+        assert w._health_check_ref == "health_ref"
+        assert w._record_routing_stats_ref is None
+
+    def test_combined_ref_resolves_each_probe_independently(self, monkeypatch):
+        w = self._wrapper()
+        w.check_health()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: {"queue": 1})
+        assert w.check_health() is True  # resolves the health slot
+        assert w._health_check_ref is None
+        assert w._record_routing_stats_ref == "combined_ref"  # stats slot untouched
+        assert w.get_routing_stats() == {"queue": 1}  # resolves the stats slot
+        assert w._record_routing_stats_ref is None
