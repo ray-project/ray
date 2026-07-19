@@ -45,6 +45,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
@@ -62,7 +63,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
-    RAY_SERVE_RECON_SWEEP_FRACTION,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -4673,7 +4673,7 @@ class DeploymentState:
     def _dirty_set_active_pairs(self):
         """Dirty-set: only the replicas needing attention this tick -- those with an
         in-flight ref (poll), a round-robin RUNNING slice sized to sweep the bucket
-        within RAY_SERVE_RECON_SWEEP_FRACTION of the reconcile period (so each is
+        within CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION of the reconcile period (so each is
         processed on schedule; see _reconcile_sweep_period_s), and all PENDING_MIGRATION
         (transient). Idle replicas are skipped (check_health no-ops)."""
         container = self._replicas
@@ -4703,7 +4703,7 @@ class DeploymentState:
             ticks = max(
                 1,
                 int(
-                    RAY_SERVE_RECON_SWEEP_FRACTION
+                    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
                     * period
                     / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
                 ),

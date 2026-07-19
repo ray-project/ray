@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -30,6 +31,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
@@ -9807,11 +9809,11 @@ class TestDirtySet:
         assert covered == {r.replica_id for r in reps}  # no starvation
 
     def test_sweep_fraction_sizes_the_window(self, monkeypatch):
-        """A smaller RAY_SERVE_RECON_SWEEP_FRACTION sweeps all RUNNING replicas in
+        """A smaller CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION sweeps all RUNNING replicas in
         proportionally fewer ticks (larger per-tick slice)."""
-        import ray.serve._private.deployment_state as ds_mod
-
-        monkeypatch.setattr(ds_mod, "RAY_SERVE_RECON_SWEEP_FRACTION", 0.25)
+        monkeypatch.setattr(
+            ds_mod, "CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION", 0.25
+        )
         c = ReplicaStateContainer()
         reps = [replica() for _ in range(100)]
         for r in reps:
@@ -9896,13 +9898,6 @@ class TestDirtySet:
         request_routing_stats_period_s): _process_healthy_replica drives both the health
         check and the routing-stats pull, so a tighter routing-stats period must tighten
         the sweep. Falls back to the min of the defaults before a target is set."""
-        from types import SimpleNamespace
-
-        from ray.serve._private.constants import (
-            DEFAULT_HEALTH_CHECK_PERIOD_S,
-            DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
-        )
-
         shim = type("Shim", (), {})()
         shim._target_state = SimpleNamespace(
             info=SimpleNamespace(
@@ -9931,8 +9926,6 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     _stop_replica's discard); otherwise the incremental set overcounts vs the rebuild
     path. Modeled with a lingering id not backed by any live RUNNING/PENDING_MIGRATION
     replica, which is exactly the state a reconfigured replica leaves behind."""
-    import ray.serve._private.deployment_state as ds_mod
-
     # Use the low-cardinality gauge path (the one that maintains the healthy-id set);
     # non-gang deployments always use the dirty-set sweep.
     monkeypatch.setattr(
