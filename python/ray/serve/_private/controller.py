@@ -61,6 +61,7 @@ from ray.serve._private.default_impl import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     DeploymentStateManager,
+    ReplicaHealthPushRegistry,
 )
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
@@ -254,6 +255,7 @@ class ServeController:
         ]
 
         self.autoscaling_state_manager = AutoscalingStateManager()
+        self._replica_health_push_registry = ReplicaHealthPushRegistry()
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
@@ -261,6 +263,7 @@ class ServeController:
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
             self.autoscaling_state_manager,
+            health_push_registry=self._replica_health_push_registry,
         )
 
         # Manage all applications' state
@@ -391,8 +394,23 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
+        if replica_metric_report.healthy is not None:
+            self._replica_health_push_registry.record(
+                replica_metric_report.replica_id.unique_id,
+                replica_metric_report.health_checked_at
+                or replica_metric_report.timestamp,
+                replica_metric_report.healthy,
+            )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
+        )
+
+    def record_replica_health(
+        self, replica_unique_id: str, checked_at: float, healthy: bool
+    ):
+        """Self-health heartbeat from replicas that do not push metric reports."""
+        self._replica_health_push_registry.record(
+            replica_unique_id, checked_at, healthy
         )
 
     def record_autoscaling_metrics_from_handle(
