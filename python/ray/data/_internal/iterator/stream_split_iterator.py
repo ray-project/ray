@@ -237,7 +237,7 @@ class SplitCoordinator:
         self._dataset_state_lock = threading.Lock()
         self._schema = None
         # Memoized row count of the pre-split source dataset, shared across all
-        # splits. Guarded by self._dataset_state_lock.
+        # splits. Guarded by self._lock.
         self._source_row_count: Optional[int] = None
         self._current_executor = None
 
@@ -316,7 +316,12 @@ class SplitCoordinator:
                 "is determined at runtime. Call `count()` on the source Dataset "
                 "to get the total number of rows instead."
             )
-        with self._dataset_state_lock:
+        # Hold ``self._lock`` -- the lock that guards the executor lifecycle in
+        # ``_try_start_new_epoch`` -- across both the liveness check and the
+        # count, so an epoch can't start mid-count and defeat the guard. The
+        # count executes only once and is memoized, so the lock is held for a
+        # meaningful duration at most once per coordinator.
+        with self._lock:
             if self._current_executor is not None and self._current_executor.is_alive():
                 raise RuntimeError(
                     "Cannot call count() during active dataset execution. "
@@ -332,8 +337,8 @@ class SplitCoordinator:
     def _source_dataset_count(self) -> int:
         """Count the rows of the pre-split source dataset (memoized).
 
-        Must be called while holding ``self._dataset_state_lock``. The result is
-        cached so multiple splits sharing this coordinator don't each trigger a
+        Must be called while holding ``self._lock``. The result is cached so
+        multiple splits sharing this coordinator don't each trigger a
         potentially expensive ``Dataset.count()``.
         """
         if self._source_row_count is not None:
