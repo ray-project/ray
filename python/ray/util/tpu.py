@@ -989,14 +989,14 @@ def dispatch(
         else [slice_handle.slice_placement_group]
     )
 
-    if slice_index is not None:
-        pgs = [pgs[slice_index]]
-
     if not pgs or any(pg is None for pg in pgs):
         raise ValueError(
             "The provided tpu_slice has already been shut down. "
             "Create a new SlicePlacementGroup or pass tpu_slice=None to reserve one automatically."
         )
+
+    if slice_index is not None:
+        pgs = [pgs[slice_index]]
 
     tpu_per_bundle = slice_handle.bundle_resources.get(
         "TPU", slice_handle.chips_per_host

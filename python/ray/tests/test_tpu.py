@@ -1027,10 +1027,13 @@ def test_chips_per_vm_zero_raises_value_error():
         )
 
 
-def _make_mock_slice_handle(num_bundles=2, chips_per_host=4, tpu_per_bundle=4):
+def _make_mock_slice_handle(
+    num_bundles=2, chips_per_host=4, tpu_per_bundle=4, num_slices=1
+):
     """Return a MagicMock that looks like a SlicePlacementGroup."""
     mock_handle = MagicMock(spec=SlicePlacementGroup)
     mock_handle._pg_per_slice = False
+    mock_handle.num_slices = num_slices
     mock_handle.num_bundles = num_bundles
     mock_handle.chips_per_host = chips_per_host
     mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
@@ -1297,17 +1300,22 @@ def test_dispatch_does_not_release_head_pgs_when_provided(mock_spg_cls):
     existing_handle.release_head_pgs.assert_not_called()
 
 
-def test_dispatch_raises_if_provided_slice_is_shut_down():
-    """A clear ValueError is raised when tpu_slice has already been shut down
-    (placement_group is None), rather than a confusing AttributeError."""
-    shut_down_handle = _make_mock_slice_handle()
-    shut_down_handle.slice_placement_group = None
-    shut_down_handle.placement_group = None
+@pytest.mark.parametrize("pg_per_slice, slice_index", [(False, None), (True, 0)])
+def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_index):
+    """A ValueError is raised when tpu_slice has already been shut down."""
+    shut_down_handle = _make_mock_slice_handle(num_slices=2)
+    shut_down_handle._pg_per_slice = pg_per_slice
+    if pg_per_slice:
+        shut_down_handle.slice_placement_groups = []
+    else:
+        shut_down_handle.slice_placement_group = None
+        shut_down_handle.placement_group = None
 
     with pytest.raises(ValueError, match="already been shut down"):
         ray.util.tpu.dispatch(
             _make_mock_fn(),
             tpu_slice=shut_down_handle,
+            slice_index=slice_index,
         )
 
 
