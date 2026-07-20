@@ -2453,7 +2453,7 @@
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 # --------------------------------------------------------------------------
-# RLlib - Nightly learning tripwires ("did we break learning?"; fast, 1 GPU)
+# RLlib - Nightly learning tests (fast, single-GPU)
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_cartpole_ppo_torch
   python: "3.10"
@@ -2645,9 +2645,7 @@
     script: python example_algorithms/dreamerv3/pendulum_dreamerv3.py --num-learners=1 --as-release-test
 
 # --------------------------------------------------------------------------
-# RLlib - Weekly known-score benchmarks (reuse pre-deletion stop-rewards)
-# NOTE: cluster shapes remapped to currently-available configs; a few tests
-# were downsized from their old (deleted) configs and need kickoff validation.
+# RLlib - Weekly learning benchmarks
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_pong_ppo_torch
   python: "3.10"

@@ -1,3 +1,11 @@
+"""APPO ("IMPACT") on HalfCheetah-v4.
+
+The hyperparameters below are taken from [1]; the inline ``[1]`` references point to it.
+
+[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+Luo et al. 2020
+https://arxiv.org/pdf/1912.00167
+"""
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
