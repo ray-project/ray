@@ -367,12 +367,16 @@ def set_nixl_cuda_stream(stream: Optional["torch.cuda.Stream"]) -> None:
 
             @ray.remote(num_gpus=1, enable_tensor_transport=True)
             class Trainer:
+                def __init__(self):
+                    # A long-lived stream this actor produces its RDT tensors on.
+                    self.stream = torch.cuda.Stream()
+                    # Only block on `self.stream` instead of every stream on the
+                    # device. Set once; it applies to all subsequent ray.put calls.
+                    set_nixl_cuda_stream(self.stream)
+
                 def get_weight_ref(self):
-                    stream = torch.cuda.Stream()
-                    with torch.cuda.stream(stream):
+                    with torch.cuda.stream(self.stream):
                         weight = torch.randn(1000, 1000, device="cuda")
-                    # Only block on `stream` instead of every stream on the device.
-                    set_nixl_cuda_stream(stream)
                     return ray.put(weight, _tensor_transport="nixl")
     """
     nixl_transport = get_tensor_transport_manager("NIXL")
