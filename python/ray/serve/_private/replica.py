@@ -47,9 +47,9 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
+    ReplicaHealthFrame,
     ReplicaID,
     ReplicaMetricReport,
-    ReplicaHealthFrame,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RequestProtocol,
