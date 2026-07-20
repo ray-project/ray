@@ -36,3 +36,6 @@ fi
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR
+
+# repro-ci: isolate premerge to the repro step (delete the branch to reset)
+export RAYCI_SELECT="repro-ci-auto"
