@@ -77,8 +77,7 @@ def parse_prom_headers(prometheus_headers):
 class PrometheusQueryError(Exception):
     def __init__(self, status, message):
         self.message = (
-            "Error fetching data from prometheus. "
-            f"status: {status}, message: {message}"
+            f"Error fetching data from prometheus. status: {status}, message: {message}"
         )
         super().__init__(self.message)
 
@@ -299,11 +298,11 @@ class MetricsHead(SubprocessModule):
                     prometheus_host=prometheus_host,
                     prometheus_name=self._prometheus_name,
                     jsonData={
-                        f"httpHeaderName{i+1}": header
+                        f"httpHeaderName{i + 1}": header
                         for i, (header, _) in enumerate(prometheus_header_pairs)
                     },
                     secureJsonData={
-                        f"httpHeaderValue{i+1}": value
+                        f"httpHeaderValue{i + 1}": value
                         for i, (_, value) in enumerate(prometheus_header_pairs)
                     },
                 )
@@ -410,7 +409,7 @@ class MetricsHead(SubprocessModule):
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
         prom_discovery_file_path = os.path.join(
-            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.session_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(

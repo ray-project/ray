@@ -82,7 +82,6 @@ steps:
   - label: ":database: data: tensorflow-datasets tests"
     key: data_tensorflow_datasets_tests
     tags:
-      - python
       - data
     instance_type: medium
     commands:
@@ -108,8 +107,8 @@ steps:
 
   - label: ":database: data: arrow v23 tests"
     tags:
-      - python
       - data
+      - skip-on-premerge
     instance_type: medium
     parallelism: 8
     commands:
@@ -122,9 +121,9 @@ steps:
 
   - label: ":database: data: arrow v23 tests (data_non_parallel)"
     tags:
-      - python
       - data
       - data_non_parallel
+      - skip-on-premerge
     instance_type: medium
     parallelism: 3
     commands:
@@ -233,6 +232,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc
@@ -255,6 +255,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.10)
 
   - label: ":database: data: dask doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc
@@ -268,6 +269,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: doc gpu tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc
@@ -305,7 +307,6 @@ steps:
 
   - label: ":database: data: integration tests"
     tags:
-      - python
       - data
     instance_type: medium
     commands:
@@ -319,7 +320,6 @@ steps:
 
   - label: ":database: data: dashboard tests"
     tags:
-      - python
       - data
       - dashboard
     instance_type: small
@@ -333,7 +333,6 @@ steps:
   - label: ":database: data: flaky tests"
     key: data_flaky_tests
     tags:
-      - python
       - data
       - flaky
       - skip-on-premerge
@@ -350,7 +349,6 @@ steps:
   - label: ":database: data: flaky gpu tests"
     key: data_flaky_gpu_tests
     tags:
-      - python
       - data
       - skip-on-premerge
     instance_type: gpu-large
@@ -365,7 +363,6 @@ steps:
   - label: ":database: data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
     tags:
-      - python
       - data
       - oss
       - skip-on-premerge

@@ -50,7 +50,7 @@ class gRPCGenericServer(Server):
             compression=None,
             options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
         )
-        self.generic_rpc_handlers = []
+        self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
         self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(
@@ -102,10 +102,11 @@ async def start_grpc_server(
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
-) -> asyncio.Task:
+) -> Tuple[asyncio.Task, gRPCGenericServer]:
     """Start a gRPC server that handles requests with the service handler factory.
 
-    Returns a task that blocks until the server exits (e.g., due to error).
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
     """
     from ray.serve._private.default_impl import add_grpc_address
 
@@ -125,7 +126,7 @@ async def start_grpc_server(
         servicer_fn(mock_servicer, server)
 
     await server.start()
-    return event_loop.create_task(server.wait_for_termination())
+    return event_loop.create_task(server.wait_for_termination()), server
 
 
 def _truncate_message(

@@ -1,5 +1,18 @@
 (quick-start)=
-# Quickstart examples
+# Quickstart
+
+## Prerequisites
+
+```bash
+pip install "ray[llm]"
+```
+
+Before you start:
+
+- **GPU**: most models need at least one GPU. The examples below use small Qwen models that fit on a single A10G or L4. Set `accelerator_type` to a GPU available in your cluster.
+- **Gated models**: to pull gated weights (for example, Llama) from the Hugging Face Hub, set `HF_TOKEN` in the deployment's `runtime_env`. See {doc}`Deployment initialization <user-guides/deployment-initialization>`.
+
+For a full description of every configuration field used below, see the {doc}`Configuration reference <user-guides/configuration>`.
 
 ## Deployment through OpenAiIngress
 
@@ -270,11 +283,15 @@ serve run config.yaml
 
 For monitoring and observability, see {doc}`Observability <user-guides/observability>`.
 
-## Advanced usage patterns
+## Next steps
 
-For each usage pattern, Ray Serve LLM provides a server and client code snippet.
+Once you can deploy and query a model, the {doc}`User guides <user-guides/index>` cover the next steps:
 
-### Cross-node parallelism
+- **Configure the deployment**: every field is documented in the {doc}`Configuration reference <user-guides/configuration>`.
+- **Scale across GPUs and nodes**: {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` distributes a model with tensor and pipeline parallelism. {doc}`Data parallel attention <user-guides/data-parallel-attention>` raises throughput by replicating the model.
+- **Tune latency and throughput**: {doc}`Prefill/decode disaggregation <user-guides/prefill-decode>`, {doc}`KV cache offloading <user-guides/kv-cache-offloading>`, and {doc}`Prefix-aware routing <user-guides/prefix-aware-routing>`.
+- **Serve LoRA adapters**: {doc}`Multi-LoRA deployment <user-guides/multi-lora>`.
+- **Monitor in production**: {doc}`Observability and monitoring <user-guides/observability>`.
 
-Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), allowing you to distribute model inference across multiple GPUs and nodes. See {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` for a comprehensive guide on configuring and deploying models with cross-node parallelism.
+To understand how these pieces fit together, see the {doc}`Architecture <architecture/index>` docs.
 

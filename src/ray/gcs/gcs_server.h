@@ -20,6 +20,7 @@
 
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_context_monitor.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -130,10 +131,12 @@ class GcsServer {
     UNKNOWN = 0,
     IN_MEMORY = 1,
     REDIS_PERSIST = 2,
+    ROCKSDB_PERSIST = 3,
   };
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+  static constexpr char kRocksDbStorage[] = "rocksdb";
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
@@ -150,6 +153,10 @@ class GcsServer {
 
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
+
+  /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC
+  /// health check status.
+  void InitIOContextMonitor();
 
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
@@ -182,8 +189,13 @@ class GcsServer {
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge);
 
-  /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  /**
+   * @brief Initialize the GCS worker manager and rebuild its dead-worker queue from the
+   * startup snapshot.
+   *
+   * @param gcs_init_data Metadata loaded from the store at startup.
+   */
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
@@ -303,6 +315,11 @@ class GcsServer {
   std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  /// Monitors the GCS io_contexts on a dedicated thread. The health_callback
+  /// passed into it is used to set the gRPC health check as SERVING/NOT_SERVING.
+  /// Declared last so it is stopped/destroyed before the io_contexts
+  /// (owned by io_context_provider_) and metrics it references.
+  std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 };
 
 }  // namespace gcs

@@ -1,3 +1,4 @@
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -8,7 +9,17 @@ from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
+    _get_service_name,
 )
+
+
+def _gauge_values(recorder):
+    """Returns the recorder's gauge observations with the per-entry TTL timestamp
+    stripped, so tests can assert on the recorded values directly."""
+    return {
+        name: {tag_key: value for tag_key, (value, _ts) in observations.items()}
+        for name, observations in recorder._gauge_observations_by_name.items()
+    }
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
@@ -29,11 +40,69 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
         tags={"label_key": "label_value"},
         value=42.0,
     )
-    assert recorder._gauge_observations_by_name == {
+    assert _gauge_values(recorder) == {
         "test_gauge": {
             frozenset({("label_key", "label_value")}): 42.0,
         }
     }
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.time.monotonic")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_gauge_value_retained_within_ttl_then_evicted(
+    mock_get_meter, mock_set_meter_provider, mock_monotonic
+):
+    """
+    A gauge value must survive scrapes for the TTL window (not be cleared after the
+    first scrape), and be evicted once it has not been refreshed within the TTL.
+    """
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder(gauge_metric_ttl_seconds=10.0)
+    recorder.register_gauge_metric(name="g", description="g")
+    callback = recorder._create_observable_callback("g", MetricType.GAUGE)
+
+    # Report a value at t=1000.
+    mock_monotonic.return_value = 1000.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # Scrape at t=1005 (within TTL): value is emitted.
+    mock_monotonic.return_value = 1005.0
+    assert [o.value for o in callback(None)] == [7.0]
+
+    # Scrape again at t=1009 without re-reporting: still within TTL, so the value
+    # persists (clear-on-scrape would have dropped it after the first scrape).
+    mock_monotonic.return_value = 1009.0
+    assert [o.value for o in callback(None)] == [7.0]
+
+    # Scrape at t=1011 (>10s since the last report): the value is evicted.
+    mock_monotonic.return_value = 1011.0
+    assert callback(None) == []
+    assert recorder._gauge_observations_by_name["g"] == {}
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.time.monotonic")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_gauge_refresh_extends_ttl(
+    mock_get_meter, mock_set_meter_provider, mock_monotonic
+):
+    """Re-reporting a gauge value refreshes its TTL so it does not get evicted."""
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder(gauge_metric_ttl_seconds=10.0)
+    recorder.register_gauge_metric(name="g", description="g")
+    callback = recorder._create_observable_callback("g", MetricType.GAUGE)
+
+    mock_monotonic.return_value = 1000.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # Re-report at t=1008 (within TTL): refreshes the timestamp.
+    mock_monotonic.return_value = 1008.0
+    recorder.set_metric_value(name="g", tags={"k": "v"}, value=7.0)
+
+    # At t=1015 (>10s after the first report, but <10s after the refresh): still live.
+    mock_monotonic.return_value = 1015.0
+    assert [o.value for o in callback(None)] == [7.0]
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
@@ -216,7 +285,7 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
         ],
         global_tags={"global_label_key": "global_label_value"},
     )
-    assert recorder._gauge_observations_by_name == {
+    assert _gauge_values(recorder) == {
         "hi": {
             frozenset(
                 {
@@ -395,6 +464,61 @@ def test_init_metrics_runs_only_once_per_class(
         assert OpenTelemetryMetricRecorder._metrics_initialized is True
     finally:
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+@patch("opentelemetry.sdk.resources.Resource.create")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_init_metrics_sets_service_name_resource(
+    mock_get_meter,
+    mock_set_meter_provider,
+    mock_prometheus_reader,
+    mock_meter_provider,
+    mock_resource_create,
+):
+    """
+    Regression test: the Prometheus exporter must not fall back to the default
+    OpenTelemetry service.name of unknown_service, otherwise multiple target_info
+    samples can collide in a single scrape.
+    """
+    mock_get_meter.return_value = MagicMock()
+    mock_resource = MagicMock()
+    mock_resource_create.return_value = mock_resource
+
+    original_flag = OpenTelemetryMetricRecorder._metrics_initialized
+    OpenTelemetryMetricRecorder._metrics_initialized = False
+    try:
+        with patch.dict(
+            os.environ,
+            {"OTEL_SERVICE_NAME": "", "OTEL_RESOURCE_ATTRIBUTES": ""},
+        ):
+            OpenTelemetryMetricRecorder()
+
+        mock_resource_create.assert_called_once_with(
+            {"service.name": "ray-dashboard-agent"}
+        )
+        mock_meter_provider.assert_called_once_with(
+            resource=mock_resource,
+            metric_readers=[mock_prometheus_reader.return_value],
+        )
+        mock_set_meter_provider.assert_called_once_with(
+            mock_meter_provider.return_value
+        )
+    finally:
+        OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+def test_get_service_name_decodes_otel_resource_attributes():
+    with patch.dict(
+        os.environ,
+        {
+            "OTEL_SERVICE_NAME": "",
+            "OTEL_RESOURCE_ATTRIBUTES": "service.name=ray%20dashboard%2Cagent",
+        },
+    ):
+        assert _get_service_name("ray-dashboard-agent") == "ray dashboard,agent"
 
 
 if __name__ == "__main__":

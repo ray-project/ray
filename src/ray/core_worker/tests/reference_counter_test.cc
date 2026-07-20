@@ -3129,7 +3129,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
 
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
 
   // Both should be in pending_creation state initially
   auto count_metrics = owned_object_count_metric_->GetTagToValue();
@@ -3140,7 +3140,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 2: Transition from pending to in_memory (no pinned_at_node_id, not spilled)
   rc->UpdateObjectPendingCreation(pending_id1, false);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 1);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3151,7 +3151,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   NodeID node1 = NodeID::FromRandom();
   rc->UpdateObjectPendingCreation(pending_id2, false);
   rc->UpdateObjectPinnedAtRaylet(pending_id2, node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3161,7 +3161,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 4: Object spilling
   rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 1);
@@ -3171,21 +3171,21 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 5: Update object size
   rc->UpdateObjectSize(pending_id1, 150);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
 
   // Test 6: Delete objects
   std::vector<ObjectID> deleted;
   rc->RemoveLocalReference(pending_id1, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
 
   rc->RemoveLocalReference(pending_id2, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
@@ -3201,6 +3201,75 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
   ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 0);
   ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 0);
+}
+
+// This test verifies the `has_ever_owned_objects_` flag for metric emission
+// A worker emits owned-object series IF AND ONLY IF it has owned at least one
+// non-actor object in its lifetime. Once this flag is set to true,
+// it remains true forever, preventing emission drops when the active count hits 0
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsGate) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty());
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Add one owned object that is PendingCreation. the gate must
+  // flip and all four state series get written. We assert via the
+  // PendingCreation value moving from "absent" to 1.
+  ObjectID owned = ObjectID::FromRandom();
+  ASSERT_FALSE(ObjectID::IsActorID(owned));
+  rc->AddOwnedObject(owned,
+                     {},
+                     addr,
+                     "",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  auto count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 1);
+  ASSERT_TRUE(count.contains({{"State", "InMemory"}}));
+  ASSERT_TRUE(count.contains({{"State", "InPlasma"}}));
+  ASSERT_TRUE(count.contains({{"State", "Spilled"}}));
+
+  // Remove the only owned ref so the count returns to 0. The sticky
+  // flag must keep emitting
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(owned, &deleted);
+  ASSERT_EQ(deleted.size(), 1);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  rc->RecordOwnerMetrics();
+  count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 0)
+      << "Sticky broken: RecordOwnerMetrics did not re-emit after "
+         "owned count returned to 0";
+}
+
+// Actor ObjectIDs are excluded from owned-object metrics.
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsIgnoresActorOwnership) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  ObjectID actor_id =
+      ObjectID::ForActorHandle(ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1));
+  ASSERT_TRUE(ObjectID::IsActorID(actor_id));
+  rc->AddOwnedObject(actor_id,
+                     {},
+                     addr,
+                     "",
+                     /*object_size=*/0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty())
+      << "Owning an actor ObjectID must not flip has_ever_owned_objects_";
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Cleanup so the fixture teardown's AssertNoLeaks passes.
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(actor_id, &deleted);
 }
 
 TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
