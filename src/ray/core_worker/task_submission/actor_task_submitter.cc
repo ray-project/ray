@@ -543,7 +543,8 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     // If the actor is restarted, ConnectActor will be called
     // and pending tasks will be sent at that time.
     RAY_LOG(DEBUG).WithField(actor_id)
-        << "Actor is pending out of scope death, not sending pending tasks.";
+        << "Actor is already out of scope but still pending death from GCS, not sending "
+           "pending tasks.";
     return;
   }
   if (!client_queue.client_address_.has_value()) {
