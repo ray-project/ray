@@ -150,6 +150,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
+        remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
 

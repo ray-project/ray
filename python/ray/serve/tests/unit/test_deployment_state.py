@@ -1,10 +1,12 @@
 import sys
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any, List, Optional, Tuple
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -29,6 +31,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
@@ -121,6 +124,7 @@ class FakeDeploymentReplica:
         self._replica_id = ReplicaID(
             get_random_string(), deployment_id=DeploymentID(name="fake")
         )
+        self._state = None
 
     @property
     def replica_id(self):
@@ -131,7 +135,11 @@ class FakeDeploymentReplica:
         return self._version
 
     def update_state(self, state):
-        pass
+        self._state = state
+
+    @property
+    def actor_details(self):
+        return SimpleNamespace(state=self._state)
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> FakeDeploymentReplica:
@@ -2235,6 +2243,16 @@ def test_scale_num_replicas(mock_deployment_state_manager, target_capacity_direc
     )
 
 
+def _advance_until(dsm, cond, max_ticks=50):
+    """Run control-loop ticks until cond() holds (the dirty-set sweep may health-check a
+    replica on a later tick, not every tick). Fails if not reached within max_ticks."""
+    for _ in range(max_ticks):
+        if cond():
+            return
+        dsm.update()
+    assert cond(), "condition not reached within the health-check deadline"
+
+
 @pytest.mark.parametrize("force_stop_unhealthy_replicas", [False, True])
 def test_health_check(
     mock_deployment_state_manager, force_stop_unhealthy_replicas: bool
@@ -2270,16 +2288,16 @@ def test_health_check(
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
-    dsm.update()
-    for replica in ds._replicas.get():
-        # Health check shouldn't be called until it's ready.
-        assert replica._actor.health_check_called
+    # Every replica is health-checked within the deadline (the dirty-set sweep may
+    # spread checks across ticks rather than checking all every tick).
+    _advance_until(
+        dsm, lambda: all(r._actor.health_check_called for r in ds._replicas.get())
+    )
 
-    # Mark one replica unhealthy; it should be stopped.
+    # Mark one replica unhealthy; within the deadline it is detected, stopped, and a
+    # replacement is started.
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
-    # SIMULTANEOUSLY a new replica should be started to try to reach
-    # the target number of healthy replicas.
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     check_counts(
         ds,
         total=3,
@@ -2357,15 +2375,14 @@ def test_health_gauge_caching(mock_deployment_state_manager):
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
 
-    # Second update: check_and_update_replicas processes the RUNNING replicas
-    # for the first time, calling check_health() and setting the gauge.
-    dsm.update()
-
+    # Within the deadline every RUNNING replica is health-checked and cached at value 1.
     replica_ids = [r.replica_id.unique_id for r in ds._replicas.get()]
-    # After the second update the cache should have (value=1, timestamp) for both.
-    for rid in replica_ids:
-        cached_value, cached_time = ds._health_gauge_cache[rid]
-        assert cached_value == 1
+    _advance_until(
+        dsm,
+        lambda: all(
+            ds._health_gauge_cache.get(rid, (None,))[0] == 1 for rid in replica_ids
+        ),
+    )
 
     # Track how many times Gauge.set is called using a wrapper.
     original_set = ds.health_check_gauge.set
@@ -2388,20 +2405,17 @@ def test_health_gauge_caching(mock_deployment_state_manager):
         "expected 0 (should be cached)"
     )
 
-    # After the TTL expires, the gauge should be re-reported even though
-    # the value hasn't changed.
+    # After the TTL expires, each replica re-reports its gauge once as it is re-checked
+    # within the deadline.
     timer.advance(RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S + 1)
-    dsm.update()
-    assert call_count == len(replica_ids), (
-        f"Gauge.set was called {call_count} times after TTL expired; "
-        f"expected {len(replica_ids)} (one per replica)"
-    )
+    _advance_until(dsm, lambda: call_count == len(replica_ids))
+    assert call_count == len(replica_ids)
 
-    # Mark one replica unhealthy — gauge should transition to 0.
+    # Mark one replica unhealthy — within the deadline it is detected and its gauge
+    # transitions to 0.
     call_count = 0
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
-    # Gauge.set should have been called at least once (for the now-unhealthy replica).
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     assert call_count >= 1
     # The stopping replica should have cache value 0.
     stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
@@ -2447,14 +2461,13 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
         == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
     )
 
-    dsm.update()
-    for replica in ds._replicas.get():
-        # Health check shouldn't be called until it's ready.
-        assert replica._actor.health_check_called
+    _advance_until(
+        dsm, lambda: all(r._actor.health_check_called for r in ds._replicas.get())
+    )
 
-    # Mark one replica unhealthy. It should be stopped.
+    # Mark one replica unhealthy. Within the deadline it is detected and stopped.
     ds._replicas.get()[0]._actor.set_unhealthy()
-    dsm.update()
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1)
     check_counts(
         ds,
         total=3,
@@ -2508,7 +2521,7 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
 
     # Mark the remaining running replica of the old version as unhealthy
     ds._replicas.get(states=[ReplicaState.RUNNING])[0]._actor.set_unhealthy()
-    dsm.update()
+    _advance_until(dsm, lambda: ds._replicas.count(states=[ReplicaState.RUNNING]) == 0)
     # A replica of the new version should get started to try to reach
     # the target number of healthy replicas
     check_counts(
@@ -9763,6 +9776,188 @@ def test_ingress_membership_version_ignores_non_ingress_deployment(
 
     # A full add + removal on a non-ingress deployment: the ingress version never moved.
     assert dsm.get_ingress_membership_version() == v0
+
+
+class TestDirtySet:
+    """Dirty-set health-check reconcile: _dirty_set_active_pairs selects only replicas
+    needing work this tick (round-robin sweep + in-flight polls + pending-migration),
+    not all N, while still covering every RUNNING replica within one sweep window."""
+
+    def _shim(self, container):
+        s = type("Shim", (), {})()
+        s._replicas = container
+        s._outstanding_dirty_set = set()
+        s._dirty_set_rr_cursor = 0
+        s._target_state = object()  # .info access raises -> default reconcile period
+        # Bind the real period helper so _dirty_set_active_pairs can call it on the shim.
+        s._reconcile_sweep_period_s = DeploymentState._reconcile_sweep_period_s.__get__(
+            s
+        )
+        return s
+
+    def test_covers_all_running_within_one_sweep(self):
+        c = ReplicaStateContainer()
+        reps = [replica() for _ in range(100)]
+        for r in reps:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        covered = set()
+        for _ in range(50):  # ticks = 0.5*period(10)/loop(0.1)
+            covered.update(
+                p[0].replica_id for p in DeploymentState._dirty_set_active_pairs(shim)
+            )
+        assert covered == {r.replica_id for r in reps}  # no starvation
+
+    def test_sweep_fraction_sizes_the_window(self, monkeypatch):
+        """A smaller CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION sweeps all RUNNING replicas in
+        proportionally fewer ticks (larger per-tick slice)."""
+        monkeypatch.setattr(
+            ds_mod, "CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION", 0.25
+        )
+        c = ReplicaStateContainer()
+        reps = [replica() for _ in range(100)]
+        for r in reps:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        covered = set()
+        for _ in range(25):  # ticks = 0.25 * period(10) / loop(0.1)
+            covered.update(
+                p[0].replica_id for p in DeploymentState._dirty_set_active_pairs(shim)
+            )
+        assert covered == {r.replica_id for r in reps}  # full coverage in 25 ticks
+
+    def test_always_polls_outstanding(self):
+        c = ReplicaStateContainer()
+        reps = [replica() for _ in range(100)]
+        for r in reps:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        target = reps[42].replica_id
+        for _ in range(20):
+            shim._outstanding_dirty_set = {target}
+            pairs = DeploymentState._dirty_set_active_pairs(shim)
+            assert any(p[0].replica_id == target for p in pairs)
+
+    def test_always_includes_pending_migration(self):
+        c = ReplicaStateContainer()
+        for r in [replica() for _ in range(100)]:
+            c.add(ReplicaState.RUNNING, r)
+        pm = replica()
+        c.add(ReplicaState.PENDING_MIGRATION, pm)
+        shim = self._shim(c)
+        for _ in range(10):
+            pairs = DeploymentState._dirty_set_active_pairs(shim)
+            assert any(
+                p[0].replica_id == pm.replica_id
+                and p[1] == ReplicaState.PENDING_MIGRATION
+                for p in pairs
+            )
+
+    def test_active_set_is_sublinear(self):
+        c = ReplicaStateContainer()
+        for r in [replica() for _ in range(1000)]:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        pairs = DeploymentState._dirty_set_active_pairs(shim)
+        assert len(pairs) <= 50  # slice ceil(1000/50)=20; NOT 1000
+
+    def test_outstanding_excluded_when_no_longer_running(self):
+        """An outstanding id whose replica has transitioned out of RUNNING (e.g. to
+        STOPPING) is not re-polled as RUNNING and is dropped from the outstanding set,
+        so the reconcile can't process a stopping replica through the RUNNING path."""
+        c = ReplicaStateContainer()
+        running = replica()
+        c.add(ReplicaState.RUNNING, running)
+        stopping = replica()
+        c.add(ReplicaState.STOPPING, stopping)
+        shim = self._shim(c)
+        shim._outstanding_dirty_set = {running.replica_id, stopping.replica_id}
+        pairs = DeploymentState._dirty_set_active_pairs(shim)
+        ids = {p[0].replica_id for p in pairs}
+        assert running.replica_id in ids
+        assert stopping.replica_id not in ids  # not re-polled as RUNNING
+        assert stopping.replica_id not in shim._outstanding_dirty_set  # dropped
+        assert running.replica_id in shim._outstanding_dirty_set
+
+    def test_outstanding_dropped_when_replica_removed(self):
+        """An outstanding id whose replica has left the container is pruned; a
+        still-RUNNING one is retained."""
+        c = ReplicaStateContainer()
+        live = replica()
+        c.add(ReplicaState.RUNNING, live)
+        shim = self._shim(c)
+        gone = replica()  # never added -> get_by_id returns None
+        shim._outstanding_dirty_set = {live.replica_id, gone.replica_id}
+        pairs = DeploymentState._dirty_set_active_pairs(shim)
+        assert gone.replica_id not in shim._outstanding_dirty_set
+        assert live.replica_id in shim._outstanding_dirty_set
+        assert any(p[0].replica_id == live.replica_id for p in pairs)
+
+    def test_sweep_period_is_min_of_health_and_routing(self):
+        """The sweep is sized off min(health_check_period_s,
+        request_routing_stats_period_s): _process_healthy_replica drives both the health
+        check and the routing-stats pull, so a tighter routing-stats period must tighten
+        the sweep. Falls back to the min of the defaults before a target is set."""
+        shim = type("Shim", (), {})()
+        shim._target_state = SimpleNamespace(
+            info=SimpleNamespace(
+                deployment_config=SimpleNamespace(
+                    health_check_period_s=10.0,
+                    request_router_config=SimpleNamespace(
+                        request_routing_stats_period_s=1.0
+                    ),
+                )
+            )
+        )
+        assert DeploymentState._reconcile_sweep_period_s(shim) == 1.0
+
+        # No target set yet -> falls back to the min of the defaults.
+        shim._target_state = object()
+        assert DeploymentState._reconcile_sweep_period_s(shim) == min(
+            DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
+        )
+
+
+def test_dirty_set_gauge_prunes_ids_no_longer_running(
+    mock_deployment_state_manager, monkeypatch
+):
+    """Dirty-set health gauge must drop ids whose replica left RUNNING without stopping
+    (e.g. RUNNING->UPDATING on a lightweight reconfigure -- which does not go through
+    _stop_replica's discard); otherwise the incremental set overcounts vs the rebuild
+    path. Modeled with a lingering id not backed by any live RUNNING/PENDING_MIGRATION
+    replica, which is exactly the state a reconfigured replica leaves behind."""
+    # Use the low-cardinality gauge path (the one that maintains the healthy-id set);
+    # non-gang deployments always use the dirty-set sweep.
+    monkeypatch.setattr(
+        ds_mod, "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", False
+    )
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    info, v1 = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()  # STARTING -> RUNNING
+    # The round-robin dirty-set sweep health-checks only a slice per tick, so it takes a
+    # few ticks to cover every RUNNING replica and populate the healthy-id set.
+    for _ in range(5):
+        dsm.update()
+
+    running_ids = {
+        r.replica_id.unique_id for r in ds._replicas.get([ReplicaState.RUNNING])
+    }
+    assert ds._last_health_check_healthy_replica_ids == running_ids
+
+    # A replica that left RUNNING without stopping leaves its id in the healthy set with
+    # no backing RUNNING/PENDING_MIGRATION replica. The next dirty-set tick must prune it
+    # so the gauge does not overcount.
+    ds._last_health_check_healthy_replica_ids.add("ghost-reconfiguring-replica")
+    dsm.update()
+    assert ds._last_health_check_healthy_replica_ids == running_ids
 
 
 if __name__ == "__main__":
