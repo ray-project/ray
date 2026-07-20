@@ -61,7 +61,6 @@ Constructing a Learner
 
     Learner
     Learner.build
-    Learner._check_is_built
     Learner._make_module
 
 
@@ -114,8 +113,6 @@ Configuring optimizers
     Learner.get_parameters
     Learner.get_param_ref
     Learner.filter_param_dict_for_optimizer
-    Learner._check_registered_optimizer
-    Learner._set_optimizer_lr
 
 
 Gradient computation
@@ -129,7 +126,6 @@ Gradient computation
     Learner.postprocess_gradients
     Learner.postprocess_gradients_for_module
     Learner.apply_gradients
-    Learner._get_clip_function
 
 Saving and restoring
 --------------------

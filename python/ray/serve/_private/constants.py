@@ -263,6 +263,16 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+
+# Dirty-set health-check reconcile: each control tick polls only replicas with an
+# in-flight check plus a round-robin slice, so a tick costs O(slice) instead of O(N).
+# CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION is how long one full sweep takes as a fraction of the
+# reconcile period (min of health_check_period_s and request_routing_stats_period_s):
+# every replica is checked at least once per fraction x period. Smaller = fresher checks
+# but less speedup; larger = more speedup but staler. Default 0.5 = ~2 sweeps per period.
+CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION = get_env_float_positive(
+    "RAY_SERVE_CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION", 0.5
+)
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
