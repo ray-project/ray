@@ -419,7 +419,7 @@ def get_num_tpu_slices(
 
 @PublicAPI(stability="alpha")
 class SlicePlacementGroup:
-    _per_slice_pgs: bool = False
+    _pg_per_slice: bool = False
     """
     A handle to a placement group reservation for a TPU slice.
 
@@ -457,7 +457,7 @@ class SlicePlacementGroup:
             indefinitely.
         bundle_label_selector: Optional list of label selectors to apply per bundle. These label
             selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
-        per_slice_pgs: If False, creates 1 placement group for all slices.
+        pg_per_slice: If False, creates 1 placement group for all slices.
             If True, creates `num_slices` placement groups, 1 per slice.
 
     Examples:
@@ -470,7 +470,7 @@ class SlicePlacementGroup:
         from ray.util.tpu import SlicePlacementGroup
 
         slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-        slice_pg = slice_handle.placement_group
+        slice_pg = slice_handle.slice_placement_group
         ray.get(slice_pg.ready(), timeout=10)
 
         @ray.remote(num_cpus=0, resources={'TPU': 4})
@@ -503,12 +503,12 @@ class SlicePlacementGroup:
             DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
         ),
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
-        per_slice_pgs: bool = False,
+        pg_per_slice: bool = False,
     ):
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._managed_pgs: List[PlacementGroup] = []
-        self._per_slice_pgs = per_slice_pgs
+        self._pg_per_slice = pg_per_slice
         self._user_bundle_label_selector = bundle_label_selector or []
 
         self._topology = topology.strip().lower()
@@ -550,7 +550,7 @@ class SlicePlacementGroup:
             name,
             lifetime,
         )
-        if self._per_slice_pgs:
+        if self._pg_per_slice:
             self._managed_pgs = pgs
         else:
             self._managed_pgs = [pgs]
@@ -632,7 +632,7 @@ class SlicePlacementGroup:
                 ]
                 all_bundles += slice_bundles
 
-                if self._per_slice_pgs:
+                if self._pg_per_slice:
                     pg_name = f"{name}_slice_{slice_idx}" if name else ""
                     pg = placement_group(
                         bundles=slice_bundles,
@@ -643,7 +643,7 @@ class SlicePlacementGroup:
                     )
                     self._managed_pgs.append(pg)
 
-            if not self._per_slice_pgs:
+            if not self._pg_per_slice:
                 pg = placement_group(
                     bundles=all_bundles,
                     strategy=strategy,
@@ -660,27 +660,30 @@ class SlicePlacementGroup:
             raise
 
     @property
-    def placement_group(self) -> Optional[PlacementGroup]:
+    def slice_placement_group(self) -> Optional[PlacementGroup]:
         """The underlying PlacementGroup object.
 
         Raises:
-            ValueError: If per_slice_pgs=True was used.
+            ValueError: If pg_per_slice=True was used.
         """
-        if self._per_slice_pgs:
-            raise ValueError(
-                "per_slice_pgs=True, use `per_slice_placement_groups` instead."
-            )
+        if self._pg_per_slice:
+            raise ValueError("pg_per_slice=True, use `slice_placement_groups` instead.")
         return self._managed_pgs[0] if self._managed_pgs else None
 
     @property
-    def per_slice_placement_groups(self) -> List[PlacementGroup]:
+    def placement_group(self) -> Optional[PlacementGroup]:
+        """Alias for slice_placement_group."""
+        return self.slice_placement_group
+
+    @property
+    def slice_placement_groups(self) -> List[PlacementGroup]:
         """The list of underlying PlacementGroup objects (one per TPU slice).
 
         Raises:
-            ValueError: If per_slice_pgs=False was used.
+            ValueError: If pg_per_slice=False was used.
         """
-        if not self._per_slice_pgs:
-            raise ValueError("per_slice_pgs=False, use `placement_group` instead.")
+        if not self._pg_per_slice:
+            raise ValueError("pg_per_slice=False, use `slice_placement_group` instead.")
         return self._managed_pgs
 
     @property
@@ -738,13 +741,13 @@ class SlicePlacementGroup:
         Once the worker PG's bundles are scheduled, the worker PG holds the TPU
         resources on every host in the slice and the head PGs are redundant.
 
-        Callers should invoke this idempotent call after `self.placement_group.ready()`
-        resolves successfully (or `self.per_slice_placement_groups[slice_index].ready()`
-        when `per_slice_pgs=True`).
+        Callers should invoke this idempotent call after `self.slice_placement_group.ready()`
+        resolves successfully (or `self.slice_placement_groups[slice_index].ready()`
+        when `pg_per_slice=True`).
 
         Args:
             slice_index: The index of the slice whose head PG should be released. If None,
-                all head PGs are released. If `per_slice_pgs=True` and slices may become
+                all head PGs are released. If `pg_per_slice=True` and slices may become
                 ready independently, it is recommended to release them by index as they
                 become ready.
         """
@@ -804,7 +807,7 @@ def slice_placement_group(
     resources_per_bundle: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
     chips_per_vm: Optional[int] = None,
-    per_slice_pgs: bool = False,
+    pg_per_slice: bool = False,
     **kwargs,
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
@@ -824,7 +827,7 @@ def slice_placement_group(
         chips_per_vm: An optional override for the number of chips per TPU VM.
             Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
             as either 1 VM (8 chips) or 2 VMs (4 chips each).
-        per_slice_pgs: If False, returns a SlicePlacementGroup that manages a single PlacementGroup.
+        pg_per_slice: If False, returns a SlicePlacementGroup that manages a single PlacementGroup.
             If True, returns a SlicePlacementGroup that manages a list of per-slice PlacementGroups.
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
@@ -838,7 +841,7 @@ def slice_placement_group(
         resources_per_bundle=resources_per_bundle,
         num_slices=num_slices,
         chips_per_vm=chips_per_vm,
-        per_slice_pgs=per_slice_pgs,
+        pg_per_slice=pg_per_slice,
         **kwargs,
     )
 
@@ -886,7 +889,7 @@ def dispatch(
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
-        slice_index: Optional. If ``tpu_slice`` was created with ``per_slice_pgs=True``,
+        slice_index: Optional. If ``tpu_slice`` was created with ``pg_per_slice=True``,
             specify a ``slice_index`` to dispatch tasks only to that specific
             TPU slice. If ``None``, tasks are dispatched to all slices.
         num_slices: Number of TPU slices to reserve. Ignored when
@@ -937,7 +940,7 @@ def dispatch(
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
-        ray.get(slice_handle.placement_group.ready())
+        ray.get(slice_handle.slice_placement_group.ready())
 
         results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
         results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
@@ -958,9 +961,9 @@ def dispatch(
             raise ValueError(
                 "slice_index can only be used when an existing tpu_slice is provided."
             )
-        if not slice_handle._per_slice_pgs:
+        if not slice_handle._pg_per_slice:
             raise ValueError(
-                "slice_index can only be used when tpu_slice was created with per_slice_pgs=True."
+                "slice_index can only be used when tpu_slice was created with pg_per_slice=True."
             )
         if slice_index < 0 or slice_index >= slice_handle.num_slices:
             raise ValueError(
@@ -981,9 +984,9 @@ def dispatch(
         )
 
     pgs = (
-        slice_handle.per_slice_placement_groups
-        if slice_handle._per_slice_pgs
-        else [slice_handle.placement_group]
+        slice_handle.slice_placement_groups
+        if slice_handle._pg_per_slice
+        else [slice_handle.slice_placement_group]
     )
 
     if slice_index is not None:
@@ -1024,7 +1027,7 @@ def dispatch(
         slice_handle.release_head_pgs()
 
     results = []
-    if slice_handle._per_slice_pgs:
+    if slice_handle._pg_per_slice:
         bundles_per_slice = slice_handle.num_bundles // slice_handle.num_slices
         for pg in pgs:
             for i in range(bundles_per_slice):
