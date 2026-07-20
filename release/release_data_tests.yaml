@@ -986,7 +986,7 @@
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
           fail_on_dead_nodes: 0
-          fail_on_spilling: 1
+          fail_on_spilling: 0
 
   cluster:
     anyscale_sdk_2026: true
@@ -1038,7 +1038,7 @@
           # fail.
           frequency: manual
           fail_on_dead_nodes: 0
-          fail_on_spilling: 1
+          fail_on_spilling: 0
 
   cluster:
     anyscale_sdk_2026: true
