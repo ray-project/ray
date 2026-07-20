@@ -2,8 +2,7 @@
 
 # RayJob Batch Inference Example
 
-This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster.
-See [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
+This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster. See [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
 
 ## Prerequisites
 
@@ -32,8 +31,7 @@ This example uses four [NVIDIA T4](https://cloud.google.com/compute/docs/gpus#nv
 
 ## Step 1: Install the KubeRay Operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-The KubeRay operator Pod must be on the CPU node if you have set up the taint for the GPU node pool correctly.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. The KubeRay operator Pod must be on the CPU node if you have set up the taint for the GPU node pool correctly.
 
 ## Step 2: Submit the RayJob
 

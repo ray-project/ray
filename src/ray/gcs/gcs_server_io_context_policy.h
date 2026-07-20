@@ -89,7 +89,7 @@ struct GcsServerIOContextPolicy {
        /*used_for_health_check=*/false},
       {"ray_syncer_io_context",
        /*enable_lag_probe=*/true,
-       /*used_for_health_check=*/true},
+       /*used_for_health_check=*/false},
       {"ray_event_io_context",
        /*enable_lag_probe=*/true,
        /*used_for_health_check=*/false},

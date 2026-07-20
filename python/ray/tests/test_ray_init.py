@@ -14,7 +14,7 @@ import pytest
 import ray
 from ray._common.network_utils import build_address, parse_address
 from ray._private import ray_constants
-from ray._private.test_utils import external_redis_test_enabled
+from ray._private.test_utils import persistent_gcs_test_enabled
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.runtime_env.runtime_env import RuntimeEnv
@@ -253,7 +253,7 @@ def test_new_ray_instance_new_session_dir(shutdown_only):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     ray.shutdown()
     ray.init()
-    if external_redis_test_enabled():
+    if persistent_gcs_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -268,7 +268,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
     cluster.add_node()
     ray.init(address=cluster.address)
-    if external_redis_test_enabled():
+    if persistent_gcs_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir

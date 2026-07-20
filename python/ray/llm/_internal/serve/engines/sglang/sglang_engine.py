@@ -42,7 +42,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
-    _merge_replica_actor_and_child_actor_bundles,
+    _add_openai_models_retrieve_route,
 )
 
 
@@ -94,11 +94,12 @@ class SGLangServer:
         self._sleeping_tags: set[str] = set()
 
         try:
-            import sglang
+            from sglang.srt.ray.engine import RayEngine as Engine
         except ImportError as e:
             raise ImportError(
-                "SGLang is not installed or failed to import. Please run "
-                "`pip install sglang[all]` to install required dependencies."
+                "SGLang with Ray backend is not installed or failed to import. "
+                "Please run `pip install sglang[all, ray]` to install required "
+                "dependencies."
             ) from e
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
@@ -112,7 +113,7 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            self.engine = Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -245,6 +246,53 @@ class SGLangServer:
         # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
         # this integration does not run. Keep the protocol hook as a no-op.
         return
+
+    async def __serve_build_asgi_app__(self) -> Any:
+        """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
+
+        When ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING`` is set, Ray Serve serves the
+        engine's own ASGI app (behind HAProxy) instead of routing every request
+        through the Python ingress. SGLang builds that app in ``launch_server``; here
+        we wire the same app to this replica's in-process ``Engine``.
+
+        Two adjustments are needed relative to ``launch_server``:
+
+        - Force single-tokenizer mode so the app lifespan skips the multi-tokenizer
+          shared-memory bootstrap, which only exists under ``launch_server``.
+        - Skip SGLang's built-in warmup (``skip_server_warmup``), because the
+          default warmup issues a request to ``server_args.port``, which is not
+          where Ray Serve listens. Skipping it also transitions the tokenizer
+          manager's status to ``Up``, which the ``/health`` endpoints require.
+        """
+        # TODO(sgl-project/sglang#31356): replace this module-global wiring with a
+        # per-instance app builder once SGLang provides one.
+        from sglang.srt.entrypoints.http_server import (
+            _GlobalState,
+            app,
+            set_global_state,
+        )
+
+        # Mirror launch_server: _GlobalState.scheduler_info is the first scheduler's
+        # info, which the Engine exposes as _scheduler_init_result.scheduler_infos.
+        scheduler_info = self.engine._scheduler_init_result.scheduler_infos[0]
+
+        set_global_state(
+            _GlobalState(
+                tokenizer_manager=self.engine.tokenizer_manager,
+                template_manager=self.engine.template_manager,
+                scheduler_info=scheduler_info,
+            )
+        )
+        # Copy ``server_args`` so we don't mutate the engine's own instance.
+        server_args = copy.copy(self.engine.server_args)
+        server_args.skip_server_warmup = True
+        app.is_single_tokenizer_mode = True
+        app.server_args = server_args
+        app.warmup_thread_kwargs = {"server_args": server_args}
+        # Match the OpenAiIngress surface: SGLang's native app lists models at
+        # GET /v1/models but has no single-model retrieve route.
+        _add_openai_models_retrieve_route(app, self._llm_config)
+        return app
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
@@ -631,25 +679,27 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
-
+            # RayEngine spawns all tp/pp SchedulerActors onto a single bundle
+            # per node (it indexes the PG with `bundle_for_node[node_idx]` and
+            # reuses that same bundle_idx for every rank on that node). Default
+            # to one bundle with all local GPUs; multi-node deployments must
+            # provide an explicit placement_group_config with one bundle per
+            # node (each containing that node's share of GPUs).
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": num_devices,
             }
 
             if ray_actor_options.get("num_gpus"):
-                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+                replica_bundle["GPU"] += ray_actor_options["num_gpus"]
 
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
                 replica_bundle["memory"] = ray_actor_options["memory"]
 
-            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-                child_actor_bundles=child_bundles,
-                replica_actor_bundle=replica_bundle,
-            )
-            pg_strategy = "PACK"
+            pg_bundles = [replica_bundle]
+            pg_strategy = "STRICT_PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
             pg_strategy = pg_config.get("placement_group_strategy", "PACK")

@@ -70,6 +70,8 @@ class GcsServerTest : public ::testing::Test {
   virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
+    RayConfig::instance().io_context_monitor_healthy_deadline_ms() = 5000;
+
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
