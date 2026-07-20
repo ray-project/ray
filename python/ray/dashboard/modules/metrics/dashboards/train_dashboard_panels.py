@@ -260,15 +260,15 @@ NETWORK_TOTAL_PANEL = Panel(
 )
 
 # Data Loading Metrics
-DATA_LOADING_RATIO_PANEL = Panel(
+EXPOSED_DATA_LOADING_TIME_PANEL = Panel(
     id=18,
-    title="Data Stall to Compute Time Ratio by Rank",
-    description="Ratio of time spent blocked on data loading to time spent in training/user code per rank. Used to identify data loading bottlenecks and rank stragglers.",
-    unit="",
+    title="Max Exposed Data Loading Time",
+    description="Per-batch data loading time exposed as training stall (i.e. not hidden behind training compute by prefetching), taken as the max across ranks so it reflects the slowest rank, per dataset, over the last ${window}. Because synchronous training steps gate on the slowest rank, this worst-rank value is what bounds the training step: near zero means data loading keeps up, while a value well above zero means the job is data loading bound.",
+    unit="ms/batch",
     targets=[
         Target(
-            expr="sum(rate(ray_data_iter_total_blocked_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_user_seconds{{{global_filters}}}[$window])) by (dataset, split)",
-            legend="{{dataset}}, {{split}}",
+            expr="max by (dataset) (1000 * sum(rate(ray_data_iter_total_blocked_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split))",
+            legend="{{dataset}}",
         ),
     ],
     fill=0,
@@ -278,7 +278,7 @@ DATA_LOADING_RATIO_PANEL = Panel(
 DATA_LOADING_THROUGHPUT_PANEL = Panel(
     id=27,
     title="Data Ingest Throughput by Rank",
-    description="Average rows/sec ingested by user iteration loop, one line per rank, over the last ${window}.",
+    description="Rows per second ingested by the user iteration loop, one line per rank, averaged over the last ${window}.",
     unit="rowsps",
     targets=[
         Target(
@@ -290,10 +290,40 @@ DATA_LOADING_THROUGHPUT_PANEL = Panel(
     stack=False,
 )
 
+DATA_PRODUCTION_THROUGHPUT_PANEL = Panel(
+    id=29,
+    title="Data Production Throughput",
+    description="Rows/sec the Ray Data pipeline delivers to the training workers, over the last ${window}. A value near zero while training is live may indicate training is being starved of data. Only reported for datasets split across workers (DataConfig `datasets_to_split`); non-split datasets show no data here.",
+    unit="rowsps",
+    targets=[
+        Target(
+            expr='sum(rate(ray_data_output_rows{{operator=~"split.*", {global_filters}}}[$window])) by (dataset)',
+            legend="{{dataset}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOCALITY_HIT_RATE_PANEL = Panel(
+    id=28,
+    title="Data Locality Hit Rate by Rank",
+    description="Fraction of blocks resolved from the local node (no cross-node fetch required) out of all located blocks, one line per rank, over the last ${window}. A low hit rate means blocks are frequently fetched from other nodes, which surfaces as Production Wait stall; used to identify poor data locality.",
+    unit="percentunit",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_blocks_local{{{global_filters}}}[$window])) by (dataset, split) / (sum(rate(ray_data_iter_blocks_local{{{global_filters}}}[$window])) by (dataset, split) + sum(rate(ray_data_iter_blocks_remote{{{global_filters}}}[$window])) by (dataset, split))",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
 ITER_BLOCKED_TIME_BY_STAGE_PANEL = Panel(
     id=19,
-    title="Data Stall Time Breakdown by Stage",
-    description="Average per-batch stall time attributed to each data loading stage, averaged across all ranks, over the last ${window}. Stages run in pipeline order: Production Wait -> Data Transfer -> Batching -> Format -> Collate -> Finalize. Used to identify the bottleneck stages in data loading.",
+    title="Exposed Data Loading Time by Stage",
+    description="Average per-batch data loading time exposed as training stall, attributed to each stage and averaged across all ranks, over the last ${window}. Stages are pipelined and run concurrently (prefetching, threadpool batch preparation), so these are the exposed portions that blocked training, not the total wall-clock time spent in each stage. Attribution order: Production Wait -> Data Transfer -> Batching -> Format -> Collate -> Finalize. Used to identify which stage dominates the exposed data loading stall.",
     unit="ms/batch",
     targets=[
         Target(
@@ -327,8 +357,8 @@ ITER_BLOCKED_TIME_BY_STAGE_PANEL = Panel(
 
 ITER_BLOCKED_PRODUCTION_WAIT_PANEL = Panel(
     id=20,
-    title="Production Wait Stall by Rank",
-    description="Average per-batch stall waiting on upstream data production, one line per rank, over the last ${window}. Used to identify if ranks are being starved by upstream data pipeline.",
+    title="Exposed Production Wait by Rank",
+    description="Average per-batch stall waiting on upstream data production, one line per rank, over the last ${window}. Used to identify if ranks are being starved by the upstream data pipeline.",
     unit="ms/batch",
     targets=[
         Target(
@@ -342,8 +372,8 @@ ITER_BLOCKED_PRODUCTION_WAIT_PANEL = Panel(
 
 ITER_BLOCKED_DATA_TRANSFER_PANEL = Panel(
     id=22,
-    title="Data Transfer Stall by Rank",
-    description="Average per-batch stall on cross-node data transfer, one line per rank, over the last ${window}. Used to identify data transfer bottlenecks often due to poor data locality.",
+    title="Exposed Data Transfer Time by Rank",
+    description="Average per-batch stall on cross-node data transfer, one line per rank, over the last ${window}. Used to identify data transfer bottlenecks, often due to poor data locality (see the data locality hit rate).",
     unit="ms/batch",
     targets=[
         Target(
@@ -357,7 +387,7 @@ ITER_BLOCKED_DATA_TRANSFER_PANEL = Panel(
 
 ITER_BLOCKED_BATCHING_PANEL = Panel(
     id=23,
-    title="Batching Stall by Rank",
+    title="Exposed Batching Time by Rank",
     description="Average per-batch stall building batches (slice/shuffle), one line per rank, over the last ${window}. Used to identify batching bottlenecks often due to user enabled local shuffle buffer.",
     unit="ms/batch",
     targets=[
@@ -372,7 +402,7 @@ ITER_BLOCKED_BATCHING_PANEL = Panel(
 
 ITER_BLOCKED_FORMAT_PANEL = Panel(
     id=24,
-    title="Format Stall by Rank",
+    title="Exposed Format Time by Rank",
     description="Average per-batch stall converting blocks to batch format, one line per rank, over the last ${window}. Used to identify formatting bottlenecks.",
     unit="ms/batch",
     targets=[
@@ -387,8 +417,8 @@ ITER_BLOCKED_FORMAT_PANEL = Panel(
 
 ITER_BLOCKED_COLLATE_PANEL = Panel(
     id=25,
-    title="Collate Stall by Rank",
-    description="Average per-batch stall in the user collate function, one line per rank, over the last ${window}. Used to identify collation bottlenecks often caused by heavy user defined collate function.",
+    title="Exposed Collate Time by Rank",
+    description="Average per-batch stall in the user collate function exposed as training stall, one line per rank, over the last ${window}. Collate runs in a threadpool overlapped with training; this is the exposed portion that blocked training, not the total collate time summed across threads. Used to identify collation bottlenecks often caused by a heavy user-defined collate function.",
     unit="ms/batch",
     targets=[
         Target(
@@ -402,7 +432,7 @@ ITER_BLOCKED_COLLATE_PANEL = Panel(
 
 ITER_BLOCKED_FINALIZE_PANEL = Panel(
     id=26,
-    title="Finalize Stall by Rank",
+    title="Exposed Finalize Time by Rank",
     description="Average per-batch stall in the user finalize function, one line per rank, over the last ${window}. Used to identify finalization bottlenecks often due to heavy host to device transfer.",
     unit="ms/batch",
     targets=[
@@ -459,9 +489,11 @@ TRAIN_GRAFANA_ROWS = [
         title="Data Ingestion",
         id=21,
         panels=[
-            DATA_LOADING_RATIO_PANEL,
+            EXPOSED_DATA_LOADING_TIME_PANEL,
             ITER_BLOCKED_TIME_BY_STAGE_PANEL,
             DATA_LOADING_THROUGHPUT_PANEL,
+            DATA_PRODUCTION_THROUGHPUT_PANEL,
+            DATA_LOCALITY_HIT_RATE_PANEL,
             ITER_BLOCKED_PRODUCTION_WAIT_PANEL,
             ITER_BLOCKED_DATA_TRANSFER_PANEL,
             ITER_BLOCKED_BATCHING_PANEL,
