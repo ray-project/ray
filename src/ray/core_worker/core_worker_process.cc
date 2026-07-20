@@ -313,7 +313,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
   auto ray_task_event_recorder = std::make_unique<observability::RayTaskEventRecorder>(
       *ray_task_event_recorder_aggregator_client_,
-      PeriodicalRunner::Create(ray_task_event_recorder_io_context_->GetIoService()),
+      // When disabled, the recorder is never started and drops all events, so give it a
+      // runner over the existing io_service_ rather than a dedicated thread.
+      PeriodicalRunner::Create(observability::RayTaskEventRecorder::Enabled()
+                                   ? ray_task_event_recorder_io_context_->GetIoService()
+                                   : io_service_),
       RayConfig::instance().task_events_max_num_status_events_buffer_on_worker(),
       observability::kMetricSourceCoreWorker,
       *ray_task_event_recorder_dropped_events_counter_,
@@ -893,8 +897,12 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // Dependencies for the RayTaskEventRecorder.
   ray_task_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
       new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
-  ray_task_event_recorder_io_context_ =
-      std::make_unique<InstrumentedIOContextWithThread>("ray_task_event_recorder");
+  // Only spin up the recorder's dedicated export thread when the recorder is enabled;
+  // otherwise it stays inert and we avoid an idle worker thread in the default config.
+  if (observability::RayTaskEventRecorder::Enabled()) {
+    ray_task_event_recorder_io_context_ =
+        std::make_unique<InstrumentedIOContextWithThread>("ray_task_event_recorder");
+  }
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
