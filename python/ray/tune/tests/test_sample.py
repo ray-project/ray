@@ -1043,6 +1043,20 @@ class SearchSpaceTest(unittest.TestCase):
         # being replaced by empty dicts.
         self.assertIn(suggestion["space"], choices)
 
+    def testConvertHyperOptChoiceOfMixedConstantAndVariableDicts(self):
+        # A choice category that mixes a constant and a search-space value
+        # must keep its constant key, not just the variable one.
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        config = {"space": tune.choice([{"const": 5, "var": tune.uniform(0.0, 1.0)}])}
+
+        searcher = HyperOptSearch(space=config, metric="m", mode="max")
+        suggestion = searcher.suggest("0")
+
+        self.assertEqual(suggestion["space"]["const"], 5)
+        self.assertGreaterEqual(suggestion["space"]["var"], 0.0)
+        self.assertLessEqual(suggestion["space"]["var"], 1.0)
+
     def testConvertHyperOptConstant(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
