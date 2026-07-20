@@ -47,6 +47,7 @@
 #include "ray/raylet/fake_worker.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
@@ -364,6 +365,7 @@ class NodeManagerTest : public ::testing::Test {
     lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
         *mock_object_manager_, fake_task_by_state_counter_);
 
+    cluster_resource_storage_ = std::make_unique<RayletClusterResourceStorage>();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         ray::PeriodicalRunner::Create(io_service_),
         ray::scheduling::NodeID(raylet_node_id_.Binary()),
@@ -375,6 +377,7 @@ class NodeManagerTest : public ::testing::Test {
         },
         fake_resource_usage_gauge_,
         clock_,
+        *cluster_resource_storage_.get(),
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -480,6 +483,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   FakeClock fake_clock_;
   ray::Clock clock_;
+  std::unique_ptr<RayletClusterResourceStorage> cluster_resource_storage_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;

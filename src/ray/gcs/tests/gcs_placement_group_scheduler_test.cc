@@ -35,6 +35,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -65,6 +66,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
         std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         PeriodicalRunner::Create(io_service_),
         scheduling::NodeID(local_node_id.Binary()),
@@ -73,6 +76,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         [](auto) { return true; },
         fake_resource_usage_gauge_,
         clock_,
+        *cluster_resource_storage_.get(),
         /*is_local_node_with_raylet=*/false);
     gcs_node_manager_ =
         std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
@@ -332,6 +336,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   ray::Clock clock_;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;

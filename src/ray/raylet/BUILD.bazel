@@ -375,6 +375,7 @@ ray_cc_binary(
         "//src/ray/common:status",
         "//src/ray/common/cgroup2:cgroup_manager_factory",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/common/scheduling:cluster_resource_storage",
         "//src/ray/core_worker:metrics",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",

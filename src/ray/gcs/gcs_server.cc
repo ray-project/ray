@@ -536,6 +536,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler(const GcsInitData &gcs_init_data) {
+  cluster_resource_storage_ = std::make_unique<ClusterResourceStorage>(
+      gcs_table_storage_.get(), io_context_provider_.GetDefaultIOContext());
+
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
       scheduling::NodeID(kGCSNodeID.Binary()),
@@ -544,6 +547,7 @@ void GcsServer::InitClusterResourceScheduler(const GcsInitData &gcs_init_data) {
       [](auto) { return true; },
       /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*clock=*/clock_,
+      *cluster_resource_storage_.get(),
       /*is_local_node_with_raylet=*/false);
 
   cluster_resource_scheduler_->RestoreNodeResources(gcs_init_data.NodeResources());

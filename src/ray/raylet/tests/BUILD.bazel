@@ -87,6 +87,7 @@ ray_cc_test(
         "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:placement_group_resource_manager",
+        "//src/ray/raylet/scheduling:cluster_resource_storage",
         "//src/ray/util:clock",
     ],
 )
@@ -183,6 +184,7 @@ ray_cc_test(
         "//src/ray/raylet:local_object_manager_interface",
         "//src/ray/raylet:raylet_lib",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
+        "//src/ray/raylet/scheduling:cluster_resource_storage",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/rpc:utils",
         "//src/ray/util:clock",

@@ -28,6 +28,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
@@ -82,8 +83,10 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
-      : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()),
-        cluster_resource_manager_(PeriodicalRunner::Create(io_service_)) {
+      : cluster_resource_storage_(),
+        mock_placement_group_scheduler_(new MockPlacementGroupScheduler()),
+        cluster_resource_manager_(PeriodicalRunner::Create(io_service_),
+                                  cluster_resource_storage_) {
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =
@@ -215,6 +218,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   ExponentialBackoff GetExpBackOff() { return ExponentialBackoff(0, 1); }
 
+  ray::raylet::RayletClusterResourceStorage cluster_resource_storage_;
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;

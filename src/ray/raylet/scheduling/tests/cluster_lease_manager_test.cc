@@ -37,6 +37,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/util/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -270,6 +271,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   absl::flat_hash_map<std::string, std::string> local_node_labels = {
       {kLabelKeyNodeID, NodeID::FromBinary(id).Hex()}};
   static instrumented_io_context io_context;
+  static std::unique_ptr cluster_resource_storage =
+      std::make_unique<RayletClusterResourceStorage>();
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
       PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
@@ -280,6 +283,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       },
       resource_usage_gauge,
       clock,
+      *cluster_resource_storage.get(),
       /*get_used_object_store_memory=*/nullptr,
       /*get_pull_manager_at_capacity=*/nullptr,
       /*shutdown_raylet_gracefully=*/nullptr,

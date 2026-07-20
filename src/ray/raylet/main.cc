@@ -61,6 +61,7 @@
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
 #include "scheduling/cluster_lease_manager.h"
+#include "scheduling/raylet_cluster_resource_storage.h"
 #if !defined(_WIN32)
 #include <unistd.h>
 #endif
@@ -411,6 +412,7 @@ int main(int argc, char *argv[]) {
   /// granting leases.
   ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
   /// The raylet client to initiate the pubsub to core workers (owners).
@@ -893,6 +895,8 @@ int main(int argc, char *argv[]) {
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
 
+    cluster_resource_storage =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
     cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
         ray::PeriodicalRunner::Create(main_service),
         ray::scheduling::NodeID(raylet_node_id.Binary()),
@@ -903,6 +907,7 @@ int main(int argc, char *argv[]) {
         },
         resource_usage_gauge,
         clock,
+        *cluster_resource_storage.get(),
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {

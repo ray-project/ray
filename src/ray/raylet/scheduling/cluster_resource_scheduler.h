@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_storage_interface.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
@@ -59,6 +60,7 @@ class ClusterResourceScheduler {
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
                            ray::observability::MetricInterface &resource_usage_gauge,
                            ClockInterface &clock,
+                           ClusterResourceStorageInterface &cluster_resource_storage,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
@@ -68,6 +70,7 @@ class ClusterResourceScheduler {
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       ray::observability::MetricInterface &resource_usage_gauge,
       ClockInterface &clock,
+      ClusterResourceStorageInterface &cluster_resource_storage,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
@@ -236,6 +239,8 @@ class ClusterResourceScheduler {
   /// The bundle scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
       bundle_scheduling_policy_;
+  /// Cluster resource storage handler
+  ClusterResourceStorageInterface &cluster_resource_storage_;
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
 

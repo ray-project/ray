@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 
 namespace ray {
 
@@ -80,8 +81,10 @@ class SchedulingPolicyTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> MockClusterResourceManager(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_map) {
     static instrumented_io_context io_context;
-    auto cluster_resource_manager =
-        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
+    auto cluster_resource_manager = std::make_unique<ClusterResourceManager>(
+        PeriodicalRunner::Create(io_context), *cluster_resource_storage_.get());
     cluster_resource_manager->nodes_ = nodes_map;
     return cluster_resource_manager;
   }
@@ -94,6 +97,9 @@ class SchedulingPolicyTest : public ::testing::Test {
     }
     return candidate_nodes;
   }
+
+ private:
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
 };
 
 TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {

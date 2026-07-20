@@ -25,8 +25,10 @@
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(
-    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner)
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+    ClusterResourceStorageInterface &cluster_resource_storage)
     : periodical_runner_(std::move(periodical_runner)),
+      cluster_resource_storage_(cluster_resource_storage),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
   RAY_CHECK(periodical_runner_ != nullptr);

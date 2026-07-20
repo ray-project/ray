@@ -32,9 +32,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock,
+    ClusterResourceStorageInterface &cluster_resource_storage,
     bool is_local_node_with_raylet)
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
+      cluster_resource_storage_(cluster_resource_storage),
       is_local_node_with_raylet_(is_local_node_with_raylet) {
   Init(std::move(periodical_runner),
        local_node_resources,
@@ -52,11 +54,14 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock,
+    ClusterResourceStorageInterface &cluster_resource_storage,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     const absl::flat_hash_map<std::string, std::string> &local_node_labels)
-    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
+    : local_node_id_(local_node_id),
+      is_node_available_fn_(is_node_available_fn),
+      cluster_resource_storage_(cluster_resource_storage) {
   NodeResources node_resources = ResourceMapToNodeResources(
       local_node_resources, local_node_resources, local_node_labels);
   Init(std::move(periodical_runner),
@@ -76,8 +81,8 @@ void ClusterResourceScheduler::Init(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock) {
-  cluster_resource_manager_ =
-      std::make_unique<ClusterResourceManager>(std::move(periodical_runner));
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(
+      std::move(periodical_runner), cluster_resource_storage_);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
       local_node_resources,

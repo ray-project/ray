@@ -22,14 +22,18 @@
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
 
 static instrumented_io_context __mock_io_context_;
+static std::unique_ptr<ray::raylet::RayletClusterResourceStorage>
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
 static ClusterResourceManager __mock_cluster_resource_manager_(
-    PeriodicalRunner::Create(__mock_io_context_));
+    PeriodicalRunner::Create(__mock_io_context_), *cluster_resource_storage_.get());
 static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
 static Clock __mock_clock_;
 static pubsub::ObservabilityPublisher *__mock_observability_publisher() {

@@ -40,6 +40,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/clock.h"
 
@@ -64,6 +65,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
@@ -86,8 +88,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    cluster_resource_manager_ =
-        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_service_));
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
+    cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(
+        PeriodicalRunner::Create(io_service_), *cluster_resource_storage_.get());
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),

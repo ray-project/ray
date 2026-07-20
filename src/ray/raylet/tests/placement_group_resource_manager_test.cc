@@ -27,6 +27,7 @@
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -75,6 +76,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   instrumented_io_context io_context;
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   ray::Clock clock_;
   ray::observability::FakeGauge fake_gauge_;
@@ -92,13 +94,16 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
     cluster_resource_scheduler_ =
         std::make_shared<ClusterResourceScheduler>(PeriodicalRunner::Create(io_context),
-                                                   scheduling::NodeID("local"),
+                                                   scheduling::NodeID(1),
                                                    unit_resource,
                                                    is_node_available_fn_,
                                                    fake_gauge_,
-                                                   clock_);
+                                                   clock_,
+                                                   *cluster_resource_storage_.get());
     new_placement_group_resource_manager_ =
         std::make_unique<raylet::NewPlacementGroupResourceManager>(
             *cluster_resource_scheduler_);
@@ -113,7 +118,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   void CheckRemainingResourceCorrect(NodeResources &node_resources) {
     auto local_node_resource =
         cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
-            scheduling::NodeID("local"));
+            scheduling::NodeID(1));
     ASSERT_TRUE(local_node_resource == node_resources);
   }
 

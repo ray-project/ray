@@ -26,6 +26,7 @@
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_storage_interface.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/raylet/metrics.h"
@@ -51,7 +52,8 @@ class GcsActorSchedulerTest;
 class ClusterResourceManager {
  public:
   explicit ClusterResourceManager(
-      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner);
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+      ClusterResourceStorageInterface &cluster_resource_storage);
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
@@ -215,6 +217,9 @@ class ClusterResourceManager {
 
   /// Timer to revert local changes to the resources periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
+
+  /// storage interface for GCS restart support
+  ClusterResourceStorageInterface &cluster_resource_storage_;
 
   mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
 

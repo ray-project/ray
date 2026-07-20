@@ -23,6 +23,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -33,6 +34,8 @@ using raylet_scheduling_policy::SchedulingType;
 class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         PeriodicalRunner::Create(io_context_),
         scheduling::NodeID(NodeID::FromRandom().Binary()),
@@ -41,6 +44,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         [](auto) { return true; },
         fake_gauge_,
         clock_,
+        *cluster_resource_storage_.get(),
         /*is_local_node_with_raylet=*/false);
   }
 
@@ -189,6 +193,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
   instrumented_io_context io_context_;
   ray::observability::FakeGauge fake_gauge_;
   ray::Clock clock_;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 

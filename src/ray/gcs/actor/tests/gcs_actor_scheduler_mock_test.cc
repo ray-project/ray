@@ -32,6 +32,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
@@ -67,6 +68,9 @@ class GcsActorSchedulerMockTest : public Test {
                                          fake_observability_publisher_.get(),
                                          clock_);
     local_node_id = NodeID::FromRandom();
+
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         PeriodicalRunner::Create(io_context),
         scheduling::NodeID(local_node_id.Binary()),
@@ -75,6 +79,7 @@ class GcsActorSchedulerMockTest : public Test {
         [](auto) { return true; },
         fake_resource_usage_gauge_,
         clock_,
+        *cluster_resource_storage_.get(),
         /*is_local_node_with_raylet=*/false);
     local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
     cluster_lease_manager = std::make_unique<ClusterLeaseManager>(
@@ -122,6 +127,7 @@ class GcsActorSchedulerMockTest : public Test {
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
   ray::Clock clock_;
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;

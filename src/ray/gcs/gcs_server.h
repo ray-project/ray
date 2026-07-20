@@ -24,6 +24,7 @@
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs/gcs_cluster_resource_storage.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_init_data.h"
@@ -330,6 +331,9 @@ class GcsServer {
   /// Declared last so it is stopped/destroyed before the io_contexts
   /// (owned by io_context_provider_) and metrics it references.
   std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
+
+  /// Client for ClusterResourceManager to use for updating table storage
+  std::unique_ptr<ClusterResourceStorage> cluster_resource_storage_;
 };
 
 }  // namespace gcs

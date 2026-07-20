@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 
 namespace ray {
 
@@ -39,8 +40,10 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   void SetUp() {
     ::testing::Test::SetUp();
     static instrumented_io_context io_context;
-    manager =
-        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
+    manager = std::make_unique<ClusterResourceManager>(
+        PeriodicalRunner::Create(io_context), *cluster_resource_storage_.get());
     manager->AddOrUpdateNode(node0,
                              CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
     manager->AddOrUpdateNode(node1,
@@ -59,6 +62,7 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   scheduling::NodeID node1 = scheduling::NodeID(1);
   scheduling::NodeID node2 = scheduling::NodeID(2);
   scheduling::NodeID node3 = scheduling::NodeID(3);
+  std::unique_ptr<ray::raylet::RayletClusterResourceStorage> cluster_resource_storage_;
   std::unique_ptr<ClusterResourceManager> manager;
 };
 
