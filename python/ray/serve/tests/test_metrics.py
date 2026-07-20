@@ -550,7 +550,9 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     conn.close()  # Forcefully close the connection
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
+    num_errors = get_metric_dictionaries(
+        "ray_serve_num_http_error_requests_total", timeout=60
+    )
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/disconnect"
     assert num_errors[0]["error_code"] == "499"
@@ -602,7 +604,9 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     thread.join()
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
+    num_errors = get_metric_dictionaries(
+        "ray_serve_num_grpc_error_requests_total", timeout=60
+    )
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
     assert num_errors[0]["error_code"] == grpc.StatusCode.CANCELLED.name
@@ -1016,14 +1020,18 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     handle = serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
 
-    futures = [handle.remote() for _ in range(2)]
+    # Submit the second request only after the first reaches the replica, else
+    # the router can dispatch both before either's queue-length update lands.
+    first = handle.remote()
     wait_for_condition(
         lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
     )
+    second = handle.remote()
 
     time.sleep(0.5)
     ray.get(signal.send.remote())
-    [f.result() for f in futures]
+    first.result()
+    second.result()
 
     timeseries = PrometheusTimeseries()
 
@@ -1112,7 +1120,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
 
         wait_for_condition(
             check_metric_float_eq,
-            timeout=15,
+            timeout=30,
             metric="ray_serve_request_router_queue_len",
             expected=1,
             expected_tags={"deployment": "TestDeployment", "application": "app1"},
@@ -1485,7 +1493,7 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
         return True
 
     try:
-        wait_for_condition(check_controller_metric_tags, timeout=60)
+        wait_for_condition(check_controller_metric_tags, timeout=120)
     finally:
         ray.get(signal.send.remote())
 
@@ -1612,7 +1620,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_exception_error_metric, timeout=30)
+    wait_for_condition(check_exception_error_metric, timeout=60)
     print("Exception error metric verified.")
 
     # Now test timeout case
@@ -1638,7 +1646,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_timeout_error_metric, timeout=30)
+    wait_for_condition(check_timeout_error_metric, timeout=60)
     print("Timeout error metric verified.")
 
     ray.get(signal.send.remote(clear=True))

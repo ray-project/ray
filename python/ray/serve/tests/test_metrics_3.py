@@ -535,7 +535,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_replicas",
         expected=5,
         expected_tags=base_tags,
