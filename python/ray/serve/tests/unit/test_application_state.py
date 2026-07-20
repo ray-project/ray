@@ -233,6 +233,7 @@ def deployment_params(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     return {
         "deployment_name": name,
@@ -243,7 +244,7 @@ def deployment_params(
             autoscaling_config=autoscaling_config,
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
-            lambda x: x
+            lambda x: x, ray_actor_options=ray_actor_options
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
@@ -260,6 +261,7 @@ def deployment_info(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     params = deployment_params(
         name,
@@ -267,6 +269,7 @@ def deployment_info(
         autoscaling_config,
         num_replicas,
         ingress_request_router,
+        ray_actor_options,
     )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
@@ -339,23 +342,9 @@ class TestIngressRequestRouterFootprint:
     resource footprint so it colocates with the proxy on every node, while
     keeping non-resource actor options. Other deployments are untouched."""
 
-    @staticmethod
-    def _info(ingress_request_router, ray_actor_options):
-        params = {
-            "deployment_name": "d",
-            "deployment_config_proto_bytes": DeploymentConfig(
-                version=get_random_string()
-            ).to_proto_bytes(),
-            "replica_config_proto_bytes": ReplicaConfig.create(
-                lambda x: x, ray_actor_options=ray_actor_options
-            ).to_proto_bytes(),
-            "deployer_job_id": "random",
-            "ingress_request_router": ingress_request_router,
-        }
-        return deploy_args_to_deployment_info(**params, app_name="app")
-
     def test_router_footprint_cleared(self):
-        info = self._info(
+        info = deployment_info(
+            "d",
             ingress_request_router=True,
             ray_actor_options={
                 "num_cpus": 2,
@@ -373,7 +362,8 @@ class TestIngressRequestRouterFootprint:
         assert info.replica_config.resource_dict == {"CPU": 0}
 
     def test_non_router_keeps_resources(self):
-        info = self._info(
+        info = deployment_info(
+            "d",
             ingress_request_router=False,
             ray_actor_options={"num_cpus": 2, "num_gpus": 1},
         )
@@ -388,20 +378,12 @@ def test_ingress_request_router_rejects_autoscaling_config():
     The router runs one replica per proxy node, so an autoscaling_config would be
     silently dropped otherwise.
     """
-    params = {
-        "deployment_name": "d",
-        "deployment_config_proto_bytes": DeploymentConfig(
-            version=get_random_string(),
-            autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=3),
-        ).to_proto_bytes(),
-        "replica_config_proto_bytes": ReplicaConfig.create(
-            lambda x: x
-        ).to_proto_bytes(),
-        "deployer_job_id": "random",
-        "ingress_request_router": True,
-    }
     with pytest.raises(RayServeException, match="autoscaling_config"):
-        deploy_args_to_deployment_info(**params, app_name="app")
+        deployment_info(
+            "d",
+            autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=3),
+            ingress_request_router=True,
+        )
 
 
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
