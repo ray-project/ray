@@ -2229,11 +2229,12 @@ class Replica:
         )
 
     def _start_self_health_pusher(self):
-        """Push local health on the deployment's health-check cadence."""
+        """Evaluate at half the health-check period so every replica is checked
+        well within the configured period despite scheduling jitter."""
         self._self_health_active = True
         self._metrics_manager.start_self_health_pusher(
             self._run_user_health_check,
-            self._deployment_config.health_check_period_s,
+            self._deployment_config.health_check_period_s * 0.5,
             self._deployment_config.health_check_timeout_s,
         )
 

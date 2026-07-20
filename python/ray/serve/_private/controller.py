@@ -639,6 +639,14 @@ class ServeController:
             dsm_duration = time.time() - dsm_update_start_time
             self.dsm_update_duration_gauge_s.set(dsm_duration)
             self._health_metrics_tracker.record_dsm_update_duration(dsm_duration)
+            try:
+                _gs = self._replica_health_push_registry.gap_stats()
+                self._health_metrics_tracker.push_checks_recorded = _gs["count"]
+                self._health_metrics_tracker.push_check_gap_p50_s = _gs["p50_s"]
+                self._health_metrics_tracker.push_check_gap_p99_s = _gs["p99_s"]
+                self._health_metrics_tracker.push_check_gap_max_s = _gs["max_s"]
+            except Exception:
+                pass
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
                 if num_loops > 0:

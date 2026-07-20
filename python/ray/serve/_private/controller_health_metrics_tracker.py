@@ -50,6 +50,13 @@ class ControllerHealthMetricsTracker:
     num_control_loops: int = 0
     last_control_loop_time: float = 0.0
 
+    # Replica self-check intervals observed via health pushes (set by the
+    # controller loop from the push registry).
+    push_checks_recorded: int = 0
+    push_check_gap_p50_s: float = 0.0
+    push_check_gap_p99_s: float = 0.0
+    push_check_gap_max_s: float = 0.0
+
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
 
@@ -145,4 +152,8 @@ class ControllerHealthMetricsTracker:
             handle_metrics_delay_ms=handle_delay_stats,
             replica_metrics_delay_ms=replica_delay_stats,
             process_memory_mb=process_memory_mb,
+            push_checks_recorded=self.push_checks_recorded,
+            push_check_gap_p50_s=self.push_check_gap_p50_s,
+            push_check_gap_p99_s=self.push_check_gap_p99_s,
+            push_check_gap_max_s=self.push_check_gap_max_s,
         )

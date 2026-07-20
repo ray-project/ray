@@ -713,10 +713,17 @@ class ReplicaHealthPushRegistry:
 
     _PRUNE_THRESHOLD = 65536
     _PRUNE_MAX_AGE_S = 600.0
+    _GAP_BUCKET_S = 0.25
+    _GAP_NBUCKETS = 240  # 60s range
 
     def __init__(self):
         # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
         self._state: Dict[str, Tuple[float, float, bool, Optional[int]]] = {}
+        # Gap between a replica's consecutive accepted checked_at values = its
+        # actual self-check interval (same clock per replica, skew-free).
+        self._gap_hist = [0] * self._GAP_NBUCKETS
+        self._gap_count = 0
+        self._gap_max_s = 0.0
 
     def record(
         self,
@@ -728,6 +735,13 @@ class ReplicaHealthPushRegistry:
         prev = self._state.get(replica_unique_id)
         if prev is not None and checked_at <= prev[0]:
             return  # A delayed report must not clobber a newer observation.
+        if prev is not None:
+            gap = checked_at - prev[0]
+            b = int(gap / self._GAP_BUCKET_S)
+            self._gap_hist[b if b < self._GAP_NBUCKETS else self._GAP_NBUCKETS - 1] += 1
+            self._gap_count += 1
+            if gap > self._gap_max_s:
+                self._gap_max_s = gap
         if len(self._state) > self._PRUNE_THRESHOLD:
             # Age by controller-clock arrival time (v[1]), immune to replica skew.
             cutoff = time.time() - self._PRUNE_MAX_AGE_S
@@ -743,6 +757,27 @@ class ReplicaHealthPushRegistry:
         self, replica_unique_id: str
     ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
         return self._state.get(replica_unique_id)
+
+    def gap_stats(self) -> Dict[str, float]:
+        """Percentiles of the replicas' actual self-check intervals."""
+
+        def pct(p):
+            if self._gap_count <= 0:
+                return 0.0
+            target = p * self._gap_count
+            cum = 0
+            for i, c in enumerate(self._gap_hist):
+                cum += c
+                if cum >= target:
+                    return (i + 1) * self._GAP_BUCKET_S
+            return self._GAP_NBUCKETS * self._GAP_BUCKET_S
+
+        return {
+            "count": self._gap_count,
+            "p50_s": pct(0.50),
+            "p99_s": pct(0.99),
+            "max_s": self._gap_max_s,
+        }
 
 
 class ActorReplicaWrapper:

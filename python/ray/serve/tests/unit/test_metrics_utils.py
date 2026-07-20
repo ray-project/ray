@@ -1475,6 +1475,35 @@ class TestSelfHealthPush:
         await m._eval_and_push_self_health()
         m._controller_handle.record_replica_health.remote.assert_called_once()
 
+    def test_self_check_runs_at_half_the_period(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from ray.serve._private.replica import Replica
+
+        r = Replica.__new__(Replica)
+        r._metrics_manager = Mock()
+        r._deployment_config = SimpleNamespace(
+            health_check_period_s=10.0, health_check_timeout_s=30.0
+        )
+        r._self_health_active = False
+        Replica._start_self_health_pusher(r)
+        args = r._metrics_manager.start_self_health_pusher.call_args.args
+        assert args[1] == 5.0  # half the period
+        assert args[2] == 30.0
+
+    def test_registry_tracks_self_check_intervals(self):
+        from ray.serve._private.deployment_state import ReplicaHealthPushRegistry
+
+        r = ReplicaHealthPushRegistry()
+        t0 = 1000.0
+        for i in range(10):
+            r.record("r1", t0 + i * 5.0, True)
+        stats = r.gap_stats()
+        assert stats["count"] == 9
+        assert 4.75 <= stats["p99_s"] <= 5.25
+        assert stats["max_s"] == 5.0
+
     @pytest.mark.asyncio
     async def test_in_flight_heartbeat_skips_next(self, monkeypatch):
         import ray.serve._private.replica as replica_mod
