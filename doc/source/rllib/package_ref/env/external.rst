@@ -10,7 +10,7 @@ ray.rllib.env.external.rllink.RLlink
 
 .. currentmodule:: ray.rllib.env.external.rllink
 
-.. autoclass:: ray.rllib.env.external.rllink.RLlink
+.. autoclass:: RLlink
 
 .. autosummary::
    :nosignatures:
