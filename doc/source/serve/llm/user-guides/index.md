@@ -30,6 +30,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 ## Operate in production
 
 - {doc}`Observability and monitoring <observability>`: engine and request metrics, Grafana dashboards, and Prometheus integration.
+- {doc}`Autoscaling on time-to-first-token <autoscaling>`: scale replicas on vLLM's p99 TTFT with the built-in `TTFTAutoscalingPolicy`.
 
 ```{toctree}
 :hidden:
@@ -49,4 +50,5 @@ vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
 SGLang integration <sglang>
 Observability and monitoring <observability>
+Autoscaling on time-to-first-token <autoscaling>
 ```
