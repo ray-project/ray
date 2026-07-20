@@ -234,7 +234,11 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker, showAcceleratorColumns = true }: WorkerRowProps) => {
+export const WorkerRow = ({
+  node,
+  worker,
+  showAcceleratorColumns = true,
+}: WorkerRowProps) => {
   const {
     mem,
     raylet: { nodeId },

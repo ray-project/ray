@@ -170,40 +170,42 @@ const NodeDetailPage = () => {
             </Grid>
           </Box>
         )}
-        {raylet && Object.keys(raylet).length > 0 && selectedTab === "raylet" && (
-          <React.Fragment>
-            <Box
-              sx={{
-                padding: 2,
-                marginTop: 2,
-                marginBottom: 2,
-              }}
-            >
-              <Grid container>
-                <Grid item xs>
-                  <Box sx={{ fontWeight: "bold" }}>Command</Box>
-                  <br />
-                  <div style={{ height: 200, overflow: "auto" }}>
-                    {nodeDetail?.cmdline.join(" ")}
-                  </div>
+        {raylet &&
+          Object.keys(raylet).length > 0 &&
+          selectedTab === "raylet" && (
+            <React.Fragment>
+              <Box
+                sx={{
+                  padding: 2,
+                  marginTop: 2,
+                  marginBottom: 2,
+                }}
+              >
+                <Grid container>
+                  <Grid item xs>
+                    <Box sx={{ fontWeight: "bold" }}>Command</Box>
+                    <br />
+                    <div style={{ height: 200, overflow: "auto" }}>
+                      {nodeDetail?.cmdline.join(" ")}
+                    </div>
+                  </Grid>
                 </Grid>
-              </Grid>
-              <Grid container>
-                <Grid item xs>
-                  <Box sx={{ fontWeight: "bold" }}>Pid</Box> {raylet?.pid}
+                <Grid container>
+                  <Grid item xs>
+                    <Box sx={{ fontWeight: "bold" }}>Pid</Box> {raylet?.pid}
+                  </Grid>
+                  <Grid item xs>
+                    <Box sx={{ fontWeight: "bold" }}>Workers Num</Box>{" "}
+                    {raylet?.numWorkers}
+                  </Grid>
+                  <Grid item xs>
+                    <Box sx={{ fontWeight: "bold" }}>Node Manager Port</Box>{" "}
+                    {raylet?.nodeManagerPort}
+                  </Grid>
                 </Grid>
-                <Grid item xs>
-                  <Box sx={{ fontWeight: "bold" }}>Workers Num</Box>{" "}
-                  {raylet?.numWorkers}
-                </Grid>
-                <Grid item xs>
-                  <Box sx={{ fontWeight: "bold" }}>Node Manager Port</Box>{" "}
-                  {raylet?.nodeManagerPort}
-                </Grid>
-              </Grid>
-            </Box>
-          </React.Fragment>
-        )}
+              </Box>
+            </React.Fragment>
+          )}
         {nodeDetail?.workers && selectedTab === "worker" && (
           <React.Fragment>
             <TableContainer
@@ -233,7 +235,9 @@ const NodeDetailPage = () => {
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
                 detailPathPrefix="/actors"
-                showAcceleratorColumns={!!(nodeDetail?.gpus?.length || nodeDetail?.tpus?.length)}
+                showAcceleratorColumns={
+                  !!(nodeDetail?.gpus?.length || nodeDetail?.tpus?.length)
+                }
               />
             </TableContainer>
           </React.Fragment>
