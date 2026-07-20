@@ -562,14 +562,14 @@ If you're using `@task_consumer` deployments for asynchronous inference, Ray Ser
 (serve-advanced-autoscaling-prometheus)=
 ### Prometheus-based autoscaling
 
-When you want to scale on a metric that already lives in Prometheus — queue depth, a custom application gauge, or an engine metric such as latency — mix [`PrometheusQueryMixin`](../api/doc/ray.serve.autoscaling_policy.PrometheusQueryMixin.rst) into a class-based policy. The mixin runs a background thread that evaluates your PromQL queries on a fixed interval and caches the scalar results. Your `__call__` reads `self.prometheus_metrics` and never blocks on the network: it returns the last cached values, or `None` when Prometheus is unset, unreachable, or the cache is stale.
+To scale on a metric that already lives in Prometheus, such as queue depth, a custom application gauge, or request latency, mix [`PrometheusQueryMixin`](../api/doc/ray.serve.autoscaling_policy.PrometheusQueryMixin.rst) into a class-based policy. The mixin runs a background thread that evaluates your PromQL queries on a fixed interval and caches the scalar results. Your `__call__` reads `self.prometheus_metrics` and never blocks on the network. It returns the last cached values, or `None` when Prometheus is unset, unreachable, or the cache is stale.
 
 Configure the mixin through `policy_kwargs`:
 
-- `prometheus_address`: the Prometheus server as `host:port` or a full URL. Defaults to the `RAY_PROMETHEUS_HOST` environment variable, which Ray's dashboard and managed clusters already set, so the common case needs no address.
-- `prometheus_queries`: the PromQL expressions to evaluate. Each must resolve to a single scalar (a scalar or a single-sample instant vector).
-- `fetch_interval_s` (default 5s): how often the background thread re-queries Prometheus.
-- `cache_ttl_s` (default 15s): how long a cached value stays valid. After this, `prometheus_metrics` returns `None` until the next successful fetch.
+- `prometheus_address`: The Prometheus server as `host:port` or a full URL. Defaults to the `RAY_PROMETHEUS_HOST` environment variable, which Ray's dashboard and managed clusters already set, so the common case needs no address.
+- `prometheus_queries`: The PromQL expressions to evaluate. Each must resolve to a scalar or a single-sample instant vector.
+- `fetch_interval_s`: How often the background thread re-queries Prometheus. Defaults to `5.0`.
+- `cache_ttl_s`: How long a cached value stays valid. After this the read returns `None` until the next successful fetch. Defaults to `15.0`.
 
 `prometheus_autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/prometheus_autoscaling_policy.py

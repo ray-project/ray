@@ -7,8 +7,8 @@ Ray Serve LLM ships `TTFTAutoscalingPolicy`, a built-in autoscaling policy that 
 
 On each autoscaling tick the policy reads the p99 TTFT for the model and compares it to `ttft_target_s`:
 
-- **Scale up (reactive).** When p99 TTFT is above `ttft_target_s`, the policy asks for one more replica. Latency pressure is acted on immediately.
-- **Scale down (conservative).** Low TTFT alone does not prove excess capacity, so the policy removes a replica only when p99 TTFT is below target *and* ongoing requests per replica is below `idle_threshold`.
+- **Scale up.** When p99 TTFT is above `ttft_target_s`, the policy asks for one more replica, so it reacts to latency pressure right away.
+- **Scale down.** Low TTFT alone doesn't prove excess capacity, so the policy removes a replica only when p99 TTFT is below target *and* ongoing requests per replica drop below `idle_threshold`.
 - **Hold.** When Prometheus data is unavailable or stale, the policy holds the current replica count rather than guessing.
 
 `min_replicas` and `max_replicas` from `AutoscalingConfig` still bound the result, so scale-to-zero and upper limits work as usual.
@@ -66,4 +66,4 @@ Pass these through `policy_kwargs`:
 
 ## Scale on a different metric
 
-`TTFTAutoscalingPolicy` is a thin policy over `PrometheusQueryMixin`. To scale an LLM (or any) deployment on a different Prometheus metric, mix `PrometheusQueryMixin` into your own policy. See [Prometheus-based autoscaling](serve-advanced-autoscaling-prometheus) in the Serve autoscaling guide.
+`TTFTAutoscalingPolicy` builds on `PrometheusQueryMixin`. To scale any deployment on a different Prometheus metric, mix `PrometheusQueryMixin` into your own policy. See [Prometheus-based autoscaling](serve-advanced-autoscaling-prometheus) in the Serve autoscaling guide.
