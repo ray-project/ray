@@ -193,12 +193,14 @@ class ActorReplicaResult(ReplicaResult):
         self._frame_pump_task = loop.create_task(self._pump_health_frames())
 
     async def _pump_health_frames(self):
-        # Created by _maybe_start_frame_pump before this task starts.
+        # Created by _maybe_start_frame_pump before this task starts; the gen
+        # always exists for rejection-protocol results.
         outcome = self._pump_outcome
-        assert outcome is not None
+        gen = self._obj_ref_gen
+        assert outcome is not None and gen is not None
         try:
             while True:
-                obj_ref = await self._obj_ref_gen.__anext__()
+                obj_ref = await gen.__anext__()
                 try:
                     value = await obj_ref
                 except Exception:
