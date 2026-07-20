@@ -478,7 +478,7 @@ py_test(
 
 py_test(
     name = "test_unique_e2e",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
