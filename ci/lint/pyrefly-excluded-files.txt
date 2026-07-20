@@ -13,6 +13,10 @@ python/ray/data/_internal/datasource/binary_datasource.py
 python/ray/data/_internal/datasource/clickhouse_datasink.py
 python/ray/data/_internal/datasource/csv_datasink.py
 python/ray/data/_internal/datasource/csv_datasource.py
+python/ray/data/_internal/datasource/delta/committer.py
+python/ray/data/_internal/datasource/delta/datasink.py
+python/ray/data/_internal/datasource/delta/utils.py
+python/ray/data/_internal/datasource/delta/writer.py
 python/ray/data/_internal/datasource/delta_sharing_datasource.py
 python/ray/data/_internal/datasource/hudi_datasource.py
 python/ray/data/_internal/datasource/huggingface_datasource.py
