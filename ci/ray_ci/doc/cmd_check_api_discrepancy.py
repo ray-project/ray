@@ -183,14 +183,13 @@ TEAM_API_CONFIGS = {
     "rllib": {
         "head_modules": {"ray.rllib"},
         "head_doc_file": "doc/source/rllib/package_ref/index.rst",
-        # Private-by-name methods RLlib intentionally documents as the public
-        # override contract: users subclass RLModule / Learner and implement
-        # these to define custom forward and module-construction behavior.
+        # Private-by-name methods RLlib intentionally documents as a public
+        # override / customization contract. The RLModule._forward* hooks that
+        # were whitelisted here are now exempted generically by their
+        # @OverrideToImplementCustomLogic marker (see API._is_override_hook in
+        # api.py), so only the Learner / offline hooks that lack that marker
+        # still need an explicit entry.
         "white_list_apis": {
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_inference",
-            "ray.rllib.core.rl_module.rl_module.RLModule._forward_train",
             "ray.rllib.core.learner.learner.Learner._make_module",
             # OfflinePreLearner / OfflineData methods documented as the
             # offline-RL customization surface in rllib-offline.rst (which has a
