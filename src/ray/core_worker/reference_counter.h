@@ -438,17 +438,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// Raylets currently subscribed to this object's location, by raylet id;
-    /// null until the first subscriber. Kept on the row rather than queried
-    /// from the publisher because every publish decision here already holds
-    /// mutex_, while asking the publisher's index would take its lock on the
-    /// application threads (the contention #63983 removed). Read by
-    /// PushToLocationSubscribers and EraseReference to skip publishes no
-    /// raylet is listening for; the maintenance contract is on
-    /// Add/RemoveObjectLocationSubscriber in reference_counter_interface.h.
-    /// May retain a raylet that died without unsubscribing until the node
-    /// removal is processed (ResetObjectsOnRemovedNode); until then this
-    /// object's publishes are built and dropped at delivery.
+    /// Raylets subscribed to this object's location; null until the first
+    /// subscriber. A mirror of the publisher's subscription index, kept here
+    /// so PushToLocationSubscribers and EraseReference can skip audience-less
+    /// publishes under mutex_ without taking the publisher's lock (the
+    /// contention #63983 removed). Maintenance contract on
+    /// Add/RemoveObjectLocationSubscriber in reference_counter_interface.h;
+    /// may only drift stale-high vs the index (dead raylets are erased on
+    /// node removal, ResetObjectsOnRemovedNode).
     std::unique_ptr<absl::flat_hash_set<NodeID>> location_subscribers;
 
     bool HasLocationSubscribers() const {
