@@ -337,8 +337,8 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
 
 
 @PublicAPI(stability="alpha")
-def set_nixl_cuda_stream(streams: Optional[List["torch.cuda.Stream"]]) -> None:
-    """Sets the CUDA streams to synchronize before NIXL memory registration.
+def set_nixl_cuda_stream(stream: Optional["torch.cuda.Stream"]) -> None:
+    """Sets the CUDA stream to synchronize before NIXL memory registration.
 
     When an actor creates an RDT object (via ``ray.put(_tensor_transport="nixl")``
     or by returning tensors from a task annotated with
@@ -347,16 +347,15 @@ def set_nixl_cuda_stream(streams: Optional[List["torch.cuda.Stream"]]) -> None:
     guarantee the tensor storage has been allocated. By default Ray calls
     ``torch.cuda.synchronize`` for each device, which blocks *all* streams on
     that device. Use this function to instead block only on the specific
-    stream(s) that produced the tensors.
+    stream that produced the tensors.
 
-    Every device used by an RDT object must have a matching stream in the list,
-    otherwise a ``ValueError`` is raised when the object is created. Providing
-    more than one stream for the same device raises a ``ValueError``. Streams
-    for devices not used by an RDT object are ignored.
+    The stream applies to all subsequent RDT object creations on this actor
+    until changed. Calling this again overwrites the previous stream. Pass
+    ``None`` to clear it and restore the default full-device synchronization.
 
     Args:
-        streams: A list of CUDA streams, at most one per device, or ``None`` to
-            block on all streams of each device.
+        stream: The CUDA stream to synchronize, or ``None`` to block on all
+            streams of each device.
 
     Example:
 
@@ -373,11 +372,11 @@ def set_nixl_cuda_stream(streams: Optional[List["torch.cuda.Stream"]]) -> None:
                     with torch.cuda.stream(stream):
                         weight = torch.randn(1000, 1000, device="cuda")
                     # Only block on `stream` instead of every stream on the device.
-                    set_nixl_cuda_stream([stream])
+                    set_nixl_cuda_stream(stream)
                     return ray.put(weight, _tensor_transport="nixl")
     """
     nixl_transport = get_tensor_transport_manager("NIXL")
-    nixl_transport.set_cuda_streams(streams)
+    nixl_transport.set_cuda_stream(stream)
 
 
 def create_empty_tensors_from_metadata(

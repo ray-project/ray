@@ -732,7 +732,7 @@ def test_set_nixl_cuda_stream(ray_start_regular):
             with torch.cuda.stream(stream):
                 out = data.to("cuda") * 2
             # Only block on `stream` instead of every stream on the device.
-            set_nixl_cuda_stream([stream])
+            set_nixl_cuda_stream(stream)
             return out
 
         @ray.method(tensor_transport="nixl")
@@ -755,18 +755,28 @@ def test_set_nixl_cuda_stream(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_set_nixl_cuda_stream_duplicate_device(ray_start_regular):
-    """Providing two streams for the same device errors at set time."""
+def test_set_nixl_cuda_stream_overwrite(ray_start_regular):
+    """Setting a stream overwrites any previous stream, and passing None
+    clears it."""
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
 
     transport = NixlTensorTransport()
-    # Both streams default to the current device, so they collide.
+    assert transport._cuda_stream is None
+
     stream1 = torch.cuda.Stream()
     stream2 = torch.cuda.Stream()
-    with pytest.raises(ValueError, match="Multiple CUDA streams"):
-        transport.set_cuda_streams([stream1, stream2])
+    transport.set_cuda_stream(stream1)
+    assert transport._cuda_stream is stream1
+
+    # Setting again overwrites the previous stream.
+    transport.set_cuda_stream(stream2)
+    assert transport._cuda_stream is stream2
+
+    # None clears the recorded stream.
+    transport.set_cuda_stream(None)
+    assert transport._cuda_stream is None
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -779,10 +789,10 @@ def test_set_nixl_cuda_stream_uncovered_device(ray_start_regular):
     transport = NixlTensorTransport()
     # Provide a stream only for cuda:1, but create the tensor on cuda:0.
     stream = torch.cuda.Stream(device=torch.device("cuda:1"))
-    transport.set_cuda_streams([stream])
+    transport.set_cuda_stream(stream)
 
     tensor = torch.tensor([1, 2, 3]).to("cuda:0")
-    with pytest.raises(ValueError, match="Missing CUDA stream for device"):
+    with pytest.raises(ValueError, match="Device mismatch between the CUDA stream"):
         transport.extract_tensor_transport_metadata("uncovered_obj", [tensor])
 
 
