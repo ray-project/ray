@@ -262,7 +262,9 @@ class TestSupportsHealthFramesGate:
 
         endpoint = SimpleNamespace(remote=remote)
         handle = SimpleNamespace(
-            handle_request_with_rejection=SimpleNamespace(options=lambda **kw: endpoint),
+            handle_request_with_rejection=SimpleNamespace(
+                options=lambda **kw: endpoint
+            ),
             handle_request_streaming=SimpleNamespace(options=lambda **kw: endpoint),
             handle_request=endpoint,
         )
