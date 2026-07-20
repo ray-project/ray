@@ -19,6 +19,7 @@ ray_cc_library(
         ":cluster_lease_manager",
         ":cluster_resource_manager",
         ":cluster_resource_scheduler",
+        ":cluster_resource_storage",
         ":composite_scheduling_policy",
         ":hybrid_scheduling_policy",
         ":local_lease_manager",
@@ -53,6 +54,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/common:ray_config",
         "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:cluster_resource_storage",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/raylet:metrics",
         "//src/ray/util:container_util",
@@ -74,6 +76,19 @@ ray_cc_library(
         "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_resource_storage",
+    srcs = ["raylet_cluster_resource_storage.cc"],
+    hdrs = ["raylet_cluster_resource_storage.h"],
+    deps = [
+        "//src/ray/common/scheduling:cluster_resource_storage",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_prod",
