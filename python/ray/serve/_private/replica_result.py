@@ -16,6 +16,7 @@ import ray
 from ray.exceptions import ActorUnavailableError, RayTaskError, TaskCancelledError
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
+    ReplicaHealthFrame,
     ReplicaQueueLengthInfo,
     RequestMetadata,
 )
@@ -62,6 +63,13 @@ class ReplicaResult(ABC):
     def add_done_callback(self, callback: Callable):
         raise NotImplementedError
 
+    def set_health_frame_listener(self, on_frame: Callable) -> None:
+        """Record ReplicaHealthFrame system messages from the response stream.
+
+        Default: transport doesn't carry frames; no-op.
+        """
+        pass
+
     @abstractmethod
     def cancel(self):
         raise NotImplementedError
@@ -96,6 +104,15 @@ class ActorReplicaResult(ReplicaResult):
         self._object_ref_or_gen_sync_lock = threading.Lock()
         self._with_rejection = with_rejection
         self._rejection_response = None
+        self._health_frames_possible: bool = (
+            with_rejection
+            and not metadata.is_streaming
+            and getattr(metadata, "supports_health_frames", False)
+        )
+        self._on_health_frame: Optional[Callable] = None
+        self._frame_pump_task: Optional[asyncio.Task] = None
+        self._pump_outcome: Optional[concurrent.futures.Future] = None
+        self._consumption_started: bool = False
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -139,6 +156,76 @@ class ActorReplicaResult(ReplicaResult):
             return async_wrapper
         else:
             return wrapper
+
+    # Delay before the background frame pump takes over an unresolved response
+    # stream. Responses that resolve faster never start the pump.
+    _FRAME_PUMP_DELAY_S = 2.0
+
+    def set_health_frame_listener(self, on_frame: Callable) -> None:
+        """Record ReplicaHealthFrame system messages from the response stream.
+
+        Long-running requests are drained by a background pump that starts only
+        if the response hasn't resolved after a short delay, so fast requests
+        never pay for it. Must be called after the rejection response has been
+        consumed (the pump owns all remaining stream items once it starts).
+        """
+        if not self._health_frames_possible:
+            return
+        self._on_health_frame = on_frame
+        loop = asyncio.get_running_loop()
+        loop.call_later(self._FRAME_PUMP_DELAY_S, self._maybe_start_frame_pump, loop)
+
+    def _maybe_start_frame_pump(self, loop: asyncio.AbstractEventLoop) -> None:
+        # Non-blocking: if another consumer holds the lock it owns the stream
+        # (and filters frames itself); never block the event loop on it.
+        if not self._object_ref_or_gen_sync_lock.acquire(blocking=False):
+            return
+        try:
+            if (
+                self._obj_ref is not None
+                or self._consumption_started
+                or self._pump_outcome is not None
+            ):
+                return
+            self._pump_outcome = concurrent.futures.Future()
+        finally:
+            self._object_ref_or_gen_sync_lock.release()
+        self._frame_pump_task = loop.create_task(self._pump_health_frames())
+
+    async def _pump_health_frames(self):
+        try:
+            while True:
+                obj_ref = await self._obj_ref_gen.__anext__()
+                try:
+                    value = await obj_ref
+                except Exception:
+                    # The exception belongs to the request; consumers surface it
+                    # when they fetch the ref.
+                    self._settle_pump(obj_ref)
+                    return
+                if isinstance(value, ReplicaHealthFrame):
+                    self._record_health_frame(value)
+                    continue
+                self._settle_pump(obj_ref)
+                return
+        except BaseException as e:
+            if not self._pump_outcome.done():
+                self._pump_outcome.set_exception(e)
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    def _settle_pump(self, obj_ref: ray.ObjectRef) -> None:
+        with self._object_ref_or_gen_sync_lock:
+            self._obj_ref = obj_ref
+        self._pump_outcome.set_result(obj_ref)
+
+    def _record_health_frame(self, frame: ReplicaHealthFrame) -> None:
+        if self._on_health_frame is None:
+            return
+        try:
+            self._on_health_frame(frame)
+        except Exception:
+            logger.warning("Health frame listener failed.", exc_info=True)
 
     @_process_response
     async def get_rejection_response(self) -> Optional[ReplicaQueueLengthInfo]:
@@ -231,15 +318,54 @@ class ActorReplicaResult(ReplicaResult):
         # object ref cached in order to avoid calling `__next__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
+        start_time_s = time.time()
         with self._object_ref_or_gen_sync_lock:
-            if self._obj_ref is None:
-                obj_ref = self._obj_ref_gen._next_sync(timeout_s=timeout_s)  # type: ignore[union-attr]
-                if obj_ref.is_nil():
-                    raise TimeoutError("Timed out resolving to ObjectRef.")
+            self._consumption_started = True
+            if self._obj_ref is None and self._pump_outcome is None:
+                while True:
+                    remaining_timeout_s = calculate_remaining_timeout(
+                        timeout_s=timeout_s,
+                        start_time_s=start_time_s,
+                        curr_time_s=time.time(),
+                    )
+                    obj_ref = self._obj_ref_gen._next_sync(timeout_s=remaining_timeout_s)  # type: ignore[union-attr]
+                    if obj_ref.is_nil():
+                        raise TimeoutError("Timed out resolving to ObjectRef.")
 
-                self._obj_ref = obj_ref
+                    if not self._health_frames_possible:
+                        self._obj_ref = obj_ref
+                        break
 
-        return self._obj_ref
+                    # Skip health-frame system messages to reach the result.
+                    try:
+                        value = ray.get(obj_ref, timeout=remaining_timeout_s)
+                    except ray.exceptions.GetTimeoutError:
+                        raise TimeoutError("Timed out resolving to ObjectRef.")
+                    except Exception:
+                        # The exception belongs to the request; consumers
+                        # surface it when they fetch the ref.
+                        self._obj_ref = obj_ref
+                        break
+                    if isinstance(value, ReplicaHealthFrame):
+                        self._record_health_frame(value)
+                        continue
+                    self._obj_ref = obj_ref
+                    break
+
+        if self._obj_ref is not None:
+            return self._obj_ref
+
+        # The background frame pump owns the stream; wait for it to settle.
+        try:
+            return self._pump_outcome.result(
+                timeout=calculate_remaining_timeout(
+                    timeout_s=timeout_s,
+                    start_time_s=start_time_s,
+                    curr_time_s=time.time(),
+                )
+            )
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError("Timed out resolving to ObjectRef.")
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
         assert (
@@ -267,12 +393,33 @@ class ActorReplicaResult(ReplicaResult):
             if self._obj_ref is not None:
                 return self._obj_ref
 
+            # The background frame pump owns the stream; wait for it to settle.
+            if self._pump_outcome is not None:
+                return await asyncio.wrap_future(self._pump_outcome)
+
             acquired = self._object_ref_or_gen_sync_lock.acquire(blocking=False)
             if acquired:
                 try:
+                    self._consumption_started = True
                     # Double-check under lock
                     if self._obj_ref is None:
-                        self._obj_ref = await self._obj_ref_gen.__anext__()  # type: ignore[union-attr]
+                        while True:
+                            obj_ref = await self._obj_ref_gen.__anext__()  # type: ignore[union-attr]
+                            if not self._health_frames_possible:
+                                break
+                            # Skip health-frame system messages to reach the
+                            # result.
+                            try:
+                                value = await obj_ref
+                            except Exception:
+                                # The exception belongs to the request;
+                                # consumers surface it when they fetch the ref.
+                                break
+                            if isinstance(value, ReplicaHealthFrame):
+                                self._record_health_frame(value)
+                                continue
+                            break
+                        self._obj_ref = obj_ref
                     return self._obj_ref
                 finally:
                     self._object_ref_or_gen_sync_lock.release()

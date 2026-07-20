@@ -822,6 +822,10 @@ class RequestMetadata:
     # Whether it is a direct ingress request
     is_direct_ingress: bool = False
 
+    # Whether the caller can consume ReplicaHealthFrame system messages
+    # interleaved on the response stream (unary rejection-protocol calls only).
+    supports_health_frames: bool = False
+
     # By reference or value
     _by_reference: bool = True
     _on_separate_loop: bool = True
@@ -902,6 +906,19 @@ class TargetCapacityDirection(str, Enum):
 
     UP = "UP"
     DOWN = "DOWN"
+
+
+@dataclass(frozen=True)
+class ReplicaHealthFrame:
+    """Self-health system message a replica interleaves on an open response stream.
+
+    Lets long-running requests keep carrying fresh health to the router (which
+    folds it into its handle metric report) without any standalone RPC.
+    """
+
+    healthy: bool
+    health_checked_at: float
+    health_consecutive_failures: Optional[int] = None
 
 
 @dataclass(frozen=True)

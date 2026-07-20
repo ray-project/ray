@@ -1090,6 +1090,15 @@ class AsyncioRouter:
                 replica.replica_id, queue_info.num_ongoing_requests
             )
             if queue_info.accepted:
+                replica_unique_id = replica.replica_id.unique_id
+                result.set_health_frame_listener(
+                    lambda frame: self._metrics_manager.record_replica_health(
+                        replica_unique_id,
+                        frame.health_checked_at,
+                        frame.healthy,
+                        frame.health_consecutive_failures,
+                    )
+                )
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
                 self._register_decrement_queue_len_cache_callback(
                     result, replica.replica_id

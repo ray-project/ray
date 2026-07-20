@@ -49,6 +49,7 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
     ReplicaMetricReport,
+    ReplicaHealthFrame,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RequestProtocol,
@@ -681,6 +682,21 @@ class ReplicaMetricsManager:
             self._add_autoscaling_metrics_point_async,
             min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
+
+    def self_health_frame(self) -> Optional["ReplicaHealthFrame"]:
+        """Latest self-check as a stream frame; None before the first check."""
+        if self._self_health_checked_at is None:
+            return None
+        healthy, checked_at, failures = self.self_health_snapshot()
+        return ReplicaHealthFrame(
+            healthy=healthy,
+            health_checked_at=checked_at,
+            health_consecutive_failures=failures,
+        )
+
+    @property
+    def self_health_period_s(self) -> float:
+        return self._self_health_period_s
 
     def self_health_snapshot(self):
         """(healthy, checked_at, consecutive_failures) from the local self-check;
@@ -1870,12 +1886,47 @@ class Replica:
                             request_kwargs,
                         ):
                             yield result
+                    elif request_metadata.supports_health_frames:
+                        async for result in self._call_unary_with_health_frames(
+                            request_metadata, request_args, request_kwargs
+                        ):
+                            yield result
                     else:
                         yield await self._user_callable_wrapper.call_user_method(
                             request_metadata, request_args, request_kwargs
                         )
                 except Exception as e:
                     self._raise_user_exception(e, request_metadata)
+
+    async def _call_unary_with_health_frames(
+        self, request_metadata: RequestMetadata, request_args, request_kwargs
+    ):
+        """Run a unary user call, yielding ReplicaHealthFrame while it's pending.
+
+        Keeps long-held requests carrying fresh self-health over the already-open
+        response stream so the router's handle report stays current and no
+        standalone heartbeat RPC is needed. The final yield is always the result.
+        """
+        user_task = asyncio.ensure_future(
+            self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
+        )
+        interval_s = self._metrics_manager.self_health_period_s
+        last_sent_checked_at = 0.0
+        try:
+            while True:
+                done, _ = await asyncio.wait({user_task}, timeout=interval_s or None)
+                if done:
+                    break
+                frame = self._metrics_manager.self_health_frame()
+                if frame is not None and frame.health_checked_at > last_sent_checked_at:
+                    last_sent_checked_at = frame.health_checked_at
+                    yield frame
+        finally:
+            if not user_task.done():
+                user_task.cancel()
+        yield user_task.result()
 
     async def _on_initialized(self):
         await self._maybe_start_direct_ingress_servers()
