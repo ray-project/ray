@@ -22,9 +22,13 @@ def _metadata(**kwargs):
 class _FakeManager:
     """Just enough of ReplicaMetricsManager for the frame generator."""
 
-    def __init__(self, period_s=0.02):
+    def __init__(self, period_s=0.02, carries=False):
         self._self_health_period_s = period_s
         self.snapshot = (True, None, 0)
+        self.carries = carries
+
+    def reports_carry_health(self):
+        return self.carries
 
     @property
     def self_health_period_s(self):
@@ -115,6 +119,24 @@ class TestUnaryWithHealthFrames:
             return "r"
 
         asyncio.get_running_loop().call_later(0.1, release.set)
+        items = await _drain(
+            Replica._call_unary_with_health_frames(
+                _fake_replica(manager, user), _metadata(), (), {}
+            )
+        )
+        assert items == ["r"]
+
+    @pytest.mark.asyncio
+    async def test_no_frames_while_reports_carry_health(self):
+        manager = _FakeManager(carries=True)
+        manager.snapshot = (True, 100.0, 0)
+        release = asyncio.Event()
+
+        async def user():
+            await release.wait()
+            return "r"
+
+        asyncio.get_running_loop().call_later(0.15, release.set)
         items = await _drain(
             Replica._call_unary_with_health_frames(
                 _fake_replica(manager, user), _metadata(), (), {}

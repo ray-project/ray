@@ -683,6 +683,16 @@ class ReplicaMetricsManager:
             min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
 
+    def reports_carry_health(self) -> bool:
+        """Metric-report pushes already carry health at least as often as it
+        is evaluated; frames/heartbeats would be redundant."""
+        return (
+            self._pushing_metric_reports
+            and self._autoscaling_config is not None
+            and self._autoscaling_config.metrics_interval_s
+            <= self._self_health_period_s
+        )
+
     def self_health_frame(self) -> Optional["ReplicaHealthFrame"]:
         """Latest self-check as a stream frame; None before the first check."""
         if self._self_health_checked_at is None:
@@ -746,16 +756,10 @@ class ReplicaMetricsManager:
         self._self_healthy = healthy
         self._self_health_checked_at = time.time()
 
-        if (
-            self._pushing_metric_reports
-            and self._autoscaling_config is not None
-            and self._autoscaling_config.metrics_interval_s
-            <= self._self_health_period_s
-        ):
-            # Metric-report pushes carry health at least as often as it is
-            # evaluated; a separate heartbeat would be redundant. When the
-            # metric cadence is slower than the health period, heartbeat
-            # anyway so freshness at the controller never lapses.
+        if self.reports_carry_health():
+            # When the metric cadence is slower than the health period, fall
+            # through and heartbeat so freshness at the controller never
+            # lapses.
             return
         if (
             self._autoscaling_config is not None
@@ -1919,6 +1923,11 @@ class Replica:
                 done, _ = await asyncio.wait({user_task}, timeout=interval_s or None)
                 if done:
                     break
+                if self._metrics_manager.reports_carry_health():
+                    # Metric reports already carry health; don't duplicate it
+                    # on the stream (checked per tick: mode can change while
+                    # a request is held).
+                    continue
                 frame = self._metrics_manager.self_health_frame()
                 if frame is not None and frame.health_checked_at > last_sent_checked_at:
                     last_sent_checked_at = frame.health_checked_at
