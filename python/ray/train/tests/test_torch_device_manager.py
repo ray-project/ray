@@ -1,6 +1,6 @@
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # Disable torch backend autoload to prevent torch_tpu from crashing the process
 # on import due to ABI mismatches when running on a CPU-only head/worker node.
@@ -21,6 +21,7 @@ from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 from ray.cluster_utils import Cluster
 from ray.train import ScalingConfig, TrainingFailedError
 from ray.train.torch import TorchTrainer
+from ray.train.torch.config import _validate_tpu_resources
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if NPU_TORCH_PACKAGE_AVAILABLE:
@@ -225,25 +226,19 @@ def test_device_manager_conflict(ray_1_node_1_gpu_1_npu):
     not is_v2_enabled(),
     reason="TPU device manager and backend are V2-only features.",
 )
-def test_tpu_torch_validation_error(ray_tpu_cluster):
+def test_tpu_torch_multi_tpu_warning():
+    mock_worker_group = MagicMock()
+    mock_worker_group.get_resources_per_worker.return_value = {"TPU": 2}
+    mock_worker_group.get_worker_group_context.return_value.num_slices = 1
 
-    # PyTorch TPU requires exactly 1 TPU per worker.
-    # We specify a topology that requires 4 workers, but request 2 TPUs per worker to trigger a failure.
-    trainer = TorchTrainer(
-        train_loop_per_worker=lambda: None,
-        scaling_config=ScalingConfig(
-            num_workers=4,
-            use_tpu=True,
-            topology="2x4",
-            accelerator_type="TPU-V6E",
-            resources_per_worker={"TPU": 2},
-        ),
+    with patch("ray.train.torch.config.logger.warning") as mock_warning:
+        _validate_tpu_resources(mock_worker_group)
+
+    mock_warning.assert_called_once()
+    assert (
+        "it is recommended that each worker has exactly 1 TPU device"
+        in mock_warning.call_args[0][0]
     )
-
-    with pytest.raises(TrainingFailedError) as exc_info:
-        trainer.fit()
-
-    assert "exactly 1 TPU device" in str(exc_info.value)
 
 
 @pytest.mark.skipif(

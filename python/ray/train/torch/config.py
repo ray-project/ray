@@ -184,15 +184,10 @@ def _validate_tpu_resources(worker_group: BaseWorkerGroup):
     resources = worker_group.get_resources_per_worker()
     num_tpus_per_worker = resources.get("TPU", 0)
     if num_tpus_per_worker != 1:
-        # Unlike CUDA, the PyTorch TPU runtime (via torch_tpu) binds each
-        # process to a single TPU device upon initialization. Changing the
-        # active device dynamically within a single process is not supported.
-        # Therefore, we strictly require exactly 1 TPU device per worker.
-        raise ValueError(
-            "For PyTorch TPU training, each worker must have exactly 1 TPU device. "
-            f"Got resources_per_worker={{'TPU': {num_tpus_per_worker}}}. "
-            "Please set `num_workers` to the total number of TPU devices and "
-            "`resources_per_worker={'TPU': 1}`."
+        logger.warning(
+            "For PyTorch TPU training, it is recommended that each worker "
+            f"has exactly 1 TPU device. Got resources_per_worker={{'TPU': {num_tpus_per_worker}}}. "
+            "Note that the PyTorch TPU runtime binds each process to a single TPU device."
         )
 
     if hasattr(worker_group, "get_worker_group_context"):
