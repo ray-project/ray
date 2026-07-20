@@ -3,14 +3,32 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpHistogram
+from prometheus_client import CollectorRegistry, generate_latest
 
 from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
     _get_service_name,
+    _HistogramPrometheusCollector,
 )
+
+
+@pytest.fixture
+def clean_histogram_state():
+    """Clears the recorder's process-wide histogram aggregation state."""
+    OpenTelemetryMetricRecorder._histogram_defs.clear()
+    OpenTelemetryMetricRecorder._histogram_states.clear()
+    yield
+    OpenTelemetryMetricRecorder._histogram_defs.clear()
+    OpenTelemetryMetricRecorder._histogram_states.clear()
+
+
+def _histogram_exposition() -> str:
+    """Renders the shared histogram state through a private registry."""
+    registry = CollectorRegistry()
+    registry.register(_HistogramPrometheusCollector())
+    return generate_latest(registry).decode()
 
 
 def _gauge_values(recorder):
@@ -194,16 +212,14 @@ def test_register_sum_metric(
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_register_histogram_metric(
-    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning, clean_histogram_state
 ):
     """
     Test the register_histogram_metric method of OpenTelemetryMetricRecorder.
     - Test that it registers a histogram metric with the correct name and description.
     - Test that a value can be set for the histogram metric successfully without warnings.
     """
-    mock_meter = MagicMock()
-    mock_meter.create_histogram.return_value = NoOpHistogram(name="test_histogram")
-    mock_get_meter.return_value = mock_meter
+    mock_get_meter.return_value = MagicMock()
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_histogram_metric(
         name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
@@ -216,7 +232,13 @@ def test_register_histogram_metric(
     )
     mock_logger_warning.assert_not_called()
 
-    mock_meter.create_histogram.return_value = NoOpHistogram(name="neg_histogram")
+    # The single observation lands in the +Inf bucket with its true value.
+    data = OpenTelemetryMetricRecorder._histogram_states["test_histogram"][
+        frozenset({"label_key": "label_value"}.items())
+    ]
+    assert data.bucket_counts == [0, 0, 0, 1]
+    assert data.sum == pytest.approx(10.0)
+
     recorder.register_histogram_metric(
         name="neg_histogram",
         description="Histogram with negative first boundary",
@@ -315,20 +337,15 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_record_histogram_aggregated_batch(
-    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning, clean_histogram_state
 ):
     """
     Test the record_histogram_aggregated_batch method of OpenTelemetryMetricRecorder.
-    - Test that it records histogram data for multiple data points in a single batch.
-    - Test that it calls instrument.record() for each observation.
+    - Test that per-bucket delta counts accumulate across batches.
+    - Test that the sum is approximated from bucket midpoints.
     - Test that it warns if the histogram is not registered.
     """
-    mock_meter = MagicMock()
-    real_histogram = NoOpHistogram(name="test_histogram")
-    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
-    mock_meter.create_histogram.return_value = mock_histogram
-    mock_get_meter.return_value = mock_meter
-
+    mock_get_meter.return_value = MagicMock()
     recorder = OpenTelemetryMetricRecorder()
 
     # Test warning when histogram not registered
@@ -341,19 +358,13 @@ def test_record_histogram_aggregated_batch(
     )
     mock_logger_warning.reset_mock()
 
-    # Register histogram
+    # Register histogram. Bucket midpoints are [0.5, 5.5, 55.0, 200.0].
     recorder.register_histogram_metric(
         name="test_histogram",
         description="Test Histogram",
         buckets=[1.0, 10.0, 100.0],
     )
 
-    # Record batch data - 2 data points with different tags
-    # bucket_counts: [2, 3, 0, 1] means:
-    #   2 observations in bucket 0-1 (midpoint 0.5)
-    #   3 observations in bucket 1-10 (midpoint 5.5)
-    #   0 observations in bucket 10-100 (midpoint 55.0)
-    #   1 observation in bucket 100-Inf+ (midpoint 200.0)
     recorder.record_histogram_aggregated_batch(
         name="test_histogram",
         data_points=[
@@ -361,15 +372,33 @@ def test_record_histogram_aggregated_batch(
             {"tags": {"endpoint": "/api/v2"}, "bucket_counts": [1, 0, 1, 0]},
         ],
     )
+    # A second batch for the same label set accumulates on top of the first.
+    recorder.record_histogram_aggregated_batch(
+        name="test_histogram",
+        data_points=[
+            {"tags": {"endpoint": "/api/v1"}, "bucket_counts": [0, 1, 0, 0]},
+        ],
+    )
 
-    # Verify record() was called the correct number of times
-    # First data point: 2 + 3 + 0 + 1 = 6 calls
-    # Second data point: 1 + 0 + 1 + 0 = 2 calls
-    # Total: 8 calls
-    assert mock_histogram.record.call_count == 8
+    states = OpenTelemetryMetricRecorder._histogram_states["test_histogram"]
+    v1 = states[frozenset({"endpoint": "/api/v1"}.items())]
+    v2 = states[frozenset({"endpoint": "/api/v2"}.items())]
+    assert v1.bucket_counts == [2, 4, 0, 1]
+    assert v1.sum == pytest.approx(2 * 0.5 + 4 * 5.5 + 1 * 200.0)
+    assert v2.bucket_counts == [1, 0, 1, 0]
+    assert v2.sum == pytest.approx(0.5 + 55.0)
 
     # No warnings should be logged for registered histogram
     mock_logger_warning.assert_not_called()
+
+    # The Prometheus collector renders cumulative buckets, count and sum.
+    exposition = _histogram_exposition()
+    assert 'ray_test_histogram_bucket{endpoint="/api/v1",le="1.0"} 2.0' in exposition
+    assert 'ray_test_histogram_bucket{endpoint="/api/v1",le="10.0"} 6.0' in exposition
+    assert 'ray_test_histogram_bucket{endpoint="/api/v1",le="100.0"} 6.0' in exposition
+    assert 'ray_test_histogram_bucket{endpoint="/api/v1",le="+Inf"} 7.0' in exposition
+    assert 'ray_test_histogram_count{endpoint="/api/v1"} 7.0' in exposition
+    assert 'ray_test_histogram_count{endpoint="/api/v2"} 2.0' in exposition
 
 
 @patch("opentelemetry.metrics.set_meter_provider")

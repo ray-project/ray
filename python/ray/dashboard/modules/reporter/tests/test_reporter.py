@@ -256,6 +256,42 @@ def enable_profiling():
     os.environ.pop("RAY_DASHBOARD_ENABLE_PROFILING", None)
 
 
+def test_export_ingests_off_event_loop():
+    """Export hands the request to the ingest executor and still records all metrics."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+        ExportMetricsServiceRequest,
+    )
+
+    request = ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+
+    gauge_metric = scope_metrics.metrics.add()
+    gauge_metric.name = "test_gauge"
+    gauge_point = gauge_metric.gauge.data_points.add()
+    gauge_point.as_double = 3.0
+
+    hist_metric = scope_metrics.metrics.add()
+    hist_metric.name = "test_histogram"
+    hist_point = hist_metric.histogram.data_points.add()
+    hist_point.count = 1
+    hist_point.explicit_bounds.extend([1.0])
+    hist_point.bucket_counts.extend([1, 0])
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+    agent._otlp_ingest_executor = ThreadPoolExecutor(max_workers=1)
+
+    asyncio.run(ReporterAgent.Export(agent, request, None))
+
+    recorder = agent._open_telemetry_metric_recorder
+    recorder.register_gauge_metric.assert_called_once_with("test_gauge", "")
+    recorder.set_metric_value.assert_called_once_with("test_gauge", {}, 3.0)
+    recorder.record_histogram_aggregated_batch.assert_called_once()
+
+
 @pytest.fixture
 def enable_grpc_metrics_collection():
     os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"
