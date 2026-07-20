@@ -124,6 +124,9 @@ class RouterMetricsManager:
         self._self_actor_id = self_actor_id
         self._handle_source = handle_source
         self._controller_handle = controller_handle
+        # Latest response-carried replica self-health, keyed by replica
+        # unique id: (checked_at, healthy, consecutive_failures).
+        self._replica_health: Dict[str, Tuple[float, bool, Optional[int]]] = {}
 
         # Exported metrics
         self.num_router_requests = router_requests_counter
@@ -276,6 +279,22 @@ class RouterMetricsManager:
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
 
+    def record_replica_health(
+        self,
+        replica_unique_id: str,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int],
+    ):
+        """Keep the newest response-carried self-health per replica."""
+        prev = self._replica_health.get(replica_unique_id)
+        if prev is None or checked_at > prev[0]:
+            self._replica_health[replica_unique_id] = (
+                checked_at,
+                healthy,
+                consecutive_failures,
+            )
+
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Prune list of replica ids in self.num_queries_sent_to_replicas.
 
@@ -284,6 +303,10 @@ class RouterMetricsManager:
         """
 
         running_replica_set = {replica.replica_id for replica in running_replicas}
+        unique_ids = {r.replica_id.unique_id for r in running_replicas}
+        self._replica_health = {
+            k: v for k, v in self._replica_health.items() if k in unique_ids
+        }
         with self._queries_lock:
             self.num_requests_sent_to_replicas = defaultdict(
                 int,
@@ -533,6 +556,7 @@ class RouterMetricsManager:
                 RUNNING_REQUESTS_KEY: running_requests,
             },
             timestamp=timestamp,
+            replica_health=dict(self._replica_health) or None,
         )
 
         return handle_metric_report
@@ -1055,6 +1079,13 @@ class AsyncioRouter:
                 return result
 
             queue_info = await result.get_rejection_response()
+            if queue_info.health_checked_at is not None:
+                self._metrics_manager.record_replica_health(
+                    replica.replica_id.unique_id,
+                    queue_info.health_checked_at,
+                    queue_info.healthy,
+                    queue_info.health_consecutive_failures,
+                )
             self.request_router.on_new_queue_len_info(
                 replica.replica_id, queue_info.num_ongoing_requests
             )

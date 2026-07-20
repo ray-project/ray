@@ -1384,6 +1384,7 @@ class TestSelfHealthPush:
         m._self_health_period_s = 10.0
         m._pending_health_push_ref = None
         m._self_consecutive_failures = 0
+        m._last_health_carried_ts = None
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._replica_id = SimpleNamespace(unique_id="r1")
@@ -1503,6 +1504,43 @@ class TestSelfHealthPush:
         assert stats["count"] == 9
         assert 4.75 <= stats["p99_s"] <= 5.25
         assert stats["max_s"] == 5.0
+
+    @pytest.mark.asyncio
+    async def test_no_heartbeat_when_health_rides_responses(self, monkeypatch):
+        import time as time_mod
+        from types import SimpleNamespace
+
+        import ray.serve._private.replica as replica_mod
+
+        monkeypatch.setattr(
+            replica_mod, "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", True
+        )
+        m = self._manager()
+        m._autoscaling_config = SimpleNamespace(metrics_interval_s=10.0)
+        m._last_health_carried_ts = time_mod.time()  # responses carried it
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+        # Traffic stopped long ago -> heartbeat resumes.
+        m._last_health_carried_ts = time_mod.time() - 60.0
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    def test_router_keeps_newest_response_carried_health(self):
+        from ray.serve._private.router import RouterMetricsManager
+
+        rm = RouterMetricsManager.__new__(RouterMetricsManager)
+        rm._replica_health = {}
+        rm.record_replica_health("r1", 200.0, True, 0)
+        rm.record_replica_health("r1", 100.0, False, 2)  # delayed older
+        assert rm._replica_health["r1"] == (200.0, True, 0)
+        rm.record_replica_health("r1", 300.0, False, 1)
+        assert rm._replica_health["r1"] == (300.0, False, 1)
 
     @pytest.mark.asyncio
     async def test_in_flight_heartbeat_skips_next(self, monkeypatch):
