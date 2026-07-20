@@ -33,6 +33,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
 
@@ -211,6 +212,7 @@ class TaskManagerTest : public ::testing::Test {
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
             *task_event_buffer_mock_.get(),
+            *std::make_shared<ray::observability::FakeRayEventRecorder>(),
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
@@ -1621,6 +1623,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      *std::make_shared<ray::observability::FakeRayEventRecorder>(),
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1691,6 +1694,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      *std::make_shared<ray::observability::FakeRayEventRecorder>(),
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1759,6 +1763,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      *std::make_shared<ray::observability::FakeRayEventRecorder>(),
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -4439,6 +4444,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       capturing_push_error_callback,  // This will capture the error message
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      *std::make_shared<ray::observability::FakeRayEventRecorder>(),
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
@@ -4526,6 +4532,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       failing_push_error_callback,  // This will fail
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      *std::make_shared<ray::observability::FakeRayEventRecorder>(),
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
