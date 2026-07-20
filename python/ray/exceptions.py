@@ -985,6 +985,20 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@PublicAPI
+class StreamingGeneratorReplayInconsistentError(RaySystemError):
+    """Raised when a streaming generator task's replay produces a different
+    number of objects than the first successful attempt.
+
+    This indicates the generator output is non-deterministic. The task is
+    failed fast to prevent downstream consumers from hanging (when fewer
+    objects are produced) or silently dropping data (when more objects are
+    produced).
+    """
+
+    pass
+
+
 @DeveloperAPI
 class OufOfBandObjectRefSerializationException(RayError):
     """Raised when an `ray.ObjectRef` is out of band serialized by

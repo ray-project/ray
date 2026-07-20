@@ -191,6 +191,13 @@ class ObjectRefStream {
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
 
+  /// Whether the caller has requested deletion of this stream (i.e. the
+  /// language-frontend generator went out of scope). The stream may still be
+  /// retained after this point until EOF is written and the lineage of its
+  /// consumed returns goes out of scope.
+  void MarkCallerDeleted() { caller_deleted_ = true; }
+  bool IsCallerDeleted() const { return caller_deleted_; }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
   bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
@@ -219,6 +226,10 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// Set once the caller requests deletion of the stream (the generator went
+  /// out of scope). Used to decide whether a backpressured executor should be
+  /// released while the stream is still retained. See MarkCallerDeleted.
+  bool caller_deleted_ = false;
 };
 
 class TaskManager : public TaskManagerInterface {
@@ -808,6 +819,41 @@ class TaskManager : public TaskManagerInterface {
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// Detect whether a streaming generator replay produced a different number
+  /// of objects than the first successful attempt, and if so, fail the task.
+  /// Returns true when inconsistency was detected and the task was failed
+  /// (caller must not run normal completion logic in that case). Must run
+  /// early in CompletePendingTask: before any return object is written to the
+  /// store (so downstream consumers cannot observe the inconsistent objects)
+  /// and before SetTaskStatus(FINISHED) (FailPendingTask RAY_CHECKs
+  /// IsPending()). Whether this is a replay is determined internally from the
+  /// task's successful-execution count. The caller must skip this check on
+  /// application-error completions, which already route through the failure
+  /// path.
+  bool FailStreamingGeneratorReplayIfInconsistent(const TaskID &task_id,
+                                                  const rpc::PushTaskReply &reply)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Fail a streaming generator task whose replay produced a different number
+  /// of objects than the first successful attempt. Two failure modes:
+  /// - fewer objects: downstream consumers block on indices that will never
+  ///   be produced (silent hang).
+  /// - more objects: extras beyond the pinned EOF are silently dropped by
+  ///   ObjectRefStream::InsertToStream (silent data loss).
+  /// Failing the task (rather than only marking object refs) propagates the
+  /// failure through lineage to downstream tasks that haven't run yet.
+  ///
+  /// \param task_id The streaming generator task id.
+  /// \param generator_id The generator ObjectID (for logging context).
+  /// \param expected_count Number of objects reported by the first successful
+  ///   attempt (recorded on the task spec).
+  /// \param actual_count Number of objects reported by the replay attempt.
+  void FailStreamingGeneratorReplayInconsistency(const TaskID &task_id,
+                                                 const ObjectID &generator_id,
+                                                 int64_t expected_count,
+                                                 int64_t actual_count)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
                                                         const ObjectID &generator_id)
@@ -835,12 +881,6 @@ class TaskManager : public TaskManagerInterface {
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
-
-  /// Tracks active streams that may receive backpressured generator reports.
-  /// Erasing an entry marks the stream deleted while the ObjectRefStream may
-  /// remain around until EOF/lineage cleanup.
-  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
-      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Report visibility is acknowledged immediately and consumed progress is
   /// pushed separately to the executor.

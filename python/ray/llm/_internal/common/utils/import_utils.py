@@ -55,7 +55,7 @@ def raise_llm_engine_import_error(
         raise ImportError(
             "Neither vLLM nor SGLang is installed. At least one is required "
             "for Ray Serve LLM protocol models. Install with: "
-            "`pip install ray[llm]` or `pip install sglang[all]`"
+            "`pip install ray[llm]` or `pip install sglang[all,ray]`"
         )
 
     messages = []
