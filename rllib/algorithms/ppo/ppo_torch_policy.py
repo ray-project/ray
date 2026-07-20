@@ -113,8 +113,8 @@ class PPOTorchPolicy(
             - train_batch[SampleBatch.ACTION_LOGP]
         )
 
-        # Only calculate kl loss if necessary (kl-coeff > 0.0).
-        if self.config["kl_coeff"] > 0.0:
+        # Only calculate kl loss if necessary
+        if self.config["use_kl_loss"]:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = reduce_mean_valid(action_kl)
             # TODO smorad: should we do anything besides warn? Could discard KL term
@@ -155,7 +155,7 @@ class PPOTorchPolicy(
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if self.config["kl_coeff"] > 0.0:
+        if self.config["use_kl_loss"]:
             total_loss += self.kl_coeff * mean_kl_loss
 
         # Store values for stats function in model (tower), such that for
