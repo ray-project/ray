@@ -3621,8 +3621,8 @@ class DeploymentState:
     def _record_scaling_status_transition(self, old_num: int, new_num: int) -> None:
         """Transition status to UPSCALING/DOWNSCALING for an automatic scaling event.
 
-        Shared by the autoscaler and num_replicas="per_node" reconciliation so
-        node-driven scaling shows up in deployment status the same way
+        Shared by the autoscaler and the ingress request router reconciliation
+        so node-driven scaling shows up in deployment status the same way
         request-driven autoscaling does.
         """
         if new_num > old_num:

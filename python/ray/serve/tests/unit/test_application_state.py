@@ -334,6 +334,60 @@ class TestGracefulShutdownTimeoutFloor:
         assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
 
 
+class TestIngressRequestRouterZeroCPU:
+    """deploy_args_to_deployment_info pins the ingress request router to
+    num_cpus=0 so its per-node placement matches the proxy footprint. Other
+    deployments keep their configured num_cpus."""
+
+    @staticmethod
+    def _info(ingress_request_router):
+        params = {
+            "deployment_name": "d",
+            "deployment_config_proto_bytes": DeploymentConfig(
+                version=get_random_string()
+            ).to_proto_bytes(),
+            "replica_config_proto_bytes": ReplicaConfig.create(
+                lambda x: x, ray_actor_options={"num_cpus": 2}
+            ).to_proto_bytes(),
+            "deployer_job_id": "random",
+            "ingress_request_router": ingress_request_router,
+        }
+        return deploy_args_to_deployment_info(**params, app_name="app")
+
+    @pytest.mark.parametrize(
+        "ingress_request_router,expected_num_cpus", [(True, 0), (False, 2)]
+    )
+    def test_num_cpus(self, ingress_request_router, expected_num_cpus):
+        info = self._info(ingress_request_router)
+        assert info.replica_config.ray_actor_options["num_cpus"] == expected_num_cpus
+
+    def test_router_resource_dict_recomputed(self):
+        info = self._info(ingress_request_router=True)
+        assert info.replica_config.resource_dict["CPU"] == 0
+
+
+def test_ingress_request_router_rejects_autoscaling_config():
+    """autoscaling_config on an ingress request router is rejected, not ignored.
+
+    The router runs one replica per proxy node, so an autoscaling_config would be
+    silently dropped otherwise.
+    """
+    params = {
+        "deployment_name": "d",
+        "deployment_config_proto_bytes": DeploymentConfig(
+            version=get_random_string(),
+            autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=3),
+        ).to_proto_bytes(),
+        "replica_config_proto_bytes": ReplicaConfig.create(
+            lambda x: x
+        ).to_proto_bytes(),
+        "deployer_job_id": "random",
+        "ingress_request_router": True,
+    }
+    with pytest.raises(RayServeException, match="autoscaling_config"):
+        deploy_args_to_deployment_info(**params, app_name="app")
+
+
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
     ingress_api = FastAPI()
     router_api = FastAPI()

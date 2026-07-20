@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Union
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import resources_from_ray_options
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -114,6 +115,19 @@ def deploy_args_to_deployment_info(
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
+
+    if ingress_request_router:
+        if deployment_config.autoscaling_config is not None:
+            raise RayServeException(
+                "autoscaling_config is not supported on an ingress request "
+                "router. It runs one replica per proxy node."
+            )
+        # Ray Serve Proxy and HAProxyManager run with num_cpus=0. Since the
+        # ingress request router colocates with them, set its num_cpus=0 also.
+        replica_config.ray_actor_options["num_cpus"] = 0
+        replica_config.resource_dict = resources_from_ray_options(
+            replica_config.ray_actor_options
+        )
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
