@@ -82,6 +82,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.config.ProxyLocation
    serve.config.AutoscalingContext
    serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.autoscaling_policy.PrometheusQueryMixin
    serve.config.AggregationFunction
    serve.config.GangPlacementStrategy
    serve.config.GangRuntimeFailurePolicy
