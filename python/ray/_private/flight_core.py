@@ -6,7 +6,9 @@ Used by both the Arrow Flight RDT backend
 Flight server per worker process hosts both flows.
 """
 
+import errno
 import os
+import select
 import socket
 import struct
 import threading
@@ -188,6 +190,119 @@ def _get_local_ip() -> str:
         return ip
     except Exception:
         return "127.0.0.1"
+
+
+# ---------------------------------------------------- TCP zero-copy transmit
+#
+# SO_ZEROCOPY (Linux >= 4.14) lets the kernel DMA straight from the producer's
+# table buffers instead of copying them into the socket send buffer, cutting
+# producer-side CPU on the raw-TCP transport. It is send-side only; the consumer
+# receive path is unaffected (RX zero-copy is a separate mmap-based mechanism).
+_SO_ZEROCOPY = getattr(socket, "SO_ZEROCOPY", None)
+_MSG_ZEROCOPY = getattr(socket, "MSG_ZEROCOPY", None)
+_MSG_ERRQUEUE = getattr(socket, "MSG_ERRQUEUE", None)
+# Below this size the page-pinning + completion-notification overhead of
+# MSG_ZEROCOPY outweighs the copy it avoids (the kernel docs peg the crossover
+# near ~10 KiB), so small chunks use a plain copying send.
+_ZEROCOPY_MIN_BYTES = 16 * 1024
+# struct sock_extended_err.ee_origin value for a zero-copy completion.
+_SO_EE_ORIGIN_ZEROCOPY = 5
+
+
+def _tcp_zerocopy_supported() -> bool:
+    return (
+        _SO_ZEROCOPY is not None
+        and _MSG_ZEROCOPY is not None
+        and _MSG_ERRQUEUE is not None
+    )
+
+
+def _reap_zerocopy(conn, outstanding: int) -> None:
+    """Drain `outstanding` MSG_ZEROCOPY completion notifications from the
+    socket's error queue.
+
+    Each flagged send() gets a sequential id; completions arrive as inclusive
+    [lo, hi] id ranges in a struct sock_extended_err on the error queue. Reaping
+    keeps the queue from filling (a full queue silently makes the kernel fall
+    back to copying) and confirms the buffers are free to reuse. Bounded by a
+    short poll budget so a coalesced/lost notification can't hang the handler.
+    """
+    if outstanding <= 0:
+        return
+    poller = select.poll()
+    poller.register(conn.fileno(), select.POLLERR)
+    ancbytes = socket.CMSG_SPACE(128)
+    reaped = 0
+    stalls = 0
+    while reaped < outstanding and stalls < 4:
+        if not poller.poll(50):  # ms
+            stalls += 1
+            continue
+        try:
+            _data, ancdata, _flags, _addr = conn.recvmsg(0, ancbytes, _MSG_ERRQUEUE)
+        except OSError:
+            break
+        before = reaped
+        for _level, _type, cdata in ancdata:
+            if len(cdata) < 16:
+                continue
+            # ee_errno(I) ee_origin(B) ee_type(B) ee_code(B) ee_pad(B)
+            # ee_info(I)=lo  ee_data(I)=hi
+            fields = struct.unpack_from("=IBBBBII", cdata, 0)
+            ee_origin, lo, hi = fields[1], fields[5], fields[6]
+            if ee_origin == _SO_EE_ORIGIN_ZEROCOPY:
+                reaped += hi - lo + 1
+        if reaped == before:
+            stalls += 1
+
+
+def _send_ipc_payload(conn, refs) -> None:
+    """Send the ordered IPC-stream chunks in `refs` over `conn`.
+
+    On Linux, chunks at or above the zero-copy threshold are sent with
+    MSG_ZEROCOPY (kernel DMAs from the table's own buffers); small chunks and
+    unsupported platforms use a plain copying send. `refs` are the producer's
+    live table buffers, so they stay valid until the completions are reaped.
+    """
+    use_zc = False
+    if _tcp_zerocopy_supported():
+        try:
+            conn.setsockopt(socket.SOL_SOCKET, _SO_ZEROCOPY, 1)
+            use_zc = True
+        except OSError:
+            use_zc = False
+
+    if not use_zc:
+        for ref in refs:
+            mv = memoryview(ref).cast("B")
+            if mv.nbytes:
+                conn.sendall(mv)
+        return
+
+    outstanding = 0
+    for ref in refs:
+        mv = memoryview(ref).cast("B")
+        n = mv.nbytes
+        if not n:
+            continue
+        if n < _ZEROCOPY_MIN_BYTES:
+            conn.sendall(mv)
+            continue
+        off = 0
+        while off < n:
+            try:
+                sent = conn.send(mv[off:], _MSG_ZEROCOPY)
+            except OSError as e:
+                if e.errno == errno.ENOBUFS:
+                    # Pinned-memory budget hit; drain in-flight then copy-send.
+                    _reap_zerocopy(conn, outstanding)
+                    outstanding = 0
+                    conn.sendall(mv[off:])
+                    break
+                raise
+            off += sent
+            outstanding += 1
+    _reap_zerocopy(conn, outstanding)
 
 
 class FlightCore:
@@ -678,7 +793,8 @@ class FlightCore:
         Wire format: request is key_len(4) + key; reply is size(8) followed by
         that many IPC-stream bytes on a hit, or size=-1 with no payload on a
         miss. The payload is sent straight from the scatter-list captured by
-        put() (sink._refs), so the producer never re-serializes the table.
+        put() (sink._refs), so the producer never re-serializes the table, and
+        on Linux large chunks go out via MSG_ZEROCOPY (see _send_ipc_payload).
         """
         try:
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -696,10 +812,7 @@ class FlightCore:
                 conn.sendall(struct.pack("<q", -1))
                 return
             conn.sendall(struct.pack("<q", sink.tell()))
-            for ref in sink._refs:
-                mv = memoryview(ref).cast("B")
-                if mv.nbytes:
-                    conn.sendall(mv)
+            _send_ipc_payload(conn, sink._refs)
         except OSError:
             pass
         finally:
