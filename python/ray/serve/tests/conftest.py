@@ -158,6 +158,10 @@ def _shared_serve_instance():
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
+        # Cap the object store so it fits in /dev/shm on memory-constrained CI
+        # runners (~2.6GB); the default sizing falls back to disk-backed /tmp
+        # there. Tests using this fixture only move tiny payloads.
+        object_store_memory=500 * 1024**2,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
@@ -426,7 +430,12 @@ def metrics_start_shutdown(request):
         # These tests only move tiny payloads, so cap it.
         object_store_memory=500 * 1024**2,
         _system_config={
-            "metrics_report_interval_ms": 100,
+            # Keep the Ray default (1s): at 100ms every process pushes full
+            # metric snapshots 10x/s and the dashboard agent saturates on
+            # loaded runners -- scrapes time out and newly-registered metrics
+            # take tens of seconds to surface. The tests' metric waits are
+            # 20s+, so 1s visibility latency is negligible.
+            "metrics_report_interval_ms": 1000,
             "task_retry_delay_ms": 50,
         },
     )
