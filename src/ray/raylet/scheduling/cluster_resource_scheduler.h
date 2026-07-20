@@ -142,6 +142,12 @@ class ClusterResourceScheduler {
 
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
+  /// Recover node resource usage state from storage when GCS restarts.  Only used
+  /// when centralized actor scheduling is enabled
+  /// \param node_resources: The last known resource utilization per node.
+  void RestoreNodeResources(
+      const absl::flat_hash_map<NodeID, rpc::ResourcesData> &node_resources);
+
  private:
   void Init(std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const NodeResources &local_node_resources,

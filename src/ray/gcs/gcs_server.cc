@@ -312,7 +312,7 @@ void GcsServer::GetOrGenerateClusterId(
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  InitClusterResourceScheduler();
+  InitClusterResourceScheduler(gcs_init_data);
   InitGcsNodeManager(gcs_init_data);
   InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
@@ -535,7 +535,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       "RayletLoadPulled");
 }
 
-void GcsServer::InitClusterResourceScheduler() {
+void GcsServer::InitClusterResourceScheduler(const GcsInitData &gcs_init_data) {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
       scheduling::NodeID(kGCSNodeID.Binary()),
@@ -545,6 +545,8 @@ void GcsServer::InitClusterResourceScheduler() {
       /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*clock=*/clock_,
       /*is_local_node_with_raylet=*/false);
+
+  cluster_resource_scheduler_->RestoreNodeResources(gcs_init_data.NodeResources());
 }
 
 void GcsServer::InitClusterLeaseManager() {

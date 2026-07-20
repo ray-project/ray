@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/string_utils.h"
+
 namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;  // NOLINT
@@ -330,7 +332,6 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                              requires_object_store_memory) ||
          lease_spec.IsCentrallyScheduled())) {
       *is_infeasible = false;
-      RAY_LOG(INFO) << "RETURNING LOCAL NODE";
       return local_node_id_;
     }
 
@@ -414,5 +415,8 @@ SchedulingResult ClusterResourceScheduler::SchedulePlacementGroup(
   return bundle_scheduling_policy_->Schedule(
       resource_request_list, options, std::move(candidate_nodes));
 }
+
+void ClusterResourceScheduler::RestoreNodeResources(
+    const absl::flat_hash_map<NodeID, rpc::ResourcesData> &node_resources) {}
 
 }  // namespace ray
