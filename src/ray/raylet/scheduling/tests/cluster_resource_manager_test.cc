@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
@@ -189,6 +190,31 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+}
+
+TEST_F(ClusterResourceManagerTest, ResourcesDataConversion) {
+  auto resource_data = rpc::ResourcesData();
+  auto node_id = NodeID::FromRandom();
+  absl::flat_hash_map<std::string, double> total = {{"CPU", 23.0}, {"GPU", 17.0}};
+  absl::flat_hash_map<std::string, double> available = {{"CPU", 13.0}, {"GPU", 7.0}};
+  absl::flat_hash_map<std::string, std::string> labels = {{"l1", "v1"}, {"l2", "v2"}};
+
+  auto node_resources = ResourceMapToNodeResources(total, available, labels);
+  node_resources.is_draining = true;
+  node_resources.object_pulls_queued = true;
+  node_resources.draining_deadline_timestamp_ms = 888;
+  node_resources.idle_resource_duration_ms = 999;
+
+  manager->FillResourceUsage(node_id, node_resources, &resource_data);
+  auto new_resources = manager->NodeResourcesFromResourcesData(resource_data);
+  // sadly, this only checks total, available, and labels
+  ASSERT_EQ(node_resources, new_resources);
+  ASSERT_EQ(node_resources.is_draining, new_resources.is_draining);
+  ASSERT_EQ(node_resources.object_pulls_queued, new_resources.object_pulls_queued);
+  ASSERT_EQ(node_resources.draining_deadline_timestamp_ms,
+            new_resources.draining_deadline_timestamp_ms);
+  ASSERT_EQ(node_resources.idle_resource_duration_ms,
+            new_resources.idle_resource_duration_ms);
 }
 
 }  // namespace ray

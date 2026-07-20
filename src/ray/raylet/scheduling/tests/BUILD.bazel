@@ -108,5 +108,6 @@ ray_cc_test(
         "//src/ray/asio:periodical_runner",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/raylet/scheduling:cluster_resource_storage",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
