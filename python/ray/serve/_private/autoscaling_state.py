@@ -206,10 +206,12 @@ class DeploymentAutoscalingState:
         return self.apply_bounds(target_num_replicas)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
-        if replica_id in self._replica_metrics:
-            del self._replica_metrics[replica_id]
-            if self._running_replica_running_requests.pop(replica_id, None) is not None:
-                self._metrics_version += 1
+        self._replica_metrics.pop(replica_id, None)
+        # Defensive: keep a late report from re-adding the stopped replica
+        # before the next membership update.
+        self._running_replica_id_set.discard(replica_id)
+        if self._running_replica_running_requests.pop(replica_id, None) is not None:
+            self._metrics_version += 1
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -303,9 +305,12 @@ class DeploymentAutoscalingState:
                     self._running_replica_running_requests[
                         replica_id
                     ] = replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
-                else:
+                    self._metrics_version += 1
+                elif (
                     self._running_replica_running_requests.pop(replica_id, None)
-                self._metrics_version += 1
+                    is not None
+                ):
+                    self._metrics_version += 1
 
     def record_request_metrics_for_handle(
         self,
