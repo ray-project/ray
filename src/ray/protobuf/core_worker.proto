@@ -78,6 +78,8 @@ message ActorHandle {
   bool is_detached = 17;
 
   optional int64 actor_generator_backpressure_num_objects = 18;
+
+  optional int64 actor_generator_backpressure_num_bytes = 19;
 }
 
 message PushTaskRequest {
@@ -446,6 +448,10 @@ message ReportGeneratorItemReturnsReply {
 message UpdateGeneratorBackpressureConsumedRequest {
   bytes generator_id = 1;
   int64 total_num_object_consumed = 2;
+  // Monotonic running total of bytes consumed from this generator's stream.
+  // Ignored when total_num_object_consumed is the -1 teardown sentinel;
+  // 0/absent means no byte progress.
+  int64 total_num_bytes_consumed = 3;
 }
 
 message UpdateGeneratorBackpressureConsumedReply {}

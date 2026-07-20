@@ -424,7 +424,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
             c_vector[CFallbackOption] fallback_strategy,
-            int64_t actor_generator_backpressure_num_objects)
+            int64_t actor_generator_backpressure_num_objects,
+            int64_t actor_generator_backpressure_num_bytes,
+            int64_t actor_generator_backpressure_max_object_bytes,
+            c_bool actor_generator_backpressure_predict_object_bytes)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

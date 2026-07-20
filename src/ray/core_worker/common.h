@@ -144,7 +144,10 @@ struct ActorCreationOptions {
                        std::unordered_map<std::string, std::string> labels_p = {},
                        LabelSelector label_selector_p = {},
                        std::vector<FallbackOption> fallback_strategy_p = {},
-                       int64_t actor_generator_backpressure_num_objects_p = -1)
+                       int64_t actor_generator_backpressure_num_objects_p = -1,
+                       int64_t actor_generator_backpressure_num_bytes_p = -1,
+                       int64_t actor_generator_backpressure_max_object_bytes_p = -1,
+                       bool actor_generator_backpressure_predict_object_bytes_p = false)
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -167,7 +170,12 @@ struct ActorCreationOptions {
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
         actor_generator_backpressure_num_objects(
-            actor_generator_backpressure_num_objects_p) {
+            actor_generator_backpressure_num_objects_p),
+        actor_generator_backpressure_num_bytes(actor_generator_backpressure_num_bytes_p),
+        actor_generator_backpressure_max_object_bytes(
+            actor_generator_backpressure_max_object_bytes_p),
+        actor_generator_backpressure_predict_object_bytes(
+            actor_generator_backpressure_predict_object_bytes_p) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -232,6 +240,16 @@ struct ActorCreationOptions {
   // on this actor. -1 disables the cap. See proto field
   // ActorCreationTaskSpec.actor_generator_backpressure_num_objects.
   const int64_t actor_generator_backpressure_num_objects = -1;
+  // Cap on unconsumed streaming-generator bytes across all generator tasks
+  // on this actor. -1 disables the cap. See proto field
+  // ActorCreationTaskSpec.actor_generator_backpressure_num_bytes.
+  const int64_t actor_generator_backpressure_num_bytes = -1;
+  // Cold-start seed for the byte-size estimator; -1 leaves it unseeded. See
+  // proto field ActorCreationTaskSpec.actor_generator_backpressure_max_object_bytes.
+  const int64_t actor_generator_backpressure_max_object_bytes = -1;
+  // Whether to gate admissions on estimated bytes of unreported yields. See
+  // proto field ActorCreationTaskSpec.actor_generator_backpressure_predict_object_bytes.
+  const bool actor_generator_backpressure_predict_object_bytes = false;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

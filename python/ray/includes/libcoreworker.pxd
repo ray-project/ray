@@ -132,6 +132,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool AllowOutOfOrderExecution() const
         c_bool EnableTensorTransport() const
         int64_t ActorGeneratorBackpressureNumObjects() const
+        int64_t ActorGeneratorBackpressureNumBytes() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()

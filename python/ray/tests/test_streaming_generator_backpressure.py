@@ -518,6 +518,20 @@ def _drain_all(gens):
             pass
 
 
+def _drain_round_robin(gens):
+    """Consume from every generator in lockstep until all are exhausted."""
+    pending = list(gens)
+    while pending:
+        still_active = []
+        for gen in pending:
+            try:
+                ray.get(next(gen))
+                still_active.append(gen)
+            except StopIteration:
+                pass
+        pending = still_active
+
+
 def _drain_cancelled(gen):
     """Best-effort drain after ``ray.cancel``; the stream may end with an error."""
     try:
@@ -1619,6 +1633,287 @@ os._exit(0)
     finally:
         ray.kill(a)
         ray.kill(reporter)
+
+
+# ----------------------------------------------------------------------------
+# Actor-wide byte-based streaming-generator backpressure
+# ----------------------------------------------------------------------------
+
+_MB = 1024**2
+
+
+def _byte_stream_actor_class(
+    *,
+    byte_cap: int,
+    object_cap: Optional[int] = None,
+    max_concurrency: int = 1,
+    predict: bool = False,
+    max_object_bytes: Optional[int] = None,
+) -> Type:
+    """Actor whose generator yields ~1 MiB numpy arrays under a byte cap."""
+    options = {
+        "max_concurrency": max_concurrency,
+        "_actor_generator_backpressure_num_bytes": byte_cap,
+    }
+    if object_cap is not None:
+        options["_actor_generator_backpressure_num_objects"] = object_cap
+    if predict:
+        options["_actor_generator_backpressure_predict_object_bytes"] = True
+    if max_object_bytes is not None:
+        options["_actor_generator_backpressure_max_object_bytes"] = max_object_bytes
+
+    @ray.remote(**options)
+    class _A:
+        def gen(self, rep, tag: str):
+            for i in range(5):
+                ray.get(rep.report.remote(tag, i))
+                yield np.zeros(_MB, dtype=np.uint8)
+
+    return _A
+
+
+def test_actor_generator_backpressure_num_bytes_single_task(shutdown_only):
+    """Byte cap only: without prediction the cap is enforced one yield late.
+
+    With a 2.5 MiB cap and ~1 MiB objects, the producer is admitted while
+    outstanding bytes are below the cap (yields 1-3, reaching ~3 MiB) and then
+    parks. Consuming one object frees ~1 MiB and admits exactly one more yield.
+    """
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+    A = _byte_stream_actor_class(byte_cap=int(2.5 * _MB))
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 3
+
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 4,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
+@pytest.mark.parametrize("tighter", ["objects", "bytes"])
+def test_actor_generator_backpressure_bytes_and_objects_coexist(shutdown_only, tighter):
+    """Both caps set: the producer blocks on whichever budget exhausts first."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+    if tighter == "objects":
+        # Object cap 2 parks the producer before the huge byte cap matters.
+        A = _byte_stream_actor_class(byte_cap=100 * _MB, object_cap=2)
+        expected_parked = 2
+    else:
+        # Byte cap (~2.5 MiB -> 3 yields) parks before the object cap (10).
+        A = _byte_stream_actor_class(byte_cap=int(2.5 * _MB), object_cap=10)
+        expected_parked = 3
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == expected_parked,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == expected_parked
+
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == expected_parked + 1,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([g])
+
+
+def test_actor_generator_backpressure_num_bytes_mt_actor(shutdown_only):
+    """Two concurrent streams share one byte budget (threaded actor).
+
+    Without prediction each stream can have one admitted-but-unreported yield,
+    so the parked total is 3 or 4 yields; the budget is shared, not per-stream.
+    The streams are drained round-robin: the shared cap (2.5 MiB) is smaller
+    than one stream's total output (5 MiB), so draining one to completion first
+    would let the unread sibling park holding the whole budget and deadlock.
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _byte_stream_actor_class(byte_cap=int(2.5 * _MB), max_concurrency=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) >= 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert 3 <= ray.get(reporter.total_len.remote()) <= 4
+
+    _drain_round_robin([g1, g2])
+    assert ray.get(reporter.count_tag.remote("1")) == 5
+    assert ray.get(reporter.count_tag.remote("2")) == 5
+
+
+def test_actor_generator_backpressure_num_bytes_async_actor(shutdown_only):
+    """The byte budget backpressures async generators through TryReserveSlot."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_bytes=int(2.5 * _MB))
+    class A:
+        async def gen(self, rep, tag):
+            for i in range(5):
+                await rep.report.remote(tag, i)
+                yield np.zeros(_MB, dtype=np.uint8)
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 3
+
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 4,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([g])
+
+
+def test_actor_generator_backpressure_predict_object_bytes(shutdown_only):
+    """Prediction enforces the byte cap before generating, not one yield late.
+
+    With a 2.5 MiB cap and ~1 MiB objects, the running average makes yield 3
+    block up front (outstanding 2 MiB + estimated 1 MiB >= cap), so only 2
+    yields run before parking (vs 3 without prediction).
+    """
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+    A = _byte_stream_actor_class(byte_cap=int(2.5 * _MB), predict=True)
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 2
+
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
+def test_actor_generator_backpressure_max_object_bytes_seed_superseded(
+    shutdown_only,
+):
+    """A conservative seed must not keep throttling a small-object stream.
+
+    The 100 MiB seed exceeds the cap, but it only gates admissions until the
+    first ~1 MiB object is reported; the observed average then takes over and
+    the stream proceeds like the unseeded predictive case.
+    """
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+    A = _byte_stream_actor_class(
+        byte_cap=int(2.5 * _MB), predict=True, max_object_bytes=100 * _MB
+    )
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
+def test_actor_generator_backpressure_num_bytes_reclaim_on_cancel(shutdown_only):
+    """Cancelling one of two concurrent streams lets the survivor complete.
+
+    Both streams share the byte budget and park; cancelling ``g1`` must free
+    its slice so the still-running ``g2`` drains to completion. (Mirrors the
+    object-cap ``reclaim_on_cancel`` test: the survivor runs concurrently. The
+    stricter "a stream launched strictly after the cancel is unblocked"
+    guarantee is covered directly by the C++ ``TeardownReclaimsOutstandingBytes``
+    unit test; end-to-end it depends on how promptly ``ray.cancel`` reaches a
+    parked executor task, which is orthogonal to byte accounting.)
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _byte_stream_actor_class(byte_cap=int(2.5 * _MB), max_concurrency=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) >= 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    ray.cancel(g1)
+    _drain_cancelled(g1)
+
+    _drain_all([g2])
+    assert ray.get(reporter.count_tag.remote("2")) == 5
+
+
+def test_actor_generator_backpressure_num_bytes_invalid(shutdown_only):
+    """Option validation for the byte cap and its companions."""
+
+    def _gen_actor(**options):
+        @ray.remote(**options)
+        class A:
+            def gen(self):
+                yield 1
+
+        return A
+
+    with pytest.raises(ValueError, match="_actor_generator_backpressure_num_bytes"):
+        _gen_actor(_actor_generator_backpressure_num_bytes=0)
+
+    with pytest.raises(
+        ValueError, match="_actor_generator_backpressure_max_object_bytes"
+    ):
+        _gen_actor(_actor_generator_backpressure_max_object_bytes=0)
+
+    # The predictive flag requires the byte cap.
+    ray.init(num_cpus=1)
+    A = _gen_actor(_actor_generator_backpressure_predict_object_bytes=True)
+    with pytest.raises(
+        ValueError, match="_actor_generator_backpressure_predict_object_bytes"
+    ):
+        A.remote()
+
+    # The seed requires the predictive flag.
+    B = _gen_actor(
+        _actor_generator_backpressure_num_bytes=1024,
+        _actor_generator_backpressure_max_object_bytes=1024,
+    )
+    with pytest.raises(
+        ValueError, match="_actor_generator_backpressure_max_object_bytes"
+    ):
+        B.remote()
 
 
 if __name__ == "__main__":

@@ -159,7 +159,7 @@ TEST(GeneratorWaiterTest, TestSignalFailure) {
 
 TEST(GeneratorWaiterTest, ReserveActorWideSlotBlocksAndAtomicallyIncrements) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2, []() { return Status::OK(); });
+      2, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
@@ -176,7 +176,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotBlocksAndAtomicallyIncrements) {
   absl::SleepFor(absl::Milliseconds(50));
   ASSERT_FALSE(third_done.load());
 
-  waiter->OnConsumedForTask(md, 1);  // delta=1, unconsumed=1 < 2.
+  waiter->OnConsumedForTask(md, 1, 0);  // delta=1, unconsumed=1 < 2.
   t.join();
   ASSERT_TRUE(third_done.load());
   ASSERT_EQ(md.per_task_generated, 3);
@@ -189,7 +189,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotAccountsGroupedYieldsInObjectUnits
   // objects against the actor-wide budget, not just one.
   constexpr int64_t kPerYield = 3;
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2 * kPerYield, []() { return Status::OK(); });
+      2 * kPerYield, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   // Each grouped yield admits its whole group of objects.
@@ -210,7 +210,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotAccountsGroupedYieldsInObjectUnits
   ASSERT_FALSE(third_done.load());
 
   // Consuming objects (in object units) frees budget below the cap and unblocks.
-  waiter->OnConsumedForTask(md, kPerYield);
+  waiter->OnConsumedForTask(md, kPerYield, 0);
   ASSERT_EQ(md.per_task_consumed, kPerYield);
   t.join();
   ASSERT_TRUE(third_done.load());
@@ -222,7 +222,7 @@ TEST(GeneratorWaiterTest, ReleaseActorWideSlotReclaimsWholeGroup) {
   // reserved group must be reclaimed.
   constexpr int64_t kPerYield = 3;
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2 * kPerYield, []() { return Status::OK(); });
+      2 * kPerYield, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
@@ -234,7 +234,7 @@ TEST(GeneratorWaiterTest, ReleaseActorWideSlotReclaimsWholeGroup) {
   ASSERT_EQ(waiter->TotalObjectGenerated(), kPerYield);
 
   // Release clamps to what is still outstanding and never underflows.
-  waiter->OnConsumedForTask(md, kPerYield);
+  waiter->OnConsumedForTask(md, kPerYield, 0);
   waiter->ReleaseActorWideSlot(md, kPerYield);
   ASSERT_EQ(md.per_task_generated, kPerYield);
   ASSERT_EQ(waiter->TotalObjectGenerated(), kPerYield);
@@ -242,7 +242,7 @@ TEST(GeneratorWaiterTest, ReleaseActorWideSlotReclaimsWholeGroup) {
 
 TEST(GeneratorWaiterTest, OnConsumedForTaskAdvancesByDeltaIgnoresStale) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      10, []() { return Status::OK(); });
+      10, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
@@ -250,38 +250,38 @@ TEST(GeneratorWaiterTest, OnConsumedForTaskAdvancesByDeltaIgnoresStale) {
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_EQ(waiter->TotalObjectGenerated(), 3);
 
-  waiter->OnConsumedForTask(md, 2);
+  waiter->OnConsumedForTask(md, 2, 0);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 
   // Stale / out-of-order reply: no-op.
-  waiter->OnConsumedForTask(md, 1);
+  waiter->OnConsumedForTask(md, 1, 0);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 
   // Forward update: only the delta lands.
-  waiter->OnConsumedForTask(md, 3);
+  waiter->OnConsumedForTask(md, 3, 0);
   ASSERT_EQ(md.per_task_consumed, 3);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 3);
 }
 
 TEST(GeneratorWaiterTest, OnConsumedForTaskClampsTotalToPerTaskGenerated) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      10, []() { return Status::OK(); });
+      10, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_EQ(md.per_task_generated, 2);
 
-  waiter->OnConsumedForTask(md, 3);
+  waiter->OnConsumedForTask(md, 3, 0);
   ASSERT_EQ(md.per_task_consumed, 2);
   ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
 }
 
 TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingAndIgnoresLateReports) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2, []() { return Status::OK(); });
+      2, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
@@ -310,14 +310,14 @@ TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingAndIgnoresLateReports) {
 
   // A late consumption update against the torn-down metadata is a no-op.
   int64_t consumed_before = waiter->TotalObjectConsumed();
-  waiter->OnConsumedForTask(md, 5);
+  waiter->OnConsumedForTask(md, 5, 0);
   ASSERT_EQ(waiter->TotalObjectConsumed(), consumed_before);
   ASSERT_EQ(md.per_task_consumed, 0);
 }
 
 TEST(GeneratorWaiterTest, TeardownTaskIdempotent) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2, []() { return Status::OK(); });
+      2, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
   ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
@@ -366,7 +366,7 @@ TEST(GeneratorWaiterTest, IsBackpressuredFalseAfterDisable) {
 
 TEST(GeneratorWaiterTest, TryReserveActorWideSlotIsNonBlockingAndRespectsCap) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2, []() { return Status::OK(); });
+      2, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   // Admits up to the cap without blocking.
@@ -382,7 +382,7 @@ TEST(GeneratorWaiterTest, TryReserveActorWideSlotIsNonBlockingAndRespectsCap) {
   ASSERT_EQ(waiter->TotalObjectGenerated(), 2);
 
   // Consuming frees budget below the cap; the next try succeeds.
-  waiter->OnConsumedForTask(md, 1);
+  waiter->OnConsumedForTask(md, 1, 0);
   ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
   ASSERT_EQ(md.per_task_generated, 3);
   ASSERT_EQ(waiter->TotalObjectGenerated(), 3);
@@ -390,7 +390,7 @@ TEST(GeneratorWaiterTest, TryReserveActorWideSlotIsNonBlockingAndRespectsCap) {
 
 TEST(GeneratorWaiterTest, TryReserveSlotForwardsThroughMetadata) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      1, []() { return Status::OK(); });
+      1, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   // The metadata forwarder mirrors TryReserveActorWideSlot.
@@ -404,7 +404,7 @@ TEST(GeneratorWaiterTest, TryReserveActorWideSlotGroupedYield) {
   // of `_num_objects_per_yield` objects at once.
   constexpr int64_t kPerYield = 3;
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      2 * kPerYield, []() { return Status::OK(); });
+      2 * kPerYield, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, kPerYield));
@@ -416,14 +416,14 @@ TEST(GeneratorWaiterTest, TryReserveActorWideSlotGroupedYield) {
   ASSERT_EQ(waiter->TotalObjectGenerated(), 2 * kPerYield);
 
   // Consuming a group worth admits one more group.
-  waiter->OnConsumedForTask(md, kPerYield);
+  waiter->OnConsumedForTask(md, kPerYield, 0);
   ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, kPerYield));
   ASSERT_EQ(waiter->TotalObjectGenerated(), 3 * kPerYield);
 }
 
 TEST(GeneratorWaiterTest, TryReserveActorWideSlotReturnsTrueWhenTaskNotAlive) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      1, []() { return Status::OK(); });
+      1, -1, -1, false, []() { return Status::OK(); });
   ActorTaskBackpressureMetadata md(waiter);
 
   // Fill the cap so a live task would be rejected.
@@ -446,7 +446,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
   static constexpr int kThreads = 4;
   static constexpr int kPerThread = 50;
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-      kThreshold, []() { return Status::OK(); });
+      kThreshold, -1, -1, false, []() { return Status::OK(); });
 
   std::vector<std::shared_ptr<ActorTaskBackpressureMetadata>> mds;
   for (int i = 0; i < kThreads; ++i) {
@@ -461,7 +461,7 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
            waiter->TotalObjectConsumed() < kThreads * kPerThread) {
       if (waiter->TotalObjectGenerated() - waiter->TotalObjectConsumed() > 0) {
         per_task_total[idx] += 1;
-        waiter->OnConsumedForTask(*mds[idx], per_task_total[idx]);
+        waiter->OnConsumedForTask(*mds[idx], per_task_total[idx], 0);
         idx = (idx + 1) % kThreads;
       } else {
         absl::SleepFor(absl::Microseconds(100));
@@ -485,6 +485,298 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
 
   ASSERT_EQ(waiter->TotalObjectGenerated(), kThreads * kPerThread);
   ASSERT_EQ(waiter->TotalObjectConsumed(), kThreads * kPerThread);
+}
+
+TEST(GeneratorWaiterTest, ByteBudgetBlocksReserve) {
+  // Byte cap only (object cap disabled). Bytes are charged at report time;
+  // the next reserve blocks once outstanding bytes reach the cap.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, -1, false, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+  waiter->AddBytesGeneratedForTask(md, 1, 100);
+  ASSERT_EQ(md.per_task_generated_bytes, 100);
+  ASSERT_EQ(waiter->TotalBytesGenerated(), 100);
+
+  std::atomic<bool> second_done(false);
+  std::thread t([&] {
+    ASSERT_TRUE(waiter->ReserveActorWideSlot(md).ok());
+    second_done = true;
+  });
+  absl::SleepFor(absl::Milliseconds(50));
+  ASSERT_FALSE(second_done.load());
+
+  waiter->OnConsumedForTask(md, 1, 100);
+  t.join();
+  ASSERT_TRUE(second_done.load());
+  ASSERT_EQ(md.per_task_consumed_bytes, 100);
+  ASSERT_EQ(waiter->TotalBytesConsumed(), 100);
+}
+
+TEST(GeneratorWaiterTest, EitherBudgetBlocks) {
+  // Object cap and byte cap coexist: a yield blocks when either budget is
+  // exhausted.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      3, 100, -1, false, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // One object exhausts the byte budget while the object budget has room.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 100);
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+
+  // Freeing the bytes (all consumed) opens the object budget again.
+  waiter->OnConsumedForTask(md, 1, 100);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 10);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 10);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 10);
+  ASSERT_EQ(md.per_task_generated, 4);
+
+  // Now the object budget (3 unconsumed) is exhausted while bytes (30
+  // outstanding) have room.
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+  waiter->OnConsumedForTask(md, 2, 110);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+}
+
+TEST(GeneratorWaiterTest, OversizedObjectAdmittedWithoutPrediction) {
+  // Without prediction, an object larger than the whole byte cap is still
+  // admitted (sizes are unknown at reserve time); it blocks the next yield
+  // until fully consumed.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 10, -1, false, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 1000);
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+
+  waiter->OnConsumedForTask(md, 1, 1000);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+}
+
+TEST(GeneratorWaiterTest, TeardownReclaimsOutstandingBytes) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, -1, false, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ActorTaskBackpressureMetadata md2(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 100);
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md2));
+
+  // A parked sibling wakes once the first task's outstanding bytes are
+  // reclaimed by teardown.
+  std::atomic<bool> reserved(false);
+  std::thread t([&] {
+    ASSERT_TRUE(waiter->ReserveActorWideSlot(md2).ok());
+    reserved = true;
+  });
+  absl::SleepFor(absl::Milliseconds(50));
+  ASSERT_FALSE(reserved.load());
+
+  waiter->TeardownTask(md);
+  t.join();
+  ASSERT_TRUE(reserved.load());
+  ASSERT_EQ(waiter->TotalBytesGenerated(), 0);
+
+  // Late byte acks against the torn-down metadata are no-ops.
+  waiter->OnConsumedForTask(md, 1, 100);
+  ASSERT_EQ(waiter->TotalBytesConsumed(), 0);
+  ASSERT_EQ(md.per_task_consumed_bytes, 0);
+}
+
+TEST(GeneratorWaiterTest, StaleAndClampedByteAcks) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 1000, -1, false, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md, 2));
+  waiter->AddBytesGeneratedForTask(md, 2, 60);
+
+  // A byte total above what this task charged is clamped.
+  waiter->OnConsumedForTask(md, 1, 100);
+  ASSERT_EQ(md.per_task_consumed_bytes, 60);
+  ASSERT_EQ(waiter->TotalBytesConsumed(), 60);
+  ASSERT_EQ(md.per_task_consumed, 1);
+
+  // A regressing byte total is ignored; the object dimension still advances
+  // independently.
+  waiter->OnConsumedForTask(md, 2, 50);
+  ASSERT_EQ(md.per_task_consumed_bytes, 60);
+  ASSERT_EQ(waiter->TotalBytesConsumed(), 60);
+  ASSERT_EQ(md.per_task_consumed, 2);
+  ASSERT_EQ(waiter->TotalObjectConsumed(), 2);
+}
+
+TEST(GeneratorWaiterTest, PredictiveBlocksBeforeGenerating) {
+  // With prediction, once the running average is established a reserve that
+  // would overshoot the byte cap blocks before the yield runs.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, -1, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // First yield admitted with empty history (estimate is 0).
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 60);
+
+  // avg = 60: outstanding 60 + estimated 60 >= 100, so the next yield blocks
+  // before generating (without prediction it would be admitted).
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+
+  // Once everything is consumed, nothing is outstanding and one yield is
+  // always admissible even though the estimate (60) is above the remaining
+  // headroom.
+  waiter->OnConsumedForTask(md, 1, 60);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+}
+
+TEST(GeneratorWaiterTest, PredictiveLivenessWithEstimateAboveCap) {
+  // An average at or above the whole cap never deadlocks: with nothing
+  // outstanding, one yield is admitted.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 10, -1, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 100);
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md));
+
+  waiter->OnConsumedForTask(md, 1, 100);
+  // avg = 100 >= cap = 10, but nothing is outstanding.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+}
+
+TEST(GeneratorWaiterTest, PredictiveCountsSiblingInflightYields) {
+  // A sibling's admitted-but-unreported yield is charged at the estimate, so
+  // concurrent streams cannot each pass the check as if they were alone.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, -1, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ActorTaskBackpressureMetadata md2(waiter);
+
+  // Establish avg = 60 with nothing left outstanding.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  waiter->AddBytesGeneratedForTask(md, 1, 60);
+  waiter->OnConsumedForTask(md, 1, 60);
+
+  // Task A admits a yield (nothing outstanding). Its unreported yield now
+  // counts 60 estimated bytes.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  // Task B is estimated at 60 (A's in-flight) + 60 (its own) >= 100: blocked.
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md2));
+
+  // A's report comes in small: outstanding 10 + estimated 55 (new avg 35 over
+  // 2 objects -> 35 * 1) < 100, so B is admitted now.
+  waiter->AddBytesGeneratedForTask(md, 1, 10);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md2));
+}
+
+TEST(GeneratorWaiterTest, MaxObjectBytesSeedsEstimatorUntilFirstReport) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, 200, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ActorTaskBackpressureMetadata md2(waiter);
+
+  // First yield admitted (nothing outstanding), but its in-flight estimate is
+  // the 200-byte seed, so a concurrent second yield is blocked before any
+  // report exists.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md2));
+
+  // The first report reveals small objects; the observed average supersedes
+  // the conservative seed and admissions open up (a large seed must not keep
+  // throttling a small-object stream).
+  waiter->AddBytesGeneratedForTask(md, 1, 10);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md2));
+  waiter->AddBytesGeneratedForTask(md2, 1, 10);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md2));
+}
+
+TEST(GeneratorWaiterTest, ReleaseActorWideSlotDropsInflightEstimate) {
+  // A released yield (StopIteration: reserved but produced nothing) must not
+  // keep contributing to the in-flight estimate.
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, 200, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ActorTaskBackpressureMetadata md2(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md2));
+  waiter->ReleaseActorWideSlot(md);
+  // Nothing outstanding again: admitted.
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md2));
+}
+
+TEST(GeneratorWaiterTest, TeardownDropsInflightEstimate) {
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, 100, 200, true, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+  ActorTaskBackpressureMetadata md2(waiter);
+
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md));
+  ASSERT_FALSE(waiter->TryReserveActorWideSlot(md2));
+  // The task dies before reporting; its in-flight yield will never be
+  // charged, so teardown reclaims the estimate.
+  waiter->TeardownTask(md);
+  ASSERT_TRUE(waiter->TryReserveActorWideSlot(md2));
+}
+
+TEST(GeneratorWaiterTest, ByteBudgetMultiThreadedRespectsCap) {
+  // N producer threads share one byte budget. Without prediction, outstanding
+  // bytes never exceed cap + (threads * per-yield bytes): each thread can
+  // have at most one admitted-but-uncharged yield.
+  static constexpr int64_t kByteCap = 500;
+  static constexpr int64_t kYieldBytes = 100;
+  static constexpr int kThreads = 4;
+  static constexpr int kPerThread = 30;
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      -1, kByteCap, -1, false, []() { return Status::OK(); });
+
+  std::vector<std::shared_ptr<ActorTaskBackpressureMetadata>> mds;
+  for (int i = 0; i < kThreads; ++i) {
+    mds.push_back(std::make_shared<ActorTaskBackpressureMetadata>(waiter));
+  }
+
+  std::atomic<bool> consumer_stop(false);
+  std::thread consumer([&] {
+    int64_t per_task_objects[kThreads] = {0};
+    int64_t per_task_bytes[kThreads] = {0};
+    int idx = 0;
+    while (!consumer_stop.load() ||
+           waiter->TotalBytesConsumed() < kThreads * kPerThread * kYieldBytes) {
+      if (waiter->TotalBytesGenerated() - waiter->TotalBytesConsumed() > 0) {
+        per_task_objects[idx] += 1;
+        per_task_bytes[idx] += kYieldBytes;
+        waiter->OnConsumedForTask(*mds[idx], per_task_objects[idx], per_task_bytes[idx]);
+        idx = (idx + 1) % kThreads;
+      } else {
+        absl::SleepFor(absl::Microseconds(100));
+      }
+    }
+  });
+
+  std::vector<std::thread> producers;
+  for (int i = 0; i < kThreads; ++i) {
+    producers.emplace_back([&, i] {
+      for (int j = 0; j < kPerThread; ++j) {
+        ASSERT_TRUE(waiter->ReserveActorWideSlot(*mds[i]).ok());
+        waiter->AddBytesGeneratedForTask(*mds[i], 1, kYieldBytes);
+        ASSERT_LE(waiter->TotalBytesGenerated() - waiter->TotalBytesConsumed(),
+                  kByteCap + kThreads * kYieldBytes);
+      }
+    });
+  }
+  for (auto &t : producers) t.join();
+  consumer_stop = true;
+  consumer.join();
+
+  ASSERT_EQ(waiter->TotalBytesGenerated(), kThreads * kPerThread * kYieldBytes);
+  ASSERT_EQ(waiter->TotalBytesConsumed(), kThreads * kPerThread * kYieldBytes);
 }
 
 }  // namespace core

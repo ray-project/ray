@@ -347,6 +347,22 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // on an actor creation task spec.
   int64_t ActorGeneratorBackpressureNumObjects() const;
 
+  // Actor-wide cap on unconsumed streaming-generator bytes across all
+  // generator tasks running on this actor. -1 means disabled. Valid only
+  // on an actor creation task spec.
+  int64_t ActorGeneratorBackpressureNumBytes() const;
+
+  // Cold-start seed for the byte-size estimator (upper bound on a single
+  // yielded object's size); -1 means unseeded. Valid only on an actor
+  // creation task spec.
+  int64_t ActorGeneratorBackpressureMaxObjectBytes() const;
+
+  // Whether to gate yield admissions on the estimated size of
+  // admitted-but-unreported yields (see
+  // actor_generator_backpressure_predict_object_bytes). Valid only on an
+  // actor creation task spec.
+  bool ActorGeneratorBackpressurePredictObjectBytes() const;
+
   bool IsAsyncioActor() const;
 
   bool IsDetachedActor() const;
