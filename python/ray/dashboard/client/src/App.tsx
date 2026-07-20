@@ -266,7 +266,7 @@ const App = () => {
           showAcceleratorColumns: hasAccelerators,
         }));
       } catch {
-        // ponytail: poll retries on next interval
+        // Poll will retry on next interval
       }
     };
     fetchNodeList();

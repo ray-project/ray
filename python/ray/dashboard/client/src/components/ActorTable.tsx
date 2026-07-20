@@ -58,7 +58,7 @@ export type ActorTableProps = {
   filterToActorId?: string;
   onFilterChange?: () => void;
   detailPathPrefix?: string;
-  showGPUColumn?: boolean;
+  showAcceleratorColumns?: boolean;
 };
 
 const SEQUENCE = {
@@ -90,7 +90,7 @@ const ActorTable = ({
   filterToActorId,
   onFilterChange,
   detailPathPrefix = "",
-  showGPUColumn: showGPUColumnProp,
+  showAcceleratorColumns: showAcceleratorColumnsProp,
 }: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter<string>({
@@ -105,7 +105,8 @@ const ActorTable = ({
   const { showAcceleratorColumns: globalShowAcceleratorColumns } =
     useContext(GlobalContext);
 
-  const showGPUColumn = showGPUColumnProp ?? globalShowAcceleratorColumns;
+  const effectiveShowAcceleratorColumns =
+    showAcceleratorColumnsProp ?? globalShowAcceleratorColumns;
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -552,7 +553,7 @@ const ActorTable = ({
               ["processStats.memoryInfo.rss", "Used Memory"],
               ["mem[0]", "Total Memory"],
               ["processStats.cpuPercent", "CPU"],
-              ...(showGPUColumn
+              ...(effectiveShowAcceleratorColumns
                 ? ([
                     [gpuUtilizationSorterKey, "GPU Utilization"],
                     [gramUsageSorterKey, "GRAM Usage"],
@@ -588,7 +589,7 @@ const ActorTable = ({
               {columns
                 .filter(
                   (col) =>
-                    showGPUColumn ||
+                    effectiveShowAcceleratorColumns ||
                     (col.label !== "GPU" && col.label !== "GRAM"),
                 )
                 .map(({ label, helpInfo }) => (
@@ -774,7 +775,7 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  {showGPUColumn && (
+                  {effectiveShowAcceleratorColumns && (
                     <TableCell>
                       <WorkerAcceleratorRow
                         workerPID={pid}
@@ -783,7 +784,7 @@ const ActorTable = ({
                       />
                     </TableCell>
                   )}
-                  {showGPUColumn && (
+                  {effectiveShowAcceleratorColumns && (
                     <TableCell>
                       <WorkerAcceleratorMemory
                         workerPID={pid}

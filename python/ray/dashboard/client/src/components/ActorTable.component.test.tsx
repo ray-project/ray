@@ -166,7 +166,7 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear after actor1Row
 
-    // GPU/GRAM columns hidden when no actors have GPUs
+    // GPU/GRAM columns hidden when showAcceleratorColumns is false (no accelerators on cluster)
     expect(screen.queryByText("GPU")).not.toBeInTheDocument();
     expect(screen.queryByText("GRAM")).not.toBeInTheDocument();
   });
