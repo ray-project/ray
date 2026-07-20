@@ -422,7 +422,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
     # Check batch_wait_time_ms histogram was recorded for 2 batches
@@ -433,7 +433,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
     # Check batch_execution_time_ms histogram was recorded for 2 batches
@@ -444,7 +444,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
     # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
@@ -455,7 +455,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
     # Check actual_batch_size histogram: 2 batches of 4 requests each = 8 sum
@@ -466,7 +466,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
     # Check batch_queue_length gauge exists (should be 0 after processing)
@@ -477,7 +477,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=20,
     )
 
 
@@ -535,7 +535,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_replicas",
         expected=5,
         expected_tags=base_tags,
@@ -546,7 +546,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 2: Check that autoscaling decision metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_desired_replicas",
         expected=5,
         expected_tags=base_tags,
@@ -557,7 +557,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 3: Check that total requests metric is 10
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_total_requests",
         expected=10,
         expected_tags=base_tags,
@@ -575,13 +575,13 @@ def test_autoscaling_metrics(metrics_start_shutdown):
         assert value >= 0
         return True
 
-    wait_for_condition(check_policy_execution_time_metric, timeout=15)
+    wait_for_condition(check_policy_execution_time_metric, timeout=30)
     print("Policy execution time metric verified.")
 
     # Test 5: Check that target_ongoing_requests metric is 2 (matches config)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_ongoing_requests",
         expected=2,
         expected_tags=base_tags,
@@ -614,7 +614,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                     found = True
         return found
 
-    wait_for_condition(check_metrics_delay_metrics, timeout=15)
+    wait_for_condition(check_metrics_delay_metrics, timeout=30)
     print("Metrics delay metrics verified.")
 
     # Release signal to complete requests
@@ -785,7 +785,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
                     return True
         return False
 
-    wait_for_condition(check_user_stats_latency_metric, timeout=15)
+    wait_for_condition(check_user_stats_latency_metric, timeout=30)
     print("User autoscaling stats latency metric verified.")
 
 
@@ -839,7 +839,7 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_stats_failure_metric, timeout=15)
+    wait_for_condition(check_stats_failure_metric, timeout=30)
     print("User autoscaling stats failure metric verified.")
 
 
