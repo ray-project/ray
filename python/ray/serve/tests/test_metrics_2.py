@@ -134,7 +134,8 @@ class TestRequestContextMetrics:
                 )
             )
             == 3,
-            timeout=40,
+            # First export from several fresh replica processes must all land.
+            timeout=60,
         )
 
         def wait_for_route_and_name(
@@ -253,7 +254,8 @@ class TestRequestContextMetrics:
                 )
             )
             == 5,
-            timeout=40,
+            # First export from several fresh replica processes must all land.
+            timeout=60,
         )
 
         def wait_for_route_and_name(
@@ -382,7 +384,8 @@ class TestRequestContextMetrics:
                 )
             )
             == 4,
-            timeout=40,
+            # First export from several fresh replica processes must all land.
+            timeout=60,
         )
         (
             requests_metrics_route,
