@@ -74,6 +74,15 @@ class GcsInitData {
     return worker_table_data_;
   }
 
+  /**
+   * @brief Get the node resource data loaded from the node resources table.
+   *
+   * @return Map from node id to its table entry.
+   */
+  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResources() const {
+    return node_resources_table_data_;
+  }
+
  private:
   /// Load job metadata from the store into memory asynchronously.
   ///
@@ -104,6 +113,13 @@ class GcsInitData {
    */
   void AsyncLoadWorkerTableData(Postable<void()> on_done);
 
+  /**
+   * @brief Load node resources data from the store into memory asynchronously.
+   *
+   * @param on_done The callback invoked when the data is loaded successfully.
+   */
+  void AsyncLoadNodeResourcesTableData(Postable<void()> on_done);
+
  protected:
   /// The gcs table storage.
   gcs::GcsTableStorage &gcs_table_storage_;
@@ -125,6 +141,9 @@ class GcsInitData {
 
   /// Worker metadata.
   absl::flat_hash_map<WorkerID, rpc::WorkerTableData> worker_table_data_;
+
+  /// Node resources data.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resources_table_data_;
 };
 
 }  // namespace gcs
