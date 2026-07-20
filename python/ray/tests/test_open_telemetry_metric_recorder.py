@@ -224,7 +224,7 @@ def test_register_histogram_metric(
     recorder.register_histogram_metric(
         name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
     )
-    assert "test_histogram" in recorder._registered_instruments
+    assert "test_histogram" in OpenTelemetryMetricRecorder._histogram_defs
     recorder.set_metric_value(
         name="test_histogram",
         tags={"label_key": "label_value"},

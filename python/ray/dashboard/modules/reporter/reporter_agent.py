@@ -545,8 +545,9 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
-        # Single worker so OTLP metric reports from other Ray components are
-        # ingested in arrival order without blocking the event loop.
+        # Ingest OTLP metric reports off the event loop. max_workers must stay 1:
+        # gauge writes are last-writer-wins, so concurrent reports for the same
+        # series must be serialized in arrival order to keep the newest value.
         self._otlp_ingest_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reporter_agent_otlp_ingest",
