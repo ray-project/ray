@@ -752,11 +752,12 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
 
     serve.run(DeploymentWithCustomStats.bind(), name="custom_stats_app")
 
-    # Make a request to ensure the deployment is running
+    # Make a request to ensure the deployment is running. Bound the wait: an
+    # unbounded .result() can hang the whole test target past its timeout.
     handle = serve.get_deployment_handle(
         "DeploymentWithCustomStats", "custom_stats_app"
     )
-    handle.remote().result()
+    handle.remote().result(timeout_s=60)
 
     timeseries = PrometheusTimeseries()
     base_tags = {
@@ -816,11 +817,12 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
 
     serve.run(DeploymentWithFailingStats.bind(), name="failing_stats_app")
 
-    # Make a request to ensure the deployment is running
+    # Make a request to ensure the deployment is running. Bound the wait: an
+    # unbounded .result() can hang the whole test target past its timeout.
     handle = serve.get_deployment_handle(
         "DeploymentWithFailingStats", "failing_stats_app"
     )
-    handle.remote().result()
+    handle.remote().result(timeout_s=60)
 
     timeseries = PrometheusTimeseries()
 
