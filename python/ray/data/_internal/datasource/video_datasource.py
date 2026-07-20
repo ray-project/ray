@@ -51,16 +51,16 @@ class VideoDatasource(FileBasedDatasource):
 
         _check_import(self, module="decord", package="decord")
 
-        if fps is not None and fps <= 0:
+        if fps is not None and (not isinstance(fps, int) or fps <= 0):
             raise ValueError(
                 f"Expected `fps` to be a positive integer, but got {fps} instead."
             )
 
         if resize is not None:
-            if len(resize) != 2:
+            if len(resize) != 2 or not all(isinstance(dim, int) for dim in resize):
                 raise ValueError(
                     "Expected `resize` to contain two integers for height and "
-                    f"width, but got {len(resize)} integers instead."
+                    f"width, but got {resize} instead."
                 )
             if resize[0] <= 0 or resize[1] <= 0:
                 raise ValueError(

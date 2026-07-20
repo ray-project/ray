@@ -59,19 +59,23 @@ def test_read_videos_resize():
 def test_read_videos_invalid_params():
     uri = "s3://anonymous@ray-example-data/basketball.mp4"
 
-    # `resize` must contain exactly two positive integers (0 is rejected).
+    # `resize` must contain exactly two positive integers (0 and non-ints rejected).
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, resize=(0, 160))
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, resize=(120, 0))
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, resize=(120,))  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(ValueError):
+        ray.data.read_videos(uri, resize=(1.5, 2))  # pyrefly: ignore[bad-argument-type]
 
-    # `fps` must be positive.
+    # `fps` must be a positive integer.
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, fps=0)
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, fps=-1)
+    with pytest.raises(ValueError):
+        ray.data.read_videos(uri, fps=1.5)  # pyrefly: ignore[bad-argument-type]
 
 
 if __name__ == "__main__":
