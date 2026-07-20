@@ -19,12 +19,30 @@ _check_pyarrow_version()
 AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 
-def raise_on_pickle_object_columns(table: "pa.Table") -> None:
-    """Raise if ``table`` has columns stored as the pickled-object extension type.
+def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
+    """Return whether ``dtype`` is, or nests, the pickled-object extension type.
 
-    Reading a ``ray.data.arrow_pickled_object`` column requires unpickling, which
-    can execute arbitrary code. Readers should call this right after materializing
-    a table from an untrusted external source.
+    The extension type can hide inside nested types (``list<ext>``,
+    ``struct<ext>``, ``map<ext>``, ...), so we descend recursively rather than
+    inspecting only the top-level type. Missing a nested occurrence would let a
+    crafted file smuggle a pickle payload past the guard.
+    """
+    if isinstance(dtype, ArrowPythonObjectType):
+        return True
+    # `pa.DataType.fields` isn't available across supported PyArrow versions, so
+    # walk the child types by index instead.
+    return any(
+        _contains_pickle_object_type(dtype.field(i).type)
+        for i in range(dtype.num_fields)
+    )
+
+
+def raise_on_pickle_object_columns(table: "pa.Table") -> None:
+    """Raise if ``table`` has data stored as the pickled-object extension type.
+
+    Deserializing ``ray.data.arrow_pickled_object`` columns requires unpickling, which
+    can execute arbitrary code. Datasources can call this after reading tables to
+    prevent exposing users.
 
     Setting ``AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR=1`` opts into reading such
     columns from trusted sources and makes this a no-op.
@@ -33,9 +51,7 @@ def raise_on_pickle_object_columns(table: "pa.Table") -> None:
         return
 
     pickle_cols = [
-        field.name
-        for field in table.schema
-        if isinstance(field.type, ArrowPythonObjectType)
+        field.name for field in table.schema if _contains_pickle_object_type(field.type)
     ]
     if pickle_cols:
         raise ValueError(

@@ -430,6 +430,36 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_read_lance_rejects_nested_pickle_object_columns(
+    tmp_path, ray_start_regular_shared
+):
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    # A pickled-object column nested inside a `list<...>` must trip the guard
+    # just like a top-level one; otherwise nesting bypasses the check.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
+    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
+    table = pa.table({"col": list_array})
+    path = os.path.join(str(tmp_path), "nested_exploit.lance")
+    lance.write_dataset(table, path)
+
+    ds = ray.data.read_lance(path)
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 if __name__ == "__main__":
     import sys
 
