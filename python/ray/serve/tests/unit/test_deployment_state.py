@@ -9846,6 +9846,66 @@ class TestPushedHealth:
         assert w._consecutive_health_check_failures == 0
 
 
+class TestPushSystemicStallGuard:
+    """Mass push staleness reads as controller-side lag: defer fallback probes,
+    bounded so a genuine mass outage still surfaces."""
+
+    def _registry_with(self, n, stale_n, age_s=60.0):
+        from ray.serve._private.deployment_state import ReplicaHealthPushRegistry
+
+        registry = ReplicaHealthPushRegistry()
+        now = time.time()
+        for i in range(n):
+            received_at = now - age_s if i < stale_n else now
+            registry._state[f"r{i}"] = (now - age_s, received_at, True, 0)
+        return registry
+
+    def test_below_min_tracked_never_systemic(self):
+        registry = self._registry_with(n=63, stale_n=63)
+        assert not registry.systemic_stall()
+
+    def test_minority_stale_not_systemic(self):
+        registry = self._registry_with(n=100, stale_n=49)
+        assert not registry.systemic_stall()
+
+    def test_majority_stale_is_systemic(self):
+        registry = self._registry_with(n=100, stale_n=80)
+        assert registry.systemic_stall()
+
+    def test_defer_is_bounded(self):
+        registry = self._registry_with(n=100, stale_n=100)
+        assert registry.systemic_stall()
+        # Once the stall has lasted past the cap, probes must resume.
+        registry._stall_since = time.time() - registry._STALL_MAX_DEFER_S - 1
+        assert not registry.systemic_stall()
+
+    def test_recovery_clears_stall(self):
+        registry = self._registry_with(n=100, stale_n=100)
+        assert registry.systemic_stall()
+        registry._state = self._registry_with(n=100, stale_n=0)._state
+        registry._stall_checked_at = 0.0  # bypass the ~1s verdict cache
+        assert not registry.systemic_stall()
+        assert registry._stall_since is None
+
+    def test_verdict_cached_between_checks(self):
+        registry = self._registry_with(n=100, stale_n=100)
+        assert registry.systemic_stall()
+        # State recovers, but within the cache TTL the verdict holds.
+        registry._state = self._registry_with(n=100, stale_n=0)._state
+        assert registry.systemic_stall()
+
+    def test_stale_counts(self):
+        registry = self._registry_with(n=10, stale_n=4)
+        stale, total = registry.stale_counts(30.0)
+        assert (stale, total) == (4, 10)
+
+    def test_defer_holds_wrapper_probe_gate(self):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._last_push_consume_time = 0.0
+        wrapper.defer_push_fallback_probe()
+        assert not wrapper._should_start_new_health_check()
+
+
 class TestPushedHealthReviewRegressions:
     """Regressions for the agent-review findings on the push-health PR."""
 

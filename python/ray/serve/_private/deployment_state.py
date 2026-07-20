@@ -44,6 +44,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_LATENCY_BUCKET_MS,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
@@ -704,6 +705,11 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
+def _push_freshness_window_s(health_check_period_s: float) -> float:
+    """How long a pushed health result stays fresh enough to stand in for a probe."""
+    return max(health_check_period_s * 1.5, 1.0)
+
+
 class ReplicaHealthPushRegistry:
     """Latest self-health pushed by each replica, keyed by replica unique id.
 
@@ -715,6 +721,15 @@ class ReplicaHealthPushRegistry:
     _PRUNE_MAX_AGE_S = 600.0
     _GAP_BUCKET_S = 0.25
     _GAP_NBUCKETS = 240  # 60s range
+    # Most tracked replicas going stale at once is the signature of
+    # controller-side ingest lag, not mass replica failure. Deferring the pull
+    # fallback then avoids a probe storm that would deepen the lag and can
+    # cascade into false kills; the cap bounds it so a real mass outage still
+    # surfaces.
+    _STALL_MIN_TRACKED = 64
+    _STALL_STALE_FRACTION = 0.5
+    _STALL_MAX_DEFER_S = 120.0
+    _STALL_CHECK_TTL_S = 1.0
 
     def __init__(self):
         # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
@@ -724,6 +739,9 @@ class ReplicaHealthPushRegistry:
         self._gap_hist = [0] * self._GAP_NBUCKETS
         self._gap_count = 0
         self._gap_max_s = 0.0
+        self._stall_checked_at: float = 0.0
+        self._stall_flag: bool = False
+        self._stall_since: Optional[float] = None
 
     def record(
         self,
@@ -757,6 +775,44 @@ class ReplicaHealthPushRegistry:
         self, replica_unique_id: str
     ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
         return self._state.get(replica_unique_id)
+
+    def stale_counts(self, freshness_window_s: float) -> Tuple[int, int]:
+        """(stale, total) tracked replicas whose last push arrived too long ago."""
+        cutoff = time.time() - freshness_window_s
+        stale = sum(1 for v in self._state.values() if v[1] < cutoff)
+        return stale, len(self._state)
+
+    def systemic_stall(self) -> bool:
+        """True while pushes for most tracked replicas are stale at once.
+
+        Cached for ~1s (called once per swept replica). Bounded by
+        _STALL_MAX_DEFER_S per episode so a genuine mass outage still falls
+        through to pull probes.
+        """
+        now = time.time()
+        if now - self._stall_checked_at > self._STALL_CHECK_TTL_S:
+            self._stall_checked_at = now
+            stale, total = self.stale_counts(
+                _push_freshness_window_s(DEFAULT_HEALTH_CHECK_PERIOD_S)
+            )
+            self._stall_flag = (
+                total >= self._STALL_MIN_TRACKED
+                and stale >= total * self._STALL_STALE_FRACTION
+            )
+            if not self._stall_flag:
+                self._stall_since = None
+            elif self._stall_since is None:
+                self._stall_since = now
+                logger.warning(
+                    f"Pushed health went stale for {stale}/{total} replicas at "
+                    "once; treating as controller-side ingest lag and deferring "
+                    f"fallback probes for up to {self._STALL_MAX_DEFER_S}s."
+                )
+        return (
+            self._stall_flag
+            and self._stall_since is not None
+            and time.time() - self._stall_since < self._STALL_MAX_DEFER_S
+        )
 
     def gap_stats(self) -> Dict[str, float]:
         """Percentiles of the replicas' actual self-check intervals."""
@@ -1709,8 +1765,8 @@ class ActorReplicaWrapper:
             return False
 
         # Pushed health is flowing -- probe only once it goes stale.
-        if time.time() - self._last_push_consume_time < max(
-            self.health_check_period_s * 1.5, 1.0
+        if time.time() - self._last_push_consume_time < _push_freshness_window_s(
+            self.health_check_period_s
         ):
             return False
 
@@ -1791,10 +1847,20 @@ class ActorReplicaWrapper:
         # consume latency must not flip sub-second periods onto the pull path
         # (two interleaved observers would double-count flaky checks). Measured
         # against the controller-clock arrival time, immune to replica clock skew.
-        if time.time() - received_at > max(self.health_check_period_s * 1.5, 1.0):
+        if time.time() - received_at > _push_freshness_window_s(
+            self.health_check_period_s
+        ):
             return None
         self._last_push_consume_time = time.time()
         return healthy, consecutive_failures
+
+    def defer_push_fallback_probe(self) -> None:
+        """Hold the push-staleness probe gate closed for another window.
+
+        Used when staleness is systemic (controller ingest lag): probing every
+        replica at once would amplify the lag and can cascade into false kills.
+        """
+        self._last_push_consume_time = time.time()
 
     def check_health(self) -> bool:
         """Check if the actor is healthy.
@@ -2224,6 +2290,9 @@ class DeploymentReplica:
         self._actor.record_pushed_health(
             checked_at, received_at, healthy, consecutive_failures
         )
+
+    def defer_push_fallback_probe(self) -> None:
+        self._actor.defer_push_fallback_probe()
 
     def check_health(self) -> bool:
         """Check if the replica is healthy.
@@ -4798,6 +4867,8 @@ class DeploymentState:
         """Hand the replica's latest pushed self-health to its wrapper."""
         if self._health_push_registry is None:
             return
+        if self._health_push_registry.systemic_stall():
+            replica.defer_push_fallback_probe()
         pushed = self._health_push_registry.get(replica.replica_id.unique_id)
         if pushed is not None:
             replica.record_pushed_health(*pushed)
