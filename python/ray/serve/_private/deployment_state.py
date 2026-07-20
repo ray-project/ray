@@ -44,7 +44,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_LATENCY_BUCKET_MS,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
@@ -710,6 +709,16 @@ def _push_freshness_window_s(health_check_period_s: float) -> float:
     return max(health_check_period_s * 1.5, 1.0)
 
 
+# Most of a deployment's pushed health going stale at once (by its own
+# configured period) is the signature of controller-side ingest lag, not mass
+# replica failure. Deferring the pull fallback then avoids a probe storm that
+# would deepen the lag and can cascade into false kills; the cap bounds it so
+# a real mass outage still surfaces.
+HEALTH_PUSH_STALL_MIN_TRACKED = 64
+HEALTH_PUSH_STALL_STALE_FRACTION = 0.5
+HEALTH_PUSH_STALL_MAX_DEFER_S = 120.0
+
+
 class ReplicaHealthPushRegistry:
     """Latest self-health pushed by each replica, keyed by replica unique id.
 
@@ -721,15 +730,6 @@ class ReplicaHealthPushRegistry:
     _PRUNE_MAX_AGE_S = 600.0
     _GAP_BUCKET_S = 0.25
     _GAP_NBUCKETS = 240  # 60s range
-    # Most tracked replicas going stale at once is the signature of
-    # controller-side ingest lag, not mass replica failure. Deferring the pull
-    # fallback then avoids a probe storm that would deepen the lag and can
-    # cascade into false kills; the cap bounds it so a real mass outage still
-    # surfaces.
-    _STALL_MIN_TRACKED = 64
-    _STALL_STALE_FRACTION = 0.5
-    _STALL_MAX_DEFER_S = 120.0
-    _STALL_CHECK_TTL_S = 1.0
 
     def __init__(self):
         # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
@@ -739,9 +739,6 @@ class ReplicaHealthPushRegistry:
         self._gap_hist = [0] * self._GAP_NBUCKETS
         self._gap_count = 0
         self._gap_max_s = 0.0
-        self._stall_checked_at: float = 0.0
-        self._stall_flag: bool = False
-        self._stall_since: Optional[float] = None
 
     def record(
         self,
@@ -775,44 +772,6 @@ class ReplicaHealthPushRegistry:
         self, replica_unique_id: str
     ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
         return self._state.get(replica_unique_id)
-
-    def stale_counts(self, freshness_window_s: float) -> Tuple[int, int]:
-        """(stale, total) tracked replicas whose last push arrived too long ago."""
-        cutoff = time.time() - freshness_window_s
-        stale = sum(1 for v in self._state.values() if v[1] < cutoff)
-        return stale, len(self._state)
-
-    def systemic_stall(self) -> bool:
-        """True while pushes for most tracked replicas are stale at once.
-
-        Cached for ~1s (called once per swept replica). Bounded by
-        _STALL_MAX_DEFER_S per episode so a genuine mass outage still falls
-        through to pull probes.
-        """
-        now = time.time()
-        if now - self._stall_checked_at > self._STALL_CHECK_TTL_S:
-            self._stall_checked_at = now
-            stale, total = self.stale_counts(
-                _push_freshness_window_s(DEFAULT_HEALTH_CHECK_PERIOD_S)
-            )
-            self._stall_flag = (
-                total >= self._STALL_MIN_TRACKED
-                and stale >= total * self._STALL_STALE_FRACTION
-            )
-            if not self._stall_flag:
-                self._stall_since = None
-            elif self._stall_since is None:
-                self._stall_since = now
-                logger.warning(
-                    f"Pushed health went stale for {stale}/{total} replicas at "
-                    "once; treating as controller-side ingest lag and deferring "
-                    f"fallback probes for up to {self._STALL_MAX_DEFER_S}s."
-                )
-        return (
-            self._stall_flag
-            and self._stall_since is not None
-            and time.time() - self._stall_since < self._STALL_MAX_DEFER_S
-        )
 
     def gap_stats(self) -> Dict[str, float]:
         """Percentiles of the replicas' actual self-check intervals."""
@@ -3075,6 +3034,11 @@ class DeploymentState:
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
         self._health_push_registry = health_push_registry
+        self._push_probes_deferred: bool = False
+        self._push_stall_since: Optional[float] = None
+        self._push_stall_stale: int = 0
+        self._push_stall_total: int = 0
+        self._push_stall_window_s: float = 0.0
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -4863,15 +4827,53 @@ class DeploymentState:
         graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
         self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
 
+    def _finalize_push_stall_verdict(self) -> None:
+        """Set next sweep's probe-deferral from this sweep's staleness tally.
+
+        Most of this deployment's pushed health going stale at once (by its own
+        window) reads as controller-side ingest lag, so fallback probes are
+        deferred -- bounded by HEALTH_PUSH_STALL_MAX_DEFER_S per episode so a
+        genuine mass outage still falls through to probes.
+        """
+        stale, total = self._push_stall_stale, self._push_stall_total
+        if (
+            total < HEALTH_PUSH_STALL_MIN_TRACKED
+            or stale < total * HEALTH_PUSH_STALL_STALE_FRACTION
+        ):
+            self._push_stall_since = None
+            self._push_probes_deferred = False
+            return
+        now = time.time()
+        if self._push_stall_since is None:
+            self._push_stall_since = now
+            logger.warning(
+                f"Pushed health went stale for {stale}/{total} replicas of "
+                f"{self._id} at once; treating as controller-side ingest lag "
+                "and deferring fallback probes for up to "
+                f"{HEALTH_PUSH_STALL_MAX_DEFER_S}s."
+            )
+        self._push_probes_deferred = (
+            now - self._push_stall_since < HEALTH_PUSH_STALL_MAX_DEFER_S
+        )
+
     def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
-        """Hand the replica's latest pushed self-health to its wrapper."""
+        """Hand the replica's latest pushed self-health to its wrapper.
+
+        Tallies push staleness for this deployment's stall verdict and, while
+        the previous sweep's verdict says staleness is systemic, keeps the
+        replica's probe gate closed.
+        """
         if self._health_push_registry is None:
             return
-        if self._health_push_registry.systemic_stall():
+        if self._push_probes_deferred:
             replica.defer_push_fallback_probe()
         pushed = self._health_push_registry.get(replica.replica_id.unique_id)
-        if pushed is not None:
-            replica.record_pushed_health(*pushed)
+        if pushed is None:
+            return
+        self._push_stall_total += 1
+        if time.time() - pushed[1] > self._push_stall_window_s:
+            self._push_stall_stale += 1
+        replica.record_pushed_health(*pushed)
 
     def check_and_update_replicas(self):
         """
@@ -4879,6 +4881,13 @@ class DeploymentState:
         with state container from previous update() cycle to see if any state
         transition happened.
         """
+        self._finalize_push_stall_verdict()
+        self._push_stall_stale = 0
+        self._push_stall_total = 0
+        if self._target_state.info is not None:
+            self._push_stall_window_s = _push_freshness_window_s(
+                self._target_state.info.deployment_config.health_check_period_s
+            )
 
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []

@@ -9847,57 +9847,92 @@ class TestPushedHealth:
 
 
 class TestPushSystemicStallGuard:
-    """Mass push staleness reads as controller-side lag: defer fallback probes,
-    bounded so a genuine mass outage still surfaces."""
+    """Most of a deployment's pushed health going stale at once (by its own
+    window) reads as controller-side lag: defer fallback probes, bounded so a
+    genuine mass outage still surfaces."""
 
-    def _registry_with(self, n, stale_n, age_s=60.0):
+    def _ds(self, window_s=15.0):
         from ray.serve._private.deployment_state import ReplicaHealthPushRegistry
 
-        registry = ReplicaHealthPushRegistry()
+        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
+        ds._health_push_registry = ReplicaHealthPushRegistry()
+        ds._push_probes_deferred = False
+        ds._push_stall_since = None
+        ds._push_stall_stale = 0
+        ds._push_stall_total = 0
+        ds._push_stall_window_s = window_s
+        ds._id = "test-deployment"
+        return ds
+
+    def _seed(self, ds, n, stale_n, age_s=60.0):
         now = time.time()
         for i in range(n):
             received_at = now - age_s if i < stale_n else now
-            registry._state[f"r{i}"] = (now - age_s, received_at, True, 0)
-        return registry
+            ds._health_push_registry._state[f"r{i}"] = (
+                now - age_s,
+                received_at,
+                True,
+                0,
+            )
 
-    def test_below_min_tracked_never_systemic(self):
-        registry = self._registry_with(n=63, stale_n=63)
-        assert not registry.systemic_stall()
+    def _sweep(self, ds, n):
+        for i in range(n):
+            replica = Mock()
+            replica.replica_id.unique_id = f"r{i}"
+            ds._apply_pushed_health(replica)
 
-    def test_minority_stale_not_systemic(self):
-        registry = self._registry_with(n=100, stale_n=49)
-        assert not registry.systemic_stall()
+    def _tally_and_verdict(self, ds, n, stale_n):
+        self._seed(ds, n, stale_n)
+        self._sweep(ds, n)
+        ds._finalize_push_stall_verdict()
 
-    def test_majority_stale_is_systemic(self):
-        registry = self._registry_with(n=100, stale_n=80)
-        assert registry.systemic_stall()
+    def test_majority_stale_defers_next_sweep(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=80)
+        assert (ds._push_stall_stale, ds._push_stall_total) == (80, 100)
+        assert ds._push_probes_deferred
+        # Next sweep: every replica's probe gate is held closed.
+        replica = Mock()
+        replica.replica_id.unique_id = "r0"
+        ds._apply_pushed_health(replica)
+        replica.defer_push_fallback_probe.assert_called_once()
 
-    def test_defer_is_bounded(self):
-        registry = self._registry_with(n=100, stale_n=100)
-        assert registry.systemic_stall()
-        # Once the stall has lasted past the cap, probes must resume.
-        registry._stall_since = time.time() - registry._STALL_MAX_DEFER_S - 1
-        assert not registry.systemic_stall()
+    def test_below_min_tracked_never_defers(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=63, stale_n=63)
+        assert not ds._push_probes_deferred
 
-    def test_recovery_clears_stall(self):
-        registry = self._registry_with(n=100, stale_n=100)
-        assert registry.systemic_stall()
-        registry._state = self._registry_with(n=100, stale_n=0)._state
-        registry._stall_checked_at = 0.0  # bypass the ~1s verdict cache
-        assert not registry.systemic_stall()
-        assert registry._stall_since is None
+    def test_minority_stale_does_not_defer(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=49)
+        assert not ds._push_probes_deferred
 
-    def test_verdict_cached_between_checks(self):
-        registry = self._registry_with(n=100, stale_n=100)
-        assert registry.systemic_stall()
-        # State recovers, but within the cache TTL the verdict holds.
-        registry._state = self._registry_with(n=100, stale_n=0)._state
-        assert registry.systemic_stall()
+    def test_long_period_deployment_not_stale_by_its_own_window(self):
+        # Entries 60s old are fresh for a deployment whose configured window
+        # exceeds that (cursor review: the verdict must use the deployment's
+        # own period, not the default).
+        ds = self._ds(window_s=90.0)
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_stall_stale == 0
+        assert not ds._push_probes_deferred
 
-    def test_stale_counts(self):
-        registry = self._registry_with(n=10, stale_n=4)
-        stale, total = registry.stale_counts(30.0)
-        assert (stale, total) == (4, 10)
+    def test_defer_is_bounded_per_episode(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_probes_deferred
+        ds._push_stall_since = time.time() - ds_mod.HEALTH_PUSH_STALL_MAX_DEFER_S - 1
+        ds._finalize_push_stall_verdict()
+        assert not ds._push_probes_deferred
+
+    def test_recovery_clears_the_episode(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_probes_deferred
+        ds._push_stall_stale = 0
+        ds._push_stall_total = 100
+        ds._finalize_push_stall_verdict()
+        assert not ds._push_probes_deferred
+        assert ds._push_stall_since is None
 
     def test_defer_holds_wrapper_probe_gate(self):
         wrapper = TestPushedHealth()._wrapper()
@@ -9936,6 +9971,10 @@ def test_apply_pushed_health_hands_off_to_wrapper():
     entries or registry leave the pull path untouched."""
     ds = DeploymentState.__new__(DeploymentState)
     ds._health_push_registry = ReplicaHealthPushRegistry()
+    ds._push_probes_deferred = False
+    ds._push_stall_stale = 0
+    ds._push_stall_total = 0
+    ds._push_stall_window_s = 15.0
     rep = Mock()
     rep.replica_id.unique_id = "r1"
     ds._health_push_registry.record("r1", 123.0, True)
