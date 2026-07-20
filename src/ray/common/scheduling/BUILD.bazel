@@ -1,6 +1,16 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
+    name = "cluster_resource_storage",
+    hdrs = [
+        "cluster_resource_storage_interface.h",
+    ],
+    deps = [
+        "//src/ray/common:id",
+    ],
+)
+
+ray_cc_library(
     name = "scheduling_ids",
     srcs = ["scheduling_ids.cc"],
     hdrs = ["scheduling_ids.h"],
