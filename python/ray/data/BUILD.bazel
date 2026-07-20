@@ -1895,7 +1895,7 @@ py_test(
 
 py_test(
     name = "test_webdataset",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_webdataset.py"],
     tags = [
         "exclusive",
