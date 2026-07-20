@@ -85,6 +85,14 @@ def _dataplane() -> str:
     return os.environ.get("RAY_FLIGHT_DATAPLANE", "vm").lower()
 
 
+def _transport() -> str:
+    """Cross-node transport: "flight" (Arrow Flight / gRPC DoGet) or "tcp"
+    (raw length-prefixed Arrow IPC stream over a plain socket). "tcp" drops the
+    HTTP/2 + protobuf stack, so the consumer worker spends far less CPU on the
+    receive path. Defaults to "flight"."""
+    return os.environ.get("RAY_FLIGHT_TRANSPORT", "flight").lower()
+
+
 def _close_shm_entry(entry) -> None:
     """Close the mmap and fd of a `self._shm` entry (fd, mm, size)."""
     if entry is None:
@@ -221,6 +229,12 @@ class FlightCore:
         self._fd_sock = None
         self._fd_sock_path: Optional[str] = None
         self._fd_server_thread = None
+        # Raw-TCP transport server (alternative to Flight for cross-node fetch).
+        # Streams the length-prefixed Arrow IPC bytes over a plain socket,
+        # bypassing gRPC/HTTP-2 to cut consumer-side receive CPU.
+        self._tcp_sock = None
+        self._tcp_addr: Optional[str] = None
+        self._tcp_server_thread = None
 
     # ------------------------------------------------------------ public API
 
@@ -248,6 +262,17 @@ class FlightCore:
                 return self._fd_sock_path
             self._start_fd_server_locked()
             return self._fd_sock_path
+
+    def ensure_tcp_server(self) -> str:
+        """Start the raw-TCP transport server on first call; return its
+        "host:port" address. Used by the tcp cross-node transport."""
+        if self._tcp_addr is not None:
+            return self._tcp_addr
+        with self._lock:
+            if self._tcp_addr is not None:
+                return self._tcp_addr
+            self._start_tcp_server_locked()
+            return self._tcp_addr
 
     def put(self, key: str, table) -> int:
         """Store `table` under `key`; return its IPC stream size.
@@ -353,6 +378,47 @@ class FlightCore:
         client = self._get_client(flight_uri)
         ticket = flight.Ticket(key.encode("utf-8"))
         return client.do_get(ticket).read_all()
+
+    def fetch_via_tcp(self, tcp_addr: str, key: str, size: int):
+        """Cross-node consumer path over a raw socket (no gRPC).
+
+        Sends the key, receives an 8-byte length then exactly that many bytes of
+        the Arrow IPC stream into a single buffer, and reconstructs the table
+        zero-copy (arrays view the received buffer, which the table keeps alive).
+        The only payload copy is the kernel->buffer recv; there is no HTTP/2
+        framing, flow-control, or protobuf work on the consumer worker.
+        """
+        import pyarrow as pa
+        import pyarrow.ipc as ipc
+
+        host, port = tcp_addr.rsplit(":", 1)
+        key_bytes = key.encode("utf-8")
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.connect((host, int(port)))
+        try:
+            sock.sendall(struct.pack("<I", len(key_bytes)) + key_bytes)
+            hdr = _recv_exact(sock, 8)
+            if hdr is None:
+                raise OSError(f"short tcp reply for key {key}")
+            (recv_size,) = struct.unpack("<q", hdr)
+            if recv_size < 0:
+                raise KeyError(f"object not found: {key}")
+
+            buf = bytearray(recv_size)
+            view = memoryview(buf)
+            got = 0
+            while got < recv_size:
+                n = sock.recv_into(view[got:], recv_size - got)
+                if n == 0:
+                    raise OSError(
+                        f"tcp stream truncated for key {key}: {got}/{recv_size}"
+                    )
+                got += n
+            return ipc.open_stream(pa.py_buffer(buf)).read_all()
+        finally:
+            sock.close()
 
     def send_delete_rpc(self, flight_uri: str, key: str) -> None:
         """Native path helper: ask producer to drop a key."""
@@ -579,6 +645,61 @@ class FlightCore:
                 return
             fd, _mm, size = entry
             socket.send_fds(conn, [struct.pack("<q", size)], [fd])
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    def _start_tcp_server_locked(self) -> None:
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("0.0.0.0", 0))
+        srv.listen(128)
+        port = srv.getsockname()[1]
+        self._tcp_sock = srv
+        self._tcp_addr = f"{_get_local_ip()}:{port}"
+        t = threading.Thread(target=self._serve_tcp, args=(srv,), daemon=True)
+        t.start()
+        self._tcp_server_thread = t
+
+    def _serve_tcp(self, srv) -> None:
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(
+                target=self._handle_tcp_conn, args=(conn,), daemon=True
+            ).start()
+
+    def _handle_tcp_conn(self, conn) -> None:
+        """Producer-side handler: read a key, stream back its Arrow IPC bytes.
+
+        Wire format: request is key_len(4) + key; reply is size(8) followed by
+        that many IPC-stream bytes on a hit, or size=-1 with no payload on a
+        miss. The payload is sent straight from the scatter-list captured by
+        put() (sink._refs), so the producer never re-serializes the table.
+        """
+        try:
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            hdr = _recv_exact(conn, 4)
+            if hdr is None:
+                return
+            (key_len,) = struct.unpack("<I", hdr)
+            key_bytes = _recv_exact(conn, key_len)
+            if key_bytes is None:
+                return
+            key = key_bytes.decode("utf-8")
+            with self._lock:
+                sink = self._sinks.get(key)
+            if sink is None:
+                conn.sendall(struct.pack("<q", -1))
+                return
+            conn.sendall(struct.pack("<q", sink.tell()))
+            for ref in sink._refs:
+                mv = memoryview(ref).cast("B")
+                if mv.nbytes:
+                    conn.sendall(mv)
         except OSError:
             pass
         finally:

@@ -53,6 +53,17 @@ def parse_args():
         ),
     )
     p.add_argument(
+        "--transport",
+        choices=["flight", "tcp"],
+        default="flight",
+        help=(
+            "Cross-node transport for the arrow-* modes: 'flight' (Arrow Flight / "
+            "gRPC DoGet) or 'tcp' (raw length-prefixed Arrow IPC stream over a "
+            "plain socket; lower consumer-side CPU). Ignored for --mode ray and "
+            "for same-node transfers."
+        ),
+    )
+    p.add_argument(
         "--placement", choices=["same-node", "cross-node", "mixed"], default="same-node"
     )
     p.add_argument(
@@ -68,6 +79,15 @@ def parse_args():
     )
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--sizes-mb", type=int, nargs="+", default=[1, 10, 100])
+    p.add_argument(
+        "--telemetry",
+        action="store_true",
+        help=(
+            "sample per-node CPU-seconds and (non-loopback) network bytes around "
+            "each measurement window; report CPU overhead, wire bandwidth, and "
+            "amplification vs logical data. Most meaningful for cross-node/mixed."
+        ),
+    )
     # Append-pipeline mode: a chained N-stage pipeline where each stage appends
     # a derived column and hands the result to the next stage. Compares the
     # "copy" baseline (return the full table each hop, through plasma) against
@@ -227,6 +247,65 @@ def _create_actors(cls, node_ids):
     return actors
 
 
+# --------------------------------------------------------------- telemetry
+
+
+@ray.remote(num_cpus=0)
+def _node_counters():
+    """Snapshot system-wide CPU time and non-loopback network bytes on the node
+    this task lands on. Deltas between two snapshots over a window give the CPU
+    consumed and the bytes that crossed the wire during it."""
+    import psutil
+
+    ct = psutil.cpu_times()
+    per_nic = psutil.net_io_counters(pernic=True)
+    sent = sum(v.bytes_sent for k, v in per_nic.items() if not k.startswith("lo"))
+    recv = sum(v.bytes_recv for k, v in per_nic.items() if not k.startswith("lo"))
+    return {
+        "cpu_s": ct.user + ct.system,
+        "sent": sent,
+        "recv": recv,
+        "cores": psutil.cpu_count() or 1,
+    }
+
+
+def _snapshot_nodes(node_ids):
+    """Return {node_id: counters} sampled concurrently, one task per node."""
+    refs = {
+        nid: _node_counters.options(label_selector={"ray.io/node-id": nid}).remote()
+        for nid in node_ids
+    }
+    return {nid: ray.get(ref) for nid, ref in refs.items()}
+
+
+def _telemetry_deltas(snap0, snap1):
+    """CPU-seconds, core count, and non-loopback MB sent/received over a window.
+
+    Each transferred byte is sent once (producer node) and received once
+    (consumer node), so bytes-sent is used as the wire volume."""
+    nodes = snap0.keys()
+    cpu_s = sum(snap1[n]["cpu_s"] - snap0[n]["cpu_s"] for n in nodes)
+    cores = sum(snap0[n]["cores"] for n in nodes)
+    sent_mb = sum(snap1[n]["sent"] - snap0[n]["sent"] for n in nodes) / 1e6
+    recv_mb = sum(snap1[n]["recv"] - snap0[n]["recv"] for n in nodes) / 1e6
+    return {"cpu_s": cpu_s, "cores": cores, "sent_mb": sent_mb, "recv_mb": recv_mb}
+
+
+def _print_efficiency(label, tel, elapsed, logical_mb):
+    """Print one CPU/network efficiency line from telemetry deltas."""
+    cpu_s, cores = tel["cpu_s"], tel["cores"]
+    sent_mb, recv_mb = tel["sent_mb"], tel["recv_mb"]
+    cpu_util = (cpu_s / (elapsed * cores) * 100) if elapsed and cores else 0.0
+    cpu_ms_per_mb = (cpu_s / logical_mb * 1e3) if logical_mb else 0.0
+    ampl = (sent_mb / logical_mb) if logical_mb else 0.0
+    print(
+        f"  {label}  cpu={cpu_s:7.1f}s ({cpu_util:4.1f}% of {cores}c)  "
+        f"net_sent={sent_mb:9.1f}MB  net_recv={recv_mb:9.1f}MB  "
+        f"logical={logical_mb:9.1f}MB  wire_ampl={ampl:4.2f}x  "
+        f"cpu={cpu_ms_per_mb:5.2f}ms/MB"
+    )
+
+
 # ---------------------------------------------------------------------- core
 
 
@@ -292,7 +371,9 @@ class _Stream:
         return len(self._pending)
 
 
-def bench(producers, consumers, size_mb, duration_s, max_in_flight):
+def bench(
+    producers, consumers, size_mb, duration_s, max_in_flight, telemetry_nodes=None
+):
     stream = _Stream(producers, consumers, size_mb)
 
     # Warmup: fill the pipeline and drain it once so first-time allocation /
@@ -302,6 +383,7 @@ def bench(producers, consumers, size_mb, duration_s, max_in_flight):
         stream.wait_available(timeout=0.001)
 
     # Steady-state streaming window.
+    snap0 = _snapshot_nodes(telemetry_nodes) if telemetry_nodes else None
     latencies = []
     t0 = time.perf_counter()
     end = t0 + duration_s
@@ -310,6 +392,7 @@ def bench(producers, consumers, size_mb, duration_s, max_in_flight):
         latencies.extend(stream.wait_available(timeout=0.001))
     completed = len(latencies)
     elapsed = time.perf_counter() - t0
+    snap1 = _snapshot_nodes(telemetry_nodes) if telemetry_nodes else None
 
     # Don't leave tasks hanging for the next size_mb iteration.
     stream.drain()
@@ -330,6 +413,14 @@ def bench(producers, consumers, size_mb, duration_s, max_in_flight):
         f"avg={avg_ms:6.1f}ms  p50={p50_ms:6.1f}ms  p99={p99_ms:6.1f}ms  "
         f"tables/s={tables_per_s:7.1f}  throughput={mb_per_s:8.1f} MB/s"
     )
+
+    logical_mb = size_mb * completed
+    result = {"logical_mb": logical_mb, "elapsed": elapsed, "telemetry": None}
+    if snap0 is not None and snap1 is not None:
+        tel = _telemetry_deltas(snap0, snap1)
+        _print_efficiency("telemetry:", tel, elapsed, logical_mb)
+        result["telemetry"] = tel
+    return result
 
 
 def run_append_pipeline(args):
@@ -481,7 +572,10 @@ def main():
 
     runtime_env = None
     if args.mode in ("arrow-native", "arrow-rdt"):
-        env_vars = {"RAY_FLIGHT_DATAPLANE": args.dataplane}
+        env_vars = {
+            "RAY_FLIGHT_DATAPLANE": args.dataplane,
+            "RAY_FLIGHT_TRANSPORT": args.transport,
+        }
         if args.mode == "arrow-native":
             env_vars["RAY_USE_FLIGHT_NATIVE"] = "1"
         # Pass through the fetch-path debug flag so it reaches worker processes.
@@ -507,6 +601,7 @@ def main():
     print(f"Mode:          {MODE_LABELS[args.mode]}")
     if args.mode in ("arrow-native", "arrow-rdt"):
         print(f"Dataplane:     {args.dataplane}  (same-node transfer backend)")
+        print(f"Transport:     {args.transport}  (cross-node transport)")
     print(
         f"Placement:     {args.placement}  (cluster has {len(all_nodes)} worker nodes)"
     )
@@ -521,8 +616,43 @@ def main():
     print(f"Sizes:         {args.sizes_mb} MB")
     print()
 
+    telemetry_nodes = all_nodes if args.telemetry else None
+    if args.telemetry:
+        print(f"Telemetry:     on ({len(all_nodes)} node(s) sampled)")
+        print()
+
+    results = []
     for size_mb in args.sizes_mb:
-        bench(producers, consumers, size_mb, args.duration, max_in_flight)
+        results.append(
+            bench(
+                producers,
+                consumers,
+                size_mb,
+                args.duration,
+                max_in_flight,
+                telemetry_nodes=telemetry_nodes,
+            )
+        )
+
+    tel_results = [r for r in results if r["telemetry"] is not None]
+    if tel_results:
+        total_logical = sum(r["logical_mb"] for r in tel_results)
+        total_elapsed = sum(r["elapsed"] for r in tel_results)
+        total = {
+            "cpu_s": sum(r["telemetry"]["cpu_s"] for r in tel_results),
+            "cores": tel_results[0]["telemetry"]["cores"],
+            "sent_mb": sum(r["telemetry"]["sent_mb"] for r in tel_results),
+            "recv_mb": sum(r["telemetry"]["recv_mb"] for r in tel_results),
+        }
+        app_mb_s = total_logical / total_elapsed if total_elapsed else 0.0
+        wire_mb_s = total["sent_mb"] / total_elapsed if total_elapsed else 0.0
+        print()
+        print(f"Summary (aggregate over {len(tel_results)} size(s)):")
+        _print_efficiency("TOTAL:    ", total, total_elapsed, total_logical)
+        print(
+            f"             app throughput={app_mb_s:8.1f} MB/s   "
+            f"wire bandwidth={wire_mb_s:8.1f} MB/s"
+        )
 
     ray.shutdown()
 

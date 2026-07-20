@@ -37,7 +37,7 @@ class FlightObjectStore:
         """Store a table and return the transfer info dict embedded into the
         Ray object store as the return value."""
         import ray
-        from ray._private.flight_core import _dataplane
+        from ray._private.flight_core import _dataplane, _transport
 
         self._core.ensure_server()
         size = self._core.put(key, table)
@@ -52,6 +52,9 @@ class FlightObjectStore:
         if _dataplane() == "shm":
             # Same-node consumers fetch the shared-memory fd over this socket.
             info["fd_sock_path"] = self._core.ensure_fd_server()
+        if _transport() == "tcp":
+            # Cross-node consumers fetch the IPC stream over this raw socket.
+            info["tcp_addr"] = self._core.ensure_tcp_server()
         return info
 
     def fetch(self, info: dict):
@@ -73,6 +76,8 @@ class FlightObjectStore:
         same_node = producer_node == my_node
         backend = info.get("backend", "vm")
 
+        from ray._private.flight_core import _transport
+
         if same_node and backend == "shm":
             # Shared-memory fd passing works on both Linux and macOS.
             path = "shm"
@@ -80,6 +85,10 @@ class FlightObjectStore:
         elif same_node and sys.platform == "linux":
             path = "vm"
             table = self._core.fetch_via_vm(flight_uri, key, ipc_size)
+        elif _transport() == "tcp" and info.get("tcp_addr"):
+            # Cross-node raw-socket transport (no gRPC).
+            path = "tcp"
+            table = self._core.fetch_via_tcp(info["tcp_addr"], key, ipc_size)
         else:
             path = "flight"
             table = self._core.fetch_via_flight(flight_uri, key)
