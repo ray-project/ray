@@ -27,9 +27,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data._internal.object_extensions.arrow import (
-    raise_on_pickle_object_columns,
-)
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -62,9 +60,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.path_util import (
-    _resolve_paths_and_filesystem,
-)
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
@@ -705,9 +701,9 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,
@@ -1160,6 +1156,9 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
+                # When you unpickle untrusted data, attackers can execute arbitrary
+                # code. To avoid exposing our users, raise unless the user has
+                # explicitly opted in.
                 raise_on_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
@@ -1427,9 +1426,7 @@ def _iter_batches_fallback(
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from ray.data._internal.arrow_ops.transform_pyarrow import (
-        _align_struct_fields,
-    )
+    from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
 
     if log_once("parquet_nested_fallback"):
         logger.warning(

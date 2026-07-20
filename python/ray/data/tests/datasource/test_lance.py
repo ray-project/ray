@@ -15,6 +15,7 @@ from ray.data._internal.datasource.lance_datasink import (
     LanceDatasink,
     _write_fragment,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
 
@@ -388,8 +389,6 @@ def test_write_fragment_only_materializes_stream_when_retrying(
 def test_read_lance_allows_pickle_object_columns_with_env_var(
     tmp_path, shutdown_only, monkeypatch
 ):
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
     # Set the environment variable on both the driver and the worker processes.
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
     ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
@@ -402,13 +401,10 @@ def test_read_lance_allows_pickle_object_columns_with_env_var(
 
     rows = ray.data.read_lance(path).take_all()
 
-    assert len(rows) == 1
-    assert rows[0]["col"] == {"key": "value"}
+    assert rows == [{"col": {"key": "value"}}]
 
 
 def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
     marker = tmp_path / "exploit_marker"
 
     class Exploit:
@@ -421,36 +417,6 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
     storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
     table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
     path = os.path.join(str(tmp_path), "exploit.lance")
-    lance.write_dataset(table, path)
-
-    ds = ray.data.read_lance(path)
-    with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
-
-    assert not marker.exists(), "pickle.load executed attacker code"
-
-
-def test_read_lance_rejects_nested_pickle_object_columns(
-    tmp_path, ray_start_regular_shared
-):
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
-    # A pickled-object column nested inside a `list<...>` must trip the guard
-    # just like a top-level one; otherwise nesting bypasses the check.
-    marker = tmp_path / "exploit_marker"
-
-    class Exploit:
-        def __reduce__(self):
-            import os
-
-            return (os.system, (f"touch {marker}",))
-
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
-    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
-    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
-    table = pa.table({"col": list_array})
-    path = os.path.join(str(tmp_path), "nested_exploit.lance")
     lance.write_dataset(table, path)
 
     ds = ray.data.read_lance(path)

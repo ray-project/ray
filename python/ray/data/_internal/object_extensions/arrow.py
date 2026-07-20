@@ -13,39 +13,20 @@ from ray.util.annotations import PublicAPI
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
 
-# Opt-in env var to allow reading files that contain
-# `ray.data.arrow_pickled_object` columns. Disabled by default because
-# `pickle.load` on attacker-controlled data enables arbitrary code execution.
+# Some datasource implementations call `raise_on_pickle_object_columns` to protect users
+# from arbitrary code execution. If you set this env var, then
+# `raise_on_pickle_object_columns` no-ops, and you can read pickled data.
 AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
-
-
-def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
-    """Return whether ``dtype`` is, or nests, the pickled-object extension type.
-
-    The extension type can hide inside nested types (``list<ext>``,
-    ``struct<ext>``, ``map<ext>``, ...), so we descend recursively rather than
-    inspecting only the top-level type. Missing a nested occurrence would let a
-    crafted file smuggle a pickle payload past the guard.
-    """
-    if isinstance(dtype, ArrowPythonObjectType):
-        return True
-    # `pa.DataType.fields` isn't available across supported PyArrow versions, so
-    # walk the child types by index instead.
-    return any(
-        _contains_pickle_object_type(dtype.field(i).type)
-        for i in range(dtype.num_fields)
-    )
 
 
 def raise_on_pickle_object_columns(table: "pa.Table") -> None:
     """Raise if ``table`` has data stored as the pickled-object extension type.
 
     Deserializing ``ray.data.arrow_pickled_object`` columns requires unpickling, which
-    can execute arbitrary code. Datasources can call this after reading tables to
-    prevent exposing users.
+    can execute arbitrary code. To avoid exposing users to this vulnerability,
+    datasource implementations can call this function after reading tables.
 
-    Setting ``AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR=1`` opts into reading such
-    columns from trusted sources and makes this a no-op.
+    If you set ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1``, this function no-ops
     """
     if env_bool(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False):
         return
@@ -64,6 +45,17 @@ def raise_on_pickle_object_columns(table: "pa.Table") -> None:
             f"reading these columns. In a Ray cluster, this variable must "
             f"be set on all worker nodes (e.g. via 'runtime_env')."
         )
+
+
+def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
+    """Return whether ``dtype`` is, or nests, the pickled-object extension type."""
+    if isinstance(dtype, ArrowPythonObjectType):
+        return True
+
+    return any(
+        _contains_pickle_object_type(dtype.field(i).type)
+        for i in range(dtype.num_fields)
+    )
 
 
 # Please see https://arrow.apache.org/docs/python/extending_types.html for more info

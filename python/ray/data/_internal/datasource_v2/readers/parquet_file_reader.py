@@ -24,9 +24,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
-from ray.data._internal.object_extensions.arrow import (
-    raise_on_pickle_object_columns,
-)
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -310,7 +308,11 @@ class ParquetFileReader(FileReader):
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):
+            # When you unpickle untrusted data, attackers can execute arbitrary
+            # code. To avoid exposing our users, raise unless the user has
+            # explicitly opted in.
             raise_on_pickle_object_columns(table)
+
             yield table
 
     def _iter_fragment_tables_without_pickle_check(
@@ -324,9 +326,7 @@ class ParquetFileReader(FileReader):
         """
         import pyarrow.compute as pc
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import (
-            _align_struct_fields,
-        )
+        from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
         from ray.data._internal.datasource.parquet_datasource import (
             _get_safe_batch_size_for_nested_types,
             _needs_nested_type_fallback,
