@@ -18,6 +18,8 @@ _check_pyarrow_version()
 # `raise_on_pickle_object_columns` no-ops, and you can read pickled data.
 AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
+ARROW_PYTHON_OBJECT_EXTENSION_NAME = "ray.data.arrow_pickled_object"
+
 
 def raise_on_pickle_object_columns(table: "pa.Table") -> None:
     """Raise if ``table`` has data stored as the pickled-object extension type.
@@ -49,8 +51,16 @@ def raise_on_pickle_object_columns(table: "pa.Table") -> None:
 
 def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
     """Return whether ``dtype`` is, or nests, the pickled-object extension type."""
-    if isinstance(dtype, ArrowPythonObjectType):
-        return True
+    if isinstance(dtype, pa.ExtensionType):
+        if dtype.extension_name == ARROW_PYTHON_OBJECT_EXTENSION_NAME:
+            return True
+
+        # An extension type wraps a storage type that may itself nest the object type.
+        return _contains_pickle_object_type(dtype.storage_type)
+
+    # Dictionary-encoded columns report ``num_fields == 0``, so recurse explicitly.
+    if pa.types.is_dictionary(dtype):
+        return _contains_pickle_object_type(dtype.value_type)
 
     return any(
         _contains_pickle_object_type(dtype.field(i).type)
@@ -68,7 +78,7 @@ class ArrowPythonObjectType(pa.ExtensionType):
 
     def __init__(self) -> None:
         # Defines the underlying storage type as the PyArrow LargeBinary type
-        super().__init__(pa.large_binary(), "ray.data.arrow_pickled_object")
+        super().__init__(pa.large_binary(), ARROW_PYTHON_OBJECT_EXTENSION_NAME)
 
     def __arrow_ext_serialize__(self) -> bytes:
         # Since there are no type parameters, we are free to return empty
