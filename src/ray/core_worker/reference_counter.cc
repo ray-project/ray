@@ -468,12 +468,19 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
-  RemoveLocalReferenceInternal(object_id, deleted);
+  DeferredCallbacks deferred_cbs;
+  {
+    absl::MutexLock lock(&mutex_);
+    RemoveLocalReferenceInternal(object_id, deleted, &deferred_cbs);
+  }
+  for (auto &[id, cb] : deferred_cbs) {
+    cb(id);
+  }
 }
 
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                                    std::vector<ObjectID> *deleted) {
+                                                    std::vector<ObjectID> *deleted,
+                                                    DeferredCallbacks *deferred_cbs) {
   RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -491,7 +498,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
-    DeleteReferenceInternal(it, deleted);
+    DeleteReferenceInternal(it, deleted, deferred_cbs);
   } else {
     PRINT_REF_COUNT(it);
   }
@@ -741,7 +748,8 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
 }
 
 void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
-                                               std::vector<ObjectID> *deleted) {
+                                               std::vector<ObjectID> *deleted,
+                                               DeferredCallbacks *deferred_cbs) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
@@ -770,10 +778,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         // NOTE: a NestedReferenceCount struct is created after the first
         // mutable_nested() call, but the struct will not be deleted until the
         // enclosing Reference struct is deleted.
-        DeleteReferenceInternal(inner_it, deleted);
+        DeleteReferenceInternal(inner_it, deleted, deferred_cbs);
       }
     }
-    OnObjectOutOfScopeOrFreed(it);
+    OnObjectOutOfScopeOrFreed(it, deferred_cbs);
     if (deleted != nullptr) {
       deleted->push_back(id);
     }
@@ -839,7 +847,8 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
+void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
+                                                 DeferredCallbacks *deferred_cbs) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
@@ -857,8 +866,14 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     }
   }
 
-  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-    callback(it->first);
+  if (deferred_cbs != nullptr) {
+    for (auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+      deferred_cbs->emplace_back(it->first, std::move(callback));
+    }
+  } else {
+    for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+      callback(it->first);
+    }
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);

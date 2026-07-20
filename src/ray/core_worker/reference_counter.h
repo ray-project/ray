@@ -539,8 +539,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Callbacks extracted under the lock to be invoked after release.
+  using DeferredCallbacks =
+      std::vector<std::pair<ObjectID, std::function<void(const ObjectID &)>>>;
+
   /// This should be called whenever the object is out of scope or manually freed.
-  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
+  /// When `deferred_cbs` is non-null, OOS callbacks are collected into it
+  /// instead of being invoked inline under the mutex.
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
+                                 DeferredCallbacks *deferred_cbs = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
@@ -654,7 +661,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
-                               std::vector<ObjectID> *deleted)
+                               std::vector<ObjectID> *deleted,
+                               DeferredCallbacks *deferred_cbs = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// To respond to the object's owner once we are no longer borrowing it.  The
@@ -723,7 +731,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// This method is internal and not thread-safe. mutex_ lock must be held before
   /// calling this method.
   void RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                    std::vector<ObjectID> *deleted)
+                                    std::vector<ObjectID> *deleted,
+                                    DeferredCallbacks *deferred_cbs = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
