@@ -11,11 +11,7 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_bool, env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
-    _check_for_pickle_object_columns,
-)
+from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_chunk_metadata,
 )
@@ -27,6 +23,9 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
+from ray.data._internal.object_extensions.arrow import (
+    raise_on_pickle_object_columns,
 )
 from ray.data._internal.util import MiB
 from ray.data.expressions import Expr
@@ -205,9 +204,6 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
-        self._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -314,8 +310,7 @@ class ParquetFileReader(FileReader):
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):
-            if not self._allow_pickle_object_columns:
-                _check_for_pickle_object_columns(table)
+            raise_on_pickle_object_columns(table)
             yield table
 
     def _iter_fragment_tables_without_pickle_check(

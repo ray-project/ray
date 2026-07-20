@@ -27,7 +27,9 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+from ray.data._internal.object_extensions.arrow import (
+    raise_on_pickle_object_columns,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -133,11 +135,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
 
 _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
-
-# Opt-in env var to allow reading Parquet files that contain
-# ray.data.arrow_pickled_object columns. Disabled by default because
-# pickle.load on attacker-controlled data enables arbitrary code execution.
-AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 
 class _ParquetFragment:
@@ -566,9 +563,6 @@ class ParquetDatasource(Datasource):
         and ``from_state`` (used by alternate constructors like
         ``from_pyarrow_dataset``).
         """
-        self._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
         self._supports_distributed_reads = supports_distributed_reads
         self._local_scheduling = local_scheduling
         self._source_paths_ref = source_paths_ref
@@ -843,7 +837,6 @@ class ParquetDatasource(Datasource):
                 self._partitioning,
             )
 
-            allow_pickle = self._allow_pickle_object_columns
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -858,7 +851,6 @@ class ParquetDatasource(Datasource):
                         partitioning,
                         filter_expr,
                         filter_columns,
-                        allow_pickle,
                     ),
                     meta,
                     schema=target_schema,
@@ -1125,25 +1117,6 @@ class ParquetDatasource(Datasource):
         return target_schema
 
 
-def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
-    pickle_cols = [
-        field.name
-        for field in table.schema
-        if isinstance(field.type, ArrowPythonObjectType)
-    ]
-    if pickle_cols:
-        raise ValueError(
-            f"This Parquet file contains columns stored as "
-            f"'ray.data.arrow_pickled_object': {pickle_cols}. Reading these "
-            f"columns requires unpickling, which can execute arbitrary code "
-            f"and is unsafe with untrusted files.\n\n"
-            f"If you trust the source of this data, set the environment "
-            f"variable {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
-            f"reading these columns. In a Ray cluster, this variable must "
-            f"be set on all worker nodes (e.g. via 'runtime_env')."
-        )
-
-
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
@@ -1156,7 +1129,6 @@ def read_fragments(
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
-    allow_pickle: bool = False,
 ) -> Iterator["pyarrow.Table"]:
     """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
@@ -1188,8 +1160,7 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                if not allow_pickle:
-                    _check_for_pickle_object_columns(table)
+                raise_on_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
