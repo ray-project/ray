@@ -105,7 +105,17 @@ class DeploymentAutoscalingState:
         # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: Sequence[ReplicaID] = []
+        self._running_replica_id_set: Set[ReplicaID] = set()
         self._cached_running_replica_strs: Set[str] = set()
+        # Running-requests series per running replica, kept in sync as reports
+        # arrive so each control loop tick doesn't rescan every replica.
+        self._running_replica_running_requests: Dict[ReplicaID, TimeSeries] = {}
+        # Bumped whenever the inputs to the merged ongoing-requests timeseries
+        # change (replica/handle reports, running set); gates the merge cache.
+        self._metrics_version: int = 0
+        self._merged_ongoing_requests_version: int = -1
+        self._merged_ongoing_requests_timeseries: TimeSeries = []
+        self._merged_ongoing_requests_window_start: Optional[float] = None
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         # Track timestamps of last scale up and scale down events
@@ -198,6 +208,8 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
+            if self._running_replica_running_requests.pop(replica_id, None) is not None:
+                self._metrics_version += 1
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -221,14 +233,25 @@ class DeploymentAutoscalingState:
 
     def update_running_replica_ids(self, running_replicas: Sequence[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
-        if running_replicas is self._running_replicas:
-            # Identity means DeploymentState handed back its memoized tuple, so the
-            # running-replica ids are unchanged and the derived str set still matches.
+        # Called every control loop tick; membership is usually unchanged, so skip the
+        # O(replicas) rebuild and keep the merge cache valid. Compared element-wise
+        # because the caller memoizes a tuple, which never equals a stored list.
+        if len(running_replicas) == len(self._running_replicas) and all(
+            a == b for a, b in zip(running_replicas, self._running_replicas)
+        ):
             return
         self._running_replicas = running_replicas
+        self._running_replica_id_set = set(running_replicas)
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
         }
+        self._running_replica_running_requests = {
+            replica_id: self._replica_metrics[replica_id].metrics[RUNNING_REQUESTS_KEY]
+            for replica_id in running_replicas
+            if replica_id in self._replica_metrics
+            and RUNNING_REQUESTS_KEY in self._replica_metrics[replica_id].metrics
+        }
+        self._metrics_version += 1
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -274,6 +297,15 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
             self._replica_metrics[replica_id] = replica_metric_report
+            # Only reports from running replicas feed the merged timeseries.
+            if replica_id in self._running_replica_id_set:
+                if RUNNING_REQUESTS_KEY in replica_metric_report.metrics:
+                    self._running_replica_running_requests[
+                        replica_id
+                    ] = replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
+                else:
+                    self._running_replica_running_requests.pop(replica_id, None)
+                self._metrics_version += 1
 
     def record_request_metrics_for_handle(
         self,
@@ -289,6 +321,7 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
+            self._metrics_version += 1
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
@@ -317,6 +350,7 @@ class DeploymentAutoscalingState:
                 and handle_metric.actor_id not in alive_serve_actor_ids
             ):
                 del self._handle_requests[handle_id]
+                self._metrics_version += 1
                 if handle_metric.total_requests > 0:
                     logger.debug(
                         f"Dropping metrics for handle '{handle_id}' because the Serve "
@@ -328,6 +362,7 @@ class DeploymentAutoscalingState:
             # proxies that have been shut down.
             elif time.time() - handle_metric.timestamp >= timeout_s:
                 del self._handle_requests[handle_id]
+                self._metrics_version += 1
                 if handle_metric.total_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
@@ -433,19 +468,7 @@ class DeploymentAutoscalingState:
         Returns:
             List of timeseries data.
         """
-        timeseries_list = []
-
-        for replica_id in self._running_replicas:
-            replica_metric_report = self._replica_metrics.get(replica_id, None)
-            if (
-                replica_metric_report is not None
-                and RUNNING_REQUESTS_KEY in replica_metric_report.metrics
-            ):
-                timeseries_list.append(
-                    replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
-                )
-
-        return timeseries_list
+        return list(self._running_replica_running_requests.values())
 
     def _collect_handle_queued_requests(self) -> List[TimeSeries]:
         """Collect queued requests timeseries from all handles.
@@ -521,8 +544,42 @@ class DeploymentAutoscalingState:
         if not timeseries_list:
             return 0.0
 
+        merged_timeseries, window_start = self._merge_timeseries(timeseries_list)
+        return self._aggregate_merged_timeseries(merged_timeseries, window_start)
+
+    def _merge_timeseries(
+        self,
+        timeseries_list: List[TimeSeries],
+    ) -> Tuple[TimeSeries, Optional[float]]:
+        """Merge timeseries into an instantaneous total plus aligned window start.
+
+        Depends only on the input series (not the current time), so the result
+        can be cached until the underlying metrics change.
+        """
         # Use instantaneous merge approach - no arbitrary windowing needed
         merged_timeseries = merge_instantaneous_total(timeseries_list)
+        # Exclude early "partial" period: when series have misaligned start times,
+        # late-starting series are implicitly 0 before their first data point, which
+        # undercounts the total and biases aggregations. Start the window at the
+        # timestamp when all series have contributed at least one point.
+        # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+        # to 10ms; if aligned_start is before the first merged point, the gap would
+        # be treated as 0 and bias the average downward.
+        window_start = None
+        if merged_timeseries:
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start <= merged_timeseries[-1].timestamp:
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
+        return merged_timeseries, window_start
+
+    def _aggregate_merged_timeseries(
+        self,
+        merged_timeseries: TimeSeries,
+        window_start: Optional[float],
+    ) -> float:
+        """Time-weighted aggregate of a merged timeseries, valid through now."""
         if merged_timeseries:
             # assume that the last recorded metric is valid for last_window_s seconds
             last_metric_time = merged_timeseries[-1].timestamp
@@ -534,20 +591,6 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
-
-            # Exclude early "partial" period: when series have misaligned start times,
-            # late-starting series are implicitly 0 before their first data point, which
-            # undercounts the total and biases aggregations. Start the window at the
-            # timestamp when all series have contributed at least one point.
-            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
-            # to 10ms; if aligned_start is before the first merged point, the gap would
-            # be treated as 0 and bias the average downward.
-            window_start = None
-            non_empty_series = [ts for ts in timeseries_list if ts]
-            if len(non_empty_series) > 1:
-                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
-                if aligned_start <= merged_timeseries[-1].timestamp:
-                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
 
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
@@ -624,35 +667,46 @@ class DeploymentAutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
-        # Collect replica-based running requests (returns List[TimeSeries])
-        replica_timeseries = self._collect_replica_running_requests()
-        metrics_collected_on_replicas = len(replica_timeseries) > 0
+        # The merged total depends only on the recorded reports and running
+        # set, so it's rebuilt only when those change; the time-dependent
+        # aggregation below runs on every call.
+        if self._merged_ongoing_requests_version != self._metrics_version:
+            # Collect replica-based running requests (returns List[TimeSeries])
+            replica_timeseries = self._collect_replica_running_requests()
+            metrics_collected_on_replicas = len(replica_timeseries) > 0
 
-        # Collect queued requests from handles (returns List[TimeSeries])
-        queued_timeseries = self._collect_handle_queued_requests()
+            # Collect queued requests from handles (returns List[TimeSeries])
+            queued_timeseries = self._collect_handle_queued_requests()
 
-        if not metrics_collected_on_replicas:
-            # Collect handle-based running requests if not collected on replicas
-            handle_timeseries = self._collect_handle_running_requests()
-        else:
-            handle_timeseries = []
+            if not metrics_collected_on_replicas:
+                # Collect handle-based running requests if not collected on replicas
+                handle_timeseries = self._collect_handle_running_requests()
+            else:
+                handle_timeseries = []
 
-        # Collect all timeseries for ongoing requests
-        ongoing_requests_timeseries = []
+            # Collect all timeseries for ongoing requests
+            ongoing_requests_timeseries = []
 
-        # Add replica timeseries
-        ongoing_requests_timeseries.extend(replica_timeseries)
+            # Add replica timeseries
+            ongoing_requests_timeseries.extend(replica_timeseries)
 
-        # Add handle timeseries if replica metrics weren't collected
-        if not metrics_collected_on_replicas:
-            ongoing_requests_timeseries.extend(handle_timeseries)
+            # Add handle timeseries if replica metrics weren't collected
+            if not metrics_collected_on_replicas:
+                ongoing_requests_timeseries.extend(handle_timeseries)
 
-        # Add queued timeseries
-        ongoing_requests_timeseries.extend(queued_timeseries)
+            # Add queued timeseries
+            ongoing_requests_timeseries.extend(queued_timeseries)
+
+            (
+                self._merged_ongoing_requests_timeseries,
+                self._merged_ongoing_requests_window_start,
+            ) = self._merge_timeseries(ongoing_requests_timeseries)
+            self._merged_ongoing_requests_version = self._metrics_version
 
         # Aggregate and add running requests to total
-        ongoing_requests = self._merge_and_aggregate_timeseries(
-            ongoing_requests_timeseries
+        ongoing_requests = self._aggregate_merged_timeseries(
+            self._merged_ongoing_requests_timeseries,
+            self._merged_ongoing_requests_window_start,
         )
 
         return ongoing_requests
