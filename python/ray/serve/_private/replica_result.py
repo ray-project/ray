@@ -193,6 +193,9 @@ class ActorReplicaResult(ReplicaResult):
         self._frame_pump_task = loop.create_task(self._pump_health_frames())
 
     async def _pump_health_frames(self):
+        # Created by _maybe_start_frame_pump before this task starts.
+        outcome = self._pump_outcome
+        assert outcome is not None
         try:
             while True:
                 obj_ref = await self._obj_ref_gen.__anext__()
@@ -201,23 +204,25 @@ class ActorReplicaResult(ReplicaResult):
                 except Exception:
                     # The exception belongs to the request; consumers surface it
                     # when they fetch the ref.
-                    self._settle_pump(obj_ref)
+                    self._settle_pump(outcome, obj_ref)
                     return
                 if isinstance(value, ReplicaHealthFrame):
                     self._record_health_frame(value)
                     continue
-                self._settle_pump(obj_ref)
+                self._settle_pump(outcome, obj_ref)
                 return
         except BaseException as e:
-            if not self._pump_outcome.done():
-                self._pump_outcome.set_exception(e)
+            if not outcome.done():
+                outcome.set_exception(e)
             if isinstance(e, asyncio.CancelledError):
                 raise
 
-    def _settle_pump(self, obj_ref: ray.ObjectRef) -> None:
+    def _settle_pump(
+        self, outcome: concurrent.futures.Future, obj_ref: ray.ObjectRef
+    ) -> None:
         with self._object_ref_or_gen_sync_lock:
             self._obj_ref = obj_ref
-        self._pump_outcome.set_result(obj_ref)
+        outcome.set_result(obj_ref)
 
     def _record_health_frame(self, frame: ReplicaHealthFrame) -> None:
         if self._on_health_frame is None:
@@ -356,8 +361,11 @@ class ActorReplicaResult(ReplicaResult):
             return self._obj_ref
 
         # The background frame pump owns the stream; wait for it to settle.
+        # (The locked section above guarantees one of _obj_ref/_pump_outcome.)
+        pump_outcome = self._pump_outcome
+        assert pump_outcome is not None
         try:
-            return self._pump_outcome.result(
+            return pump_outcome.result(
                 timeout=calculate_remaining_timeout(
                     timeout_s=timeout_s,
                     start_time_s=start_time_s,
