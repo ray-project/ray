@@ -1182,6 +1182,215 @@ def test_read_lerobot_episodes_multi_root(ray_start_regular_shared, tmp_path):
     assert {r["dataset_index"] for r in rows} == {0, 1}
 
 
+# ---------------------------------------------------------------------------
+# delta_timestamps (temporal windows, episode-aligned)
+# ---------------------------------------------------------------------------
+
+
+def test_convert_delta_timestamps_and_validation():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _convert_delta_timestamps,
+    )
+
+    keys = {"action", "state", "observation.image"}
+    tol = 1e-4
+    assert _convert_delta_timestamps(
+        {"action": [-0.2, -0.1, 0.0, 0.1]}, 10, keys, tol
+    ) == {"action": [-2, -1, 0, 1]}
+    with pytest.raises(ValueError, match="not a feature"):
+        _convert_delta_timestamps({"nope": [0.0]}, 10, keys, tol)
+    with pytest.raises(ValueError, match="tolerance"):  # lerobot's grid check
+        _convert_delta_timestamps({"action": [0.05]}, 10, keys, tol)  # 0.5 of a frame
+    with pytest.raises(ValueError, match="empty"):
+        _convert_delta_timestamps({"action": []}, 10, keys, tol)
+
+
+def test_delta_tolerance_s_configurable(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """delta_tolerance_s widens/narrows the frame-grid check: an off-grid offset
+    rejected at the tight default is accepted (and rounded) at a looser value."""
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _convert_delta_timestamps,
+    )
+
+    # 0.14s @ 10fps = 1.4 frames -> off-grid by 0.04s.
+    with pytest.raises(ValueError, match="tolerance"):
+        _convert_delta_timestamps({"action": [0.14]}, 10, {"action"}, 1e-4)
+    assert _convert_delta_timestamps({"action": [0.14]}, 10, {"action"}, 0.05) == {
+        "action": [1]
+    }
+    # The looser tolerance flows through read_lerobot end-to-end.
+    ds = ray.data.read_lerobot(
+        lerobot_dataset_no_video,
+        delta_timestamps={"action": [0.14]},
+        delta_tolerance_s=0.05,
+    )
+    assert np.asarray(ds.take(1)[0]["action"]).shape == (1, 2)
+
+
+def test_delta_targets_clamps_to_episode():
+    from ray.data._internal.datasource.lerobot_datasource import _delta_targets
+
+    # Episode [10, 15): a look-back at the first frame is clamped + padded.
+    assert _delta_targets(10, 10, 15, [-1, 0, 1]) == (
+        [10, 10, 11],
+        [True, False, False],
+    )
+    # A look-ahead at the last frame is clamped + padded.
+    assert _delta_targets(14, 10, 15, [0, 1, 2]) == ([14, 14, 14], [False, True, True])
+    # Fully interior: no padding.
+    assert _delta_targets(12, 10, 15, [-1, 0, 1]) == (
+        [11, 12, 13],
+        [False, False, False],
+    )
+
+
+def test_build_schema_delta_adds_pad_columns(lerobot_dataset_no_video):
+    from ray.data.datasource import LeRobotDatasource
+
+    src = LeRobotDatasource(
+        lerobot_dataset_no_video,
+        delta_timestamps={"action": [0.0, 0.1], "state": [-0.1, 0.0]},
+    )
+    names = src.distilled_metas[0].schema.names
+    assert "action_is_pad" in names and "state_is_pad" in names
+    # A non-windowed feature gets no pad mask.
+    assert "timestamp_is_pad" not in names
+
+
+def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no_video):
+    """Tabular windows: ``action`` gathers [t, t+1] and ``state`` gathers
+    [t-1, t], each clamped to the anchor's episode with an is_pad mask."""
+    rows = ray.data.read_lerobot(
+        lerobot_dataset_no_video,
+        delta_timestamps={"action": [0.0, 0.1], "state": [-0.1, 0.0]},
+    ).take_all()
+    assert len(rows) == 15  # 3 episodes * 5 frames, row count unchanged
+
+    for row in rows:
+        i = row["index"]
+        ep_from, ep_to = (i // 5) * 5, (i // 5) * 5 + 5
+        action = np.asarray(row["action"])
+        state = np.asarray(row["state"])
+        action_pad = np.asarray(row["action_is_pad"])
+        state_pad = np.asarray(row["state_is_pad"])
+        assert action.shape == (2, 2) and state.shape == (2, 2)  # (T, dim)
+        assert action_pad.shape == (2,) and action_pad.dtype == bool
+
+        # Fixture: action[i] == [i, i+1]; window is [t, t+1] clamped to episode.
+        j_next = min(i + 1, ep_to - 1)
+        np.testing.assert_array_equal(action[0], [i, i + 1])
+        np.testing.assert_array_equal(action[1], [j_next, j_next + 1])
+        assert list(action_pad) == [False, i + 1 >= ep_to]
+
+        # Fixture: state[i] == [i*0.1, i*0.2]; window is [t-1, t] clamped.
+        j_prev = max(i - 1, ep_from)
+        np.testing.assert_allclose(state[0], [j_prev * 0.1, j_prev * 0.2], rtol=1e-6)
+        np.testing.assert_allclose(state[1], [i * 0.1, i * 0.2], rtol=1e-6)
+        assert list(state_pad) == [i - 1 < ep_from, False]
+
+
+def test_read_lerobot_delta_video(ray_start_regular_shared, lerobot_dataset):
+    """Video windows decode T frames per row into a (T, H, W, C) tensor with an
+    is_pad mask; at an episode boundary the clamped slot repeats the edge frame."""
+    rows = ray.data.read_lerobot(
+        lerobot_dataset,
+        delta_timestamps={"observation.image": [-0.1, 0.0, 0.1]},
+    ).take_all()
+    assert len(rows) == 15
+
+    for row in rows:
+        frames = np.asarray(row["observation.image"])
+        pad = np.asarray(row["observation.image_is_pad"])
+        assert frames.shape == (3, FRAME_H, FRAME_W, FRAME_C)
+        assert frames.dtype == np.uint8
+        assert pad.shape == (3,) and pad.dtype == bool
+
+        fr = row["index"] % 5  # within-episode frame index
+        # steps [-1, 0, 1]: look-back pads at frame 0, look-ahead pads at frame 4.
+        assert list(pad) == [fr == 0, False, fr == 4]
+        # A clamped slot repeats the anchor frame (same decoded timestamp).
+        if fr == 0:
+            np.testing.assert_array_equal(frames[0], frames[1])
+        if fr == 4:
+            np.testing.assert_array_equal(frames[2], frames[1])
+
+
+def test_read_lerobot_delta_image(ray_start_regular_shared, lerobot_dataset_image):
+    """Image-camera windows gather T decoded frames per row (lossless PNG), so
+    exact pixel values and episode clamping are assertable. Fixture encodes row
+    ``index`` i as a solid ``i % 256`` frame."""
+    rows = ray.data.read_lerobot(
+        lerobot_dataset_image,
+        delta_timestamps={"observation.image": [0.0, 0.1]},
+    ).take_all()
+    assert len(rows) == 15
+
+    for row in rows:
+        i = row["index"]
+        ep_to = (i // 5) * 5 + 5
+        frames = np.asarray(row["observation.image"])
+        pad = np.asarray(row["observation.image_is_pad"])
+        assert frames.shape == (2, FRAME_H, FRAME_W, FRAME_C)
+        j_next = min(i + 1, ep_to - 1)
+        assert (frames[0] == i % 256).all()  # anchor frame
+        assert (frames[1] == j_next % 256).all()  # next frame, clamped at episode end
+        assert list(pad) == [False, i + 1 >= ep_to]
+
+
+def test_read_lerobot_delta_non_windowed_keys_unchanged(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """Features absent from delta_timestamps keep their single-frame output."""
+    row = ray.data.read_lerobot(
+        lerobot_dataset_no_video, delta_timestamps={"action": [0.0, 0.1]}
+    ).take_all()[0]
+    assert np.asarray(row["action"]).shape == (2, 2)  # windowed
+    assert np.asarray(row["state"]).shape == (2,)  # unchanged
+    assert "action_is_pad" in row and "state_is_pad" not in row
+
+
+def test_read_lerobot_delta_forces_episode_alignment(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """delta_timestamps caps parallelism at whole-episode segments: even a huge
+    ``override_num_blocks`` cannot split an episode, so window gathers stay
+    local. Without delta the same request splits episodes into more tasks."""
+    from ray.data.datasource import LeRobotDatasource
+
+    delta = {"observation.image": [-0.1, 0.0, 0.1]}
+    src = LeRobotDatasource(
+        lerobot_dataset, read_granularity="episode", delta_timestamps=delta
+    )
+    assert len(src.get_read_tasks(1000)) == 3  # 3 episodes, never split
+
+    src_no_delta = LeRobotDatasource(lerobot_dataset, read_granularity="episode")
+    assert len(src_no_delta.get_read_tasks(1000)) > 3  # splits within episodes
+
+    # The read is still complete + correct under the cap.
+    rows = ray.data.read_lerobot(
+        lerobot_dataset,
+        read_granularity="episode",
+        delta_timestamps=delta,
+        override_num_blocks=1000,
+    ).take_all()
+    assert len(rows) == 15
+
+
+def test_read_lerobot_delta_invalid_raises(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    with pytest.raises(ValueError, match="tolerance"):
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
+        )
+    with pytest.raises(ValueError, match="not a feature"):
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video, delta_timestamps={"missing": [0.0]}
+        )
+
+
 if __name__ == "__main__":
     import sys
 
