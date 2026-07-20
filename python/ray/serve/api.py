@@ -16,7 +16,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -54,11 +53,11 @@ from ray.serve.context import (
     DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
+    _disconnect,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_deployment_actor_context,
     _get_internal_replica_context,
-    _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -114,9 +113,9 @@ def start(
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
     """
-    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
         controller_options=controller_options,
@@ -153,7 +152,7 @@ def shutdown():
             return
 
     client.shutdown()
-    _set_global_client(None)
+    _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -181,7 +180,7 @@ async def shutdown_async():
             return
 
     await client.shutdown_async()
-    _set_global_client(None)
+    _disconnect()
 
 
 @DeveloperAPI
@@ -828,7 +827,7 @@ def _run_many(
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
+            proxy_location=ProxyLocation.EveryNode,
             global_logging_config=None,
             controller_options=controller_options,
         )
