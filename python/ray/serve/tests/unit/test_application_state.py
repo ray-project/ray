@@ -334,36 +334,52 @@ class TestGracefulShutdownTimeoutFloor:
         assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
 
 
-class TestIngressRequestRouterZeroCPU:
-    """deploy_args_to_deployment_info pins the ingress request router to
-    num_cpus=0 so its per-node placement matches the proxy footprint. Other
-    deployments keep their configured num_cpus."""
+class TestIngressRequestRouterFootprint:
+    """deploy_args_to_deployment_info gives the ingress request router an empty
+    resource footprint so it colocates with the proxy on every node, while
+    keeping non-resource actor options. Other deployments are untouched."""
 
     @staticmethod
-    def _info(ingress_request_router):
+    def _info(ingress_request_router, ray_actor_options):
         params = {
             "deployment_name": "d",
             "deployment_config_proto_bytes": DeploymentConfig(
                 version=get_random_string()
             ).to_proto_bytes(),
             "replica_config_proto_bytes": ReplicaConfig.create(
-                lambda x: x, ray_actor_options={"num_cpus": 2}
+                lambda x: x, ray_actor_options=ray_actor_options
             ).to_proto_bytes(),
             "deployer_job_id": "random",
             "ingress_request_router": ingress_request_router,
         }
         return deploy_args_to_deployment_info(**params, app_name="app")
 
-    @pytest.mark.parametrize(
-        "ingress_request_router,expected_num_cpus", [(True, 0), (False, 2)]
-    )
-    def test_num_cpus(self, ingress_request_router, expected_num_cpus):
-        info = self._info(ingress_request_router)
-        assert info.replica_config.ray_actor_options["num_cpus"] == expected_num_cpus
+    def test_router_footprint_cleared(self):
+        info = self._info(
+            ingress_request_router=True,
+            ray_actor_options={
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"custom": 1},
+                "runtime_env": {"env_vars": {"A": "1"}},
+            },
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 0
+        assert "num_gpus" not in opts
+        assert "resources" not in opts
+        # Non-resource options survive.
+        assert opts["runtime_env"] == {"env_vars": {"A": "1"}}
+        assert info.replica_config.resource_dict == {"CPU": 0}
 
-    def test_router_resource_dict_recomputed(self):
-        info = self._info(ingress_request_router=True)
-        assert info.replica_config.resource_dict["CPU"] == 0
+    def test_non_router_keeps_resources(self):
+        info = self._info(
+            ingress_request_router=False,
+            ray_actor_options={"num_cpus": 2, "num_gpus": 1},
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 2
+        assert opts["num_gpus"] == 1
 
 
 def test_ingress_request_router_rejects_autoscaling_config():

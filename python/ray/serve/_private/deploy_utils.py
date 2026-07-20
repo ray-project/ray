@@ -122,12 +122,18 @@ def deploy_args_to_deployment_info(
                 "autoscaling_config is not supported on an ingress request "
                 "router. It runs one replica per proxy node."
             )
-        # Ray Serve Proxy and HAProxyManager run with num_cpus=0. Since the
-        # ingress request router colocates with them, set its num_cpus=0 also.
-        replica_config.ray_actor_options["num_cpus"] = 0
-        replica_config.resource_dict = resources_from_ray_options(
-            replica_config.ray_actor_options
-        )
+        # The controller pins one router replica per proxy node. Proxy and
+        # HAProxyManager run at num_cpus=0, so the router gets an empty footprint
+        # to guarantee it colocates. Its resources are framework-controlled.
+        resource_keys = {"num_gpus", "memory", "accelerator_type", "resources"}
+        ray_actor_options = {
+            k: v
+            for k, v in replica_config.ray_actor_options.items()
+            if k not in resource_keys
+        }
+        ray_actor_options["num_cpus"] = 0
+        replica_config.ray_actor_options = ray_actor_options
+        replica_config.resource_dict = resources_from_ray_options(ray_actor_options)
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
