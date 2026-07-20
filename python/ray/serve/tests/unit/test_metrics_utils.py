@@ -1358,6 +1358,108 @@ class TestCythonImplementationEdgeCases:
         assert result[0].value == pytest.approx(1e-10, rel=1e-6)
 
 
+class TestSelfHealthReportEntry:
+    """A handle-owning replica's health rides its own handle metric reports;
+    frames and heartbeats stay quiet while that carries."""
+
+    def _manager(self, pushing_reports=False):
+        return TestSelfHealthPush()._manager(pushing_reports=pushing_reports)
+
+    def test_none_before_first_check(self):
+        m = self._manager()
+        assert m.self_health_report_entry() is None
+
+    def test_entry_after_check(self):
+        m = self._manager()
+        m._self_healthy = True
+        m._self_health_checked_at = 123.0
+        m._self_consecutive_failures = 0
+        uid, (checked_at, healthy, failures) = m.self_health_report_entry()
+        assert uid == "r1" and checked_at == 123.0 and healthy and failures == 0
+        assert m._last_health_reported_via_handle_ts is not None
+
+    def test_none_while_reports_carry_health(self):
+        m = self._manager(pushing_reports=True)
+        m._self_health_checked_at = 123.0
+        assert m.reports_carry_health()
+        assert m.self_health_report_entry() is None
+
+    def test_consumption_counts_as_carried(self):
+        m = self._manager()
+        m._self_health_checked_at = 123.0
+        assert not m.health_already_carried()
+        assert m.self_health_report_entry() is not None
+        assert m.health_already_carried()
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_suppressed_after_report_consumption(self):
+        m = self._manager()
+        m._self_health_checked_at = 123.0
+        assert m.self_health_report_entry() is not None
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+
+class TestRouterSelfHealthMerge:
+    """The router folds the host replica's own health into its handle report."""
+
+    def _metrics_manager(self):
+        from ray.serve._private.router import RouterMetricsManager
+
+        mm = RouterMetricsManager.__new__(RouterMetricsManager)
+        mm._replica_health = {"downstream": (1.0, True, 0)}
+        return mm
+
+    def test_no_provider_passthrough(self):
+        import ray.serve.context as ctx
+
+        ctx._set_self_health_report_provider(None)
+        mm = self._metrics_manager()
+        assert mm._replica_health_for_report() == {"downstream": (1.0, True, 0)}
+
+    def test_provider_entry_merged(self):
+        import ray.serve.context as ctx
+
+        try:
+            ctx._set_self_health_report_provider(
+                lambda: ("self_replica", (2.0, False, 3))
+            )
+            mm = self._metrics_manager()
+            report = mm._replica_health_for_report()
+            assert report["downstream"] == (1.0, True, 0)
+            assert report["self_replica"] == (2.0, False, 3)
+        finally:
+            ctx._set_self_health_report_provider(None)
+
+    def test_provider_none_result_passthrough(self):
+        import ray.serve.context as ctx
+
+        try:
+            ctx._set_self_health_report_provider(lambda: None)
+            mm = self._metrics_manager()
+            assert mm._replica_health_for_report() == {"downstream": (1.0, True, 0)}
+        finally:
+            ctx._set_self_health_report_provider(None)
+
+    def test_empty_map_with_self_entry_still_reports(self):
+        import ray.serve.context as ctx
+
+        try:
+            ctx._set_self_health_report_provider(
+                lambda: ("self_replica", (2.0, True, 0))
+            )
+            mm = self._metrics_manager()
+            mm._replica_health = {}
+            assert mm._replica_health_for_report() == {"self_replica": (2.0, True, 0)}
+        finally:
+            ctx._set_self_health_report_provider(None)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
 
@@ -1385,6 +1487,7 @@ class TestSelfHealthPush:
         m._pending_health_push_ref = None
         m._self_consecutive_failures = 0
         m._last_health_carried_ts = None
+        m._last_health_reported_via_handle_ts = None
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._replica_id = SimpleNamespace(unique_id="r1")
@@ -1488,10 +1591,17 @@ class TestSelfHealthPush:
             health_check_period_s=10.0, health_check_timeout_s=30.0
         )
         r._self_health_active = False
-        Replica._start_self_health_pusher(r)
-        args = r._metrics_manager.start_self_health_pusher.call_args.args
-        assert args[1] == 5.0  # half the period
-        assert args[2] == 30.0
+        try:
+            Replica._start_self_health_pusher(r)
+            args = r._metrics_manager.start_self_health_pusher.call_args.args
+            assert args[1] == 5.0  # half the period
+            assert args[2] == 30.0
+        finally:
+            # _start_self_health_pusher publishes the process-global provider;
+            # leaving the Mock there pollutes later tests.
+            import ray.serve.context as ctx
+
+            ctx._set_self_health_report_provider(None)
 
     def test_registry_tracks_self_check_intervals(self):
         from ray.serve._private.deployment_state import ReplicaHealthPushRegistry

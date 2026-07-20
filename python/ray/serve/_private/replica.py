@@ -405,6 +405,7 @@ class ReplicaMetricsManager:
         self._pushing_metric_reports = False
         self._self_consecutive_failures = 0
         self._last_health_carried_ts: Optional[float] = None
+        self._last_health_reported_via_handle_ts: Optional[float] = None
         self._pending_health_push_ref: Optional[ObjectRef] = None
 
         # If the interval is set to 0, eagerly sets all metrics.
@@ -693,6 +694,36 @@ class ReplicaMetricsManager:
             <= self._self_health_period_s
         )
 
+    def health_already_carried(self) -> bool:
+        """Health is already riding metric reports or this replica's own
+        handle metric reports; frames would duplicate it."""
+        return self.reports_carry_health() or (
+            self._last_health_reported_via_handle_ts is not None
+            and time.time() - self._last_health_reported_via_handle_ts
+            < self._self_health_period_s
+        )
+
+    def self_health_report_entry(
+        self,
+    ) -> Optional[Tuple[str, Tuple[float, bool, Optional[int]]]]:
+        """Registry-shaped entry for this replica's own handle metric reports.
+
+        None while metric reports already carry health (no double delivery) or
+        before the first self-check. Consumption counts as handle-carried for
+        heartbeat suppression.
+        """
+        if self._self_health_checked_at is None or self.reports_carry_health():
+            return None
+        self._last_health_reported_via_handle_ts = time.time()
+        return (
+            self._replica_id.unique_id,
+            (
+                self._self_health_checked_at,
+                self._self_healthy,
+                self._self_consecutive_failures,
+            ),
+        )
+
     def self_health_frame(self) -> Optional["ReplicaHealthFrame"]:
         """Latest self-check as a stream frame; None before the first check."""
         if self._self_health_checked_at is None:
@@ -769,6 +800,13 @@ class ReplicaMetricsManager:
         ):
             # Health rode recent responses and the handles forward it on
             # their metric reports; no separate heartbeat needed.
+            return
+        if (
+            self._last_health_reported_via_handle_ts is not None
+            and time.time() - self._last_health_reported_via_handle_ts
+            < self._self_health_period_s
+        ):
+            # This replica's own handle metric reports carried its health.
             return
         with self._metrics_push_lock:
             if self._pending_health_push_ref is not None:
@@ -1923,10 +1961,10 @@ class Replica:
                 done, _ = await asyncio.wait({user_task}, timeout=interval_s or None)
                 if done:
                     break
-                if self._metrics_manager.reports_carry_health():
-                    # Metric reports already carry health; don't duplicate it
-                    # on the stream (checked per tick: mode can change while
-                    # a request is held).
+                if self._metrics_manager.health_already_carried():
+                    # Metric or handle reports already carry health; don't
+                    # duplicate it on the stream (checked per tick: mode can
+                    # change while a request is held).
                     continue
                 frame = self._metrics_manager.self_health_frame()
                 if frame is not None and frame.health_checked_at > last_sent_checked_at:
@@ -2332,6 +2370,10 @@ class Replica:
             self._run_user_health_check,
             self._deployment_config.health_check_period_s * 0.5,
             self._deployment_config.health_check_timeout_s,
+        )
+        # Routers in this process fold our health into their handle reports.
+        ray.serve.context._set_self_health_report_provider(
+            self._metrics_manager.self_health_report_entry
         )
 
     async def _run_user_health_check(self):

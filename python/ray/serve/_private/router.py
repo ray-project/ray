@@ -279,6 +279,27 @@ class RouterMetricsManager:
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
 
+    def _replica_health_for_report(
+        self,
+    ) -> Optional[Dict[str, Tuple[float, bool, Optional[int]]]]:
+        """Downstream replicas' carried health, plus the host replica's own
+        (when this router lives inside a replica) -- so a handle-owning
+        replica's health rides reports that already flow."""
+        health = dict(self._replica_health)
+        provider = ray.serve.context._get_self_health_report_provider()
+        if provider is not None:
+            try:
+                self_entry = provider()
+                if self_entry is not None:
+                    health[self_entry[0]] = self_entry[1]
+            except Exception:
+                # Never let health merging break the metrics report path.
+                logger.warning(
+                    "Failed to attach self-health to handle report.",
+                    exc_info=True,
+                )
+        return health or None
+
     def record_replica_health(
         self,
         replica_unique_id: str,
@@ -556,7 +577,7 @@ class RouterMetricsManager:
                 RUNNING_REQUESTS_KEY: running_requests,
             },
             timestamp=timestamp,
-            replica_health=dict(self._replica_health) or None,
+            replica_health=self._replica_health_for_report(),
         )
 
         return handle_metric_report

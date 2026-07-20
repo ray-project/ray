@@ -30,6 +30,9 @@ class _FakeManager:
     def reports_carry_health(self):
         return self.carries
 
+    def health_already_carried(self):
+        return self.carries
+
     @property
     def self_health_period_s(self):
         return self._self_health_period_s
