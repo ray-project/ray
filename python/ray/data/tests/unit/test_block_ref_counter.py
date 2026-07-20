@@ -102,33 +102,6 @@ class TestBlockRefCounterAccounting:
         assert counter.get_object_store_memory_usage("op_a") == 0
 
 
-class TestBlockRefCounterClear:
-    def test_clear_resets_usage(self):
-        add_cb = FakeAddObjectOutOfScopeCallback()
-        counter = BlockRefCounter(add_object_out_of_scope_callback=add_cb)
-        counter.on_block_produced(_ref(1), 1, "op_a")
-        assert counter.get_object_store_memory_usage("op_a") == 1
-
-        counter.clear()
-        assert counter.get_object_store_memory_usage("op_a") == 0
-
-    def test_stale_callback_after_clear_is_noop(self):
-        """A stale callback firing after clear() must not touch accounting
-        recorded after the reset."""
-        add_cb = FakeAddObjectOutOfScopeCallback()
-        counter = BlockRefCounter(add_object_out_of_scope_callback=add_cb)
-        stale_ref = _ref(1)
-        counter.on_block_produced(stale_ref, 1, "op_a")
-
-        counter.clear()
-
-        counter.on_block_produced(_ref(2), 1, "op_a")
-        assert counter.get_object_store_memory_usage("op_a") == 1
-
-        add_cb.fire(stale_ref)
-        assert counter.get_object_store_memory_usage("op_a") == 1
-
-
 class TestBlockRefCounterThreadSafety:
     def test_concurrent_callbacks_dont_corrupt_state(self):
         """Many threads firing callbacks at once must not corrupt the count."""

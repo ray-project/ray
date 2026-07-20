@@ -207,18 +207,14 @@ def test_burst_drop_per_callback(num_blocks, timeout_s=60):
     return result
 
 
-def _burst_drop_via_counter(num_blocks, use_clear, timeout_s=60):
-    """Burst drop using BlockRefCounter (the real Data-layer path).
+def test_burst_drop_block_ref_counter(num_blocks, timeout_s=60):
+    """Burst drop through BlockRefCounter (the real Data-layer path).
 
     Registers callbacks via on_block_produced (which internally registers
     a Core callback), then registers a second Core callback for timing.
     Both fire on the same single-threaded callback service in registration
     order, so the timing callback's latency includes the BlockRefCounter
     callback that fires before it.
-
-    With use_clear=True, clear() is called before dropping refs, so the
-    BlockRefCounter callbacks no-op. With use_clear=False, they do real
-    bookkeeping. Comparing the two isolates the bookkeeping cost.
     """
     core_worker = ray._private.worker.global_worker.core_worker
     counter = BlockRefCounter()
@@ -231,9 +227,6 @@ def _burst_drop_via_counter(num_blocks, use_clear, timeout_s=60):
     for ref in refs:
         assert core_worker.add_object_out_of_scope_callback(ref, on_freed)
 
-    if use_clear:
-        counter.clear()
-
     id_binaries = [ref.binary() for ref in refs]
     drop_time = time.perf_counter()
     del refs, ref
@@ -243,32 +236,9 @@ def _burst_drop_via_counter(num_blocks, use_clear, timeout_s=60):
             f"Only {len(fire_times)}/{num_blocks} callbacks fired within {timeout_s}s"
         )
 
-    return _compute_latencies(fire_times, drop_time, id_binaries)
-
-
-def test_burst_drop_block_ref_counter(num_blocks, timeout_s=60):
-    """Burst drop through BlockRefCounter without clear().
-
-    Callbacks do real bookkeeping (lock + set discard + dict decrement).
-    """
-    result = _burst_drop_via_counter(num_blocks, use_clear=False, timeout_s=timeout_s)
+    result = _compute_latencies(fire_times, drop_time, id_binaries)
     print(
-        f"  burst {num_blocks} blocks (no clear): "
-        f"p50={result['p50']:.4f}s p95={result['p95']:.4f}s max={result['max']:.4f}s"
-    )
-    return result
-
-
-def test_burst_drop_block_ref_counter_with_clear(num_blocks, timeout_s=60):
-    """Burst drop through BlockRefCounter with clear() first.
-
-    Callbacks no-op (check _registered_ids, return immediately).
-    Compare with test_burst_drop_block_ref_counter to isolate the cost
-    of real bookkeeping vs no-op under burst load.
-    """
-    result = _burst_drop_via_counter(num_blocks, use_clear=True, timeout_s=timeout_s)
-    print(
-        f"  burst {num_blocks} blocks (with clear): "
+        f"  burst {num_blocks} blocks (BRC): "
         f"p50={result['p50']:.4f}s p95={result['p95']:.4f}s max={result['max']:.4f}s"
     )
     return result
@@ -307,12 +277,7 @@ per_cb = _run_at_scales(
     "Burst drop (per-callback latency)", test_burst_drop_per_callback, SCALES
 )
 brc = _run_at_scales(
-    "Burst drop (BlockRefCounter, no clear)", test_burst_drop_block_ref_counter, SCALES
-)
-brc_clear = _run_at_scales(
-    "Burst drop (BlockRefCounter, with clear)",
-    test_burst_drop_block_ref_counter_with_clear,
-    SCALES,
+    "Burst drop (BlockRefCounter)", test_burst_drop_block_ref_counter, SCALES
 )
 
 print("\n=== Scaling summary (p95) ===")
@@ -322,8 +287,7 @@ for name, results in [
     ("Registration (us/cb)", reg),
     ("Burst drain", burst),
     ("Per-callback", per_cb),
-    ("BRC (no clear)", brc),
-    ("BRC (with clear)", brc_clear),
+    ("BRC", brc),
 ]:
     vals = []
     for n in SCALES:
@@ -368,11 +332,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
                 {
                     "perf_metric_name": f"callback_burst_brc_p95_{n}_blocks_s",
                     "perf_metric_value": brc[n]["p95"],
-                    "perf_metric_type": "LATENCY",
-                },
-                {
-                    "perf_metric_name": f"callback_burst_brc_clear_p95_{n}_blocks_s",
-                    "perf_metric_value": brc_clear[n]["p95"],
                     "perf_metric_type": "LATENCY",
                 },
             ]
