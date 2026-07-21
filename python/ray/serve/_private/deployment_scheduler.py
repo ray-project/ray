@@ -604,8 +604,7 @@ class DeploymentScheduler(ABC):
         provided, the node with the smallest `tie_break_key` value wins.
         """
 
-        min_remaining_space = None
-        min_tie_break = None
+        min_key = None
         chosen_node = None
 
         for node_id in available_resources:
@@ -615,18 +614,15 @@ class DeploymentScheduler(ABC):
             # TODO(zcin): We can make this better by only considering
             # custom resources that required_resources has.
             remaining_space = available_resources[node_id] - required_resources
-            tie_break = tie_break_key(node_id) if tie_break_key else None
+            # Tuple compares remaining space first, then the tie break key only on a tie.
+            current_key = (
+                (remaining_space, tie_break_key(node_id))
+                if tie_break_key
+                else (remaining_space,)
+            )
 
-            if min_remaining_space is None or remaining_space < min_remaining_space:
-                min_remaining_space = remaining_space
-                min_tie_break = tie_break
-                chosen_node = node_id
-            elif (
-                tie_break_key is not None
-                and remaining_space == min_remaining_space
-                and tie_break < min_tie_break
-            ):
-                min_tie_break = tie_break
+            if min_key is None or current_key < min_key:
+                min_key = current_key
                 chosen_node = node_id
 
         return chosen_node
