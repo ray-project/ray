@@ -233,6 +233,44 @@ def test_sort_shuffle_v2_end_to_end(
     assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))
 
 
+def test_sort_shuffle_v2_promotes_compatible_block_schemas(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    ctx.use_hash_shuffle_v2 = True
+
+    # Aggregations can produce a null-typed block for an all-null group and an
+    # int64-typed block for non-null groups. Sort shuffle may merge these blocks
+    # into one map task, so compatible schemas must be promoted before concat.
+    null_block = pa.table(
+        {
+            "A": pa.array([0], type=pa.int64()),
+            "sum(B)": pa.array([None], type=pa.null()),
+        }
+    )
+    int_block = pa.table(
+        {
+            "A": pa.array([2, 1], type=pa.int64()),
+            "sum(B)": pa.array([20, 10], type=pa.int64()),
+        }
+    )
+
+    # Keep both blocks in one range partition so the shuffle map task must
+    # concatenate their null and int64 column types.
+    result = (
+        ray.data.from_arrow_refs([ray.put(null_block), ray.put(int_block)])
+        .sort("A", boundaries=[100])
+        .take_all()
+    )
+
+    assert result == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": 10},
+        {"A": 2, "sum(B)": 20},
+    ]
+
+
 def test_sort_shuffle_v2_more_blocks_than_sampling_window(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
