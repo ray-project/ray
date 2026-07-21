@@ -573,8 +573,8 @@ def _make_api(temp_dir, backend_configs):
 
 
 def test_routers_and_targets_prefers_colocated_router():
-    """Each HAProxy prefers the router co-located on its own node, and falls
-    back to the deterministic pick when none is co-located."""
+    """Each HAProxy round-robins across the routers co-located on its own node,
+    and falls back to a single deterministic pick when none is co-located."""
     local = "10.0.0.1"
 
     colocated = [
@@ -585,16 +585,17 @@ def test_routers_and_targets_prefers_colocated_router():
                 ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1")
             ],
             ingress_request_router_servers=[
-                ServerConfig(name="router_local", host=local, port=9000),
+                ServerConfig(name="router_local_b", host=local, port=9001),
+                ServerConfig(name="router_local_a", host=local, port=9000),
                 ServerConfig(name="router_remote", host="10.0.0.2", port=9000),
             ],
         )
     ]
-    # The on-node router is chosen even though it is not the min pick.
+    # Both on-node routers form the sorted pool; the remote router is excluded.
     routers, _ = _routers_and_targets_by_backend(colocated, local_host=local)
-    assert routers["llm"].name == "router_local"
+    assert [s.name for s in routers["llm"]] == ["router_local_a", "router_local_b"]
 
-    # No router on this node falls back to the lexicographically smallest.
+    # No router on this node falls back to a single lexicographically smallest.
     remote_only = [
         BackendConfig(
             name="llm",
@@ -609,7 +610,36 @@ def test_routers_and_targets_prefers_colocated_router():
         )
     ]
     routers, _ = _routers_and_targets_by_backend(remote_only, local_host=local)
-    assert routers["llm"].name == "router_a"
+    assert [s.name for s in routers["llm"]] == ["router_a"]
+
+
+def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
+    """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
+    from ray._common.network_utils import get_localhost_ip
+
+    local = get_localhost_ip()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1"),
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host=local, port=9000),
+                ServerConfig(name="router_b", host=local, port=9001),
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+
+        result = api._write_ingress_request_router_lua([backend])
+        assert result is not None
+        with open(result) as f:
+            lua = f.read()
+
+        # Both co-located routers land in the pool the Lua round-robins over.
+        assert "port = 9000" in lua and "port = 9001" in lua
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):

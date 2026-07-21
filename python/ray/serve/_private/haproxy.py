@@ -138,15 +138,16 @@ def _load_lua_template() -> string.Template:
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router pool and replica map, restricted to backends with both.
 
-    Each HAProxy prefers its co-located router (``host == local_host``, which
-    ``_target_to_server`` rewrote to the local host) so the /internal/route hop
-    stays on-node, falling back to the lexicographically smallest router when
-    none is co-located.
+    Each HAProxy round-robins across its co-located routers (``host ==
+    local_host``, which ``_target_to_server`` rewrote to the local host) so the
+    /internal/route hop stays on-node. Falls back to the single
+    lexicographically smallest router when none is co-located, which keeps the
+    hop on one router rather than cycling across nodes.
     """
-    routers: Dict[str, ServerConfig] = {}
+    routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
@@ -158,22 +159,30 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        # Prefer the co-located router; else the lexicographically smallest.
         # Host-first so co-located routers sort adjacent in debug output.
-        routers[backend.name] = min(
-            colocated or candidates, key=lambda s: (s.host, s.port)
-        )
+        if colocated:
+            pool = sorted(colocated, key=lambda s: (s.host, s.port))
+        else:
+            pool = [min(candidates, key=lambda s: (s.host, s.port))]
+        routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
 
 
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
+def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
+    """Render {backend_name: [ServerConfig, ...]} as a Lua table literal."""
+
+    def _server_lua(s: "ServerConfig") -> str:
+        return (
+            f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+            f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        )
+
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
+        f"    [{json.dumps(name)}] = {{ "
+        + ", ".join(_server_lua(s) for s in pool)
+        + " }"
+        for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
 
