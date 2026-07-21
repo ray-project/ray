@@ -811,5 +811,5 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True
