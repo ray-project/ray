@@ -24,6 +24,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/constants.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -175,6 +176,36 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                                          required_resources,
                                                          required_placement_resources);
     return std::make_shared<gcs::GcsActor>(actor_creating_task_spec.GetMessage(),
+                                           /*ray_namespace=*/"",
+                                           /*counter=*/counter,
+                                           /*recorder=*/fake_ray_event_recorder_,
+                                           /*session_name=*/"");
+  }
+
+  // Creates a 0-resource actor hard-pinned to `node_id_hex` via a
+  // `ray.io/node-id` label selector (as CompiledDAG.DAGDriverProxyActor does).
+  std::shared_ptr<gcs::GcsActor> NewGcsActorPinnedToNode(const std::string &node_id_hex) {
+    rpc::Address owner_address;
+    owner_address.set_node_id(NodeID::FromRandom().Binary());
+    owner_address.set_ip_address("127.0.0.1");
+    owner_address.set_port(5678);
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    auto job_id = JobID::FromInt(1);
+    std::unordered_map<std::string, double> empty_resources;
+    auto actor_creating_task_spec = GenActorCreationTask(job_id,
+                                                         /*max_restarts=*/1,
+                                                         /*detached=*/true,
+                                                         /*name=*/"",
+                                                         "",
+                                                         owner_address,
+                                                         empty_resources,
+                                                         empty_resources);
+    rpc::TaskSpec msg = actor_creating_task_spec.GetMessage();
+    auto *constraint = msg.mutable_label_selector()->add_label_constraints();
+    constraint->set_label_key(kLabelKeyNodeID);
+    constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+    constraint->add_label_values(node_id_hex);
+    return std::make_shared<gcs::GcsActor>(msg,
                                            /*ray_namespace=*/"",
                                            /*counter=*/counter,
                                            /*recorder=*/fake_ray_event_recorder_,
@@ -699,6 +730,40 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
   gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
+}
+
+TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity) {
+  // Two alive nodes.
+  auto node_a = AddNewNode({{"CPU", 8.0}});
+  auto node_b = AddNewNode({{"CPU", 8.0}});
+  auto node_a_id = NodeID::FromBinary(node_a->node_id());
+  auto node_b_id = NodeID::FromBinary(node_b->node_id());
+
+  // A 0-resource actor hard-pinned to a node (via the `ray.io/node-id` label
+  // selector) must be forwarded to that exact node. Otherwise GCS could forward
+  // the lease to a random alive node whose local resource view has not yet synced
+  // the pinned node's labels, causing the hard affinity to be treated as
+  // infeasible and the actor creation to be cancelled (the test_channel
+  // `test_driver_as_reader` flake). Repeat to defeat the random fallback by luck.
+  auto pinned_to_a = NewGcsActorPinnedToNode(node_a_id.Hex());
+  auto pinned_to_b = NewGcsActorPinnedToNode(node_b_id.Hex());
+  for (int i = 0; i < 20; i++) {
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a), node_a_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_b), node_b_id);
+  }
+
+  // An unpinned 0-resource actor keeps the existing behavior: forwarded to some
+  // alive node (never nil while nodes exist).
+  auto unpinned = NewGcsActor({});
+  auto forwarded = gcs_actor_scheduler_->SelectForwardingNode(unpinned);
+  ASSERT_TRUE(forwarded == node_a_id || forwarded == node_b_id);
+
+  // A pin to a node that is not alive falls back to the default logic (an alive
+  // node is still returned here; the unschedulable error, if any, is surfaced
+  // later by the raylet, not by forwarding).
+  auto pinned_to_dead = NewGcsActorPinnedToNode(NodeID::FromRandom().Hex());
+  auto fallback = gcs_actor_scheduler_->SelectForwardingNode(pinned_to_dead);
+  ASSERT_TRUE(fallback == node_a_id || fallback == node_b_id);
 }
 
 }  // namespace gcs
