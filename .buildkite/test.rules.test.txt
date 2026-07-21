@@ -102,11 +102,15 @@ doc/example.ipynb: core_doc
 # BUILD.bazel defines every library's targets, so it routes to all of them.
 doc/source/serve/examples/BUILD.bazel: serve_doc
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Documentation validation infra stays on the `doc` tag.
+# Documentation validation infra stays on the `doc` tag. The Sphinx config and
+# the in-repo build extensions build the docs, so they route to the `doc` build
+# and validation only, never to a library's doctest or example execution.
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
 doc/requirements-doc.txt: doc
+doc/source/conf.py: doc
+doc/source/_ext/llms_txt.py: doc
 python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
 

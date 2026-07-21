@@ -190,10 +190,15 @@ docker/
 @ doc
 ;
 
-# Documentation validation infra: the Vale config, the doc pipeline
-# definition, and the doc requirements drive the documentation build and
-# validation. The `doc` tag is reserved for that validation, not for the
-# library example tests that happen to live in the docs.
+# Documentation validation infra: the Sphinx config, the in-repo build
+# extensions, the Vale config, the doc pipeline definition, and the doc
+# requirements all drive the documentation build and validation. The `doc`
+# tag is reserved for that build machinery, not for the library example
+# tests that happen to live in the docs. Config and extension changes route
+# here only, so they trigger the `-W` build and validation without running
+# any library doctest or example execution.
+doc/source/conf.py
+doc/source/_ext/
 doc/requirements-doc.txt
 .vale.ini
 .vale/
