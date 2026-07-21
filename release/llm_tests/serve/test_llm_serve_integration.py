@@ -531,8 +531,7 @@ def test_prometheus_autoscaling():
         # The policy reads rate() over the TTFT histogram, so the signal only
         # goes finite once the metrics pipeline has delivered a couple of
         # samples. Delivery is at the scrape interval in the common case but can
-        # lag on a busy cluster, and the default policy rate_window (5m)
-        # tolerates that lag. Give the wait a generous budget to cover the
+        # lag on a busy cluster. Give the wait a generous budget to cover the
         # delivery warmup plus the upscale delay.
         wait_for_condition(scaled_to_two, timeout=360, retry_interval_ms=5000)
         print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")

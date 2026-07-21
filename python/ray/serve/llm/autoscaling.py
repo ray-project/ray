@@ -10,7 +10,7 @@ from ray.serve.autoscaling_policy import PrometheusQueryMixin
 from ray.serve.config import AutoscalingContext
 from ray.util.annotations import PublicAPI
 
-DEFAULT_RATE_WINDOW = "5m"
+DEFAULT_RATE_WINDOW = "1m"
 
 
 def _ttft_query(model_id: str, rate_window: str = DEFAULT_RATE_WINDOW) -> str:
@@ -18,10 +18,8 @@ def _ttft_query(model_id: str, rate_window: str = DEFAULT_RATE_WINDOW) -> str:
 
     ``rate_window`` is the PromQL range for the inner ``rate()``. It must span
     at least two metric samples or ``rate()`` returns empty and the policy reads
-    no data. Ray worker metrics reach Prometheus at the scrape interval in the
-    common case, but that cadence is not guaranteed (a slow or backed-up metrics
-    pipeline delivers samples further apart), so the window defaults wide enough
-    to tolerate multi-scrape gaps rather than assuming dense samples.
+    no data. The default suits the common scrape cadence; widen it if the metrics
+    pipeline delivers samples further apart than roughly half the window.
     """
     selector = f'{{model_name="{model_id}"}}'
     return (
