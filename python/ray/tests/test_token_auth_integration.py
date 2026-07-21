@@ -238,6 +238,50 @@ def test_ray_init_respects_disabled_opt_out():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+def test_ray_init_connect_does_not_generate_token():
+    """ray.init(address=...) connecting to an existing cluster never auto-enables
+    token auth or generates a token, even with RAY_AUTH_MODE unset. Auto-enable is
+    scoped to new local clusters only."""
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    # Start a non-auth head (RAY_AUTH_MODE/token unset -> starts disabled).
+    env = os.environ.copy()
+    env.pop("RAY_AUTH_MODE", None)
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    try:
+        _run_ray_start_and_verify_status(
+            ["--head", "--port=0"], env, expect_success=True
+        )
+        # The head itself generated no token (no source, RAY_AUTH_MODE unset).
+        assert not default_token_path.exists()
+
+        # Connect in-process with RAY_AUTH_MODE unset -> routes through the
+        # connect branch, which must not auto-enable or generate a token.
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
+        ray.init(address="auto")
+
+        assert get_authentication_mode() == AuthenticationMode.DISABLED
+        assert not default_token_path.exists()
+
+        @ray.remote
+        def f():
+            return "ok"
+
+        assert ray.get(f.remote()) == "ok"
+    finally:
+        _cleanup_ray_start(env)
+
+
 def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
     """Test ray.init(address=...) without token fails when auth_mode=token is set."""
     cluster_info = setup_cluster_with_token_auth
@@ -603,13 +647,24 @@ def test_ray_start_head_enables_auth_from_existing_token():
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-def test_ray_start_head_warns_when_auth_disabled():
-    """ray start --head warns the user when it starts without token auth."""
-    # No token available anywhere and RAY_AUTH_MODE unset.
+@pytest.mark.parametrize(
+    "auth_mode",
+    [
+        None,  # RAY_AUTH_MODE unset + no token -> disabled + warn.
+        "disabled",  # RAY_AUTH_MODE=disabled -> disabled + warn.
+    ],
+    ids=["unset_no_token", "explicit_disabled"],
+)
+def test_ray_start_head_warns_when_auth_disabled(auth_mode):
+    """ray start --head starts and warns the user when it runs without token auth,
+    both when no token is available and when RAY_AUTH_MODE=disabled."""
+    # No token available anywhere.
     env = os.environ.copy()
     env.pop("RAY_AUTH_MODE", None)
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
+    if auth_mode is not None:
+        env["RAY_AUTH_MODE"] = auth_mode
 
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
