@@ -253,11 +253,11 @@ def test_preemption_context_set_and_get():
     ctx = PreemptionContext()
 
     # No signal yet.
-    assert ctx.get() is None
+    assert ctx.preemption_info is None
 
     # After the watcher sets a signal, reads return it (purely informational).
-    ctx.set(info)
-    assert ctx.get() is info
+    ctx.preemption_info = info
+    assert ctx.preemption_info is info
 
 
 if __name__ == "__main__":

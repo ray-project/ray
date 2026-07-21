@@ -168,9 +168,9 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
             def train_func(config):
                 for step in range(config["total_steps"]):
                     if ray.train.get_preemption_info() is not None:
-                        # Save a just-in-time checkpoint and keep training.
                         ray.train.report(metrics, checkpoint=checkpoint)
-                    # ... normal training step ...
+                    # ... normal training step (with your usual periodic
+                    # checkpointing) ...
 
     Returns:
         A :class:`~ray.train.PreemptionInfo` with the affected node ids / world

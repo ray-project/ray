@@ -247,7 +247,6 @@ async def test_preemption_drain_then_restart():
     error = controller.get_state().training_failed_error
     assert isinstance(error, PreemptionError)
     assert error.drain_timed_out is False
-    assert set(error.worker_failures) == {0, 1}
 
     await _advance_to_running(controller, scaling_policy, num_workers=2)
     # Full restart -> fresh worker group.
@@ -533,36 +532,6 @@ def test_preemption_deadline_uses_reported_deadline(monkeypatch):
 
     monkeypatch.setattr(controller_module, "time_seconds", lambda: 6.0)
     assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
-
-
-def test_preemption_deadline_caps_far_future_deadline(monkeypatch):
-    """A far-future reported deadline (e.g. from a staggered merge that dropped
-    an earlier no-deadline node's fallback) cannot extend the drain past the
-    default grace window measured from detection."""
-    import ray.train.v2._internal.execution.controller.controller as controller_module
-    from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_DEADLINE_S
-
-    detected_at_s = 1000.0
-    far_future_ms = (detected_at_s + 10 * DEFAULT_PREEMPTION_DEADLINE_S) * 1000
-    info = PreemptionInfo(
-        deadline_ms=int(far_future_ms), preempted_node_to_ranks={"node-a": [0]}
-    )
-
-    # Just before the cap -> not exceeded.
-    monkeypatch.setattr(
-        controller_module,
-        "time_seconds",
-        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S - 1,
-    )
-    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
-
-    # Past the cap but well before the reported deadline -> still exceeded.
-    monkeypatch.setattr(
-        controller_module,
-        "time_seconds",
-        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S + 1,
-    )
-    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
 
 
 @pytest.mark.parametrize(

@@ -189,7 +189,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         return DistributedTrainContext()
 
     def get_preemption_info(self) -> Optional["PreemptionInfo"]:
-        return get_internal_train_context().preemption_context.get()
+        return get_internal_train_context().preemption_context.preemption_info
 
     def is_distributed(self) -> bool:
         return True

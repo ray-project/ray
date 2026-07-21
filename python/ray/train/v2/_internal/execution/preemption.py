@@ -1,6 +1,7 @@
 import logging
 import threading
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
@@ -38,29 +39,18 @@ def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> Preemptio
     )
 
 
+@dataclass
 class PreemptionContext:
-    """Holds the preemption info for one worker actor.
+    """The preemption info for one worker actor, or ``None`` if not preempted.
 
     Written by the worker actor's main thread (``mark_preempt``) and read from
     the training thread (``ray.train.get_preemption_info``) and the status
-    poll. No lock is needed: it is a single reference that is swapped
-    atomically, and ``PreemptionInfo`` is immutable.
+    poll. No lock is needed: it is a single reference swapped atomically, and
+    ``PreemptionInfo`` is immutable. Reading it is informational (e.g. to save a
+    just-in-time checkpoint); it has no effect on control flow.
     """
 
-    def __init__(self):
-        self._preemption_info: Optional[PreemptionInfo] = None
-
-    def set(self, info: PreemptionInfo) -> None:
-        self._preemption_info = info
-
-    def get(self) -> Optional[PreemptionInfo]:
-        """Return the current preemption info, or ``None`` if none received.
-
-        Reading it is informational: it lets the training function react (e.g.
-        save a just-in-time checkpoint and keep training) before its node is
-        reclaimed. It has no effect on control flow.
-        """
-        return self._preemption_info
+    preemption_info: Optional[PreemptionInfo] = None
 
 
 def _get_draining_nodes() -> Dict[str, int]:

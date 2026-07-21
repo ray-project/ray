@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import PublicAPI
@@ -65,10 +65,6 @@ class PreemptionError(TrainingFailedError):
         preemption_info: Which nodes / world ranks were preempted and the
             reclaim deadline, for logging and debugging which preemption caused
             the restart.
-        worker_failures: Map of world rank to the exception that terminated that
-            worker (typically the preemption-caused actor death), so the
-            underlying errors are preserved for debugging rather than swallowed
-            by the retry.
         drain_timed_out: True when Ray Train stopped waiting because the reclaim
             deadline passed while workers were still running (and tore them down
             itself); False when every worker had already exited. Distinguishes
@@ -78,11 +74,9 @@ class PreemptionError(TrainingFailedError):
     def __init__(
         self,
         preemption_info: "PreemptionInfo",
-        worker_failures: Optional[Dict[int, Exception]] = None,
         drain_timed_out: bool = False,
     ):
         self.preemption_info = preemption_info
-        self.worker_failures = worker_failures or {}
         self.drain_timed_out = drain_timed_out
         super().__init__(
             "Training was interrupted by node preemption "
@@ -93,5 +87,5 @@ class PreemptionError(TrainingFailedError):
     def __reduce__(self):
         return (
             self.__class__,
-            (self.preemption_info, self.worker_failures, self.drain_timed_out),
+            (self.preemption_info, self.drain_timed_out),
         )
