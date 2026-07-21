@@ -246,6 +246,11 @@ li.active-link {
 /* Ray logo */
 .navbar-brand.logo > svg {
   width: 120px;
+  /* The SVG ships with width="400" height="201"; without an explicit height here
+     the box keeps the 201px attribute height while only the width is overridden,
+     leaving ~140px of empty clickable logo box overhanging the sidebar (it steals
+     the first API nav link's clicks). height:auto scales height from the viewBox. */
+  height: auto;
 }
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);
@@ -358,7 +363,10 @@ table.autosummary .row-odd {
   background-color: var(--pst-color-surface);
 }
 
-/* Ensure that long function names get elided and show ellipses to not overflow their bounding boxes  */
+/* Wrap long fully-qualified names so they stay within the fixed-width first
+* column instead of being clipped. The theme sets white-space: nowrap on these
+* code spans, which disables line breaking, so overflow-wrap alone is inert;
+* reset white-space to normal so break-word can wrap the dotted path. */
 table.autosummary tr > td:first-child > p > a > code {
   max-width: 100%;
   width: fit-content;
@@ -366,8 +374,8 @@ table.autosummary tr > td:first-child > p > a > code {
 }
 table.autosummary tr > td:first-child > p > a > code > span {
   display: block;
-  overflow: clip;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* RTD footer container makes the parent */

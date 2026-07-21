@@ -357,6 +357,11 @@ py_test_run_all_subdirectory(
     ],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
+    # vLLM 0.25.1 defaults to Model Runner V2, which skips multimodal encoder
+    # memory profiling and OOMs these GPU tests. Force Model Runner V1 for now.
+    # The image ENV can't reach these bazel test actions, so set it here.
+    # TODO (jeffreywang): Use the default MRV2 once https://github.com/vllm-project/vllm/pull/47985 lands.
+    env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
     tags = [
         "exclusive",
         "gpu",
@@ -441,6 +446,11 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/working-with-llms/**/*.py"],
     exclude = [],
     extra_srcs = [],
+    # vLLM 0.25.1 defaults to Model Runner V2, which skips multimodal encoder
+    # memory profiling and OOMs these GPU tests. Force Model Runner V1 for now.
+    # The image ENV can't reach these bazel test actions, so set it here.
+    # TODO (jeffreywang): Use the default MRV2 once https://github.com/vllm-project/vllm/pull/47985 lands.
+    env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
     tags = [
         "exclusive",
         "gpu",
