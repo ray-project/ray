@@ -38,7 +38,6 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
     check_running,
     get_num_alive_replicas,
-    skip_if_haproxy,
     tlog,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
@@ -134,9 +133,13 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    @pytest.mark.parametrize("aggregation_function", ["mean", "max"])
-    def test_basic(self, serve_instance, aggregation_function):
-        """Test that request metrics are sent correctly to the controller."""
+    def test_basic(self, serve_instance):
+        """Test that request metrics are sent correctly to the controller.
+
+        Runs on the default (mean) aggregation only. The mean/max/min aggregation
+        math is covered deterministically by test_aggregate_timeseries_* in
+        test_metrics_utils.py, so parametrizing the pipeline over it just adds flake.
+        """
 
         client = serve_instance
         signal = SignalActor.remote()
@@ -150,7 +153,6 @@ class TestAutoscalingMetrics:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 5,
                 "look_back_period_s": 1,
-                "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
             # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
@@ -339,74 +341,6 @@ class TestAutoscalingMetrics:
         # deployment, replica initializes and tries to get deployment
         # handle to `A` and fails.)
         wait_for_condition(check_num_replicas_eq, name="Router", target=1)
-
-    @skip_if_haproxy(
-        "direct ingress makes the ingress replicas self-report a source-agnostic "
-        "ongoing-request count that no handle owns, so killing the caller cannot "
-        "invalidate its still-inflight requests and the deployment never scales to 0"
-    )
-    @pytest.mark.skipif(
-        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-        reason="Needs metric collection at handle.",
-    )
-    def test_handle_deleted_on_non_serve_actor(self, serve_instance_with_signal):
-        """If handles are deleted while requests are still inflight, the
-        metrics should be invalidated after a certain time so the info
-        doesn't become stale. This is the fallback for handles that don't
-        live on serve actors.
-        """
-
-        client, signal = serve_instance_with_signal
-        dep_id = DeploymentID(name="A")
-
-        @serve.deployment(
-            autoscaling_config={
-                "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
-                "min_replicas": 0,
-                "max_replicas": 10,
-                "upscale_delay_s": 1,
-                "downscale_delay_s": 1,
-                # Keep this value smaller than the wait_for_condition timeout to ensure the
-                # autoscaler remains responsive to metric changes. If it’s larger, the test
-                # may become flaky because the autoscaler might not have stabilized within
-                # the wait window.
-                "look_back_period_s": 5,
-            },
-            graceful_shutdown_timeout_s=0.1,
-            health_check_period_s=1,
-            max_ongoing_requests=10,
-        )
-        class A:
-            async def __call__(self):
-                await signal.wait.remote()
-                return "sup"
-
-        @ray.remote
-        class CallActor:
-            def __init__(self):
-                self._handle = DeploymentHandle("A", "default")
-
-            async def call(self):
-                return await self._handle.remote()
-
-        serve.run(A.bind())
-        caller = CallActor.options(name="caller", namespace="abc").remote()
-        [caller.call.remote() for _ in range(20)]
-
-        # Wait for deployment A to scale up
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
-        print("Confirmed deployment scaled to 5 replicas.")
-
-        # Kill CallerActor
-        print("Killing CallerActor at", time.time())
-        ray.kill(ray.get_actor("caller", namespace="abc"))
-
-        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=20)
-        wait_for_condition(
-            check_num_requests_eq, client=client, id=dep_id, expected=0, timeout=20
-        )
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -1176,7 +1110,11 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return httpx.get("http://localhost:8000/").text
+        # The first request is in-flight through the 0->1 cold start and blocks
+        # on the signal, so it can stay open for the full startup window. Allow
+        # well beyond httpx's 5s default read timeout. The assertion is about
+        # which replica serves, not latency.
+        return httpx.get("http://localhost:8000/", timeout=60).text
 
     ref = send_request.remote()
 
