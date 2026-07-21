@@ -80,7 +80,7 @@ $ python -c "import ray;ray.init()"
 On the first run, this command (or any other script that initializes Ray) logs a line similar to the following:
 
 ```bash
-Generated new authentication token and saved to /Users/<username>/.ray/auth_token
+Generated new authentication token and saved to ~/.ray/auth_token
 ```
 
 Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in the "What token does Ray use?" section.

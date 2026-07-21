@@ -427,7 +427,7 @@ def test_ray_start_head_with_token_succeeds():
         ("none", "token", True),
     ],
 )
-def test_maybe_enable_token_auth_for_local_head_cluster(
+def test_maybe_enable_token_auth_if_token_available(
     token_source, auth_mode_env, expected_enabled, tmp_path
 ):
     """The helper enables token auth for a local head cluster when a token is
@@ -462,7 +462,7 @@ def test_maybe_enable_token_auth_for_local_head_cluster(
         reset_auth_token_state()
 
         with mock.patch.object(auth_setup.logger, "warning") as mock_warning:
-            enabled = auth_setup.maybe_enable_token_auth_for_local_head_cluster()
+            enabled = auth_setup.maybe_enable_token_auth_if_token_available()
 
         assert enabled is expected_enabled
 
@@ -479,6 +479,28 @@ def test_maybe_enable_token_auth_for_local_head_cluster(
     reset_auth_token_state()
 
 
+def test_maybe_enable_token_auth_if_token_available_fails_closed(tmp_path):
+    """With RAY_AUTH_MODE unset, a configured-but-unreadable token source
+    (an empty RAY_AUTH_TOKEN_PATH file) fails closed: the helper raises
+    AuthenticationError rather than silently starting unauthenticated."""
+    import ray._private.authentication.authentication_token_setup as auth_setup
+    from ray.exceptions import AuthenticationError
+
+    empty_token_file = tmp_path / "auth_token"
+    empty_token_file.write_text("")
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        os.environ.pop("RAY_AUTH_MODE", None)
+        os.environ["RAY_AUTH_TOKEN_PATH"] = str(empty_token_file)
+        reset_auth_token_state()
+
+        with pytest.raises(AuthenticationError):
+            auth_setup.maybe_enable_token_auth_if_token_available()
+
+    reset_auth_token_state()
+
+
 @pytest.mark.parametrize(
     "auth_mode_env, token_exists, expected_enabled",
     [
@@ -490,9 +512,7 @@ def test_maybe_enable_token_auth_for_local_head_cluster(
         ("token", False, True),
     ],
 )
-def test_maybe_enable_token_auth_for_new_local_cluster(
-    auth_mode_env, token_exists, expected_enabled
-):
+def test_enable_token_auth_by_default(auth_mode_env, token_exists, expected_enabled):
     """The helper enables token auth by default for a new local ray.init()
     cluster unless RAY_AUTH_MODE is explicitly set, and never warns."""
     from unittest import mock
@@ -513,7 +533,7 @@ def test_maybe_enable_token_auth_for_new_local_cluster(
         reset_auth_token_state()
 
         with mock.patch.object(auth_setup.logger, "warning") as mock_warning:
-            enabled = auth_setup.maybe_enable_token_auth_for_new_local_cluster()
+            enabled = auth_setup.enable_token_auth_by_default()
 
         assert enabled is expected_enabled
         # This helper never warns, regardless of outcome.

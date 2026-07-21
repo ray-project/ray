@@ -61,21 +61,16 @@ def _get_default_token_path() -> Path:
     return Path.home() / ".ray" / "auth_token"
 
 
-def _token_source_available() -> bool:
-    """Return whether an authentication token is available from any source.
+def _enable_token_auth() -> None:
+    """Enable token authentication for this process and its child processes.
 
-    Checks all supported token sources in precedence order via the C++ token
-    loader: the ``RAY_AUTH_TOKEN`` environment variable, the file referenced by
-    ``RAY_AUTH_TOKEN_PATH``, and the default token path (``~/.ray/auth_token``).
+    Sets ``RAY_AUTH_MODE=token``, which the child processes (GCS, raylet,
+    dashboard) inherit via ``os.environ``, and refreshes the cached ``RayConfig``
+    so this process observes token mode too (``RayConfig`` caches env vars on
+    first read).
     """
-    token_loader = AuthenticationTokenLoader.instance()
-    try:
-        return token_loader.has_token(ignore_auth_mode=True)
-    except AuthenticationError:
-        # A token source is configured but couldn't be loaded (e.g. an empty
-        # file at RAY_AUTH_TOKEN_PATH). Treat the source as present so token auth
-        # is enabled and ensure_token_if_auth_enabled surfaces a clear error.
-        return True
+    os.environ[AUTH_MODE_ENV_VAR] = "token"
+    Config.initialize("")
 
 
 def _warn_token_auth_disabled() -> None:
@@ -90,8 +85,8 @@ def _warn_token_auth_disabled() -> None:
     )
 
 
-def maybe_enable_token_auth_for_local_head_cluster() -> bool:
-    """Enable token authentication for a local head cluster if a token is available.
+def maybe_enable_token_auth_if_token_available() -> bool:
+    """Enable token authentication if a token is already available.
 
     For a local cluster started with ``ray start --head``, enable token
     authentication automatically when an authentication token is available from
@@ -102,17 +97,21 @@ def maybe_enable_token_auth_for_local_head_cluster() -> bool:
     one of the token environment variables) start an authenticated cluster
     without also having to set ``RAY_AUTH_MODE=token``.
 
-    This only applies to local head clusters. Don't call it for worker nodes
-    (``ray start --address=...``) or when connecting to an existing cluster, so
-    remote cluster behavior is unchanged.
+    Only enable when a token already exists; don't generate one. Don't call this
+    for worker nodes (``ray start --address=...``) or when connecting to an
+    existing cluster, so remote cluster behavior is unchanged.
 
-    When ``RAY_AUTH_MODE`` is already set, the explicit choice is respected. In
-    particular ``RAY_AUTH_MODE=token`` with no token available still raises later
-    in ``ensure_token_if_auth_enabled``. When token authentication ends up
-    disabled, this logs a warning so the user knows the cluster is unauthenticated.
+    When ``RAY_AUTH_MODE`` is already set, the explicit choice is respected. When
+    token authentication ends up disabled, this logs a warning so the user knows
+    the cluster is unauthenticated.
 
     Returns:
         True if token authentication is enabled after this call, False otherwise.
+
+    Raises:
+        AuthenticationError: If a token source is configured but can't be read
+            (for example, an empty file at ``RAY_AUTH_TOKEN_PATH``). This fails
+            closed rather than silently starting an unauthenticated cluster.
     """
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
@@ -122,22 +121,16 @@ def maybe_enable_token_auth_for_local_head_cluster() -> bool:
             _warn_token_auth_disabled()
         return enabled
 
-    if not _token_source_available():
-        # No token available from any source: keep authentication disabled, which
-        # preserves the previous behavior when RAY_AUTH_MODE isn't set.
+    # Enable token auth only if a token is already available from some source. A
+    # configured-but-unreadable source raises AuthenticationError here, which
+    # propagates so startup fails closed instead of running unauthenticated.
+    if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
+        # No token available and RAY_AUTH_MODE wasn't set: keep authentication
+        # disabled, preserving the previous behavior.
         _warn_token_auth_disabled()
         return False
 
-    # A token is available but RAY_AUTH_MODE wasn't set. Enable token
-    # authentication so the head node and all child processes it spawns enforce
-    # authentication. Child processes inherit this environment variable.
-    os.environ[AUTH_MODE_ENV_VAR] = "token"
-
-    # RayConfig caches env vars the first time they're read. Re-read them so this
-    # process (which connects to the cluster it's starting) also observes token
-    # mode.
-    Config.initialize("")
-
+    _enable_token_auth()
     logger.info(
         "Found an existing authentication token; enabling token authentication "
         f"for this cluster. Set {AUTH_MODE_ENV_VAR}=disabled to opt out."
@@ -145,7 +138,7 @@ def maybe_enable_token_auth_for_local_head_cluster() -> bool:
     return True
 
 
-def maybe_enable_token_auth_for_new_local_cluster() -> bool:
+def enable_token_auth_by_default() -> bool:
     """Enable token authentication by default for a new local cluster.
 
     For a new local cluster started with ``ray.init()`` (that is, ``ray.init``
@@ -158,7 +151,7 @@ def maybe_enable_token_auth_for_new_local_cluster() -> bool:
     This only applies to a new local cluster. Don't call it when connecting to an
     existing cluster (``ray.init(address=...)``), so that behavior is unchanged.
 
-    Unlike ``maybe_enable_token_auth_for_local_head_cluster``, this enables token
+    Unlike ``maybe_enable_token_auth_if_token_available``, this enables token
     authentication even when no token exists yet (a token is generated), and it
     never warns: a new local ``ray.init()`` cluster is authenticated by default
     unless the user explicitly sets ``RAY_AUTH_MODE=disabled``.
@@ -171,16 +164,7 @@ def maybe_enable_token_auth_for_new_local_cluster() -> bool:
         # Respect an explicit RAY_AUTH_MODE setting (e.g. "token" or "disabled").
         return auth_mode_env.lower() == "token"
 
-    # RAY_AUTH_MODE wasn't set: default to token authentication so the head node
-    # and all child processes it spawns enforce authentication. Child processes
-    # inherit this environment variable.
-    os.environ[AUTH_MODE_ENV_VAR] = "token"
-
-    # RayConfig caches env vars the first time they're read. Re-read them so this
-    # process (which connects to the cluster it's starting) also observes token
-    # mode.
-    Config.initialize("")
-
+    _enable_token_auth()
     return True
 
 
