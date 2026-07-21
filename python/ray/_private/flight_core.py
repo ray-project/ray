@@ -11,6 +11,7 @@ import os
 import select
 import socket
 import struct
+import sys
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -198,9 +199,29 @@ def _get_local_ip() -> str:
 # table buffers instead of copying them into the socket send buffer, cutting
 # producer-side CPU on the raw-TCP transport. It is send-side only; the consumer
 # receive path is unaffected (RX zero-copy is a separate mmap-based mechanism).
-_SO_ZEROCOPY = getattr(socket, "SO_ZEROCOPY", None)
-_MSG_ZEROCOPY = getattr(socket, "MSG_ZEROCOPY", None)
-_MSG_ERRQUEUE = getattr(socket, "MSG_ERRQUEUE", None)
+#
+# The stdlib `socket` module only exposes these constants on newer interpreters
+# (SO_ZEROCOPY / MSG_ZEROCOPY landed in Python 3.13), so on older Pythons they
+# are missing even when the running kernel supports the feature. Set them from
+# the well-known Linux uapi values so we don't silently lose zero-copy just
+# because the interpreter is old. Values are from the kernel uapi headers
+# (asm-generic/socket.h, bits/socket.h) and are correct for the x86_64 and
+# aarch64 architectures Ray targets.
+_IS_LINUX = sys.platform.startswith("linux")
+
+
+def _linux_socket_const(name: str, linux_value: int) -> Optional[int]:
+    """Return socket.<name> if the stdlib exposes it, else the known Linux uapi
+    value on Linux, else None (the constant is meaningless off Linux)."""
+    val = getattr(socket, name, None)
+    if val is not None:
+        return val
+    return linux_value if _IS_LINUX else None
+
+
+_SO_ZEROCOPY = _linux_socket_const("SO_ZEROCOPY", 60)
+_MSG_ZEROCOPY = _linux_socket_const("MSG_ZEROCOPY", 0x4000000)
+_MSG_ERRQUEUE = _linux_socket_const("MSG_ERRQUEUE", 0x2000)
 # Below this size the page-pinning + completion-notification overhead of
 # MSG_ZEROCOPY outweighs the copy it avoids (the kernel docs peg the crossover
 # near ~10 KiB), so small chunks use a plain copying send.
@@ -209,12 +230,48 @@ _ZEROCOPY_MIN_BYTES = 16 * 1024
 _SO_EE_ORIGIN_ZEROCOPY = 5
 
 
+class ZeroCopyUnsupportedError(RuntimeError):
+    """Raised when RAY_FLIGHT_TRANSPORT=tcp is requested but the platform can't
+    provide the SO_ZEROCOPY send path the raw-TCP transport relies on."""
+
+
 def _tcp_zerocopy_supported() -> bool:
     return (
         _SO_ZEROCOPY is not None
         and _MSG_ZEROCOPY is not None
         and _MSG_ERRQUEUE is not None
     )
+
+
+def _require_tcp_zerocopy() -> None:
+    """Fail loudly if the raw-TCP transport can't use SO_ZEROCOPY on this host.
+
+    Called when transport="tcp" is selected so an unsupported platform errors
+    out at server-start time instead of silently degrading to copying sends.
+    Verifies both that the constants are known and that the running kernel
+    actually accepts SO_ZEROCOPY (setsockopt succeeds), which catches kernels
+    older than 4.14.
+    """
+    if not _IS_LINUX:
+        raise ZeroCopyUnsupportedError(
+            "RAY_FLIGHT_TRANSPORT=tcp requires Linux SO_ZEROCOPY support, but "
+            f"this process is running on {sys.platform!r}."
+        )
+    if not _tcp_zerocopy_supported():
+        raise ZeroCopyUnsupportedError(
+            "RAY_FLIGHT_TRANSPORT=tcp requires SO_ZEROCOPY/MSG_ZEROCOPY, which "
+            "could not be resolved on this platform."
+        )
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.setsockopt(socket.SOL_SOCKET, _SO_ZEROCOPY, 1)
+    except OSError as e:
+        raise ZeroCopyUnsupportedError(
+            "RAY_FLIGHT_TRANSPORT=tcp requires SO_ZEROCOPY but the kernel "
+            f"rejected it ({e}); a Linux kernel >= 4.14 is required."
+        ) from e
+    finally:
+        probe.close()
 
 
 def _reap_zerocopy(conn, outstanding: int) -> None:
@@ -259,25 +316,23 @@ def _reap_zerocopy(conn, outstanding: int) -> None:
 def _send_ipc_payload(conn, refs) -> None:
     """Send the ordered IPC-stream chunks in `refs` over `conn`.
 
-    On Linux, chunks at or above the zero-copy threshold are sent with
-    MSG_ZEROCOPY (kernel DMAs from the table's own buffers); small chunks and
-    unsupported platforms use a plain copying send. `refs` are the producer's
-    live table buffers, so they stay valid until the completions are reaped.
+    Chunks at or above the zero-copy threshold are sent with MSG_ZEROCOPY
+    (kernel DMAs from the table's own buffers); sub-threshold chunks use a plain
+    copying send since the pinning overhead isn't worth it below the crossover.
+    Zero-copy support is guaranteed by the _require_tcp_zerocopy() check at
+    server start. `refs` are the producer's live table buffers, so they stay
+    valid until the completions are reaped.
     """
-    use_zc = False
-    if _tcp_zerocopy_supported():
-        try:
-            conn.setsockopt(socket.SOL_SOCKET, _SO_ZEROCOPY, 1)
-            use_zc = True
-        except OSError:
-            use_zc = False
-
-    if not use_zc:
-        for ref in refs:
-            mv = memoryview(ref).cast("B")
-            if mv.nbytes:
-                conn.sendall(mv)
-        return
+    # Zero-copy support is validated up front in _require_tcp_zerocopy() when
+    # the TCP server starts, so enabling it here should always succeed; a
+    # failure means the host changed underneath us and we surface it loudly
+    # rather than quietly reverting to copying sends.
+    try:
+        conn.setsockopt(socket.SOL_SOCKET, _SO_ZEROCOPY, 1)
+    except OSError as e:
+        raise ZeroCopyUnsupportedError(
+            f"failed to enable SO_ZEROCOPY on the TCP transport socket ({e})"
+        ) from e
 
     outstanding = 0
     for ref in refs:
@@ -766,6 +821,10 @@ class FlightCore:
             conn.close()
 
     def _start_tcp_server_locked(self) -> None:
+        # The raw-TCP transport streams table buffers with SO_ZEROCOPY; refuse
+        # to start (rather than silently fall back to copying sends) if this
+        # host can't provide it.
+        _require_tcp_zerocopy()
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind(("0.0.0.0", 0))
