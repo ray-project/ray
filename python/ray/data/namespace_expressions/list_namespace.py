@@ -333,3 +333,101 @@ class _ListNamespace:
             )
 
         return _list_flatten(self._expr)
+
+    def min(self) -> "UDFExpr":
+        """Get the minimum element of each list.
+
+        Nulls within a list are ignored. Empty and all-null lists yield null,
+        as do null list rows.
+
+        Returns:
+            UDFExpr with the per-row minimum (same type as the list elements).
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # [[3,1,2],[5],[]] -> [1, 5, None]
+            >>> expr = col("items").list.min()  # doctest: +SKIP
+        """
+        return self._reduce_elements("min")
+
+    def max(self) -> "UDFExpr":
+        """Get the maximum element of each list.
+
+        Nulls within a list are ignored. Empty and all-null lists yield null,
+        as do null list rows.
+
+        Returns:
+            UDFExpr with the per-row maximum (same type as the list elements).
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # [[3,1,2],[5],[]] -> [3, 5, None]
+            >>> expr = col("items").list.max()  # doctest: +SKIP
+        """
+        return self._reduce_elements("max")
+
+    def _reduce_elements(self, agg: Literal["min", "max"]) -> "UDFExpr":
+        """Reduce each list to a scalar with the given group-by aggregation."""
+        return_dtype = DataType(object)
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if _is_list_like(arrow_type):
+                return_dtype = DataType.from_arrow(arrow_type.value_type)
+
+        @pyarrow_udf(return_dtype=return_dtype)
+        def _list_reduce(arr: pyarrow.Array) -> pyarrow.Array:
+            # Approach:
+            # 1) Normalize fixed_size_list -> list for list_* kernels
+            #    (null rows are filled so flatten/parent_indices stay aligned).
+            # 2) Flatten to (row_index, value) pairs and group-by aggregate.
+            # 3) Scatter per-group results back onto the full row range; rows
+            #    without values (empty/all-null lists) stay null.
+            arr = _ensure_array(arr)
+
+            if not _is_list_like(arr.type):
+                raise TypeError(f"list.{agg}() requires a list column.")
+
+            null_mask = arr.is_null() if arr.null_count else None
+            if pyarrow.types.is_fixed_size_list(arr.type):
+                child_type = arr.type.value_type
+                if null_mask is not None:
+                    filler_values = pyarrow.nulls(
+                        len(arr) * arr.type.list_size, type=child_type
+                    )
+                    filler = pyarrow.FixedSizeListArray.from_arrays(
+                        filler_values, arr.type.list_size
+                    )
+                    arr = pc.if_else(null_mask, filler, arr)
+                arr = arr.cast(pyarrow.list_(child_type))
+
+            n_rows = len(arr)
+            values = pc.list_flatten(arr)
+            out_type = values.type
+            if len(values) == 0:
+                return pyarrow.nulls(n_rows, type=out_type)
+
+            row_indices = pc.list_parent_indices(arr)
+            grouped = (
+                pyarrow.table({"row": row_indices, "value": values})
+                .group_by("row")
+                .aggregate([("value", agg)])
+            )
+            row_sequence = pyarrow.array(
+                np.arange(n_rows, dtype=np.int64), type=pyarrow.int64()
+            )
+            positions = pc.index_in(row_sequence, value_set=grouped.column("row"))
+            result = pc.if_else(
+                pc.is_null(positions),
+                pyarrow.nulls(n_rows, type=out_type),
+                pc.take(
+                    grouped.column(f"value_{agg}").combine_chunks(),
+                    pc.fill_null(positions, 0),
+                ),
+            )
+            if null_mask is not None:
+                result = pc.if_else(
+                    null_mask, pyarrow.nulls(n_rows, type=out_type), result
+                )
+            return result
+
+        return _list_reduce(self._expr)
