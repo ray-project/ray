@@ -47,6 +47,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
+    ReplicaHealthFrame,
     ReplicaID,
     ReplicaMetricReport,
     ReplicaQueueLengthInfo,
@@ -693,6 +694,15 @@ class ReplicaMetricsManager:
             <= self._self_health_period_s
         )
 
+    def health_already_carried(self) -> bool:
+        """Health is already riding metric reports or this replica's own
+        handle metric reports; frames would duplicate it."""
+        return self.reports_carry_health() or (
+            self._last_health_reported_via_handle_ts is not None
+            and time.time() - self._last_health_reported_via_handle_ts
+            < self._self_health_period_s
+        )
+
     def self_health_report_entry(
         self,
     ) -> Optional[Tuple[str, Tuple[float, bool, Optional[int]]]]:
@@ -712,6 +722,17 @@ class ReplicaMetricsManager:
                 self._self_healthy,
                 self._self_consecutive_failures,
             ),
+        )
+
+    def self_health_frame(self) -> Optional["ReplicaHealthFrame"]:
+        """Latest self-check as a stream frame; None before the first check."""
+        if self._self_health_checked_at is None:
+            return None
+        healthy, checked_at, failures = self.self_health_snapshot()
+        return ReplicaHealthFrame(
+            healthy=healthy,
+            health_checked_at=checked_at,
+            health_consecutive_failures=failures,
         )
 
     @property
@@ -1890,11 +1911,18 @@ class Replica:
             request_metadata, ray_trace_ctx
         ) as status_code_callback:
             async with self._start_request(request_metadata):
+                # Binding for this request's lifetime: the router arms its
+                # frame pump only when frames are declared.
+                sends_frames = (
+                    request_metadata.supports_health_frames
+                    and not self._metrics_manager.health_already_carried()
+                )
                 yield ReplicaQueueLengthInfo(
                     accepted=True,
                     # NOTE(edoakes): `_wrap_request` will increment the number
                     # of ongoing requests to include this one, so re-fetch the value.
                     num_ongoing_requests=self.get_num_ongoing_requests(),
+                    will_send_health_frames=sends_frames,
                     **self._health_kwargs(),
                 )
 
@@ -1915,12 +1943,52 @@ class Replica:
                             request_kwargs,
                         ):
                             yield result
+                    elif sends_frames:
+                        async for result in self._call_unary_with_health_frames(
+                            request_metadata, request_args, request_kwargs
+                        ):
+                            yield result
                     else:
                         yield await self._user_callable_wrapper.call_user_method(
                             request_metadata, request_args, request_kwargs
                         )
                 except Exception as e:
                     self._raise_user_exception(e, request_metadata)
+
+    async def _call_unary_with_health_frames(
+        self, request_metadata: RequestMetadata, request_args, request_kwargs
+    ):
+        """Run a unary user call, yielding ReplicaHealthFrame while it's pending.
+
+        Keeps long-held requests carrying fresh self-health over the already-open
+        response stream so the router's handle report stays current and no
+        standalone heartbeat RPC is needed. The final yield is always the result.
+        """
+        user_task = asyncio.ensure_future(
+            self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
+        )
+        interval_s = self._metrics_manager.self_health_period_s
+        last_sent_checked_at = 0.0
+        try:
+            while True:
+                done, _ = await asyncio.wait({user_task}, timeout=interval_s or None)
+                if done:
+                    break
+                if self._metrics_manager.health_already_carried():
+                    # Metric or handle reports already carry health; don't
+                    # duplicate it on the stream (checked per tick: mode can
+                    # change while a request is held).
+                    continue
+                frame = self._metrics_manager.self_health_frame()
+                if frame is not None and frame.health_checked_at > last_sent_checked_at:
+                    last_sent_checked_at = frame.health_checked_at
+                    yield frame
+        finally:
+            if not user_task.done():
+                user_task.cancel()
+        yield user_task.result()
 
     async def _on_initialized(self):
         await self._maybe_start_direct_ingress_servers()

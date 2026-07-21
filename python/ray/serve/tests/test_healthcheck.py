@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import (
+    SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
@@ -543,6 +544,65 @@ def test_gang_health_check_restarts_gang(serve_instance):
     }
     assert len(old_gang_ids) == gang_size
     assert old_gang_ids.isdisjoint(final_replicas.keys())
+
+
+def test_health_frames_on_held_request(serve_instance):
+    """A held (long-running) unary request keeps carrying fresh health to the
+    router over the open response stream, with no standalone RPC.
+
+    The router-side per-replica health map only advances via response-carried
+    health or stream frames; with the single request held open, any advance
+    past the admission-time entry proves the frame path end to end.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        health_check_period_s=1,
+        max_ongoing_requests=10,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_ongoing_requests": 10,
+        },
+    )
+    class Held:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "ok"
+
+    handle = serve.run(Held.bind())
+    response = handle.remote()
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    router = handle._router
+    metrics_manager = getattr(router, "_asyncio_router", router)._metrics_manager
+
+    def _newest_checked_at() -> float:
+        return max(
+            (rec[0] for rec in metrics_manager._replica_health.values()),
+            default=0.0,
+        )
+
+    # Admission carried the first result; frames must advance it while held.
+    wait_for_condition(lambda: _newest_checked_at() > 0)
+    admission_checked_at = _newest_checked_at()
+    wait_for_condition(lambda: _newest_checked_at() > admission_checked_at, timeout=30)
+
+    # The self-check results also reach the controller's push registry.
+    controller = serve_instance._controller
+    wait_for_condition(
+        lambda: (
+            ray.get(controller.get_health_metrics.remote()).get("push_checks_recorded")
+            or 0
+        )
+        > 0,
+        timeout=30,
+    )
+
+    # Frames must not corrupt the user-visible response.
+    assert ray.get(signal.cur_num_waiters.remote()) == 1
+    ray.get(signal.send.remote())
+    assert response.result(timeout_s=30) == "ok"
 
 
 if __name__ == "__main__":

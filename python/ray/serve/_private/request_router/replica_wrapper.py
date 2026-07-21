@@ -3,7 +3,7 @@ import logging
 import pickle
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional, Set, Tuple, Union
 
 import grpc
@@ -101,6 +101,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
         self, pr: PendingRequest, *, with_rejection: bool
     ) -> ActorReplicaResult:
         """Send the request to a Python replica."""
+        metadata = pr.metadata
         if with_rejection:
             # Call a separate handler that may reject the request.
             # This handler is *always* a streaming call and the first message will
@@ -108,17 +109,23 @@ class ActorReplicaWrapper(ReplicaWrapper):
             method = self._actor_handle.handle_request_with_rejection.options(
                 num_returns="streaming"
             )
-        elif pr.metadata.is_streaming:
+            if not (
+                metadata.is_streaming
+                or metadata.is_http_request
+                or metadata.is_grpc_request
+            ):
+                # Actor-transport unary calls can consume ReplicaHealthFrame
+                # system messages interleaved on the response stream.
+                metadata = replace(metadata, supports_health_frames=True)
+        elif metadata.is_streaming:
             method = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
             )
         else:
             method = self._actor_handle.handle_request
 
-        obj_ref_gen = method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
-        return ActorReplicaResult(
-            obj_ref_gen, pr.metadata, with_rejection=with_rejection
-        )
+        obj_ref_gen = method.remote(pickle.dumps(metadata), *pr.args, **pr.kwargs)
+        return ActorReplicaResult(obj_ref_gen, metadata, with_rejection=with_rejection)
 
 
 class gRPCReplicaWrapper(ReplicaWrapper):

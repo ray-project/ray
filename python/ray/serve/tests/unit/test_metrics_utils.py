@@ -1399,10 +1399,9 @@ class TestSelfHealthReportEntry:
     def test_consumption_counts_as_carried(self):
         m = self._manager()
         m._self_health_checked_at = 123.0
-        assert m._last_health_reported_via_handle_ts is None
+        assert not m.health_already_carried()
         assert m.self_health_report_entry() is not None
-        # Consumption stamps handle-carried recency (heartbeat suppression).
-        assert m._last_health_reported_via_handle_ts is not None
+        assert m.health_already_carried()
 
     @pytest.mark.asyncio
     async def test_heartbeat_suppressed_after_report_consumption(self):
