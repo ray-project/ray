@@ -8,6 +8,7 @@ from ray.train.v2._internal.exceptions import (
 from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    NCCLHangError,
     TrainingFailedError,
     WorkerGroupError,
 )
@@ -54,6 +55,9 @@ class DefaultFailurePolicy(FailurePolicy):
         )
 
     def _is_retryable_error(self, training_failed_error: TrainingFailedError) -> bool:
+        if isinstance(training_failed_error, NCCLHangError):
+            # NCCL hangs are usually deterministic, so a restart would just hang again.
+            return False
         if isinstance(training_failed_error, WorkerGroupError):
             return True
         elif isinstance(training_failed_error, ControllerError):
