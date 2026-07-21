@@ -160,7 +160,9 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        # Host-first so co-located routers sort adjacent in debug output.
+        # pool is both the round-robin set and the connection-failover set. No
+        # co-located router falls back to one lex-min pick, so we never cycle
+        # across nodes. Host-first sort keeps co-located routers adjacent.
         if colocated:
             pool = sorted(colocated, key=lambda s: (s.host, s.port))
         else:
@@ -180,9 +182,7 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
         )
 
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = {{ "
-        + ", ".join(_server_lua(s) for s in pool)
-        + " }"
+        f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
         for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
