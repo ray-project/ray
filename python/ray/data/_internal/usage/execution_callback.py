@@ -13,13 +13,14 @@ import uuid
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.usage import collector, get_poller, util
+from ray.data._internal.usage import collector, util
 from ray.data._internal.usage.collector import (
     OpConfig,
     PipelinePerf,
     UsageInfo,
     WorkloadInfo,
 )
+from ray.data._internal.usage.poller import get_poller
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -46,6 +47,9 @@ class UsageCallback(ExecutionCallback):
         self._started_at: Optional[float] = None
         # To measure cumulative metrics stored in Prometheus counters/gauges (for e.g. bytes spilled)
         # we track the delta between the value at execution start and the value at execution end.
+        # The start baseline is a copy of the poller's latest snapshot captured
+        # at execution start (None if no poll had completed by then).
+        self._baseline_snapshot: Optional[Dict[str, Optional[int]]] = None
         self._cluster_deltas: Optional[Dict[str, Optional[int]]] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
@@ -99,20 +103,37 @@ class UsageCallback(ExecutionCallback):
         return util.anonymize_op_name(op)
 
     def on_collection_start(self, executor: "StreamingExecutor") -> None:
-        """Called once before execution starts. Records start timing and asks
-        the poller to capture this execution's baseline in the background."""
+        """Called once before execution starts. Records start timing and captures
+        this execution's baseline as a copy of the poller's latest snapshot
+        (None if no poll has completed yet)."""
         self._started_at = time.time()
-        get_poller().record_start(self._execution_id)
+        self._baseline_snapshot = get_poller().latest_snapshot()
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
     ) -> None:
-        """Called once after execution succeeds or fails. Asks the poller for the
-        per-metric deltas over this execution (latest metric values minus this
-        execution's start baseline).
+        """Called once after execution succeeds or fails. Compute the deltas between execution start and end for each metric recorded on the cluster.
         ``executor`` is a reference to the StreamingExecutor and ``error`` is the failure (or ``None`` on success);
         subclasses may override to capture either."""
-        self._cluster_deltas = get_poller().compute_deltas(self._execution_id)
+        self._cluster_deltas = self._compute_cluster_deltas()
+
+    def _compute_cluster_deltas(self) -> Dict[str, Optional[int]]:
+        """Compute delta for each metric between the poller's latest snapshot and the
+        the current execution's baseline snapshot. When no poll had completed by the time the
+        execution started (baseline recorded as None), fall back to the first snapshot the
+        poller took."""
+        poller = get_poller()
+        baseline_snapshot = self._baseline_snapshot
+        if baseline_snapshot is None:
+            baseline_snapshot = poller.first_snapshot()
+        baseline_snapshot = baseline_snapshot or {}
+        latest_snapshot = poller.latest_snapshot() or {}
+        return {
+            metric_name: util.compute_delta(
+                baseline_snapshot.get(metric_name), latest_snapshot.get(metric_name)
+            )
+            for metric_name in latest_snapshot
+        }
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""

@@ -1,17 +1,15 @@
 """Background poller for cluster usage metrics.
 
-A single process-global daemon thread samples the cluster metrics on an interval
-and caches the latest values. Each execution records its own start baseline
-(keyed by execution id) when it begins, and asks the poller to compute the delta
-between the latest values and that baseline when it ends — so the usage
-callback never blocks the execution path on a metric query and never has to
-track start/end samples itself.
+A single daemon thread running in the driver process samples the cluster metrics on an interval
+and caches the latest values of the metrics captured.
+An execution captures a copy of the latest snapshot as its baseline when
+it starts, then computes the delta between the latest snapshot and that
+baseline when it ends.
 """
 
 import logging
 import threading
 import time
-from collections import OrderedDict
 from typing import Callable, Dict, Optional
 
 from ray.data._internal.usage import collector, util
@@ -37,51 +35,22 @@ class ClusterMetricsPoller:
         self._metrics = metrics
         # The interval at which to poll the metrics
         self._interval_s = interval_s
-        # Serializes access to poller state, since the poll thread writes
-        # _latest while the driver thread reads _latest/_baselines.
+        # Serializes access to poller state, since the poll thread writes the
+        # snapshots while the driver thread reads them.
         self._lock = threading.Lock()
-        # The most recent poll result, refreshed every interval by the loop.
-        self._latest: Dict[str, MetricValue] = {}
-        # execution_id -> that execution's baseline to compute the cluster metric delta
-        self._baselines: "OrderedDict[str, Dict[str, MetricValue]]" = OrderedDict()
+        # The most recent poll result, refreshed every interval by the loop. Contains the most recent values of the cluster metrics.
+        # None until the first poll completes.
+        self._latest_snapshot: Optional[Dict[str, MetricValue]] = None
+        # The first poll result the loop ever published. Used as a fallback
+        # baseline for executions that start before any poll completes.
+        self._first_snapshot: Optional[Dict[str, MetricValue]] = None
         # The poll thread. Started on the first execution and runs as a daemon
         # until the driver process exits.
         self._thread: Optional[threading.Thread] = None
 
-    def record_start(self, execution_id: str) -> None:
-        """Called at an execution's start. Starts the poll loop and captures
-        this execution's start baseline metric values in the background,
-        so the driver never blocks on a metric query."""
-        self._ensure_running()
-        util.run_async(lambda: self._capture_baseline(execution_id))
-
-    def compute_deltas(self, execution_id: str) -> Dict[str, MetricValue]:
-        """Called at an execution's end. Return the per-metric delta between the
-        latest polled values and this execution's start baseline. Missing on
-        either side degrades that metric to None"""
-        with self._lock:
-            baseline = self._baselines.get(execution_id, {})
-            latest = dict(self._latest)
-        return {
-            name: collector.compute_delta(baseline.get(name), latest.get(name))
-            for name in self._metrics
-        }
-
-    def _capture_baseline(self, execution_id: str) -> None:
-        """Sample every metric and store the values as ``execution_id``'s
-        baseline, evicting the oldest baseline when at capacity."""
-        values = self._sample_all_metrics()
-        with self._lock:
-            if (
-                execution_id not in self._baselines
-                and len(self._baselines) >= collector._MAX_EXECUTIONS_TO_TRACK
-            ):
-                self._baselines.popitem(last=False)
-            self._baselines[execution_id] = values
-
-    def _ensure_running(self) -> None:
-        """Start the poll thread if it isn't already running. Called at each
-        execution's start."""
+    def _start_thread_if_not_running(self) -> None:
+        """Start the poll thread if it isn't already running. Idempotent;
+        called once when the poller is first created."""
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -90,18 +59,28 @@ class ClusterMetricsPoller:
             )
             self._thread.start()
 
-    def _sample_all_metrics(self) -> Dict[str, MetricValue]:
-        """Sample every metric concurrently and return the joined values.
-        Shared firing logic for the poll loop and the per-execution baseline."""
-        names = list(self._metrics)
-        futures = [util.run_async(self._metrics[name]) for name in names]
-        return dict(zip(names, util.join_async(futures)))
+    def latest_snapshot(self) -> Optional[Dict[str, MetricValue]]:
+        """A copy of the most recent poll result, or None if no poll has
+        completed yet."""
+        with self._lock:
+            return dict(self._latest_snapshot) if self._latest_snapshot else None
+
+    def first_snapshot(self) -> Optional[Dict[str, MetricValue]]:
+        """A copy of the first poll result the loop ever published, or None if no
+        poll has completed yet."""
+        with self._lock:
+            return dict(self._first_snapshot) if self._first_snapshot else None
 
     def poll_once(self) -> None:
-        """Sample every metric concurrently and publish the values as latest."""
-        values = self._sample_all_metrics()
+        """Sample every metric concurrently and publish the values as the latest
+        snapshot (and as the first snapshot if this is the first poll)."""
+        names = list(self._metrics)
+        futures = [util.run_async(self._metrics[name]) for name in names]
+        values = dict(zip(names, util.join_async(futures)))
         with self._lock:
-            self._latest = values
+            self._latest_snapshot = values
+            if self._first_snapshot is None:
+                self._first_snapshot = values
 
     def _run(self) -> None:
         while True:
@@ -131,4 +110,5 @@ def get_poller() -> ClusterMetricsPoller:
                     ),
                 }
             )
+            _poller._start_thread_if_not_running()
         return _poller

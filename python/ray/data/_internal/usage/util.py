@@ -81,6 +81,14 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
         return None
 
 
+def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:
+    """Non-negative delta between two cumulative samples. Returns None if
+    either sample is missing"""
+    if start is None or end is None:
+        return None
+    return max(0, end - start)
+
+
 def run_async(fn: Callable[[], T]) -> "Future[T]":
     """Run ``fn`` on a daemon thread and return a ``Future`` for its result, so
     a blocking call runs in the background instead of blocking the caller.

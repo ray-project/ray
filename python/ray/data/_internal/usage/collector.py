@@ -218,14 +218,6 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
     )
 
 
-def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:
-    """Non-negative delta between two cumulative samples. Returns None if
-    either sample is missing"""
-    if start is None or end is None:
-        return None
-    return max(0, end - start)
-
-
 def record_usage_info(info: UsageInfo) -> None:
     """Buffer ``info`` (evicting the oldest entry when full) and flush the whole
     buffer to GCS via ``record_extra_usage_tag``.

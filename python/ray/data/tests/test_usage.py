@@ -3,7 +3,6 @@
 import json
 import sys
 import threading
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,15 +11,6 @@ import ray
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.execution_callback import UsageCallback
-
-
-def _wait_until(predicate, timeout=5.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(0.01)
-    raise AssertionError("condition not met within timeout")
 
 
 @pytest.fixture
@@ -297,12 +287,12 @@ def test_physical_op_name_without_logical_ops():
 def test_compute_delta():
     """Cluster metric deltas (bytes_spilled, node_deaths) are the non-negative
     increase between start and end samples, or None if either sample is missing."""
-    assert collector.compute_delta(100, 250) == 150
+    assert util.compute_delta(100, 250) == 150
     # Cumulative counters shouldn't go backwards, but clamp to 0 if they do.
-    assert collector.compute_delta(250, 100) == 0
-    assert collector.compute_delta(None, 100) is None
-    assert collector.compute_delta(100, None) is None
-    assert collector.compute_delta(None, None) is None
+    assert util.compute_delta(250, 100) == 0
+    assert util.compute_delta(None, 100) is None
+    assert util.compute_delta(100, None) is None
+    assert util.compute_delta(None, None) is None
 
 
 def test_query_prometheus_counter_sums_results(monkeypatch):
@@ -377,19 +367,45 @@ def test_session_scoped_metric_query():
     )
 
 
-def test_poller_baselines_isolated_by_execution_id():
-    """Each execution's delta is measured from its own start baseline."""
+def test_poller_snapshots():
+    """The poller publishes the latest snapshot every poll and pins the first."""
     counter = {"v": 100}
     p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
-    p.record_start("e1")
-    _wait_until(lambda: "e1" in p._baselines)  # baseline e1 = 100
-    counter["v"] = 200
-    p.record_start("e2")
-    _wait_until(lambda: "e2" in p._baselines)  # baseline e2 = 200
+    assert p.latest_snapshot() is None and p.first_snapshot() is None
+    p.poll_once()  # first = latest = 100
+    counter["v"] = 500
+    p.poll_once()  # latest = 500, first pinned at 100
+    assert p.first_snapshot() == {"m": 100}
+    assert p.latest_snapshot() == {"m": 500}
+
+
+def test_callback_deltas_from_captured_baseline(monkeypatch):
+    """The callback measures its delta from the baseline it captured at start
+    (latest snapshot minus that baseline)."""
+    counter = {"v": 100}
+    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    monkeypatch.setattr(poller, "_poller", p)
+    p.poll_once()  # latest = 100
+    cb = UsageCallback(MagicMock())
+    cb._baseline_snapshot = p.latest_snapshot()  # baseline = 100
     counter["v"] = 500
     p.poll_once()  # latest = 500
-    assert p.compute_deltas("e1") == {"m": 400}
-    assert p.compute_deltas("e2") == {"m": 300}
+    assert cb._compute_cluster_deltas() == {"m": 400}
+
+
+def test_callback_none_baseline_falls_back_to_first_snapshot(monkeypatch):
+    """A callback whose execution started before any poll completed (None
+    baseline) measures its delta from the poller's first snapshot."""
+    counter = {"v": 100}
+    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    monkeypatch.setattr(poller, "_poller", p)
+    cb = UsageCallback(MagicMock())
+    cb._baseline_snapshot = p.latest_snapshot()  # None: no poll completed yet
+    assert cb._baseline_snapshot is None
+    p.poll_once()  # first = latest = 100
+    counter["v"] = 400
+    p.poll_once()  # latest = 400
+    assert cb._compute_cluster_deltas() == {"m": 300}
 
 
 if __name__ == "__main__":
