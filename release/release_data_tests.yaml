@@ -106,6 +106,80 @@
     script: python read_from_uris_benchmark.py
 
 ###############
+# Zarr tests
+###############
+
+# Robotics -- UMI / Diffusion-Policy replay buffer: per-timestep RGB frames +
+# low-dim end-effector state, read row-aligned (wide-form). Exercises multi-array
+# group reads, align_axis_0, chunk re-tiling, sliding-window overlap, and the
+# tensor(image) + scalar(state) mixed-column path.
+- name: "read_zarr_umi_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_zarr.sh
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 3600
+    script: >
+      python read_zarr_benchmark.py
+      s3://anonymous@ray-example-data/zarr/umi-cup.zarr
+      --align-axis-0
+      --arrays data/camera0_rgb data/robot0_eef_pos
+      data/robot0_eef_rot_axis_angle data/robot0_gripper_width
+      --chunk-shapes 16 --overlap 15
+      --register-imagecodecs
+      --iter-bundles
+
+# Geospatial -- one large float32 array (sea-surface temperature, time x lat x
+# lon). Long-form, single array: IO/decompress on big numeric chunks. Read at the
+# store's native chunking: MUR chunks the whole time axis into one chunk (e.g.
+# (6443,100,100)), so re-tiling the leading axis would force repeated full-chunk
+# reads -- native gives one clean read per chunk.
+- name: "read_zarr_geospatial_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_zarr.sh
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 3600
+    script: >
+      python read_zarr_benchmark.py
+      s3://anonymous@ray-example-data/zarr/mur-sst-cut.zarr
+      --arrays analysed_sst
+      --iter-bundles
+
+# Biology -- OME-Zarr bioimaging pyramid (IDR idr0062A/6001240, NGFF 0.4 = zarr
+# v2). Long-form over several resolution levels of DIFFERENT shapes: exercises
+# the "arrays need not share dims -> separate rows" heterogeneous multi-array path.
+- name: "read_zarr_bioimaging_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_zarr.sh
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 3600
+    script: >
+      python read_zarr_benchmark.py
+      s3://anonymous@ray-example-data/zarr/idr0062A-6001240.zarr
+      --arrays 0 1 2
+      --iter-bundles
+
+###############
 # Writing tests
 ###############
 

@@ -1018,14 +1018,26 @@ def read_zarr(
     a row's owned ``[t_start, t_stop)`` fits entirely within that row's slice.
 
     **Custom codecs.** Stores compressed with non-stdlib codecs (for example
-    ``imagecodecs`` JPEG-XL) need the codec package imported and registered
-    *in every Ray worker*, not just the driver process. Register it with a
-    ``worker_process_setup_hook`` -- pass an importable callable or its dotted
-    path (a string is interpreted as an import path, not as a string of code)::
+    ``imagecodecs`` JPEG-XL) must have that codec package registered with
+    ``numcodecs`` in *both* the driver and every Ray worker: ``read_zarr``
+    instantiates the compressor while planning on the driver (reading array
+    metadata) and again on the workers (decoding chunks). Register it on the
+    driver by calling the package's registration function before ``read_zarr``,
+    and on the workers with a **job-level** ``worker_process_setup_hook`` set at
+    ``ray.init`` -- pass an importable callable or its dotted path (a string is
+    interpreted as an import path, not as a string of code)::
 
-        ray.init(runtime_env={
+        import imagecodecs.numcodecs
+
+        imagecodecs.numcodecs.register_codecs()  # driver
+        ray.init(runtime_env={  # every worker, at worker startup
             "worker_process_setup_hook": "imagecodecs.numcodecs.register_codecs",
         })
+
+    The worker registration must use the ``ray.init`` (job-level) hook, not a
+    per-task ``runtime_env``: Ray deserializes a read task's arguments -- which
+    carry the store's compressor -- before any per-task setup runs, so only a
+    hook that runs at worker startup registers the codec in time.
 
     **Array attributes (.zattrs).** ``read_zarr`` doesn't surface each array's
     ``.zattrs`` (Zarr user attributes) in the row schema -- they're invariant
