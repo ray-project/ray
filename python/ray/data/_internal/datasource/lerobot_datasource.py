@@ -738,6 +738,23 @@ def _read_lerobot_task(
         )
 
 
+class _DeltaSegment(NamedTuple):
+    """Per-segment state for the delta (temporal-window) read path, built once by
+    :func:`_prepare_delta_segment` and reused across the segment's batches."""
+
+    seg_lo: int
+    global_idx: List[int]
+    ep_col: List[int]
+    row_from: List[int]
+    row_to: List[int]
+    delta_video_keys: List[str]
+    nondelta_video_keys: List[str]
+    nondelta_image_keys: List[str]
+    pad_order: List[str]
+    tab_base: Dict[str, np.ndarray]
+    seg_images: Dict[str, list]
+
+
 def _read_lerobot_segment(
     root: _LeRobotRoot,
     start: int,
@@ -749,17 +766,15 @@ def _read_lerobot_segment(
 ) -> Iterator[pa.Table]:
     """Stream decoded rows for one ``[start, end)`` range within a single root.
 
-    Reads the segment's parquet rows, then emits Arrow batches sized from
+    Reads the segment's parquet rows once, then emits Arrow batches sized from
     this root's estimated row size (so each batch targets one output block),
-    decoding each batch's camera frames on demand.
-    """
-    if root.delta_steps:
-        # Temporal-window reads go through the episode-aligned delta path.
-        yield from _read_lerobot_segment_delta(
-            root, start, end, dataset_index, parquet_segs, ep_slice, max_block_bytes
-        )
-        return
+    decoding each batch's camera frames on demand via :func:`_build_batch`.
 
+    When ``root.delta_steps`` is set, each batch instead gathers a temporal
+    window per listed feature (:func:`_build_delta_batch`), using per-segment
+    state from :func:`_prepare_delta_segment`; a window multiplies a row's size,
+    so the batch is shrunk by the widest window to keep blocks near target.
+    """
     fs = root.fs
 
     # Read all parquet rows for this segment (predicate pushdown on index).
@@ -774,22 +789,6 @@ def _read_lerobot_segment(
     n_rows = full.num_rows
     camera_keys = root.video_keys + root.image_keys
 
-    if root.video_keys:
-        video_meta = _video_episode_meta(ep_slice, root.video_keys)
-        cache = new_decoder_cache(root.storage_options)
-        # Per-frame timestamp tolerance for the video decoder, needed only
-        # when there are video cameras. Default to half a frame interval
-        # (0.5 / fps). Computed inside this branch -- not unconditionally --
-        # so image-only and tabular-only datasets never divide by fps.
-        if root.frame_tolerance_s is not None:
-            tolerance_s = root.frame_tolerance_s
-        else:
-            tolerance_s = 0.5 / float(root.fps)
-    else:
-        video_meta = {}
-        cache = None
-        tolerance_s = None
-
     task_idx_pylist = full.column("task_index").to_pylist()
     missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
     if missing_tasks:
@@ -799,73 +798,83 @@ def _read_lerobot_segment(
             f"tasks metadata are inconsistent."
         )
 
-    # Size batches from this root's row size
-    rows_per_batch = max(1, max_block_bytes // (root.row_size_bytes))
+    if root.video_keys:
+        video_meta = _video_episode_meta(ep_slice, root.video_keys)
+        cache = new_decoder_cache(root.storage_options)
+        # Per-frame timestamp tolerance for the video decoder. Default to half a
+        # frame interval (0.5 / fps); computed only when there are video cameras
+        # so image-only and tabular-only datasets never divide by fps.
+        tolerance_s = (
+            root.frame_tolerance_s
+            if root.frame_tolerance_s is not None
+            else 0.5 / float(root.fps)
+        )
+    else:
+        video_meta = {}
+        cache = None
+        tolerance_s = None
+
+    # Delta reads gather a window per feature; build the per-segment state once
+    # and divide the batch by the widest window so blocks stay near target size.
+    dseg = _prepare_delta_segment(root, full, ep_slice) if root.delta_steps else None
+    max_t = max((len(s) for s in root.delta_steps.values()), default=1)
+    rows_per_batch = max(1, (max_block_bytes // root.row_size_bytes) // max_t)
     try:
         for batch_start in range(0, n_rows, rows_per_batch):
             batch_end = min(batch_start + rows_per_batch, n_rows)
             batch = full.slice(batch_start, batch_end - batch_start)
-            frame_buffers: dict = {}
-            if root.video_keys:
-                frame_buffers.update(
-                    _decode_video_batch(root, batch, video_meta, tolerance_s, cache)
-                )
-            if root.image_keys:
-                frame_buffers.update(_decode_image_frames(root, batch))
             task_list = [
                 root.tasks_dict[task_idx_pylist[i]]
                 for i in range(batch_start, batch_end)
             ]
-            yield _build_batch(
-                camera_keys,
-                batch,
-                frame_buffers,
-                task_list,
-                dataset_index,
-                root.stats_json,
-            )
+            if dseg is not None:
+                yield _build_delta_batch(
+                    root,
+                    batch,
+                    batch_start,
+                    dataset_index,
+                    task_list,
+                    video_meta,
+                    tolerance_s,
+                    cache,
+                    dseg,
+                )
+            else:
+                frame_buffers: dict = {}
+                if root.video_keys:
+                    frame_buffers.update(
+                        _decode_video_batch(root, batch, video_meta, tolerance_s, cache)
+                    )
+                if root.image_keys:
+                    frame_buffers.update(_decode_image_frames(root, batch))
+                yield _build_batch(
+                    camera_keys,
+                    batch,
+                    frame_buffers,
+                    task_list,
+                    dataset_index,
+                    root.stats_json,
+                )
     finally:
         if cache is not None:
             cache.clear()
 
 
-def _read_lerobot_segment_delta(
-    root: _LeRobotRoot,
-    start: int,
-    end: int,
-    dataset_index: int,
-    parquet_segs: List[str],
-    ep_slice: pa.Table,
-    max_block_bytes: int,
-) -> Iterator[pa.Table]:
-    """Stream decoded rows for one ``[start, end)`` range with temporal windows.
+def _prepare_delta_segment(
+    root: _LeRobotRoot, full: pa.Table, ep_slice: pa.Table
+) -> _DeltaSegment:
+    """Build the per-segment state the delta gather reuses across batches:
+    per-row episode bounds (for clamping), key routing, and the segment-level
+    tabular / decoded-image buffers whose windows may span batch boundaries.
 
-    Like :func:`_read_lerobot_segment`, but every feature in ``root.delta_steps``
-    is gathered over its frame offsets -- clamped to the anchor frame's episode --
-    into a leading time dimension, and a boolean ``{key}_is_pad`` column is emitted
-    for it. Requires whole-episode segments (guaranteed by the ``get_read_tasks``
-    delta guard) so all neighbour rows lie within this segment's parquet read.
+    Validates the invariant the gather relies on: the segment is a contiguous run
+    of whole episodes in the global frame index (guaranteed by the
+    ``get_read_tasks`` delta guard). That lets a clamped global index ``j`` map to
+    row position ``j - seg_lo`` and guarantees every in-episode neighbour is
+    loaded; a split episode would silently corrupt windows, so fail loudly.
     """
-    from ray.data.extensions import ArrowVariableShapedTensorArray
-
-    fs = root.fs
-    filters = [("index", ">=", start), ("index", "<", end)]
-    pq_tables = []
-    for path in parquet_segs:
-        with fs.open(path, "rb") as f:
-            pq_tables.append(pq.read_table(f, filters=filters))
-    full = pa.concat_tables(pq_tables) if pq_tables else None
-    if full is None or full.num_rows == 0:
-        return
-    n_rows = full.num_rows
-
-    # Global frame index -> row position within this (contiguous, whole-episode)
-    # segment, so every clamped neighbour resolves to a loaded row.
     global_idx = full.column("index").to_pylist()
-    pos_of_global = {g: p for p, g in enumerate(global_idx)}
     ep_col = full.column("episode_index").to_pylist()
-
-    # Per-episode [from, to) bounds for clamping, expanded to per-row arrays.
     ep_from = dict(
         zip(
             ep_slice.column("episode_index").to_pylist(),
@@ -881,32 +890,22 @@ def _read_lerobot_segment_delta(
     row_from = [ep_from[e] for e in ep_col]
     row_to = [ep_to[e] for e in ep_col]
 
-    # Safety net: the delta path assumes whole-episode segments (see the
-    # get_read_tasks guard). If an episode were split, some clamped neighbour
-    # would fall outside this segment and KeyError below; fail loudly instead.
     seg_lo, seg_hi = global_idx[0], global_idx[-1] + 1
-    if min(row_from) < seg_lo or max(row_to) > seg_hi:
+    if (
+        len(global_idx) != seg_hi - seg_lo
+        or min(row_from) < seg_lo
+        or max(row_to) > seg_hi
+    ):
         raise RuntimeError(
-            "delta_timestamps requires whole-episode read segments, but this "
-            "segment splits an episode -- an internal invariant violation "
-            "(get_read_tasks caps parallelism when delta_timestamps is set)."
-        )
-
-    task_idx_pylist = full.column("task_index").to_pylist()
-    missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
-    if missing_tasks:
-        raise ValueError(
-            f"task_index values {sorted(missing_tasks)} are absent from the "
-            f"dataset's tasks metadata (meta/tasks.parquet); the data and "
-            f"tasks metadata are inconsistent."
+            "delta_timestamps requires contiguous whole-episode read segments, "
+            "but this segment splits an episode -- an internal invariant "
+            "violation (get_read_tasks caps parallelism when delta_timestamps "
+            "is set)."
         )
 
     delta_steps = root.delta_steps
     image_set = set(root.image_keys)
     delta_image_keys = [ik for ik in root.image_keys if ik in delta_steps]
-    nondelta_image_keys = [ik for ik in root.image_keys if ik not in delta_steps]
-    delta_video_keys = [vk for vk in root.video_keys if vk in delta_steps]
-    nondelta_video_keys = [vk for vk in root.video_keys if vk not in delta_steps]
     delta_tabular_keys = [
         name
         for name in full.column_names
@@ -917,158 +916,152 @@ def _read_lerobot_segment_delta(
     pad_order = [name for name in full.column_names if name in delta_steps] + [
         vk for vk in root.video_keys if vk in delta_steps
     ]
-
-    if root.video_keys:
-        video_meta = _video_episode_meta(ep_slice, root.video_keys)
-        cache = new_decoder_cache(root.storage_options)
-        tolerance_s = (
-            root.frame_tolerance_s
-            if root.frame_tolerance_s is not None
-            else 0.5 / float(root.fps)
-        )
-    else:
-        video_meta = {}
-        cache = None
-        tolerance_s = None
-
-    # Segment-level buffers reused across batches for gathers whose neighbours may
-    # cross batch boundaries: tabular columns (cheap) and decoded delta images.
-    tab_base = {
-        name: _column_to_numpy(full.column(name)) for name in delta_tabular_keys
-    }
-    seg_images = (
-        _decode_image_frames(root, full, keys=delta_image_keys)
-        if delta_image_keys
-        else {}
+    return _DeltaSegment(
+        seg_lo=seg_lo,
+        global_idx=global_idx,
+        ep_col=ep_col,
+        row_from=row_from,
+        row_to=row_to,
+        delta_video_keys=[vk for vk in root.video_keys if vk in delta_steps],
+        nondelta_video_keys=[vk for vk in root.video_keys if vk not in delta_steps],
+        nondelta_image_keys=[ik for ik in root.image_keys if ik not in delta_steps],
+        pad_order=pad_order,
+        tab_base={
+            name: _column_to_numpy(full.column(name)) for name in delta_tabular_keys
+        },
+        seg_images=(
+            _decode_image_frames(root, full, keys=delta_image_keys)
+            if delta_image_keys
+            else {}
+        ),
     )
 
-    def _gather_from_positions(source, positions):
-        return np.stack([source[i] for i in positions], axis=0)
 
-    # Each output row now carries up to ``max_T`` frames, so shrink the batch by
-    # the widest window to keep block sizes near the target.
-    max_t = max(len(s) for s in delta_steps.values())
-    rows_per_batch = max(1, (max_block_bytes // root.row_size_bytes) // max_t)
-    try:
-        for batch_start in range(0, n_rows, rows_per_batch):
-            batch_end = min(batch_start + rows_per_batch, n_rows)
-            batch = full.slice(batch_start, batch_end - batch_start)
-            anchors = list(range(batch_start, batch_end))
+def _build_delta_batch(
+    root: _LeRobotRoot,
+    batch: pa.Table,
+    batch_start: int,
+    dataset_index: int,
+    task_list: List[str],
+    video_meta: dict,
+    tolerance_s: Optional[float],
+    cache: Any,
+    dseg: _DeltaSegment,
+) -> pa.Table:
+    """Assemble one temporal-window output batch.
 
-            # Per-anchor clamped target positions + pad masks, computed once per
-            # distinct step list and reused across the keys that share it.
-            targets_cache: Dict[tuple, tuple] = {}
+    Each feature in ``root.delta_steps`` is gathered over its offsets -- clamped
+    to the anchor's episode -- into a leading time dimension, with a boolean
+    ``{key}_is_pad`` mask; non-windowed columns pass through unchanged. Anchors
+    are ``batch``'s rows, at absolute segment positions
+    ``[batch_start, batch_start + len(batch))``. Column order matches
+    :func:`_build_schema`: parquet columns, then video keys, then
+    ``task`` / ``dataset_index`` / ``stats``, then the pad masks.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorArray
 
-            def _targets_for(step_key):
-                cached = targets_cache.get(step_key)
-                if cached is not None:
-                    return cached
-                positions_per_anchor = []
-                pad_per_anchor = []
-                steps = list(step_key)
-                for p in anchors:
-                    tgt, pad = _delta_targets(
-                        global_idx[p], row_from[p], row_to[p], steps
-                    )
-                    positions_per_anchor.append([pos_of_global[j] for j in tgt])
-                    pad_per_anchor.append(np.asarray(pad, dtype=bool))
-                targets_cache[step_key] = (positions_per_anchor, pad_per_anchor)
-                return targets_cache[step_key]
+    delta_steps = root.delta_steps
+    image_set = set(root.image_keys)
+    anchors = range(batch_start, batch_start + batch.num_rows)
+    pad_buffers: dict = {}
 
-            columns: dict = {}
-            pad_buffers: dict = {}
+    # Per-anchor clamped target positions + pad mask, computed once per distinct
+    # offset list and shared across keys that use it. A clamped global index j is
+    # at row position j - seg_lo (the segment is contiguous; see
+    # _prepare_delta_segment).
+    targets_cache: Dict[tuple, tuple] = {}
 
-            # Non-delta cameras: one frame per row (unchanged behaviour).
-            nd_video_fb = (
-                _decode_video_batch(
-                    root,
-                    batch,
-                    video_meta,
-                    tolerance_s,
-                    cache,
-                    keys=nondelta_video_keys,
+    def _targets_for(steps):
+        cached = targets_cache.get(steps)
+        if cached is None:
+            positions, pads = [], []
+            for p in anchors:
+                tgt, pad = _delta_targets(
+                    dseg.global_idx[p], dseg.row_from[p], dseg.row_to[p], list(steps)
                 )
-                if nondelta_video_keys
-                else {}
-            )
-            nd_image_fb = (
-                _decode_image_frames(root, batch, keys=nondelta_image_keys)
-                if nondelta_image_keys
-                else {}
-            )
+                positions.append([j - dseg.seg_lo for j in tgt])
+                pads.append(np.asarray(pad, dtype=bool))
+            cached = targets_cache[steps] = (positions, pads)
+        return cached
 
-            # Delta video: T frames per anchor from the shared decoder cache.
-            for vk in delta_video_keys:
-                frames, pads = _decode_video_delta(
-                    root,
-                    anchors,
-                    global_idx,
-                    row_from,
-                    row_to,
-                    ep_col,
-                    video_meta,
-                    vk,
-                    delta_steps[vk],
-                    tolerance_s,
-                    cache,
+    # Decode all cameras up front, then assemble columns in schema order.
+    nd_video_fb = (
+        _decode_video_batch(
+            root, batch, video_meta, tolerance_s, cache, keys=dseg.nondelta_video_keys
+        )
+        if dseg.nondelta_video_keys
+        else {}
+    )
+    nd_image_fb = (
+        _decode_image_frames(root, batch, keys=dseg.nondelta_image_keys)
+        if dseg.nondelta_image_keys
+        else {}
+    )
+    delta_video_fb: dict = {}
+    for vk in dseg.delta_video_keys:
+        frames, pads = _decode_video_delta(
+            root,
+            anchors,
+            dseg.global_idx,
+            dseg.row_from,
+            dseg.row_to,
+            dseg.ep_col,
+            video_meta,
+            vk,
+            delta_steps[vk],
+            tolerance_s,
+            cache,
+        )
+        delta_video_fb[vk] = frames
+        pad_buffers[vk] = pads
+
+    columns: dict = {}
+    # 1. Parquet columns, in file order: windowed image/tabular gathered from the
+    #    per-segment buffers, everything else passed through.
+    for name in batch.column_names:
+        if name in image_set:
+            if name in delta_steps:
+                positions, pad = _targets_for(tuple(delta_steps[name]))
+                src = dseg.seg_images[name]
+                columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                    [np.stack([src[i] for i in pos], axis=0) for pos in positions]
                 )
-                columns[vk] = ArrowVariableShapedTensorArray.from_numpy(frames)
-                pad_buffers[vk] = pads
-
-            # Parquet columns, in file order.
-            for name in full.column_names:
-                if name in image_set:
-                    if name in delta_steps:
-                        positions_per_anchor, pad_per_anchor = _targets_for(
-                            tuple(delta_steps[name])
-                        )
-                        src = seg_images[name]
-                        stacked = [
-                            _gather_from_positions(src, positions)
-                            for positions in positions_per_anchor
-                        ]
-                        columns[name] = ArrowVariableShapedTensorArray.from_numpy(
-                            stacked
-                        )
-                        pad_buffers[name] = pad_per_anchor
-                    else:
-                        columns[name] = ArrowVariableShapedTensorArray.from_numpy(
-                            nd_image_fb[name]
-                        )
-                elif name in delta_steps:
-                    positions_per_anchor, pad_per_anchor = _targets_for(
-                        tuple(delta_steps[name])
-                    )
-                    base = tab_base[name]
-                    stacked = [base[positions] for positions in positions_per_anchor]
-                    columns[name] = ArrowVariableShapedTensorArray.from_numpy(stacked)
-                    pad_buffers[name] = pad_per_anchor
-                else:
-                    columns[name] = batch.column(name)
-
-            # Non-parquet video columns, appended after the parquet columns.
-            for vk in nondelta_video_keys:
-                columns[vk] = ArrowVariableShapedTensorArray.from_numpy(nd_video_fb[vk])
-
-            task_list = [root.tasks_dict[task_idx_pylist[p]] for p in anchors]
-            columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
-            columns["dataset_index"] = pa.array(
-                [dataset_index] * len(anchors), type=pa.int32()
-            )
-            columns["stats"] = pa.array(
-                [root.stats_json] * len(anchors), type=pa.string()
-            ).dictionary_encode()
-
-            # Pad masks last, in the schema's fixed order.
-            for name in pad_order:
-                columns[f"{name}_is_pad"] = ArrowVariableShapedTensorArray.from_numpy(
-                    pad_buffers[name]
+                pad_buffers[name] = pad
+            else:
+                columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                    nd_image_fb[name]
                 )
+        elif name in delta_steps:
+            positions, pad = _targets_for(tuple(delta_steps[name]))
+            base = dseg.tab_base[name]
+            columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                [base[pos] for pos in positions]
+            )
+            pad_buffers[name] = pad
+        else:
+            columns[name] = batch.column(name)
 
-            yield pa.table(columns)
-    finally:
-        if cache is not None:
-            cache.clear()
+    # 2. Video columns (not in the parquet), in root.video_keys order.
+    for vk in root.video_keys:
+        buf = delta_video_fb[vk] if vk in delta_steps else nd_video_fb[vk]
+        columns[vk] = ArrowVariableShapedTensorArray.from_numpy(buf)
+
+    # 3. Per-dataset constants.
+    columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
+    columns["dataset_index"] = pa.array(
+        [dataset_index] * len(task_list), type=pa.int32()
+    )
+    columns["stats"] = pa.array(
+        [root.stats_json] * len(task_list), type=pa.string()
+    ).dictionary_encode()
+
+    # 4. Pad masks, in the schema's fixed order.
+    for name in dseg.pad_order:
+        columns[f"{name}_is_pad"] = ArrowVariableShapedTensorArray.from_numpy(
+            pad_buffers[name]
+        )
+
+    return pa.table(columns)
 
 
 def _decode_video_delta(
