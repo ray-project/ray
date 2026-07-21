@@ -17,14 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
-    """Combine two preemption signals into one.
-
-    Used while the controller drains the worker group: in a staggered
-    preemption (nodes drained one after another, or a previously drained node
-    dropping out of Ray Core's draining list once it's gone) a later signal may
-    not include earlier preempted nodes. Union the ``preempted_node_to_ranks``
-    maps so we keep the full history, and keep the earliest known deadline.
-    """
+    """Combine two preemption signals into one."""
     ranks_by_node: Dict[str, Set[int]] = defaultdict(set)
     for info in (old, new):
         for node, ranks in info.preempted_node_to_ranks.items():
@@ -45,9 +38,7 @@ class PreemptionContext:
 
     Written by the worker actor's main thread (``mark_preempt``) and read from
     the training thread (``ray.train.get_preemption_info``) and the status
-    poll. No lock is needed: it is a single reference swapped atomically, and
-    ``PreemptionInfo`` is immutable. Reading it is informational (e.g. to save a
-    just-in-time checkpoint); it has no effect on control flow.
+    poll.
     """
 
     preemption_info: Optional[PreemptionInfo] = None
