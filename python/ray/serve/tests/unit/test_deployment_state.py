@@ -10163,9 +10163,10 @@ class TestRankConsistencyMembershipGate:
         ds._replicas.count.return_value = 0
         ds._curr_status_info = Mock(status=DeploymentStatus.HEALTHY)
         ds._rank_manager = Mock()
+        ds._rank_manager._last_rank_op_errored = False
         ds._rank_manager.check_rank_consistency_and_reassign_minimally.return_value = []
         ds._reconfigure_replicas_with_new_ranks = Mock()
-        ds._last_rank_membership_fingerprint = None
+        ds._last_rank_membership_ids = None
         return ds
 
     def test_runs_once_then_skips_for_same_membership(self):
@@ -10193,12 +10194,33 @@ class TestRankConsistencyMembershipGate:
             == 2
         )
 
+    def test_swallowed_rank_error_reruns_next_tick(self):
+        # fail_on_rank_error off: the pass can swallow an error and return [].
+        # The membership must NOT be cached, so the next tick retries.
+        ds = self._ds(["a", "b", "c"])
+        ds._rank_manager._last_rank_op_errored = True
+        ds._maybe_check_rank_consistency()
+        assert ds._last_rank_membership_ids is None
+        ds._maybe_check_rank_consistency()
+        assert (
+            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
+            == 2
+        )
+        # Once it succeeds, the membership is cached and the pass stops re-running.
+        ds._rank_manager._last_rank_op_errored = False
+        ds._maybe_check_rank_consistency()
+        ds._maybe_check_rank_consistency()
+        assert (
+            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
+            == 3
+        )
+
     def test_starting_replicas_skip_entirely(self):
         ds = self._ds(["a", "b"])
         ds._replicas.count.return_value = 1
         ds._maybe_check_rank_consistency()
         ds._rank_manager.check_rank_consistency_and_reassign_minimally.assert_not_called()
-        assert ds._last_rank_membership_fingerprint is None
+        assert ds._last_rank_membership_ids is None
 
 
 if __name__ == "__main__":

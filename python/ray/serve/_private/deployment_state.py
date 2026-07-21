@@ -10,8 +10,6 @@ from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from functools import reduce
-from operator import xor
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import ray
@@ -2588,6 +2586,9 @@ class DeploymentRankManager:
         # Global rank manager (existing replica-level rank)
         self._replica_rank_manager = RankManager()
         self._fail_on_rank_error = fail_on_rank_error
+        # Whether the most recent rank op swallowed an error (fail_on_rank_error
+        # off). Read right after a call to decide whether its result is trustworthy.
+        self._last_rank_op_errored = False
 
         # Node rank manager (assigns rank IDs to nodes)
         self._node_rank_manager = RankManager()
@@ -2601,13 +2602,18 @@ class DeploymentRankManager:
     def _execute_with_error_handling(self, func, safe_default, *args, **kwargs):
         if self._fail_on_rank_error:
             # Let exceptions propagate
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            self._last_rank_op_errored = False
+            return result
         else:
             # Catch exceptions and return safe default
             try:
-                return func(*args, **kwargs)
+                result = func(*args, **kwargs)
+                self._last_rank_op_errored = False
+                return result
             except Exception as e:
                 logger.error(f"Error executing function {func.__name__}: {e}")
+                self._last_rank_op_errored = True
                 return safe_default
 
     def assign_rank(self, replica_id: str, node_id: str) -> ReplicaRank:
@@ -2935,7 +2941,7 @@ class DeploymentState:
         self._rank_manager = DeploymentRankManager(
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
-        self._last_rank_membership_fingerprint: Optional[int] = None
+        self._last_rank_membership_ids: Optional[Set[str]] = None
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -4982,7 +4988,7 @@ class DeploymentState:
         The pass is O(N) with heavy constants and used to run on every
         control-loop tick in steady state -- at 10K+ replicas it monopolizes
         the controller loop. Rank consistency can only be violated by
-        membership changes, so a cheap fingerprint gates it.
+        membership changes, so the active replica-id set gates it.
         """
         active_replicas = self._replicas.get()
         if not (
@@ -4995,12 +5001,8 @@ class DeploymentState:
             and self._replicas.count(states=[ReplicaState.STARTING]) == 0
         ):
             return
-        fingerprint = reduce(
-            xor,
-            (hash(r.replica_id.unique_id) for r in active_replicas),
-            len(active_replicas),
-        )
-        if fingerprint == self._last_rank_membership_fingerprint:
+        active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
+        if active_replica_ids == self._last_rank_membership_ids:
             return
         replicas_to_reconfigure = (
             self._rank_manager.check_rank_consistency_and_reassign_minimally(
@@ -5010,7 +5012,10 @@ class DeploymentState:
 
         # Reconfigure replicas that had their ranks reassigned
         self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
-        self._last_rank_membership_fingerprint = fingerprint
+        if not self._rank_manager._last_rank_op_errored:
+            # Only mark this membership as checked if the pass did not swallow an
+            # error (fail_on_rank_error off); otherwise retry it next tick.
+            self._last_rank_membership_ids = active_replica_ids
 
     def _handle_deployment_actor_failed_health_check(
         self,
