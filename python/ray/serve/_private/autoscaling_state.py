@@ -210,6 +210,9 @@ class DeploymentAutoscalingState:
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
+        if running_replicas is self._running_replicas:
+            # Same (cached) list object -- membership unchanged, skip rebuild.
+            return
         self._running_replicas = running_replicas
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas

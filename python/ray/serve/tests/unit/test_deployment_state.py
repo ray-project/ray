@@ -9975,12 +9975,13 @@ class TestRankConsistencyMembershipGate:
         ds._replicas = Mock()
         ds._replicas.get.return_value = replicas
         ds._replicas.count.return_value = 0
+        ds._replicas.mutation_version = 7
         ds._curr_status_info = Mock(status=DeploymentStatus.HEALTHY)
         ds._rank_manager = Mock()
         ds._rank_manager._last_rank_op_errored = False
         ds._rank_manager.check_rank_consistency_and_reassign_minimally.return_value = []
         ds._reconfigure_replicas_with_new_ranks = Mock()
-        ds._last_rank_membership_ids = None
+        ds._last_rank_membership_version = None
         return ds
 
     def test_runs_once_then_skips_for_same_membership(self):
@@ -10002,6 +10003,8 @@ class TestRankConsistencyMembershipGate:
             r.replica_id.unique_id = uid
             new.append(r)
         ds._replicas.get.return_value = new
+        # Membership changes always bump the container mutation version.
+        ds._replicas.mutation_version = 8
         ds._maybe_check_rank_consistency()
         assert (
             ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
@@ -10014,7 +10017,7 @@ class TestRankConsistencyMembershipGate:
         ds = self._ds(["a", "b", "c"])
         ds._rank_manager._last_rank_op_errored = True
         ds._maybe_check_rank_consistency()
-        assert ds._last_rank_membership_ids is None
+        assert ds._last_rank_membership_version is None
         ds._maybe_check_rank_consistency()
         assert (
             ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
@@ -10034,7 +10037,83 @@ class TestRankConsistencyMembershipGate:
         ds._replicas.count.return_value = 1
         ds._maybe_check_rank_consistency()
         ds._rank_manager.check_rank_consistency_and_reassign_minimally.assert_not_called()
-        assert ds._last_rank_membership_ids is None
+        assert ds._last_rank_membership_version is None
+
+
+class TestMutationVersionMemo:
+    """Container mutation version + memoized per-tick id-collection walks."""
+
+    def _replica(self, uid, actor_id=None, node_id=None):
+        r = Mock()
+        r.replica_id = uid
+        r.version = "v1"
+        r.actor_id = actor_id or f"actor-{uid}"
+        r.actor_node_id = node_id or f"node-{uid}"
+        return r
+
+    def test_version_bumps_only_on_real_mutation(self):
+        c = ds_mod.ReplicaStateContainer()
+        v0 = c.mutation_version
+        r = self._replica("a")
+        c.add(ReplicaState.STARTING, r)
+        assert c.mutation_version == v0 + 1
+        # Empty pops/removes (the steady-state case) do not bump.
+        assert c.pop(states=[ReplicaState.STOPPING]) == []
+        assert c.remove({"missing"}) == []
+        assert c.mutation_version == v0 + 1
+        assert c.pop(states=[ReplicaState.STARTING]) == [r]
+        assert c.mutation_version == v0 + 2
+
+    def _ds(self):
+        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
+        ds._replicas = ds_mod.ReplicaStateContainer()
+        ds._alive_replica_actor_ids_memo = None
+        ds._running_replica_ids_memo = None
+        ds._active_node_ids_memo = None
+        return ds
+
+    def test_getters_memoize_and_invalidate_on_mutation(self):
+        ds = self._ds()
+        ds._replicas.add(ReplicaState.RUNNING, self._replica("r1"))
+        ids1 = ds.get_running_replica_ids()
+        assert ids1 == ["r1"]
+        assert ds.get_running_replica_ids() is ids1  # cache hit
+        assert ds.get_alive_replica_actor_ids() == {"actor-r1"}
+        assert ds.get_active_node_ids() == {"node-r1"}
+
+        ds._replicas.add(ReplicaState.RUNNING, self._replica("r2"))
+        ids2 = ds.get_running_replica_ids()
+        assert set(ids2) == {"r1", "r2"} and ids2 is not ids1
+        assert ds.get_alive_replica_actor_ids() == {"actor-r1", "actor-r2"}
+        assert ds.get_active_node_ids() == {"node-r1", "node-r2"}
+
+    def test_starting_or_recovering_disables_caching(self):
+        ds = self._ds()
+        ds._replicas.add(ReplicaState.RUNNING, self._replica("r1"))
+        ds._replicas.add(ReplicaState.STARTING, self._replica("r2"))
+        a = ds.get_alive_replica_actor_ids()
+        b = ds.get_alive_replica_actor_ids()
+        # Recomputed each call (attrs may materialize in place), never cached.
+        assert a == b and a is not b
+        assert ds._alive_replica_actor_ids_memo is None
+
+    def test_autoscaling_update_skips_same_list_object(self):
+        from ray.serve._private import autoscaling_state as as_mod
+
+        das = as_mod.DeploymentAutoscalingState.__new__(
+            as_mod.DeploymentAutoscalingState
+        )
+        das._running_replicas = []
+        rid = Mock()
+        rid.to_full_id_str.return_value = "d#r1"
+        ids = [rid]
+        das.update_running_replica_ids(ids)
+        assert das._cached_running_replica_strs == {"d#r1"}
+        das._cached_running_replica_strs = {"sentinel"}
+        das.update_running_replica_ids(ids)  # same object -> skipped
+        assert das._cached_running_replica_strs == {"sentinel"}
+        das.update_running_replica_ids(list(ids))  # new object -> rebuilt
+        assert das._cached_running_replica_strs == {"d#r1"}
 
 
 if __name__ == "__main__":
