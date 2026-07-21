@@ -355,12 +355,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
     timeout: 600
@@ -406,11 +400,6 @@
     anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -428,7 +417,7 @@
             - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
             - RAYTEST_FAIL_ON_WORKER_OOM=1
             - RAYTEST_FAIL_ON_DEAD_NODES=0
-            - RAYTEST_FAIL_ON_SPILLING=0
+            - RAYTEST_FAIL_ON_SPILLING=1
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -590,12 +579,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0 # Allow temporarily to unblock release
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -656,12 +639,6 @@
 
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -679,12 +656,6 @@
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
@@ -1003,19 +974,25 @@
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
-          fail_on_spilling: 0 # Allow temporarily to unblock release
+          # In general, Ray Data shouldn't spill on stable fixed-size clusters, but
+          # we've observed occasional and negligible O(~10 GiB) spills in weekly runs.
+          # The spilling is likely due to unbalanced object distribution.
+          #
+          # To avoid creating low-signal failures, we've disabled the spill check on
+          # this test.
+          fail_on_spilling: 0
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 100
           fail_on_dead_nodes: 1
-          fail_on_spilling: 0 # Allow temporarily to unblock release
+          fail_on_spilling: 0  # We expect bounded spills with autoscaling.
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
           fail_on_dead_nodes: 0
-          fail_on_spilling: 0
+          fail_on_spilling: 0  # We expected bounded spills with chaos.
 
   cluster:
     anyscale_sdk_2026: true
@@ -1058,7 +1035,7 @@
           args: --inference-concurrency 1 40
           frequency: weekly
           fail_on_dead_nodes: 1
-          fail_on_spilling: 1
+          fail_on_spilling: 0  # We expected bounded spills with autoscaling.
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
@@ -1067,7 +1044,7 @@
           # fail.
           frequency: manual
           fail_on_dead_nodes: 0
-          fail_on_spilling: 0
+          fail_on_spilling: 0  # We expected bounded spills with chaos.
 
   cluster:
     anyscale_sdk_2026: true
@@ -1572,6 +1549,7 @@
         - RAY_health_check_timeout_ms=100000
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:

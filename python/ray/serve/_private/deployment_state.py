@@ -5992,6 +5992,11 @@ class DeploymentStateManager:
 
         return dict(node_id_to_alive_replica_ids)
 
+    def _get_deployment_state_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> DeploymentState:
+        return self._deployment_states[deployment_id]
+
     def _dump_replica_states_for_testing(
         self, deployment_id: DeploymentID
     ) -> ReplicaStateContainer:
