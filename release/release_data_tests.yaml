@@ -1055,7 +1055,6 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
         - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
-      post_build_script: byod_install_pybase64.sh
 
   run:
     timeout: 3600
