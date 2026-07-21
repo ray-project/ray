@@ -5,7 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_for_ref
+from ray.experimental import set_target_device_for_ref, set_target_for_ref
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -546,7 +546,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
             return ray.put(self.tensor_list, _tensor_transport="nixl")
 
         def get_with_buffers(self, refs):
-            set_target_for_ref(refs[0], target_buffer=self.tensor_list)
+            set_target_for_ref(refs[0], self.tensor_list)
             tensors = ray.get(refs[0])
             # Make sure we ray.get-ted into the buffers
             for new_tensor, tensor_buffer in zip(tensors, self.tensor_list):
@@ -558,7 +558,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 torch.tensor([1, 2]).to("cuda"),
                 torch.tensor([4, 5]).to("cuda"),
             ]
-            set_target_for_ref(refs[0], target_buffer=wrong_tensor_buffer)
+            set_target_for_ref(refs[0], wrong_tensor_buffer)
             with pytest.raises(ValueError) as excinfo:
                 ray.get(refs[0])
             assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
@@ -594,7 +594,7 @@ def test_nixl_cross_device_fetch(ray_start_regular):
             return ray.put(tensors, _tensor_transport="nixl")
 
         def fetch_on_device(self, refs, target_device):
-            set_target_for_ref(refs[0], target_device=target_device)
+            set_target_device_for_ref(refs[0], target_device)
             tensors = ray.get(refs[0])
             expected_type = torch.device(target_device).type
             for t in tensors:
@@ -609,7 +609,7 @@ def test_nixl_cross_device_fetch(ray_start_regular):
                 torch.empty(3, dtype=torch.int64),
                 torch.empty(3, dtype=torch.int64),
             ]
-            set_target_for_ref(refs[0], target_buffer=cpu_buffers)
+            set_target_for_ref(refs[0], cpu_buffers)
             tensors = ray.get(refs[0])
             for new_tensor, buffer in zip(tensors, cpu_buffers):
                 assert new_tensor.device.type == "cpu"
@@ -617,23 +617,21 @@ def test_nixl_cross_device_fetch(ray_start_regular):
                 assert id(new_tensor) == id(buffer)
             return [t.clone() for t in tensors]
 
-        def set_both_target_and_device(self, refs):
-            # target_buffer and target_device are mutually exclusive.
-            buffers = [
+        def target_device_overrides_target_buffer(self, refs):
+            # Setting a target device after a target buffer should overwrite the
+            # target buffer so the two options stay mutually exclusive.
+            cuda_buffers = [
                 torch.empty(3, dtype=torch.int64).to("cuda"),
                 torch.empty(3, dtype=torch.int64).to("cuda"),
             ]
-            with pytest.raises(ValueError) as excinfo:
-                set_target_for_ref(refs[0], target_buffer=buffers, target_device="cuda")
-            assert "Exactly one of" in str(excinfo.value)
-            return True
-
-        def set_neither_target_nor_device(self, refs):
-            # At least one of target_buffer or target_device must be provided.
-            with pytest.raises(ValueError) as excinfo:
-                set_target_for_ref(refs[0])
-            assert "Exactly one of" in str(excinfo.value)
-            return True
+            set_target_for_ref(refs[0], cuda_buffers)
+            set_target_device_for_ref(refs[0], "cpu")
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cuda_buffers):
+                # The stale target buffer must not be used.
+                assert new_tensor.device.type == "cpu"
+                assert id(new_tensor) != id(buffer)
+            return [t.cpu() for t in tensors]
 
     actors = [CrossDeviceActor.remote() for _ in range(2)]
 
@@ -657,10 +655,15 @@ def test_nixl_cross_device_fetch(ray_start_regular):
     assert torch.equal(buffer_tensors[0], torch.tensor([1, 2, 3]))
     assert torch.equal(buffer_tensors[1], torch.tensor([4, 5, 6]))
 
-    # target_buffer and target_device are mutually exclusive.
+    # A later set_target_device_for_ref call overwrites an earlier
+    # set_target_for_ref call so target buffer and target device stay mutually
+    # exclusive across repeated calls on the same ref.
     cuda_ref2 = ray.get(actors[0].put_cuda.remote())
-    assert ray.get(actors[1].set_both_target_and_device.remote([cuda_ref2]))
-    assert ray.get(actors[1].set_neither_target_nor_device.remote([cuda_ref2]))
+    override_tensors = ray.get(
+        actors[1].target_device_overrides_target_buffer.remote([cuda_ref2])
+    )
+    assert torch.equal(override_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(override_tensors[1], torch.tensor([4, 5, 6]))
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)

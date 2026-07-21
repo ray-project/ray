@@ -1,5 +1,6 @@
 from ray.experimental.rdt.rdt_manager import (
     RDTManager,
+    set_target_device_for_ref,
     set_target_for_ref,
     wait_tensor_freed,
 )
@@ -26,4 +27,5 @@ __all__ = [
     "TensorTransportMetadata",
     "CommunicatorMetadata",
     "set_target_for_ref",
+    "set_target_device_for_ref",
 ]

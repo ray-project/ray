@@ -120,45 +120,54 @@ def wait_tensor_freed(tensor: Any, timeout: Optional[float] = None):
 
 
 @PublicAPI(stability="alpha")
-def set_target_for_ref(
-    ref: ObjectRef,
-    *,
-    target_buffer: Optional[List[Any]] = None,
-    target_device: Optional[str] = None,
-):
+def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     """
-    Set target for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
-
-    Exactly one of ``target_buffer`` or ``target_device`` must be provided, these
-    two options are mutually exclusive.
+    Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
 
     This is only supported by some transports (e.g., NIXL). If the transport
     does not support this feature, an exception will be raised during ray.get.
 
-    When ``target_buffer`` is provided, Ray validates that the buffers match the metadata
-    of the tensors in the object (e.g., shape, dtype, device). If validation fails,
-    a `ValueError` is raised. We recommend sending over lists of tensors and passing a list
-    of the same length here because the serialization order from the sender-side must match
-    the order of the target tensors here.
+    Ray validates that the provided target buffers match the metadata of the
+    tensors in the object (e.g., shape, dtype). If validation fails, a
+    `ValueError` is raised. We recommend sending over lists of tensors and passing
+    a list of the same length here because the serialization order from the
+    sender-side must match the order of the target tensors here.
 
-    When ``target_device`` is provided, Ray allocates the receive buffers on that
-    device instead of the source device. This enables cross-device transfers
-    (e.g., fetching a CUDA tensor onto CPU or vice versa) for transports that
-    support it (e.g., NIXL).
+    The buffers may be on a device that differs from the source device to perform
+    a cross-device transfer, for transports that support it (e.g., NIXL).
+
+    This overwrites any target buffer or target device previously set for the ref.
+
+    Args:
+        ref: The ObjectRef to set the target buffers for. The ref must be for an RDT object.
+        target: A list of tensors to be used as the target buffers to receive into.
+    """
+    rdt_manager = ray.worker.global_worker.rdt_manager
+    rdt_manager.set_target_buffers_for_ref(ref, target)
+
+
+@PublicAPI(stability="alpha")
+def set_target_device_for_ref(ref: ObjectRef, target_device: str):
+    """
+    Set the target device for an RDT ObjectRef to fetch tensors onto when
+    `ray.get` is called.
+
+    Ray allocates the receive buffers on ``target_device`` instead of the source
+    device. This enables cross-device transfers (e.g., fetching a CUDA tensor
+    onto CPU or vice versa) for transports that support it (e.g., NIXL). If the
+    transport does not support this feature, an exception will be raised during
+    ray.get.
+
+    This overwrites any target buffer or target device previously set for the ref.
 
     Args:
         ref: The ObjectRef to set the target for. The ref must be for an RDT object.
-        target_buffer: A list of tensors to be used as the target buffers to receive into.
         target_device: The device to fetch the tensors onto, as a device string
             (e.g. ``"cpu"``, ``"cuda:0"``). This may differ from the source device
             to perform a cross-device transfer.
     """
-    if (target_buffer is None) == (target_device is None):
-        raise ValueError(
-            "Exactly one of `target_buffer` or `target_device` must be provided to set_target_for_ref."
-        )
     rdt_manager = ray.worker.global_worker.rdt_manager
-    rdt_manager.set_target_for_ref(ref, target_buffer, target_device)
+    rdt_manager.set_target_device_for_ref(ref, target_device)
 
 
 class RDTManager:
@@ -474,12 +483,25 @@ class RDTManager:
                 # Trigger the transfer now that the metadata is available.
                 self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
-    def set_target_for_ref(
-        self,
-        ref: ObjectRef,
-        target_buffers: Optional[List[Any]] = None,
-        target_device: Optional[str] = None,
-    ):
+    def set_target_buffers_for_ref(self, ref: ObjectRef, target_buffers: List[Any]):
+        with self._lock:
+            if ref.hex() not in self._managed_rdt_metadata:
+                raise ValueError(f"Ref {ref} is not an RDT object.")
+
+            # Setting target buffers overwrites any previously set target buffer
+            # or target device so the two options stay mutually exclusive.
+            self._managed_rdt_metadata[ref.hex()] = self._managed_rdt_metadata[
+                ref.hex()
+            ]._replace(
+                target_buffers=[
+                    weakref.ref(target_buffer) for target_buffer in target_buffers
+                ],
+                target_device=None,
+            )
+
+    def set_target_device_for_ref(self, ref: ObjectRef, target_device: str):
+        import torch
+
         from ray.experimental.rdt.util import device_match_transport
 
         with self._lock:
@@ -489,31 +511,19 @@ class RDTManager:
             rdt_meta = self._managed_rdt_metadata[ref.hex()]
             tensor_transport = rdt_meta.tensor_transport_backend
 
-            if target_device is not None:
-                import torch
+            target_device_type = torch.device(target_device).type
+            if not device_match_transport(target_device_type, tensor_transport):
+                raise ValueError(
+                    f"Tensor transport backend {tensor_transport} does not support "
+                    f"fetching onto target device {target_device}."
+                )
 
-                target_device_type = torch.device(target_device).type
-                if not device_match_transport(target_device_type, tensor_transport):
-                    raise ValueError(
-                        f"Tensor transport backend {tensor_transport} does not support "
-                        f"fetching onto target device {target_device}."
-                    )
-            if target_buffers is not None:
-                for target_buffer in target_buffers:
-                    if not device_match_transport(
-                        target_buffer.device.type, tensor_transport
-                    ):
-                        raise ValueError(
-                            f"Tensor transport backend {tensor_transport} does not support "
-                            f"receiving into a buffer on device {target_buffer.device.type}."
-                        )
-
-            updates = {"target_device": target_device}
-            if target_buffers is not None:
-                updates["target_buffers"] = [
-                    weakref.ref(target_buffer) for target_buffer in target_buffers
-                ]
-            self._managed_rdt_metadata[ref.hex()] = rdt_meta._replace(**updates)
+            # Setting a target device overwrites any previously set target buffer
+            # or target device so the two options stay mutually exclusive.
+            self._managed_rdt_metadata[ref.hex()] = rdt_meta._replace(
+                target_buffers=None,
+                target_device=target_device,
+            )
 
     def _trigger_fetch(
         self,
