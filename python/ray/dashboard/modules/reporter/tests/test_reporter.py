@@ -1738,8 +1738,8 @@ def test_validated_profiling_format_absent_uses_fallback(monkeypatch):
 def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
     """`/api/profiling_enabled` exposes the profiling defaults (camelCased)."""
     address_info = ray.init()
+    assert wait_until_server_available(address_info["webui_url"])
     webui_url = format_web_url(address_info["webui_url"])
-    assert wait_until_server_available(webui_url)
 
     def verify():
         resp = requests.get(f"{webui_url}/api/profiling_enabled")
