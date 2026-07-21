@@ -13,7 +13,7 @@ import uuid
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.usage import collector, poller, util
+from ray.data._internal.usage import collector, get_poller, util
 from ray.data._internal.usage.collector import (
     OpConfig,
     PipelinePerf,
@@ -102,7 +102,7 @@ class UsageCallback(ExecutionCallback):
         """Called once before execution starts. Records start timing and asks
         the poller to capture this execution's baseline in the background."""
         self._started_at = time.time()
-        poller.get_poller().record_start(self._execution_id)
+        get_poller().record_start(self._execution_id)
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
@@ -112,7 +112,7 @@ class UsageCallback(ExecutionCallback):
         execution's start baseline).
         ``executor`` is a reference to the StreamingExecutor and ``error`` is the failure (or ``None`` on success);
         subclasses may override to capture either."""
-        self._cluster_deltas = poller.get_poller().compute_deltas(self._execution_id)
+        self._cluster_deltas = get_poller().compute_deltas(self._execution_id)
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""

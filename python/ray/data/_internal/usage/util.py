@@ -114,8 +114,10 @@ def join_async(
     results: List[Optional[T]] = []
     for f in futures:
         try:
+            # append with result timeout=0.0 to avoid further blocking after the wait
             results.append(f.result(timeout=0.0) if f is not None else None)
         except Exception:
+            logger.debug("Future %s raised an exception", f, exc_info=True)
             results.append(None)
     return results
 
