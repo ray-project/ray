@@ -26,6 +26,8 @@ Other cluster launching methods require that you generate a token before startin
 Authentication is disabled by default in Ray 2.52.0. Ray plans to enable token authentication by default in a future release. We recommend enabling token authentication to protect your cluster from unauthorized access.
 :::
 
+(what-token-does-ray-use)=
+
 ### What token does Ray use?
 
 You can configure authentication tokens using environment variables or the default path. We recommend using the default path when possible to reduce the chances of committing the token to version control.
@@ -83,7 +85,7 @@ On the first run, this command (or any other script that initializes Ray) logs a
 Generated new authentication token and saved to ~/.ray/auth_token
 ```
 
-Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in the "What token does Ray use?" section.
+Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`.
 
 ### Local development with ray start
 
