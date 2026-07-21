@@ -3324,26 +3324,38 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
-def test_parquet_sampling_fails_on_permanent_error(ray_start_regular_shared, tmp_path):
+def test_parquet_sampling_fails_on_permanent_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
     limited retries. Regression test for #57278."""
     from unittest.mock import patch
 
-    # Write a valid parquet file so that fragment discovery succeeds.
+    # Write a valid parquet file so that file/fragment discovery succeeds and
+    # the failure is isolated to the schema/encoding sampling step.
     table = pa.table({"col": [1, 2, 3]})
     pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
 
-    # Patch the remote sampling function to always raise PermissionError
-    # (a subclass of OSError), simulating invalid credentials.
-    original_fn = (
-        "ray.data._internal.datasource.parquet_datasource._fetch_parquet_file_info"
-    )
-
     def _raise_permission_error(*args, **kwargs):
+        # PermissionError is a subclass of OSError, simulating invalid
+        # credentials against an object store.
         raise PermissionError("Access Denied: invalid credentials")
 
-    with patch(original_fn, new=_raise_permission_error):
+    if DataContext.get_current().use_datasource_v2:
+        # V2 samples schema on the driver by reading Parquet footers via
+        # ``pq.read_schema``; a permanent OSError there must propagate.
+        target = "pyarrow.parquet.read_schema"
+    else:
+        # V1 samples files through a remote task wrapping
+        # ``_fetch_parquet_file_info``; retries are capped so the error
+        # surfaces instead of hanging forever.
+        target = (
+            "ray.data._internal.datasource.parquet_datasource."
+            "_fetch_parquet_file_info"
+        )
+
+    with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
 

@@ -220,6 +220,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         ray_options: Dict[str, Any] = {
             **resources,
+            "name": self.name,
             "num_returns": self._num_partitions + 1,
         }
         if target_node_id is not None:

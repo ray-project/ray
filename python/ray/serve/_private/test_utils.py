@@ -540,6 +540,12 @@ class MockReplicaActorWrapper:
         return self._is_cross_language
 
     @property
+    def has_in_flight_health_or_routing_probe(self) -> bool:
+        # The mock's health/routing checks are synchronous (no in-flight ObjectRef), so
+        # nothing is ever in flight -- matches the real wrapper reporting no pending ref.
+        return False
+
+    @property
     def replica_id(self) -> ReplicaID:
         return self._replica_id
 

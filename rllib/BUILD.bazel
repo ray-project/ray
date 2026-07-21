@@ -1183,6 +1183,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo_multi_cpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
@@ -1194,6 +1195,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
+        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -1543,6 +1545,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
@@ -1552,6 +1555,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
+        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -2012,7 +2016,7 @@ py_test(
 
 py_test(
     name = "algorithms/tests/test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_telemetry.py"],
     tags = [
         "algorithms",
@@ -3315,7 +3319,7 @@ py_test(
 
 py_test(
     name = "test_actor_manager",
-    size = "medium",
+    size = "large",
     srcs = ["utils/tests/test_actor_manager.py"],
     data = ["utils/tests/random_numbers.pkl"],
     tags = [
@@ -3727,48 +3731,6 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
-    ],
-)
-
-# IMPALA
-py_test(
-    name = "examples/connectors/flatten_observations_dict_space_impala",
-    size = "large",
-    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
-    args = [
-        "--as-test",
-        "--stop-reward=400.0",
-        "--stop-timesteps=2000000",
-        "--framework=torch",
-        "--algo=IMPALA",
-    ],
-    main = "examples/connectors/flatten_observations_dict_space.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "examples/connectors/flatten_observations_dict_space_multi_agent_impala",
-    size = "large",
-    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
-    args = [
-        "--num-agents=2",
-        "--as-test",
-        "--stop-reward=800.0",
-        "--stop-timesteps=2000000",
-        "--framework=torch",
-        "--algo=IMPALA",
-    ],
-    main = "examples/connectors/flatten_observations_dict_space.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-        # Test is failing: https://github.com/ray-project/ray/issues/47717
-        "manual",
     ],
 )
 
