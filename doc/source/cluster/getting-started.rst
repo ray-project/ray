@@ -1,3 +1,6 @@
+.. meta::
+   :description: Deploy and scale Ray clusters from a laptop to the cloud, with native support for Kubernetes (KubeRay), AWS, GCP, and Azure VMs, plus autoscaling.
+
 .. _cluster-index:
 
 Ray Clusters Overview

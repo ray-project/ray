@@ -27,7 +27,6 @@ Getting basic information
     :nosignatures:
     :toctree: env/
 
-    ~MultiAgentEpisode.__len__
     ~MultiAgentEpisode.get_return
     ~MultiAgentEpisode.get_duration_s
     ~MultiAgentEpisode.is_done
