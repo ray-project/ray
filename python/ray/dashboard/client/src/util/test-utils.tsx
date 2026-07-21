@@ -26,10 +26,9 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     serverTimeZone: undefined,
     currentTimeZone: undefined,
     themeMode: "light",
-    showAcceleratorColumns: false,
+    showAcceleratorColumns: true,
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     toggleTheme: () => {},
-    showAcceleratorColumns: true,
   };
 
   return (
