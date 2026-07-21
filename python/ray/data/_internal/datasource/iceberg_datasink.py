@@ -16,6 +16,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import BooleanExpression
     from pyiceberg.manifest import DataFile
     from pyiceberg.table import Table, Transaction
 
@@ -160,10 +161,13 @@ class IcebergDatasink(
             table_identifier: The identifier of the table such as `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
             snapshot_properties: Custom properties to write to snapshot summary
-            mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
+            mode: Write mode - APPEND, UPSERT, OVERWRITE, or DYNAMIC_OVERWRITE. Defaults to APPEND.
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
                 - OVERWRITE: Replace table data (all data or filtered subset)
+                - DYNAMIC_OVERWRITE: Replace only the partitions present in the incoming
+                  data (auto-detected from identity partition columns); requires a
+                  partitioned table with at least one identity partition field
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
@@ -199,7 +203,7 @@ class IcebergDatasink(
             self._case_sensitive = self._upsert_kwargs.pop(
                 "case_sensitive", ctx_case_sensitive
             )
-        elif self._mode == SaveMode.OVERWRITE:
+        elif self._mode in (SaveMode.OVERWRITE, SaveMode.DYNAMIC_OVERWRITE):
             self._case_sensitive = self._overwrite_kwargs.pop(
                 "case_sensitive", ctx_case_sensitive
             )
@@ -211,9 +215,19 @@ class IcebergDatasink(
             raise ValueError(
                 f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, but mode is {self._mode}"
             )
-        if self._overwrite_kwargs and self._mode != SaveMode.OVERWRITE:
+        if self._overwrite_kwargs and self._mode not in (
+            SaveMode.OVERWRITE,
+            SaveMode.DYNAMIC_OVERWRITE,
+        ):
             raise ValueError(
-                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
+                "overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE "
+                f"or SaveMode.DYNAMIC_OVERWRITE, but mode is {self._mode}"
+            )
+
+        if self._mode == SaveMode.DYNAMIC_OVERWRITE and self._overwrite_filter is not None:
+            raise ValueError(
+                "overwrite_filter cannot be used with SaveMode.DYNAMIC_OVERWRITE; "
+                "partitions to replace are detected automatically from the data."
             )
 
         # Remove invalid parameters from overwrite_kwargs if present
@@ -360,6 +374,36 @@ class IcebergDatasink(
                         "when table has no identifier fields"
                     )
 
+        # Validate DYNAMIC_OVERWRITE constraints before any worker writes data
+        if self._mode == SaveMode.DYNAMIC_OVERWRITE:
+            from pyiceberg.table import Transaction
+            from pyiceberg.transforms import IdentityTransform
+
+            # replace_partitions only exists in the Pinterest PyIceberg build.
+            # Fail fast with a clear message instead of an AttributeError deep
+            # in the commit path on stock pyiceberg.
+            if not hasattr(Transaction, "replace_partitions"):
+                raise RuntimeError(
+                    "SaveMode.DYNAMIC_OVERWRITE requires a Pinterest PyIceberg "
+                    "build containing Transaction.replace_partitions"
+                )
+
+            spec = self._table.metadata.spec()
+            if spec.is_unpartitioned():
+                raise ValueError(
+                    "SaveMode.DYNAMIC_OVERWRITE cannot be applied to an unpartitioned "
+                    f"table: {self.table_identifier}"
+                )
+            has_identity = any(
+                isinstance(field.transform, IdentityTransform) for field in spec.fields
+            )
+            if not has_identity:
+                raise ValueError(
+                    "SaveMode.DYNAMIC_OVERWRITE requires at least one identity partition "
+                    f"field, but table {self.table_identifier} has none. Its partitions "
+                    "cannot be uniquely identified for replacement."
+                )
+
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
     ) -> Union[List["DataFile"], tuple[List["DataFile"], Dict[str, List[Any]]]]:
@@ -480,6 +524,8 @@ class IcebergDatasink(
             self._commit_append(all_data_files)
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(all_data_files)
+        elif self._mode == SaveMode.DYNAMIC_OVERWRITE:
+            self._commit_dynamic_overwrite(all_data_files)
         elif self._mode == SaveMode.UPSERT:
             # Execute entire commit in Ray task to avoid OOM on driver
             join_cols = self._get_join_cols()
@@ -540,3 +586,67 @@ class IcebergDatasink(
 
         # Append new data files and commit
         _append_and_commit(txn, data_files, self._snapshot_properties)
+
+    def _build_identity_partition_filter(
+        self, data_files: List["DataFile"]
+    ) -> "BooleanExpression":
+        """Build a delete predicate over the identity partition columns of the data.
+
+        For each distinct combination of identity-partition values present in the
+        written data files, emits an equality (or IS NULL) match; the matches are
+        OR-ed together. Non-identity partition fields (bucket/truncate/etc.) are
+        ignored -- deleting the identity partition sweeps all of its buckets.
+        """
+        from pyiceberg.expressions import (
+            AlwaysFalse,
+            And,
+            EqualTo,
+            IsNull,
+            Or,
+            Reference,
+        )
+        from pyiceberg.transforms import IdentityTransform
+
+        spec = self._table.metadata.spec()
+        schema = self._table.metadata.schema()
+
+        # (position in the partition record, source column name) for identity fields
+        identity_positions = [
+            (pos, schema.find_field(field.source_id).name)
+            for pos, field in enumerate(spec.fields)
+            if isinstance(field.transform, IdentityTransform)
+        ]
+
+        expr: "BooleanExpression" = AlwaysFalse()
+        seen = set()
+        for data_file in data_files:
+            # Distinct identity-partition value tuple for this file
+            key = tuple(data_file.partition[pos] for pos, _ in identity_positions)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            match = None
+            for (_, name), value in zip(identity_positions, key):
+                predicate = (
+                    EqualTo(Reference(name), value)
+                    if value is not None
+                    else IsNull(Reference(name))
+                )
+                match = predicate if match is None else And(match, predicate)
+            if match is not None:
+                expr = Or(expr, match)
+        return expr
+
+    def _commit_dynamic_overwrite(self, data_files: List["DataFile"]) -> None:
+        """Commit a dynamic partition overwrite as a single OVERWRITE snapshot."""
+        delete_filter = self._build_identity_partition_filter(data_files)
+        txn = self._table.transaction()
+        txn.replace_partitions(
+            data_files=data_files,
+            delete_filter=delete_filter,
+            case_sensitive=self._case_sensitive,
+            snapshot_properties=self._snapshot_properties,
+            **self._overwrite_kwargs,
+        )
+        txn.commit_transaction()

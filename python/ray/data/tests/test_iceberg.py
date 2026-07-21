@@ -2027,6 +2027,246 @@ class TestCaseInsensitiveColumns:
             ctx.iceberg_case_sensitive = original
 
 
+# Known limitation (pre-existing, not specific to DYNAMIC_OVERWRITE): a write whose
+# partition column is ENTIRELY null makes ray.data.from_pandas infer a pa.null() Arrow
+# type, which Iceberg format v2 rejects. Mixed null/non-null columns work. Tests below
+# therefore exercise NULL partition values alongside a non-null value in the same batch.
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestDynamicOverwrite:
+    """Tests for SaveMode.DYNAMIC_OVERWRITE."""
+
+    def test_dynamic_overwrite_rejects_overwrite_filter(self):
+        """overwrite_filter is meaningless in DYNAMIC_OVERWRITE and must be rejected."""
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        with pytest.raises(ValueError, match="overwrite_filter"):
+            IcebergDatasink(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+                overwrite_filter=col("col_c") == 1,
+            )
+
+    def _make_table(self, name, partition_spec):
+        """Create a fresh table with the given partition spec; drop if it exists."""
+        sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+        identifier = f"{_DB_NAME}.{name}"
+        if (_DB_NAME, name) in sql_catalog.list_tables(_DB_NAME):
+            sql_catalog.drop_table(identifier)
+        schema = pyi_schema.Schema(
+            pyi_types.NestedField(1, "col_a", pyi_types.IntegerType(), required=False),
+            pyi_types.NestedField(2, "col_b", pyi_types.StringType(), required=False),
+            pyi_types.NestedField(3, "col_c", pyi_types.IntegerType(), required=False),
+        )
+        sql_catalog.create_table(identifier, schema=schema, partition_spec=partition_spec)
+        return identifier
+
+    def test_dynamic_overwrite_rejects_unpartitioned(self):
+        identifier = self._make_table("dyn_unpart", PartitionSpec())  # empty spec == unpartitioned
+        df = _create_typed_dataframe({"col_a": [1], "col_b": ["x"], "col_c": [1]})
+        ds = ray.data.from_pandas(df)
+        with pytest.raises(ValueError, match="unpartitioned"):
+            ds.write_iceberg(
+                table_identifier=identifier,
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+            )
+
+    def test_dynamic_overwrite_rejects_no_identity_field(self):
+        from pyiceberg.transforms import BucketTransform
+
+        spec = PartitionSpec(
+            PartitionField(source_id=1, field_id=1000, transform=BucketTransform(4), name="col_a_bucket")
+        )
+        identifier = self._make_table("dyn_bucket_only", spec)
+        df = _create_typed_dataframe({"col_a": [1], "col_b": ["x"], "col_c": [1]})
+        ds = ray.data.from_pandas(df)
+        with pytest.raises(ValueError, match="identity"):
+            ds.write_iceberg(
+                table_identifier=identifier,
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+            )
+
+    def test_dynamic_overwrite_replaces_only_present_partitions(self, clean_table):
+        """Partitions present in incoming data are replaced; others survive; one snapshot."""
+        sql_catalog, table = clean_table  # table is partitioned by col_c (identity)
+
+        # Seed 3 partitions: col_c in {1, 2, 3}
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["p1", "p2", "p3"], "col_c": [1, 2, 3]}
+        )
+        _write_to_iceberg(initial, mode=SaveMode.APPEND)
+
+        table.refresh()
+        snapshots_before = len(table.snapshots())
+
+        # Dynamic overwrite touching only col_c in {1, 3}
+        new_data = _create_typed_dataframe(
+            {"col_a": [10, 30], "col_b": ["new1", "new3"], "col_c": [1, 3]}
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.DYNAMIC_OVERWRITE)
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [2, 10, 30],
+                "col_b": ["p2", "new1", "new3"],
+                "col_c": [2, 1, 3],
+            }
+        )
+        assert rows_same(result, expected)
+
+        # Exactly ONE new snapshot, and it is an OVERWRITE (not delete + append)
+        table.refresh()
+        assert len(table.snapshots()) == snapshots_before + 1
+        assert table.current_snapshot().summary.operation.value == "overwrite"
+
+    def test_dynamic_overwrite_mixed_identity_and_bucket_spec(self):
+        """identity(col_c) + bucket(col_a): whole col_c partition replaced across buckets."""
+        from pyiceberg.transforms import BucketTransform
+
+        spec = PartitionSpec(
+            PartitionField(source_id=3, field_id=1000, transform=IdentityTransform(), name="col_c"),
+            PartitionField(source_id=1, field_id=1001, transform=BucketTransform(4), name="col_a_bucket"),
+        )
+        identifier = self._make_table("dyn_mixed", spec)
+
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3, 4], "col_b": ["a", "b", "c", "d"], "col_c": [1, 1, 2, 2]}
+        )
+        ray.data.from_pandas(initial).write_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy(), mode=SaveMode.APPEND
+        )
+
+        # Replace col_c == 1 (spans multiple col_a buckets)
+        new_data = _create_typed_dataframe(
+            {"col_a": [100, 200], "col_b": ["new_a", "new_b"], "col_c": [1, 1]}
+        )
+        ray.data.from_pandas(new_data).write_iceberg(
+            table_identifier=identifier,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            mode=SaveMode.DYNAMIC_OVERWRITE,
+        )
+
+        result = ray.data.read_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+        ).to_pandas().sort_values("col_a").reset_index(drop=True)
+        expected = _create_typed_dataframe(
+            {"col_a": [3, 4, 100, 200], "col_b": ["c", "d", "new_a", "new_b"], "col_c": [2, 2, 1, 1]}
+        )
+        assert rows_same(result, expected)
+
+    def test_dynamic_overwrite_bucket_first_identity_second_spec(self):
+        """bucket(col_a) at position 0, identity(col_c) at position 1.
+
+        Regression guard for partition-record indexing: the delete filter must read the
+        identity value from its ABSOLUTE position in the partition record (index 1 here),
+        not from a position relative to the filtered identity-only list (which would be 0
+        and would read the bucket hash instead, deleting the wrong partitions).
+        """
+        from pyiceberg.transforms import BucketTransform
+
+        spec = PartitionSpec(
+            PartitionField(source_id=1, field_id=1000, transform=BucketTransform(4), name="col_a_bucket"),
+            PartitionField(source_id=3, field_id=1001, transform=IdentityTransform(), name="col_c"),
+        )
+        identifier = self._make_table("dyn_bucket_first", spec)
+
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3, 4], "col_b": ["a", "b", "c", "d"], "col_c": [1, 1, 2, 2]}
+        )
+        ray.data.from_pandas(initial).write_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy(), mode=SaveMode.APPEND
+        )
+
+        # Replace col_c == 1 (spans multiple col_a buckets). A relative-index regression
+        # would instead filter on a bucket hash and fail to replace these rows correctly.
+        new_data = _create_typed_dataframe(
+            {"col_a": [100, 200], "col_b": ["new_a", "new_b"], "col_c": [1, 1]}
+        )
+        ray.data.from_pandas(new_data).write_iceberg(
+            table_identifier=identifier,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            mode=SaveMode.DYNAMIC_OVERWRITE,
+        )
+
+        result = ray.data.read_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+        ).to_pandas().sort_values("col_a").reset_index(drop=True)
+        expected = _create_typed_dataframe(
+            {"col_a": [3, 4, 100, 200], "col_b": ["c", "d", "new_a", "new_b"], "col_c": [2, 2, 1, 1]}
+        )
+        assert rows_same(result, expected)
+
+    def test_dynamic_overwrite_multiple_workers_overlapping_partitions(self, clean_table):
+        """Multiple write tasks writing to the same partitions still replace correctly."""
+        initial = _create_typed_dataframe(
+            {"col_a": list(range(6)), "col_b": ["x"] * 6, "col_c": [1, 1, 2, 2, 3, 3]}
+        )
+        _write_to_iceberg(initial, mode=SaveMode.APPEND)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [10, 11, 12, 13], "col_b": ["n"] * 4, "col_c": [1, 1, 2, 2]}
+        )
+        # Force 2 write tasks
+        ray.data.from_pandas(new_data).repartition(2).write_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            mode=SaveMode.DYNAMIC_OVERWRITE,
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [4, 5, 10, 11, 12, 13], "col_b": ["x", "x", "n", "n", "n", "n"], "col_c": [3, 3, 1, 1, 2, 2]}
+        )
+        assert rows_same(result, expected)
+
+    def test_dynamic_overwrite_empty_input_is_noop(self, clean_table):
+        """Empty input writes nothing and deletes nothing."""
+        sql_catalog, table = clean_table
+        initial = _create_typed_dataframe({"col_a": [1, 2], "col_b": ["a", "b"], "col_c": [1, 2]})
+        _write_to_iceberg(initial, mode=SaveMode.APPEND)
+        table.refresh()
+        snapshots_before = len(table.snapshots())
+
+        empty = _create_typed_dataframe({"col_a": [], "col_b": [], "col_c": []})
+        _write_to_iceberg(empty, mode=SaveMode.DYNAMIC_OVERWRITE)
+
+        result = _read_from_iceberg(sort_by="col_a")
+        assert rows_same(result, initial)
+        table.refresh()
+        assert len(table.snapshots()) == snapshots_before  # no new snapshot
+
+    def test_dynamic_overwrite_null_partition_value(self, clean_table):
+        """A NULL identity partition value is matched via IS NULL and replaced.
+
+        Note: the overwrite batch mixes a NULL and a non-NULL col_c so Arrow infers a
+        concrete int type. An all-NULL column would hit a pre-existing Ray->Arrow type
+        inference limitation (pa.null() unsupported in Iceberg format v2), which is
+        orthogonal to dynamic overwrite; see the module-level note.
+        """
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["a", "b", "c"], "col_c": [None, 5, 7]}
+        )
+        _write_to_iceberg(initial, mode=SaveMode.APPEND)
+
+        # Replace the NULL partition AND col_c=5; leave col_c=7 untouched.
+        new_data = _create_typed_dataframe(
+            {"col_a": [10, 20], "col_b": ["new_null", "new5"], "col_c": [None, 5]}
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.DYNAMIC_OVERWRITE)
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [3, 10, 20], "col_b": ["c", "new_null", "new5"], "col_c": [7, None, 5]}
+        )
+        assert rows_same(result, expected)
+
+
 if __name__ == "__main__":
     import sys
 

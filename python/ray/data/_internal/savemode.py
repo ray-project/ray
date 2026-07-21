@@ -23,3 +23,9 @@ class SaveMode(str, Enum):
     """Update existing rows that match on key fields, or insert new rows.
     Requires identifier/key fields to be specified.
     """
+
+    DYNAMIC_OVERWRITE = "dynamic_overwrite"
+    """Replace only the partitions present in the incoming data, leaving other
+    partitions untouched. Requires a partitioned table with at least one identity
+    partition field. No overwrite filter is used; partitions are auto-detected.
+    """
