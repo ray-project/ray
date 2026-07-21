@@ -1441,11 +1441,13 @@ class TestSelfHealthPush:
         m._controller_handle.record_replica_health.remote.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_latches_unhealthy_at_threshold(self):
+    async def test_latches_unhealthy_at_threshold(self, monkeypatch):
+        import ray.serve._private.replica as replica_mod
         from ray.serve._private.constants import (
             REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
         )
 
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
         m = self._manager(pushing_reports=True)
         evals = []
 
@@ -1459,6 +1461,29 @@ class TestSelfHealthPush:
         assert m._self_healthy is False
         # The user check stops running at the threshold; pushes continue.
         assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_heartbeats_even_when_reports_carry_health(
+        self, monkeypatch
+    ):
+        # reports_carry_health() is true, but an unhealthy result must not be
+        # suppressed -- the controller needs it promptly to replace the replica.
+        import ray.serve._private.replica as replica_mod
+        from ray.serve._private.constants import (
+            REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+        )
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = self._manager(pushing_reports=True)
+
+        async def bad():
+            raise RuntimeError("down")
+
+        m._eval_self_health_fn = bad
+        for _ in range(REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD):
+            await m._eval_and_push_self_health()
+        assert m._self_healthy is False
+        m._controller_handle.record_replica_health.remote.assert_called()
 
     @pytest.mark.asyncio
     async def test_heartbeats_when_metric_pushes_too_infrequent(self):

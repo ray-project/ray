@@ -733,7 +733,10 @@ class ReplicaMetricsManager:
         self._self_healthy = healthy
         self._self_health_checked_at = time.time()
 
-        if self.reports_carry_health():
+        # An unhealthy result must reach the controller promptly to trigger
+        # replacement, so it is never suppressed -- suppression only applies
+        # while healthy.
+        if healthy and self.reports_carry_health():
             # When the metric cadence is slower than the health period, fall
             # through and heartbeat so freshness at the controller never
             # lapses.
