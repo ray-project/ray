@@ -145,7 +145,10 @@ def test_generator_returns(ray_start_regular_shared, use_actors, store_in_plasma
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_errors(ray_start_regular_shared, use_actors, store_in_plasma):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_errors(
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
+):
     remote_generator_fn = None
     if use_actors:
 
@@ -186,7 +189,7 @@ def test_generator_errors(ray_start_regular_shared, use_actors, store_in_plasma)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
-    gen_ref = remote_generator_fn.options(num_returns="streaming").remote(
+    gen_ref = remote_generator_fn.options(num_returns=num_returns_type).remote(
         3, store_in_plasma
     )
     ref1, ref2 = ray.get(gen_ref)
@@ -196,7 +199,10 @@ def test_generator_errors(ray_start_regular_shared, use_actors, store_in_plasma)
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_retry_exception(ray_start_regular_shared, store_in_plasma):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_retry_exception(
+    ray_start_regular_shared, store_in_plasma, num_returns_type
+):
     class CustomException(Exception):
         pass
 
@@ -228,7 +234,7 @@ def test_generator_retry_exception(ray_start_regular_shared, store_in_plasma):
                 raise CustomException("error")
 
     counter = ExecutionCounter.remote()
-    gen_ref = generator.options(num_returns="streaming").remote(
+    gen_ref = generator.options(num_returns=num_returns_type).remote(
         3, store_in_plasma, counter
     )
     ref1, ref2 = ray.get(gen_ref)
@@ -238,7 +244,7 @@ def test_generator_retry_exception(ray_start_regular_shared, store_in_plasma):
 
     ray.get(counter.reset.remote())
     gen_ref = generator.options(
-        num_returns="streaming", retry_exceptions=[CustomException]
+        num_returns=num_returns_type, retry_exceptions=[CustomException]
     ).remote(3, store_in_plasma, counter)
     for i, ref in enumerate(ray.get(gen_ref)):
         assert ray.get(ref)[0] == i
@@ -246,10 +252,13 @@ def test_generator_retry_exception(ray_start_regular_shared, store_in_plasma):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator(ray_start_regular_shared, use_actors, store_in_plasma):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator(
+    ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
+):
     if not use_actors:
 
-        @ray.remote(num_returns="streaming")
+        @ray.remote(num_returns=num_returns_type)
         def generator(num_returns, store_in_plasma):
             for i in range(num_returns):
                 if store_in_plasma:
@@ -283,20 +292,24 @@ def test_generator(ray_start_regular_shared, use_actors, store_in_plasma):
         return True
 
     gen = ray.get(
-        remote_generator_fn.options(num_returns="streaming").remote(10, store_in_plasma)
+        remote_generator_fn.options(num_returns=num_returns_type).remote(
+            10, store_in_plasma
+        )
     )
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
 
     # Test empty generator.
     gen = ray.get(
-        remote_generator_fn.options(num_returns="streaming").remote(0, store_in_plasma)
+        remote_generator_fn.options(num_returns=num_returns_type).remote(
+            0, store_in_plasma
+        )
     )
     assert len(list(gen)) == 0
 
     # Passing a streaming generator as a task arg is not supported.
     with pytest.raises(TypeError):
-        gen = remote_generator_fn.options(num_returns="streaming").remote(
+        gen = remote_generator_fn.options(num_returns=num_returns_type).remote(
             10, store_in_plasma
         )
         assert ray.get(read.remote(gen))
@@ -309,7 +322,8 @@ def test_generator(ray_start_regular_shared, use_actors, store_in_plasma):
     )
 
 
-def test_generator_distributed(ray_start_cluster):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_distributed(ray_start_cluster, num_returns_type):
     # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
     ray.shutdown()
 
@@ -320,7 +334,7 @@ def test_generator_distributed(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote(num_returns=num_returns_type)
     def generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -332,7 +346,8 @@ def test_generator_distributed(ray_start_cluster):
         assert ray.get(ref)[0] == i
 
 
-def test_generator_reconstruction(ray_start_cluster):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_reconstruction(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -353,7 +368,7 @@ def test_generator_reconstruction(ray_start_cluster):
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote(num_returns=num_returns_type)
     def generator(num_returns):
         for i in range(num_returns):
             # Random ray.put to make sure it's okay to interleave these with
@@ -392,7 +407,10 @@ def test_generator_reconstruction(ray_start_cluster):
 
 
 @pytest.mark.parametrize("too_many_returns", [False, True])
-def test_generator_reconstruction_nondeterministic(ray_start_cluster, too_many_returns):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_reconstruction_nondeterministic(
+    ray_start_cluster, too_many_returns, num_returns_type
+):
     # This test used to hang under the RocksDB GCS backend: RocksDB's per-write
     # WAL fsync delayed the actor-death notification enough to expose a
     # pre-existing reconstruction race, so the driver hung in list(gen). Fixed
@@ -431,7 +449,7 @@ def test_generator_reconstruction_nondeterministic(ray_start_cluster, too_many_r
         def ping(self):
             return
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote(num_returns=num_returns_type)
     def generator(failure_signal):
         num_returns = 10
         try:
@@ -474,7 +492,8 @@ def test_generator_reconstruction_nondeterministic(ray_start_cluster, too_many_r
     assert_no_leak()
 
 
-def test_generator_reconstruction_fails(ray_start_cluster):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -505,7 +524,7 @@ def test_generator_reconstruction_fails(ray_start_cluster):
         def ping(self):
             return
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote(num_returns=num_returns_type)
     def generator(failure_signal):
         num_returns = 10
         for i in range(num_returns):
@@ -542,7 +561,10 @@ def test_generator_reconstruction_fails(ray_start_cluster):
     assert_no_leak()
 
 
-def test_empty_generator_reconstruction_nondeterministic(ray_start_cluster):
+@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+def test_empty_generator_reconstruction_nondeterministic(
+    ray_start_cluster, num_returns_type
+):
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -578,7 +600,7 @@ def test_empty_generator_reconstruction_nondeterministic(ray_start_cluster):
         def get_count(self):
             return self.count
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote(num_returns=num_returns_type)
     def maybe_empty_generator(exec_counter):
         if ray.get(exec_counter.inc.remote()) > 1:
             for i in range(3):
