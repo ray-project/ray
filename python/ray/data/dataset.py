@@ -86,7 +86,6 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
-from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
@@ -97,6 +96,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -162,6 +162,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+    from ray.data.catalog import Catalog
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -3087,11 +3088,10 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
-            partition_size_hint: (Optional) Hint to joining operator about the estimated
-                avg expected size of the individual partition (in bytes).
-                This is used in estimating the total dataset size and allow to tune
-                memory requirement of the individual joining workers to prevent OOMs
-                when joining very large datasets.
+            partition_size_hint: (Optional) **Deprecated** and ignored. The join is
+                now executed on the v2 hash-shuffle path, which sizes reduce-task
+                memory from observed partition sizes rather than a hint. This
+                parameter has no effect and will be removed in a future release.
             aggregator_ray_remote_args: (Optional) Parameter overriding `ray.remote`
                 args passed when constructing joining (aggregator) workers.
             validate_schemas: (Optional) Controls whether validation of provided
@@ -3198,6 +3198,15 @@ class Dataset:
         # NOTE: If no separate keys provided for the right side, assume just the left
         #       side ones
         right_on = right_on or on
+
+        if partition_size_hint is not None:
+            warnings.warn(
+                "`partition_size_hint` is deprecated and ignored: joins now run on "
+                "the v2 hash-shuffle path, which sizes reduce-task memory from "
+                "observed partition sizes. It will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # NOTE: By default validating schemas are disabled as it could be arbitrarily
         #       expensive (potentially executing whole pipeline to completion) to fetch
@@ -4289,6 +4298,7 @@ class Dataset:
         *,
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        catalog: Optional["Catalog"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -4334,6 +4344,13 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.DatabricksUnityCatalog`). When provided, ``path``
+                is interpreted as a catalog table identifier (e.g.
+                ``"catalog.schema.table"``) rather than a filesystem path, and the
+                catalog resolves the physical write location and write credentials.
+                If both ``filesystem`` and ``catalog`` are given, the
+                catalog-resolved filesystem takes precedence.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -4405,6 +4422,34 @@ class Dataset:
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
+        if catalog is not None:
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            # A catalog resolves a pre-existing, credential-vended location, so
+            # directory creation is both unnecessary and unsupported: it requires
+            # bucket-level permissions the vended (prefix-scoped) credentials
+            # typically lack.
+            if try_create_dir:
+                raise ValueError(
+                    "`try_create_dir` is not supported when writing through a "
+                    "`catalog`. The catalog resolves an existing location with "
+                    "vended credentials, and directory creation on object storage "
+                    "needs bucket-level access that the credentials may not have."
+                )
+
+            resolved = catalog.resolve(
+                path, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
+            )
+            path = resolved.path
+            if resolved.filesystem is not None:
+                if filesystem is not None:
+                    raise ValueError(
+                        "`filesystem` cannot be specified with `catalog`. The "
+                        "`catalog` will resolve the `filesystem` with appropriate "
+                        "credentials automatically."
+                    )
+                filesystem = resolved.filesystem
 
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
@@ -4564,6 +4609,7 @@ class Dataset:
         self,
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
+        catalog: Optional["Catalog"] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: "SaveMode" = SaveMode.APPEND,
         overwrite_filter: Optional["Expr"] = None,
@@ -4627,6 +4673,10 @@ class Dataset:
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.DatabricksUnityCatalog`). When provided, the catalog
+                supplies ``catalog_kwargs`` pointing at its Iceberg REST endpoint.
+                ``catalog`` is ignored if ``catalog_kwargs`` is also specified.
             snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
             mode: Write mode using SaveMode enum. Options:
@@ -4659,6 +4709,21 @@ class Dataset:
             are automatically added to the table schema. The schema is extracted
             automatically from the data being written.
         """
+        if catalog is not None:
+            if catalog_kwargs:
+                raise ValueError("`catalog_kwargs` cannot be specified with `catalog`.")
+
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            resolved = catalog.resolve(
+                table_identifier,
+                reader=ReaderFormat.ICEBERG,
+                mode=CatalogAccessMode.WRITE,
+            )
+            catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
+
         datasink = IcebergDatasink(
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
@@ -6153,8 +6218,9 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
-                `pin_memory` is only supported when using `DefaultCollateFn`.
+            pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
+                `TensorBatchType`. It is recommended to use this flag to pin
+                memory instead of manually pinning memory in the `collate_fn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -6529,7 +6595,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+        `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
         This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
         (using Arrow as the intermediate data format).

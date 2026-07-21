@@ -183,8 +183,16 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+
+        input_bundles = self._input_buffer.to_list()
+        output_buffer, self._stats = self._bulk_fn(input_bundles, ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
+
+        for bundle in output_buffer:
+            for entry in bundle.blocks:
+                self._block_ref_counter.on_block_produced(
+                    entry.ref, entry.metadata.size_bytes or 0, self.id
+                )
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()

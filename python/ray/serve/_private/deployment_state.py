@@ -44,11 +44,16 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     MAX_PER_REPLICA_RETRY_COUNT,
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -505,6 +510,10 @@ class DeploymentActorContainer:
         """Return the set of code versions currently in the container."""
         return {entry.code_version for _, entry in self._actors_index.values()}
 
+    def is_empty(self) -> bool:
+        """O(1): True if no actor wrappers are tracked in any state."""
+        return not self._actors_index
+
 
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
@@ -819,6 +828,19 @@ class ActorReplicaWrapper:
                 "replica": self._replica_id.unique_id,
                 "application": self._deployment_id.app_name,
             }
+        )
+
+    @property
+    def has_in_flight_health_or_routing_probe(self) -> bool:
+        """True while a health-check or routing-stats RPC is in flight.
+
+        References the refs directly (no getattr default) so a future rename of either
+        fails loudly here rather than silently reporting no probe in flight -- which
+        would drop the replica from the dirty-set poll set and delay re-polling it.
+        """
+        return (
+            self._health_check_ref is not None
+            or self._record_routing_stats_ref is not None
         )
 
     @property
@@ -2062,6 +2084,11 @@ class DeploymentReplica:
             self._actor.force_stop()
         return False
 
+    @property
+    def has_outstanding_check(self) -> bool:
+        """True if a health-check or routing-stats ref is in flight (dirty-set poll set)."""
+        return self._actor.has_in_flight_health_or_routing_probe
+
     def check_health(self) -> bool:
         """Check if the replica is healthy.
 
@@ -2137,6 +2164,9 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
         self._on_replica_state_change = on_replica_state_change
+        # Incremental (state, version) counts for O(1) version-filtered count()
+        # (maintained on add/pop/remove) -> replaces the per-tick O(N) version scan.
+        self._sv_counts: Dict[tuple, int] = defaultdict(int)
 
     def __getstate__(self):
         # Exclude the callback to keep the container picklable (the callback
@@ -2159,6 +2189,7 @@ class ReplicaStateContainer:
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        self._sv_counts[(state, replica.version)] += 1
         if self._on_replica_state_change and state != old_state:
             self._on_replica_state_change(old_state, state)
 
@@ -2196,6 +2227,16 @@ class ReplicaStateContainer:
             The DeploymentReplica if found, else None.
         """
         return self._replica_id_index.get(replica_id)
+
+    def count_state(self, state: ReplicaState) -> int:
+        """O(1) count of replicas in a single state (dirty-set slice sizing)."""
+        return len(self._replicas[state])
+
+    def slice_state(
+        self, state: ReplicaState, start: int, count: int
+    ) -> List[DeploymentReplica]:
+        """replicas[start:start+count] from one bucket, no full-bucket copy."""
+        return self._replicas[state][start : start + count]
 
     def pop(
         self,
@@ -2240,6 +2281,8 @@ class ReplicaStateContainer:
 
             self._replicas[state] = remaining
             replicas.extend(popped)
+            for _r in popped:
+                self._sv_counts[(state, _r.version)] -= 1
 
         for replica in replicas:
             self._replica_id_index.pop(replica.replica_id, None)
@@ -2273,13 +2316,11 @@ class ReplicaStateContainer:
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
-            return sum(
-                sum(1 for r in self._replicas[state] if r.version == version)
-                for state in states
-            )
+            return sum(self._sv_counts.get((state, version), 0) for state in states)
         elif exclude_version is not None and version is None:
             return sum(
-                sum(1 for r in self._replicas[state] if r.version != exclude_version)
+                len(self._replicas[state])
+                - self._sv_counts.get((state, exclude_version), 0)
                 for state in states
             )
         else:
@@ -2311,6 +2352,8 @@ class ReplicaStateContainer:
             for replica in self._replicas[state]:
                 if remaining_to_find > 0 and replica.replica_id in replica_ids:
                     removed.append(replica)
+                    self._sv_counts[(state, replica.version)] -= 1
+                    self._replica_id_index.pop(replica.replica_id, None)
                     remaining_to_find -= 1
                     found_any = True
                 else:
@@ -2839,6 +2882,10 @@ class DeploymentState:
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
+        # Dirty-set health-check reconcile state: RUNNING replica IDs with an
+        # in-flight health/routing ref to re-poll, and a round-robin cursor over RUNNING.
+        self._outstanding_dirty_set: Set[ReplicaID] = set()
+        self._dirty_set_rr_cursor: int = 0
 
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_error_msg: Optional[str] = None
@@ -2882,6 +2929,7 @@ class DeploymentState:
         # changes or the cache entry is older than _HEALTH_GAUGE_REPORT_INTERVAL_S
         # (to ensure the metric is re-exported within each Prometheus scrape window).
         self._health_gauge_cache: Dict[str, Tuple[int, float]] = {}
+        self._last_health_check_healthy_replica_ids: Set[str] = set()
 
         # Maintain gang membership bookkeeping to avoid O(num_replicas) lookups when stopping gangs.
         # Updated on replica creation during upscaling and permanent removal during downscaling.
@@ -2891,13 +2939,20 @@ class DeploymentState:
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
 
+        replica_lifecycle_metric_tag_keys = (
+            ("deployment", "replica", "application")
+            if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS
+            else ("deployment", "application")
+        )
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
-                "Tracks whether this deployment replica is healthy. 1 means "
-                "healthy, 0 means unhealthy."
+                "Tracks healthy replicas. When source tags are enabled, each "
+                "replica series is 1 for healthy and 0 for unhealthy; otherwise, "
+                "the deployment/application series is the healthy replica count."
             ),
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2952,7 +3007,7 @@ class DeploymentState:
         self.health_check_failures_counter = metrics.Counter(
             "serve_health_check_failures_total",
             description=("Count of failed health checks."),
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_failures_counter.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -3003,6 +3058,10 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        # Set when an ingress replica is permanently removed, so the ingress port
+        # version advances and its port is reclaimed on the next reconcile. See
+        # consume_ingress_membership_removed.
+        self._ingress_membership_removed: bool = False
         self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config = None
 
@@ -3309,7 +3368,16 @@ class DeploymentState:
     def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
         return list(self._recent_dead_replicas)
 
-    def broadcast_running_replicas_if_changed(self) -> None:
+    def consume_ingress_membership_removed(self) -> bool:
+        """Return whether an ingress replica was permanently removed from the
+        container since the last call, then clear the flag. Paired with the
+        running-set-change signal to advance the ingress port version on removals
+        (which the running-set comparison misses). See _ingress_membership_removed."""
+        removed = self._ingress_membership_removed
+        self._ingress_membership_removed = False
+        return removed
+
+    def broadcast_running_replicas_if_changed(self) -> bool:
         """Broadcasts the set of running replicas over long poll if it has changed.
 
         Keeps an in-memory record of the last set of running replicas that was broadcast
@@ -3322,26 +3390,39 @@ class DeploymentState:
         when no replicas have transitioned and no routing info has been updated.
         RunningReplicaInfo objects are only constructed when a broadcast may
         actually be needed.
+
+        Returns:
+            True if the set of running replicas *changed* since the last broadcast
+            (i.e. membership changed), else False. The controller pairs this with
+            ``consume_ingress_membership_removed`` to advance the ingress-port
+            membership version, so it deliberately reflects membership change --
+            NOT "a broadcast was sent": a routing-info-only change still broadcasts
+            but returns False (ports are unaffected), and while any replica is
+            RECOVERING it returns True conservatively so the ingress-port reconcile
+            does not skip on a possibly-stale running set.
         """
         # Fast path: nothing could have changed, skip entirely.
         if (
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
-            return
+            return False
 
         # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
         # partial or empty routable set.
         if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
-            return
+            # Membership may have changed, but we hold off broadcasting; report changed
+            # so the ingress-port reconcile does not skip while recovering.
+            return True
 
         running_replica_infos = self.get_running_replica_infos()
         is_available = not self._terminally_failed()
 
+        running_set_changed = set(self._last_broadcasted_running_replica_infos) != set(
+            running_replica_infos
+        )
         running_broadcasted_replicas_set_changed = (
-            set(self._last_broadcasted_running_replica_infos)
-            != set(running_replica_infos)
-            or self._request_routing_info_updated
+            running_set_changed or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
 
@@ -3349,7 +3430,7 @@ class DeploymentState:
         self._broadcasted_replicas_set_changed = False
 
         if not running_broadcasted_replicas_set_changed and not availability_changed:
-            return
+            return running_set_changed
 
         deployment_metadata = DeploymentTargetInfo(
             is_available=is_available,
@@ -3374,6 +3455,7 @@ class DeploymentState:
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._last_broadcasted_availability = is_available
         self._request_routing_info_updated = False
+        return running_set_changed
 
     def broadcast_deployment_config_if_changed(self) -> None:
         """Broadcasts the deployment config over long poll if it has changed.
@@ -3654,6 +3736,23 @@ class DeploymentState:
         Returns:
             Whether any replicas were stopped or reconfigured.
         """
+        # Fast path: if no replica in these states is on an outdated version there
+        # is nothing to stop or reconfigure, so skip the O(N) version-partition pop
+        # that otherwise runs every tick on a single-version deployment. O(#states)
+        # via the incremental _sv_counts (see ReplicaStateContainer.count).
+        if (
+            self._replicas.count(
+                exclude_version=self._target_state.version,
+                states=[
+                    ReplicaState.STARTING,
+                    ReplicaState.PENDING_MIGRATION,
+                    ReplicaState.RUNNING,
+                ],
+            )
+            == 0
+        ):
+            return False
+
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
             states=[
@@ -3733,7 +3832,7 @@ class DeploymentState:
                     replica.replica_id.unique_id
                 )
                 actor_updating = replica.reconfigure(
-                    self._target_state.version, rank=current_rank.rank
+                    self._target_state.version, rank=current_rank
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
@@ -4365,6 +4464,9 @@ class DeploymentState:
         every control-loop iteration while still refreshing the metric often
         enough for Prometheus export.
         """
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            return
+
         now = time.time()
         cached = self._health_gauge_cache.get(replica_unique_id)
         if (
@@ -4410,7 +4512,15 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
-        self._set_health_gauge(replica.replica_id.unique_id, 0)
+        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            self._set_health_gauge(replica.replica_id.unique_id, 0)
+        else:
+            self._last_health_check_healthy_replica_ids.discard(
+                replica.replica_id.unique_id
+            )
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
     def _stop_replica_mark_unhealthy_if_target_version(
         self, replica: DeploymentReplica, graceful_stop: bool
@@ -4518,6 +4628,119 @@ class DeploymentState:
 
         return remaining_healthy, remaining_unhealthy
 
+    def _record_health_check_metrics(self, replica) -> None:
+        """Record health-check latency + failure metrics for one replica.
+
+        Shared by the in-place path and the pop/re-add (gang) path
+        in ``check_and_update_replicas``.
+        """
+        if replica.last_health_check_latency_ms is not None:
+            self.health_check_latency_histogram.observe(
+                replica.last_health_check_latency_ms
+            )
+        if replica.last_health_check_failed:
+            if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                self.health_check_failures_counter.inc(
+                    tags={"replica": replica.replica_id.unique_id}
+                )
+            else:
+                self.health_check_failures_counter.inc()
+
+    def _process_healthy_replica(self, replica) -> None:
+        """Set the health gauge and pull/broadcast routing stats for a healthy replica.
+
+        Container re-bucketing differs between the two reconcile paths, so it is
+        left to the caller.
+        """
+        self._set_health_gauge(replica.replica_id.unique_id, 1)
+        routing_stats = replica.pull_routing_stats()
+        if routing_stats is not None and routing_stats != replica.routing_stats:
+            self._broadcasted_replicas_set_changed = True
+        replica.record_routing_stats(routing_stats)
+
+    def _stop_unhealthy_replica(self, replica) -> None:
+        """Log and stop a replica that failed its health check.
+
+        The caller removes it from ``self._replicas`` first -- the pop/re-add path
+        already popped it; the in-place path batch-removes the whole unhealthy set.
+        """
+        logger.warning(
+            f"Replica {replica.replica_id} failed health check, stopping it."
+        )
+        graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+        self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+
+    def _dirty_set_active_pairs(self):
+        """Dirty-set: only the replicas needing attention this tick -- those with an
+        in-flight ref (poll), a round-robin RUNNING slice sized to sweep the bucket
+        within CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION of the reconcile period (so each is
+        processed on schedule; see _reconcile_sweep_period_s), and all PENDING_MIGRATION
+        (transient). Idle replicas are skipped (check_health no-ops)."""
+        container = self._replicas
+        pairs = []
+        seen = set()
+        for replica in container.get([ReplicaState.PENDING_MIGRATION]):
+            pairs.append((replica, ReplicaState.PENDING_MIGRATION))
+            seen.add(replica.replica_id)
+        still = set()
+        for rid in self._outstanding_dirty_set:
+            rep = container.get_by_id(rid)
+            # Only re-poll it as RUNNING if it is still RUNNING -- a replica that
+            # transitioned out (e.g. to STOPPING) is handled by its own path;
+            # processing it here as RUNNING would corrupt the state machine.
+            if (
+                rep is not None
+                and rid not in seen
+                and rep.actor_details.state == ReplicaState.RUNNING
+            ):
+                pairs.append((rep, ReplicaState.RUNNING))
+                seen.add(rid)
+                still.add(rid)
+        self._outstanding_dirty_set = still
+        n = container.count_state(ReplicaState.RUNNING)
+        if n:
+            period = self._reconcile_sweep_period_s()
+            ticks = max(
+                1,
+                int(
+                    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
+                    * period
+                    / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
+                ),
+            )
+            slice_n = max(1, (n + ticks - 1) // ticks)
+            start = self._dirty_set_rr_cursor % n
+            sl = container.slice_state(ReplicaState.RUNNING, start, slice_n)
+            overflow = start + slice_n - n
+            if overflow > 0:
+                sl = sl + container.slice_state(ReplicaState.RUNNING, 0, overflow)
+            self._dirty_set_rr_cursor = (start + slice_n) % n
+            for replica in sl:
+                if replica.replica_id not in seen:
+                    pairs.append((replica, ReplicaState.RUNNING))
+                    seen.add(replica.replica_id)
+        return pairs
+
+    def _reconcile_sweep_period_s(self) -> float:
+        """The per-replica reconcile period the dirty-set sweep must keep pace with.
+
+        _process_healthy_replica runs both the health check (health_check_period_s) and
+        the routing-stats pull (request_routing_stats_period_s), so the sweep is sized
+        off the tighter of the two -- otherwise a deployment whose routing-stats period
+        is < 0.5 x health-check period would refresh routing stats slower than
+        configured. Falls back to the defaults before a target is set.
+        """
+        try:
+            cfg = self._target_state.info.deployment_config
+            return min(
+                cfg.health_check_period_s,
+                cfg.request_router_config.request_routing_stats_period_s,
+            )
+        except AttributeError:
+            return min(
+                DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
+            )
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -4528,59 +4751,105 @@ class DeploymentState:
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
 
-        for replica in self._replicas.pop(
-            states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-        ):
-            is_healthy = replica.check_health()
-
-            # Record health check latency and failure metrics.
-            if replica.last_health_check_latency_ms is not None:
-                self.health_check_latency_histogram.observe(
-                    replica.last_health_check_latency_ms
-                )
-            if replica.last_health_check_failed:
-                self.health_check_failures_counter.inc(
-                    tags={"replica": replica.replica_id.unique_id}
-                )
-
-            if is_healthy:
-                healthy_replicas.append(replica)
-            else:
-                unhealthy_replicas.append(replica)
-
-        # Under the RESTART_GANG policy, force-stop all members of any gang that has at
-        # least one unhealthy replica. Replicas handled here are removed from the lists;
-        # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
-        if (
-            self._is_gang_deployment
-            and self.get_gang_config().runtime_failure_policy
-            == GangRuntimeFailurePolicy.RESTART_GANG
-        ):
-            healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
-                healthy_replicas, unhealthy_replicas
+        # Non-gang deployments health-check a dirty-set round-robin slice and iterate
+        # RUNNING/PENDING_MIGRATION in place, avoiding the O(num_replicas) pop/re-add
+        # churn at scale. Gang deployments use the pop/re-add path (their force-stop
+        # reshuffles the lists).
+        if not self._is_gang_deployment:
+            origin: List[ReplicaState] = []
+            pairs = self._dirty_set_active_pairs()
+            healths = [replica.check_health() for replica, _ in pairs]
+            for (replica, st), is_healthy in zip(pairs, healths):
+                self._record_health_check_metrics(replica)
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                    origin.append(st)
+                else:
+                    unhealthy_replicas.append(replica)
+            for replica, st in zip(healthy_replicas, origin):
+                self._process_healthy_replica(replica)
+                if replica.has_outstanding_check:
+                    self._outstanding_dirty_set.add(replica.replica_id)
+                else:
+                    self._outstanding_dirty_set.discard(replica.replica_id)
+                # Re-bucket only if the state changed. check_health() never transitions
+                # state today, so this is a defensive no-op that keeps the in-place path
+                # identical to pop/re-add should that ever change.
+                if replica.actor_details.state != st:
+                    self._replicas.remove({replica.replica_id})
+                    self._replicas.add(replica.actor_details.state, replica)
+            # Batch-remove unhealthy replicas in one O(num_replicas) pass; per-replica
+            # remove() would be O(unhealthy * num_replicas) during mass failures.
+            self._replicas.remove(
+                {replica.replica_id for replica in unhealthy_replicas}
             )
+        else:
+            for replica in self._replicas.pop(
+                states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+            ):
+                is_healthy = replica.check_health()
+                self._record_health_check_metrics(replica)
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                else:
+                    unhealthy_replicas.append(replica)
 
-        for replica in healthy_replicas:
-            self._replicas.add(replica.actor_details.state, replica)
-            self._set_health_gauge(replica.replica_id.unique_id, 1)
-            routing_stats = replica.pull_routing_stats()
-            if routing_stats is not None and routing_stats != replica.routing_stats:
-                self._broadcasted_replicas_set_changed = True
-            replica.record_routing_stats(routing_stats)
+            # Under RESTART_GANG, force-stop all members of any gang with >=1 unhealthy
+            # replica; handled replicas leave the lists, the rest respect
+            # FORCE_STOP_UNHEALTHY_REPLICAS.
+            if (
+                self._is_gang_deployment
+                and self.get_gang_config().runtime_failure_policy
+                == GangRuntimeFailurePolicy.RESTART_GANG
+            ):
+                (
+                    healthy_replicas,
+                    unhealthy_replicas,
+                ) = self._forcefully_stop_gang_replicas(
+                    healthy_replicas, unhealthy_replicas
+                )
 
-        # Only single-replica scheduling replicas remain.
+            for replica in healthy_replicas:
+                self._replicas.add(replica.actor_details.state, replica)
+                self._process_healthy_replica(replica)
+
+        # Stop every unhealthy replica; both branches already removed them from _replicas.
         for replica in unhealthy_replicas:
-            logger.warning(
-                f"Replica {replica.replica_id} failed health check, stopping it."
-            )
-            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-            self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+            self._stop_unhealthy_replica(replica)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
         # check below still runs (it has its own lightweight guard).
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
+
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            # When the replica tag is disabled, this is a single
+            # deployment/application series. Emit the count of replicas that
+            # passed health checks in this iteration so newly promoted replicas
+            # are not counted before their first successful health check.
+            if not self._is_gang_deployment:
+                # Only a slice was checked this tick, so add the newly-healthy ids
+                # incrementally (a full rebuild would undercount) and drop any id whose
+                # replica is no longer RUNNING/PENDING_MIGRATION (e.g. a lightweight
+                # RUNNING->UPDATING reconfigure, which skips _stop_replica's discard).
+                self._last_health_check_healthy_replica_ids.update(
+                    replica.replica_id.unique_id for replica in healthy_replicas
+                )
+                live_ids = {
+                    r.replica_id.unique_id
+                    for r in self._replicas.get(
+                        [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+                    )
+                }
+                self._last_health_check_healthy_replica_ids &= live_ids
+            else:
+                self._last_health_check_healthy_replica_ids = {
+                    replica.replica_id.unique_id for replica in healthy_replicas
+                }
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
@@ -4749,6 +5018,13 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
+
+                # This replica is permanently leaving the container. Record
+                # the removal so the ingress port version advances and the
+                # direct-ingress port reconcile/prune runs to reclaim its port
+                # (the running-replica-set comparison won't flag this).
+                if self.owns_direct_ingress_ports():
+                    self._ingress_membership_removed = True
 
                 # Retain replicas that allocated a log file so the dashboard can
                 # still show their logs after the actor is gone.
@@ -5080,6 +5356,13 @@ class DeploymentState:
     def is_ingress_request_router(self) -> bool:
         return self._target_state.info.ingress_request_router
 
+    def owns_direct_ingress_ports(self) -> bool:
+        """Whether this deployment owns direct-ingress ports -- i.e. it is an
+        ingress deployment or an ingress request router. These are exactly the
+        deployments the direct-ingress port reconcile (and its membership-version
+        gate) manages."""
+        return self.is_ingress() or self.is_ingress_request_router()
+
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
 
@@ -5280,6 +5563,13 @@ class DeploymentState:
         if target_version is None:
             return set()
 
+        # Fast path: with no deployment-scoped actors tracked, nothing can be orphaned
+        # (get_code_versions() is empty, and empty - anything == empty). Skips the O(N)
+        # self._replicas.get() materialization on every scale_deployment_replicas tick
+        # for the common deployment that has no deployment-scoped actors.
+        if self._deployment_actors.is_empty():
+            return set()
+
         versions_to_keep = {r.version.code_version for r in self._replicas.get()}
         if not self._target_state.deleting:
             versions_to_keep.add(target_version.code_version)
@@ -5353,6 +5643,10 @@ class DeploymentStateManager:
         self._shutting_down = False
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        # Monotonic counter bumped whenever an ingress deployment's running-replica
+        # set (node/ports included) changes; the controller gates the direct-ingress port
+        # reconcile on it, skipping the O(replicas) pass on ticks with no change.
+        self._ingress_membership_version: int = 0
         self._app_deployment_mapping: Dict[str, Set[str]] = defaultdict(set)
 
         # Metric for tracking deployment status
@@ -5698,6 +5992,11 @@ class DeploymentStateManager:
 
         return dict(node_id_to_alive_replica_ids)
 
+    def _get_deployment_state_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> DeploymentState:
+        return self._deployment_states[deployment_id]
+
     def _dump_replica_states_for_testing(
         self, deployment_id: DeploymentID
     ) -> ReplicaStateContainer:
@@ -5871,7 +6170,16 @@ class DeploymentStateManager:
 
         # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
-            deployment_state.broadcast_running_replicas_if_changed()
+            running_set_changed = (
+                deployment_state.broadcast_running_replicas_if_changed()
+            )
+            ingress_replica_removed = (
+                deployment_state.consume_ingress_membership_removed()
+            )
+            if (
+                running_set_changed or ingress_replica_removed
+            ) and deployment_state.owns_direct_ingress_ports():
+                self._ingress_membership_version += 1
             deployment_state.broadcast_deployment_config_if_changed()
             if deployment_state.should_autoscale():
                 self._autoscaling_state_manager.update_running_replica_ids(
@@ -6099,6 +6407,12 @@ class DeploymentStateManager:
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 
+    def get_ingress_membership_version(self) -> int:
+        """Monotonic counter of ingress running-replica-set changes (node/ports
+        included). The controller skips the direct-ingress port reconcile on ticks where
+        this is unchanged. See _ingress_membership_version."""
+        return self._ingress_membership_version
+
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         """Get replicas that own direct-ingress ports.
 
@@ -6107,8 +6421,7 @@ class DeploymentStateManager:
         ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
-            if deployment_state.is_ingress()
-            or deployment_state.is_ingress_request_router()
+            if deployment_state.owns_direct_ingress_ports()
         ]
 
         ingress_replicas_info = []

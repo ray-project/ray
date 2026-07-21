@@ -179,7 +179,7 @@ class StreamSplitDataIterator(DataIterator):
         """Returns the number of splits total."""
         return self._world_size
 
-    def _get_dataset_tag(self):
+    def _get_dataset_tag(self) -> Dict[str, str]:
         return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
 
@@ -248,8 +248,15 @@ class SplitCoordinator:
     def get_dataset_context(self) -> DataContext:
         return self._data_context
 
-    def get_dataset_tag(self, output_split_idx: int) -> str:
-        return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
+    def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
+        """Metrics tags for the dataset.
+
+        ``dataset`` is the dataset id and ``split_index`` indicates the split.
+        """
+        return {
+            "dataset": self._base_dataset.get_dataset_id(),
+            "split_index": str(output_split_idx),
+        }
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:

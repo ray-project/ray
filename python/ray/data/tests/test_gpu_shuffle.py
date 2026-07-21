@@ -31,6 +31,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.tests.conftest import noop_counter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -433,6 +434,7 @@ class TestGPUShuffleOperatorFinalization:
             )
         op._rank_pool._actors = mock_actors
         op._rank_pool._nranks = nranks
+        op._block_ref_counter = noop_counter()
         return op, mock_actors
 
     def test_finalization_not_started_until_inputs_complete(self):
@@ -602,7 +604,26 @@ class TestPlanAllToAllOpRouting:
 
         assert isinstance(op, GPUShuffleOperator)
 
-    def test_hash_shuffle_routes_to_shuffle_reduce_op(self):
+    def test_hash_shuffle_still_routes_to_hash_shufflle_v1(self, restore_data_context):
+        from ray.data._internal.execution.operators.hash_shuffle import (
+            HashShuffleOperator,
+        )
+
+        ctx = DataContext()
+        ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+        with patch(
+            "ray.data._internal.execution.operators.hash_shuffle"
+            "._get_total_cluster_resources",
+            return_value=ExecutionResources(cpu=4, gpu=0),
+        ):
+            logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
+            input_physical_op = _make_input_op_mock()
+            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, HashShuffleOperator)
+
+    def test_hash_shuffle_still_routes_to_hash_shufflle_v2(self, restore_data_context):
         """V2 hash shuffle is a two-op DAG; planner returns the ShuffleReduceOp
         with the ShuffleMapOp as its upstream input dependency."""
         from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -613,6 +634,7 @@ class TestPlanAllToAllOpRouting:
         )
 
         ctx = DataContext()
+        ctx.use_hash_shuffle_v2 = True
         ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
         logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)

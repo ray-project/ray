@@ -125,6 +125,77 @@ def test_write_parquet_handles_per_block_column_reorder(
     ]
 
 
+def test_widen_offset_overflowing_columns(monkeypatch):
+    # Unit test for the schema-promotion helper. Only `string`/`binary` columns
+    # whose combined size across the blocks exceeds the int32 offset limit
+    # (2 GiB) should be promoted to their `large_*` variant; everything else is
+    # left untouched. The real limit is impractical to allocate, so patch the
+    # threshold low and check the decision boundary directly.
+    from ray.data._internal.datasource import parquet_datasink
+    from ray.data._internal.datasource.parquet_datasink import (
+        _widen_offset_overflowing_columns,
+    )
+
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1024)
+
+    big, tiny = "z" * 600, "x"
+    t1 = pa.table(
+        {
+            "id": pa.array([0, 1]),  # not variable-width
+            "big_str": pa.array([big, big]),  # combined > 1024 -> promote
+            "big_bin": pa.array([big.encode(), big.encode()]),  # -> large_binary
+            "small_str": pa.array([tiny, tiny]),  # combined < 1024 -> untouched
+        }
+    )
+    t2 = pa.table(
+        {
+            "id": pa.array([2, 3]),
+            "big_str": pa.array([big, big]),
+            "big_bin": pa.array([big.encode(), big.encode()]),
+            "small_str": pa.array([tiny, tiny]),
+        }
+    )
+    schema = pa.unify_schemas([t1.schema, t2.schema])
+
+    widened = _widen_offset_overflowing_columns([t1, t2], schema)
+
+    assert widened.field("big_str").type == pa.large_string()
+    assert widened.field("big_bin").type == pa.large_binary()
+    assert widened.field("small_str").type == pa.string()
+    assert widened.field("id").type == pa.int64()
+
+    # When nothing overflows, the original schema is returned unchanged.
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1 << 40)
+    assert _widen_offset_overflowing_columns([t1, t2], schema) is schema
+
+
+def test_write_parquet_string_column_over_2gib_e2e(ray_start_regular_shared, tmp_path):
+    # End-to-end through the ray.data API: a dataset whose `payload` column, once
+    # the writer coalesces blocks into a single row group (forced by
+    # `min_rows_per_file`), exceeds Arrow's 2 GiB int32-offset `string` limit.
+    # Each individual value stays small, so only the *cumulative* size overflows.
+    #
+    # Pre-fix the write task died with an offset-overflow / column-length
+    # mismatch; ParquetDatasink now promotes the column to `large_string`.
+    num_rows, row_bytes = 1100, 2_000_000  # ~2.05 GiB combined, just over 2 GiB
+
+    def add_payload(batch):
+        # Reusing one string keeps driver-side memory ~row_bytes; Ray
+        # materializes per-row copies into the object store.
+        batch["payload"] = ["z" * row_bytes] * len(batch["id"])
+        return batch
+
+    ds = ray.data.range(num_rows).map_batches(add_payload, batch_format="numpy")
+    # min_rows_per_file makes the write coalesce all blocks into one row group.
+    ds.write_parquet(str(tmp_path), min_rows_per_file=num_rows)
+
+    out = pq.read_table(str(tmp_path), columns=["id"])
+    assert out.num_rows == num_rows
+    # The oversized variable-width column was promoted to dodge int32 offsets.
+    full_schema = pq.read_schema(str(next(pathlib.Path(tmp_path).glob("*.parquet"))))
+    assert full_schema.field("payload").type == pa.large_string()
+
+
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     ray.data.range(1).write_parquet(tmp_path, compression="gzip")
 
@@ -3253,26 +3324,38 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
-def test_parquet_sampling_fails_on_permanent_error(ray_start_regular_shared, tmp_path):
+def test_parquet_sampling_fails_on_permanent_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
     limited retries. Regression test for #57278."""
     from unittest.mock import patch
 
-    # Write a valid parquet file so that fragment discovery succeeds.
+    # Write a valid parquet file so that file/fragment discovery succeeds and
+    # the failure is isolated to the schema/encoding sampling step.
     table = pa.table({"col": [1, 2, 3]})
     pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
 
-    # Patch the remote sampling function to always raise PermissionError
-    # (a subclass of OSError), simulating invalid credentials.
-    original_fn = (
-        "ray.data._internal.datasource.parquet_datasource._fetch_parquet_file_info"
-    )
-
     def _raise_permission_error(*args, **kwargs):
+        # PermissionError is a subclass of OSError, simulating invalid
+        # credentials against an object store.
         raise PermissionError("Access Denied: invalid credentials")
 
-    with patch(original_fn, new=_raise_permission_error):
+    if DataContext.get_current().use_datasource_v2:
+        # V2 samples schema on the driver by reading Parquet footers via
+        # ``pq.read_schema``; a permanent OSError there must propagate.
+        target = "pyarrow.parquet.read_schema"
+    else:
+        # V1 samples files through a remote task wrapping
+        # ``_fetch_parquet_file_info``; retries are capped so the error
+        # surfaces instead of hanging forever.
+        target = (
+            "ray.data._internal.datasource.parquet_datasource."
+            "_fetch_parquet_file_info"
+        )
+
+    with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
 
