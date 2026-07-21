@@ -15,18 +15,14 @@ local FORWARD_BODY = ${FORWARD_BODY}
 -- ConsistentHashRouter) can use it.
 local SESSION_HEADER = "${SESSION_HEADER}"
 
--- Per-app state. The frontend sets txn.ingress_request_router_app to the
--- backend name whose path prefix matched, and we look up that app's
--- router pool and replica map here. Each app routes through its own
--- co-located routers; replica IDs are scoped to the app to avoid
--- cross-app pinning. ROUTERS[app] is a list of {host, port, host_header}
--- that we round-robin across per request.
+-- Per-app router pool and replica map. The frontend sets
+-- txn.ingress_request_router_app to the matched backend name. We look up its
+-- routers and replicas here. ROUTERS[app] is a list we round-robin over.
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
--- Per-app round-robin cursor. lua-load-per-thread gives each worker thread
--- its own Lua state, so the rotation is per-thread rather than globally
--- synchronized -- good enough to spread load across the routers.
+-- Per-app round-robin cursor, one Lua state per worker thread under
+-- lua-load-per-thread, so rotation needs no cross-thread synchronization.
 local _rr_cursor = {}
 
 local function call_router(router, body, truncated_length, session_id)
@@ -148,11 +144,9 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         end
     end
 
-    -- Round-robin across the app's routers, advancing the per-app cursor once
-    -- per request. On an unreachable router (connection failure) fall through
-    -- to the next one in the pool so a single dead router doesn't fail the
-    -- request; a router that answers with a non-200 is its own decision and is
-    -- not retried below.
+    -- Round-robin over the app's routers, one cursor step per request. On a
+    -- connection failure try the next router. A non-200 is the router's answer
+    -- and is not retried.
     local n = #pool
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1

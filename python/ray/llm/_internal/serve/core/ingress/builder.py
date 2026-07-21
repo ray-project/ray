@@ -87,14 +87,11 @@ def _build_openai_ingress_request_router(
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
 
-    The controller runs the ingress request router with one replica per proxy
-    node so each node's HAProxy calls its co-located router and the
-    ``/internal/route`` hop stays on-node. That placement follows from attaching
-    this Application as the ingress request router, so the builder sets no
-    scaling option for it. ``num_cpus=0`` matches the proxy's footprint so the
-    router is schedulable on every proxy node, including a resource-less head
-    node. ``max_ongoing_requests`` is raised from the Serve default so the
-    on-path router does not throttle ingress.
+    ``num_cpus=0`` lets the router schedule alongside the proxy on any node,
+    including a resource-less head node. ``max_ongoing_requests`` is raised
+    above the Serve default because the router sits on the ingress hot path and
+    must not throttle it. Replica count and placement are left to the
+    controller, so the builder pins no scaling option.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.

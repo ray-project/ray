@@ -142,11 +142,9 @@ def _routers_and_targets_by_backend(
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
     """Per-backend router pool and replica map, restricted to backends with both.
 
-    Each HAProxy round-robins across its co-located routers (``host ==
-    local_host``, which ``_target_to_server`` rewrote to the local host) so the
-    /internal/route hop stays on-node. Falls back to the single
-    lexicographically smallest router when none is co-located, which keeps the
-    hop on one router rather than cycling across nodes.
+    Prefers routers co-located with this HAProxy so the /internal/route hop
+    stays on-node. Falls back to the lexicographically smallest router when none
+    is co-located.
     """
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
@@ -160,9 +158,6 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        # pool is both the round-robin set and the connection-failover set. No
-        # co-located router falls back to one lex-min pick, so we never cycle
-        # across nodes. Host-first sort keeps co-located routers adjacent.
         if colocated:
             pool = sorted(colocated, key=lambda s: (s.host, s.port))
         else:
