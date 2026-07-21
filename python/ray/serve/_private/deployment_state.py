@@ -732,6 +732,7 @@ class ReplicaHealthPushRegistry:
 
     _PRUNE_THRESHOLD = 65536
     _PRUNE_MAX_AGE_S = 600.0
+    _PRUNE_MIN_INTERVAL_S = 30.0
     _GAP_BUCKET_S = 0.25
     _GAP_NBUCKETS = 240  # 60s range
 
@@ -743,6 +744,7 @@ class ReplicaHealthPushRegistry:
         self._gap_hist = [0] * self._GAP_NBUCKETS
         self._gap_count = 0
         self._gap_max_s = 0.0
+        self._last_prune_time = 0.0
 
     def record(
         self,
@@ -761,9 +763,17 @@ class ReplicaHealthPushRegistry:
             self._gap_count += 1
             if gap > self._gap_max_s:
                 self._gap_max_s = gap
-        if len(self._state) > self._PRUNE_THRESHOLD:
+        now = time.time()
+        if (
+            len(self._state) > self._PRUNE_THRESHOLD
+            and now - self._last_prune_time > self._PRUNE_MIN_INTERVAL_S
+        ):
+            # Rate-limited: when everything is fresher than the age cutoff the
+            # prune is a no-op, and re-running the O(N) rebuild on every record
+            # would thrash the ingest path right at the scale it serves.
+            self._last_prune_time = now
             # Age by controller-clock arrival time (v[1]), immune to replica skew.
-            cutoff = time.time() - self._PRUNE_MAX_AGE_S
+            cutoff = now - self._PRUNE_MAX_AGE_S
             self._state = {k: v for k, v in self._state.items() if v[1] >= cutoff}
         self._state[replica_unique_id] = (
             checked_at,
@@ -3103,7 +3113,11 @@ class DeploymentState:
         self._push_stall_since: Optional[float] = None
         self._push_stall_stale: int = 0
         self._push_stall_total: int = 0
-        self._push_stall_window_s: float = 0.0
+        # Default to the stock period so pushes are not misread as stale on
+        # deployments that have no target info yet (recovery, deletion).
+        self._push_stall_window_s: float = _push_freshness_window_s(
+            DEFAULT_HEALTH_CHECK_PERIOD_S
+        )
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.

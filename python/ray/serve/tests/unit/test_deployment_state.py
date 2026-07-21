@@ -10293,6 +10293,18 @@ class TestPushSystemicStallGuard:
 class TestPushedHealthReviewRegressions:
     """Regressions for the agent-review findings on the push-health PR."""
 
+    def test_registry_prune_is_rate_limited(self):
+        r = ReplicaHealthPushRegistry()
+        r._PRUNE_THRESHOLD = 2
+        now = time.time()
+        r._state = {f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)}
+        r.record("fresh1", now, True)
+        assert "old0" not in r._state  # over threshold -> pruned
+        r._state.update({f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)})
+        r.record("fresh2", now + 1.0, True)
+        # Within _PRUNE_MIN_INTERVAL_S the O(N) prune must not re-run.
+        assert "old0" in r._state
+
     def test_registry_rejects_out_of_order_reports(self):
         r = ReplicaHealthPushRegistry()
         r.record("r1", checked_at=200.0, healthy=True)
