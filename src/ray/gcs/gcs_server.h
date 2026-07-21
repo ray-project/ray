@@ -170,7 +170,10 @@ class GcsServer {
   void InitRaySyncer(const GcsInitData &gcs_init_data);
 
   /// Initialize cluster resource scheduler.
-  void InitClusterResourceScheduler(const GcsInitData &gcs_init_data);
+  void InitClusterResourceScheduler();
+
+  /// Restore node resources after node manager is initialized
+  void RestoreNodeResources(const GcsInitData &gcs_init_data);
 
   /// Initialize cluster lease manager.
   void InitClusterLeaseManager();

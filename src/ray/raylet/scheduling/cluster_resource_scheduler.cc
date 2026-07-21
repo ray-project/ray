@@ -421,7 +421,20 @@ SchedulingResult ClusterResourceScheduler::SchedulePlacementGroup(
       resource_request_list, options, std::move(candidate_nodes));
 }
 
+// must be called with the set of nodes that are currently alive
 void ClusterResourceScheduler::RestoreNodeResources(
-    const absl::flat_hash_map<NodeID, rpc::ResourcesData> &node_resources) {}
+    const absl::flat_hash_map<NodeID, rpc::ResourcesData> &node_resources) {
+  for (const auto &[node_id, resources] : node_resources) {
+    RAY_LOG(DEBUG).WithField(node_id) << "RESTORE NODE " << resources.DebugString();
+    scheduling::NodeID s_node_id = scheduling::NodeID(node_id.Binary());
+
+    auto restored_resources =
+        cluster_resource_manager_->NodeResourcesFromResourcesData(resources);
+
+    RAY_LOG(DEBUG).WithField(node_id)
+        << "RESTORE RES " << restored_resources.DebugString();
+    cluster_resource_manager_->AddOrUpdateNode(s_node_id, restored_resources);
+  }
+}
 
 }  // namespace ray

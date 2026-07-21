@@ -312,8 +312,9 @@ void GcsServer::GetOrGenerateClusterId(
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  InitClusterResourceScheduler(gcs_init_data);
+  InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
+  RestoreNodeResources(gcs_init_data);
   InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
   InitGcsHealthCheckManager(gcs_init_data);
@@ -535,7 +536,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       "RayletLoadPulled");
 }
 
-void GcsServer::InitClusterResourceScheduler(const GcsInitData &gcs_init_data) {
+void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_storage_ = std::make_unique<ClusterResourceStorage>(
       gcs_table_storage_.get(), io_context_provider_.GetDefaultIOContext());
 
@@ -549,8 +550,17 @@ void GcsServer::InitClusterResourceScheduler(const GcsInitData &gcs_init_data) {
       /*clock=*/clock_,
       *cluster_resource_storage_.get(),
       /*is_local_node_with_raylet=*/false);
+}
 
-  cluster_resource_scheduler_->RestoreNodeResources(gcs_init_data.NodeResources());
+void GcsServer::RestoreNodeResources(const GcsInitData &gcs_init_data) {
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resources;
+  for (const auto &[node_id, resources] : gcs_init_data.NodeResources()) {
+    if (gcs_node_manager_->IsNodeAlive(node_id)) {
+      node_resources.emplace(node_id, resources);
+    }
+  }
+
+  cluster_resource_scheduler_->RestoreNodeResources(node_resources);
 }
 
 void GcsServer::InitClusterLeaseManager() {
