@@ -102,6 +102,16 @@ class TestQueryScoping:
         )
         assert pol.query == "custom_query"
 
+    def test_rate_window_default_and_override(self):
+        # Default window tolerates multi-scrape gaps in metric delivery.
+        default = TTFTAutoscalingPolicy(model_id="my-org/m", prometheus_address="x")
+        assert "[5m]" in default.query
+        # Callers can widen or narrow it to their metric cadence.
+        custom = TTFTAutoscalingPolicy(
+            model_id="my-org/m", rate_window="10m", prometheus_address="x"
+        )
+        assert "[10m]" in custom.query
+
     def test_requires_model_id_or_query(self):
         with pytest.raises(ValueError, match="model_id"):
             TTFTAutoscalingPolicy(prometheus_address="x")

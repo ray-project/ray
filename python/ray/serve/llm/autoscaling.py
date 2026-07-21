@@ -10,13 +10,23 @@ from ray.serve.autoscaling_policy import PrometheusQueryMixin
 from ray.serve.config import AutoscalingContext
 from ray.util.annotations import PublicAPI
 
+DEFAULT_RATE_WINDOW = "5m"
 
-def _ttft_query(model_id: str) -> str:
-    """Build the p99 TTFT PromQL scoped to ``model_id``."""
+
+def _ttft_query(model_id: str, rate_window: str = DEFAULT_RATE_WINDOW) -> str:
+    """Build the p99 TTFT PromQL scoped to ``model_id``.
+
+    ``rate_window`` is the PromQL range for the inner ``rate()``. It must span
+    at least two metric samples or ``rate()`` returns empty and the policy reads
+    no data. Ray worker metrics reach Prometheus at the scrape interval in the
+    common case, but that cadence is not guaranteed (a slow or backed-up metrics
+    pipeline delivers samples further apart), so the window defaults wide enough
+    to tolerate multi-scrape gaps rather than assuming dense samples.
+    """
     selector = f'{{model_name="{model_id}"}}'
     return (
         "histogram_quantile(0.99, "
-        f"sum(rate(ray_vllm_time_to_first_token_seconds_bucket{selector}[1m])) "
+        f"sum(rate(ray_vllm_time_to_first_token_seconds_bucket{selector}[{rate_window}])) "
         "by (le))"
     )
 
@@ -52,6 +62,10 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
         idle_threshold: Max ongoing requests per replica to be considered idle.
         model_id: Scope the p99 TTFT query to this vLLM model. Required unless
             ``query`` is given.
+        rate_window: PromQL range for the inner ``rate()`` of the default TTFT
+            query. Must span at least two metric samples or the query returns
+            empty and the policy holds. Widen it if the metrics pipeline
+            delivers samples slowly. Ignored when ``query`` is given.
         query: PromQL to read. Defaults to a p99 TTFT query scoped by
             ``model_id``. Must resolve to a single-sample instant vector.
         prometheus_address: Prometheus server, ``host:port`` or a full URL.
@@ -65,6 +79,7 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
         ttft_target_s: float = 2.0,
         idle_threshold: float = 1.0,
         model_id: Optional[str] = None,
+        rate_window: str = DEFAULT_RATE_WINDOW,
         query: Optional[str] = None,
         prometheus_address: Optional[str] = None,
         **kwargs,
@@ -75,7 +90,7 @@ class TTFTAutoscalingPolicy(PrometheusQueryMixin):
                     "TTFTAutoscalingPolicy needs model_id to scope the p99 TTFT "
                     "query, or an explicit query."
                 )
-            query = _ttft_query(model_id)
+            query = _ttft_query(model_id, rate_window)
         super().__init__(
             prometheus_address=prometheus_address,
             prometheus_queries=[query],
