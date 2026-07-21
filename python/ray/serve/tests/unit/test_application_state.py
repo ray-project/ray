@@ -233,6 +233,7 @@ def deployment_params(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     return {
         "deployment_name": name,
@@ -243,7 +244,7 @@ def deployment_params(
             autoscaling_config=autoscaling_config,
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
-            lambda x: x
+            lambda x: x, ray_actor_options=ray_actor_options
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
@@ -260,6 +261,7 @@ def deployment_info(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     params = deployment_params(
         name,
@@ -267,6 +269,7 @@ def deployment_info(
         autoscaling_config,
         num_replicas,
         ingress_request_router,
+        ray_actor_options,
     )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
@@ -332,6 +335,55 @@ class TestGracefulShutdownTimeoutFloor:
     )
     def test_not_floored_when_direct_ingress_disabled(self):
         assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
+
+
+class TestIngressRequestRouterFootprint:
+    """deploy_args_to_deployment_info gives the ingress request router an empty
+    resource footprint so it colocates with the proxy on every node, while
+    keeping non-resource actor options. Other deployments are untouched."""
+
+    def test_router_footprint_cleared(self):
+        info = deployment_info(
+            "d",
+            ingress_request_router=True,
+            ray_actor_options={
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"custom": 1},
+                "runtime_env": {"env_vars": {"A": "1"}},
+            },
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 0
+        assert "num_gpus" not in opts
+        assert "resources" not in opts
+        # Non-resource options survive.
+        assert opts["runtime_env"] == {"env_vars": {"A": "1"}}
+        assert info.replica_config.resource_dict == {"CPU": 0}
+
+    def test_non_router_keeps_resources(self):
+        info = deployment_info(
+            "d",
+            ingress_request_router=False,
+            ray_actor_options={"num_cpus": 2, "num_gpus": 1},
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 2
+        assert opts["num_gpus"] == 1
+
+
+def test_ingress_request_router_rejects_autoscaling_config():
+    """autoscaling_config on an ingress request router is rejected, not ignored.
+
+    The router runs one replica per proxy node, so an autoscaling_config would be
+    silently dropped otherwise.
+    """
+    with pytest.raises(RayServeException, match="autoscaling_config"):
+        deployment_info(
+            "d",
+            autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=3),
+            ingress_request_router=True,
+        )
 
 
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
