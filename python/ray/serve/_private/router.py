@@ -101,6 +101,11 @@ from ray.util import metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+# Stop re-sending a replica's health on handle reports once it has gone this
+# long without a refresh; the controller already has it.
+_REPORT_HEALTH_MAX_AGE_S = 30.0
+
+
 class RouterMetricsManager:
     """Manages metrics for the router."""
 
@@ -285,7 +290,14 @@ class RouterMetricsManager:
         """Downstream replicas' carried health, plus the host replica's own
         (when this router lives inside a replica) -- so a handle-owning
         replica's health rides reports that already flow."""
-        health = dict(self._replica_health)
+        # Entries not refreshed recently are already at the controller
+        # (deduped on arrival) -- re-sending them just bloats every report.
+        horizon = time.time() - _REPORT_HEALTH_MAX_AGE_S
+        health = {
+            uid: rec[:3]
+            for uid, rec in self._replica_health.items()
+            if rec[3] >= horizon
+        }
         provider = ray.serve.context._get_self_health_report_provider()
         if provider is not None:
             try:
@@ -307,13 +319,18 @@ class RouterMetricsManager:
         healthy: bool,
         consecutive_failures: Optional[int],
     ):
-        """Keep the newest response-carried self-health per replica."""
+        """Keep the newest response-carried self-health per replica.
+
+        The router-clock recording time rides along so reports can age-prune
+        without cross-clock comparisons against replica-local checked_at.
+        """
         prev = self._replica_health.get(replica_unique_id)
         if prev is None or checked_at > prev[0]:
             self._replica_health[replica_unique_id] = (
                 checked_at,
                 healthy,
                 consecutive_failures,
+                time.time(),
             )
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -1112,14 +1129,15 @@ class AsyncioRouter:
             )
             if queue_info.accepted:
                 replica_unique_id = replica.replica_id.unique_id
-                result.set_health_frame_listener(
-                    lambda frame: self._metrics_manager.record_replica_health(
-                        replica_unique_id,
-                        frame.health_checked_at,
-                        frame.healthy,
-                        frame.health_consecutive_failures,
+                if getattr(queue_info, "will_send_health_frames", False):
+                    result.set_health_frame_listener(
+                        lambda frame: self._metrics_manager.record_replica_health(
+                            replica_unique_id,
+                            frame.health_checked_at,
+                            frame.healthy,
+                            frame.health_consecutive_failures,
+                        )
                     )
-                )
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
                 self._register_decrement_queue_len_cache_callback(
                     result, replica.replica_id

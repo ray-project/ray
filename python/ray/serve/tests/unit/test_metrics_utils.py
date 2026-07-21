@@ -1412,7 +1412,9 @@ class TestRouterSelfHealthMerge:
         from ray.serve._private.router import RouterMetricsManager
 
         mm = RouterMetricsManager.__new__(RouterMetricsManager)
-        mm._replica_health = {"downstream": (1.0, True, 0)}
+        import time as _time
+
+        mm._replica_health = {"downstream": (1.0, True, 0, _time.time())}
         return mm
 
     def test_no_provider_passthrough(self):
@@ -1648,9 +1650,9 @@ class TestSelfHealthPush:
         rm._replica_health = {}
         rm.record_replica_health("r1", 200.0, True, 0)
         rm.record_replica_health("r1", 100.0, False, 2)  # delayed older
-        assert rm._replica_health["r1"] == (200.0, True, 0)
+        assert rm._replica_health["r1"][:3] == (200.0, True, 0)
         rm.record_replica_health("r1", 300.0, False, 1)
-        assert rm._replica_health["r1"] == (300.0, False, 1)
+        assert rm._replica_health["r1"][:3] == (300.0, False, 1)
 
     @pytest.mark.asyncio
     async def test_in_flight_heartbeat_skips_next(self, monkeypatch):

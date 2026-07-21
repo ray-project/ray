@@ -926,6 +926,12 @@ class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
     # Replica self-health piggyback (None = sender does not carry health).
+    # Whether this replica will interleave ReplicaHealthFrame messages on
+    # the response stream for this request. Lets the router skip arming a
+    # frame pump when health already rides reports (idle pumps at high
+    # fan-in cost real driver memory).
+    will_send_health_frames: bool = False
+
     healthy: Optional[bool] = None
     health_checked_at: Optional[float] = None
     health_consecutive_failures: Optional[int] = None

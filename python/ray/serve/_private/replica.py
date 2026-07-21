@@ -1903,11 +1903,18 @@ class Replica:
             request_metadata, ray_trace_ctx
         ) as status_code_callback:
             async with self._start_request(request_metadata):
+                # Binding for this request's lifetime: the router arms its
+                # frame pump only when frames are declared.
+                sends_frames = (
+                    request_metadata.supports_health_frames
+                    and not self._metrics_manager.health_already_carried()
+                )
                 yield ReplicaQueueLengthInfo(
                     accepted=True,
                     # NOTE(edoakes): `_wrap_request` will increment the number
                     # of ongoing requests to include this one, so re-fetch the value.
                     num_ongoing_requests=self.get_num_ongoing_requests(),
+                    will_send_health_frames=sends_frames,
                     **self._health_kwargs(),
                 )
 
@@ -1928,7 +1935,7 @@ class Replica:
                             request_kwargs,
                         ):
                             yield result
-                    elif request_metadata.supports_health_frames:
+                    elif sends_frames:
                         async for result in self._call_unary_with_health_frames(
                             request_metadata, request_args, request_kwargs
                         ):
