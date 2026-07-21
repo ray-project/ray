@@ -401,6 +401,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // optionally configure the worker's internal grpc thread count
   int64_t worker_grpc_threads = RayConfig::instance().worker_num_grpc_internal_threads();
+  if (worker_grpc_threads <= 0) {
+    worker_grpc_threads = CpuMonitorUtils::GetCpuLimit();
+  }
   if (worker_grpc_threads > 0) {
     env.emplace(kEnvVarKeyGrpcThreadCount, std::to_string(worker_grpc_threads));
   }
