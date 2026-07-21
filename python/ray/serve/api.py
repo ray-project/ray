@@ -16,7 +16,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -32,6 +31,7 @@ from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    MULTIPLEXED_FUNCTION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -53,11 +53,11 @@ from ray.serve.context import (
     DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
+    _disconnect,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_deployment_actor_context,
     _get_internal_replica_context,
-    _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -113,9 +113,9 @@ def start(
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
     """
-    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
         controller_options=controller_options,
@@ -152,7 +152,7 @@ def shutdown():
             return
 
     client.shutdown()
-    _set_global_client(None)
+    _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -180,7 +180,7 @@ async def shutdown_async():
             return
 
     await client.shutdown_async()
-    _set_global_client(None)
+    _disconnect()
 
 
 @DeveloperAPI
@@ -458,6 +458,37 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
+
+            def __init_subclass__(subcls, **subclass_kwargs):
+                # The parent `__init__` is async, so any sync `__init__`
+                # resolved on the subclass (whether defined directly or
+                # inherited from a mixin earlier in the MRO) would, when
+                # calling `super().__init__(...)`, silently discard the
+                # returned coroutine — leaving the replica uninitialized
+                # (e.g. `_serve_asgi_lifespan` never set). Check the resolved
+                # `__init__` on the class (which honors MRO) rather than only
+                # `__dict__`, so cases like
+                # `class Sub(SyncMixin, WrappedIngress)` are also caught.
+                # Fail loudly at class-definition time with a clear migration
+                # message instead of crashing later at runtime.
+                super().__init_subclass__(**subclass_kwargs)
+                if not inspect.iscoroutinefunction(subcls.__init__):
+                    raise TypeError(
+                        f"{subcls.__name__}.__init__ must be `async def` "
+                        "when subclassing a class decorated with "
+                        "@serve.ingress (or returned by "
+                        "`make_fastapi_ingress`). The parent `__init__` is "
+                        "async; a sync `super().__init__(...)` call would "
+                        "silently drop the returned coroutine and leave the "
+                        "replica uninitialized. Change "
+                        "`def __init__(self, ...)` to "
+                        "`async def __init__(self, ...)` and "
+                        "`super().__init__(...)` to "
+                        "`await super().__init__(...)`. If the sync "
+                        "`__init__` comes from a mixin in the MRO, override "
+                        "it on the subclass with an `async def __init__` "
+                        "that awaits both parents."
+                    )
 
             async def __del__(self):
                 await ASGIAppReplicaWrapper.__del__(self)
@@ -796,7 +827,7 @@ def _run_many(
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
+            proxy_location=ProxyLocation.EveryNode,
             global_logging_config=None,
             controller_options=controller_options,
         )
@@ -808,10 +839,6 @@ def _run_many(
             built_apps,
             wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
             wait_for_applications_running=wait_for_applications_running,
-        )
-
-        client.wait_for_proxies_serving(
-            wait_for_applications_running=wait_for_applications_running
         )
         return handles
 
@@ -1110,6 +1137,11 @@ def multiplexed(
             else:
                 model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
             return await model_multiplex_wrapper.load_model(model_id)
+
+        # Mark the wrapper so that multiplexing can be detected statically (e.g. at
+        # replica startup) without invoking user code, since the
+        # `__serve_multiplex_wrapper` is only created lazily on the first call.
+        setattr(_multiplex_wrapper, MULTIPLEXED_FUNCTION_MARKER_ATTR, True)
 
         return _multiplex_wrapper
 

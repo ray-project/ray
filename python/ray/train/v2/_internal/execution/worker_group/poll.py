@@ -8,6 +8,7 @@ from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
@@ -41,6 +42,7 @@ class WorkerStatus:
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
     return_value: Any = field(default=None)
+    preemption_info: Optional[PreemptionInfo] = None
 
 
 @dataclass(frozen=True)

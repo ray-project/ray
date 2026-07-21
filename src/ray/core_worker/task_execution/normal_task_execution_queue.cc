@@ -21,15 +21,13 @@
 namespace ray {
 namespace core {
 
-NormalTaskExecutionQueue::NormalTaskExecutionQueue(){};
-
 void NormalTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
   absl::MutexLock lock(&mu_);
   Status status = Status::SchedulingCancelled(msg);
 
   while (!pending_normal_tasks_.empty()) {
     auto it = pending_normal_tasks_.begin();
-    it->Cancel(status);
+    cancel_task_(*it, status);
     pending_normal_tasks_.erase(it);
   }
 }
@@ -50,7 +48,7 @@ bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
-      it->Cancel(Status::OK());
+      cancel_task_(*it, Status::OK());
       pending_normal_tasks_.erase(std::next(it).base());
       return true;
     }
@@ -71,7 +69,7 @@ std::optional<TaskToExecute> NormalTaskExecutionQueue::TryPopQueuedTask() {
 
 void NormalTaskExecutionQueue::ExecuteQueuedTasks() {
   while (auto task = TryPopQueuedTask()) {
-    task->Execute();
+    execute_task_(*task);
   }
 }
 

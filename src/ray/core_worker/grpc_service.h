@@ -88,6 +88,11 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
       ReportGeneratorItemReturnsReply *reply,
       SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleUpdateGeneratorBackpressureConsumed(
+      UpdateGeneratorBackpressureConsumedRequest request,
+      UpdateGeneratorBackpressureConsumedReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleKillActor(KillActorRequest request,
                                KillActorReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
@@ -158,7 +163,8 @@ class CoreWorkerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      std::shared_ptr<const AuthenticationToken> auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) override;
 
  private:
   CoreWorkerService::AsyncService service_;

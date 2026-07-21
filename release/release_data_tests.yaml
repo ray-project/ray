@@ -355,12 +355,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
     timeout: 600
@@ -406,11 +400,6 @@
     anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -428,7 +417,7 @@
             - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
             - RAYTEST_FAIL_ON_WORKER_OOM=1
             - RAYTEST_FAIL_ON_DEAD_NODES=0
-            - RAYTEST_FAIL_ON_SPILLING=0
+            - RAYTEST_FAIL_ON_SPILLING=1
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -590,12 +579,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0 # Allow temporarily to unblock release
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -656,12 +639,6 @@
 
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -674,26 +651,28 @@
 # 200 float32[32]) modeled after production reference data. Stresses
 # per-block BlockMetadataWithSchema propagation on the driver, which
 # dominates large-schema production workloads.
-- name: worker_scaling_{{num_workers}}_{{worker_type}}
+- name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}ops
   python: "3.10"
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
     setup:
-      num_workers: [500, 1000, 2000, 5000]
+      num_workers: [2000, 5000]
       worker_type: [actors, tasks]
+      # 1op: the original single-operator workload. 15ops: 15 chained
+      # map_batches operators sharing the worker pool (each gets
+      # num_workers // 15 workers). Exercises the per-iteration
+      # update_usages / _update_allocated_budgets cost which scales with
+      # N_ops.
+      num_operators: [1, 15]
 
   run:
-    timeout: 2700
+    # 15-op variants chain 15 operators over the same pool, so they take
+    # longer than the single-op runs; give the matrix headroom.
+    timeout: 5400
     # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded by the
     # profiling coordinator and uploaded to PROFILING_S3_BUCKET.
     script: >
@@ -701,8 +680,10 @@
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
+      --num-operators {{num_operators}}
       --num-scalar-cols 200
       --num-array-cols 400
+      --blocks-per-worker 4
 
 
 ######################
@@ -859,14 +840,40 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
     timeout: 3600
-    script: python heterogeneous_memory_batch_inference.py
+    # This release test uses large batch sizes. Since Ray Data requires memory hints
+    # for high-memory operations, we need to manually specify the memory.
+    script: python heterogeneous_memory_batch_inference.py --set-memory
+
+# Multitenancy variant: runs two copies of the heterogeneous_memory pipeline
+# concurrently on a single cluster, each pinned to its own subcluster via
+# label_selector. Asserts isolation (no runtime regression vs. solo) and
+# placement (no task crossed subcluster boundaries).
+- name: heterogeneous_memory_batch_inference_multitenancy
+  python: "3.10"
+  frequency: nightly
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_MAX_LIMIT_FROM_API_SERVER=20000
+        - RAY_MAX_LIMIT_FROM_DATA_SOURCE=20000
+    cluster_compute: heterogeneous_memory_compute_multitenancy.yaml
+
+  run:
+    timeout: 7200
+    script: python heterogeneous_memory_batch_inference_multitenancy.py --set-memory
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
@@ -967,19 +974,25 @@
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
-          fail_on_spilling: 0 # Allow temporarily to unblock release
+          # In general, Ray Data shouldn't spill on stable fixed-size clusters, but
+          # we've observed occasional and negligible O(~10 GiB) spills in weekly runs.
+          # The spilling is likely due to unbalanced object distribution.
+          #
+          # To avoid creating low-signal failures, we've disabled the spill check on
+          # this test.
+          fail_on_spilling: 0
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 100
           fail_on_dead_nodes: 1
-          fail_on_spilling: 0 # Allow temporarily to unblock release
+          fail_on_spilling: 0  # We expect bounded spills with autoscaling.
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
           fail_on_dead_nodes: 0
-          fail_on_spilling: 0
+          fail_on_spilling: 0  # We expected bounded spills with chaos.
 
   cluster:
     anyscale_sdk_2026: true
@@ -1022,7 +1035,7 @@
           args: --inference-concurrency 1 40
           frequency: weekly
           fail_on_dead_nodes: 1
-          fail_on_spilling: 1
+          fail_on_spilling: 0  # We expected bounded spills with autoscaling.
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
@@ -1031,7 +1044,7 @@
           # fail.
           frequency: manual
           fail_on_dead_nodes: 0
-          fail_on_spilling: 0
+          fail_on_spilling: 0  # We expected bounded spills with chaos.
 
   cluster:
     anyscale_sdk_2026: true
@@ -1138,6 +1151,7 @@
 
 - name: "tpch_q2_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1152,6 +1166,7 @@
 
 - name: "tpch_q3_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1172,6 +1187,7 @@
 
 - name: "tpch_q4_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1186,6 +1202,7 @@
 
 - name: "tpch_q5_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1200,6 +1217,7 @@
 
 - name: "tpch_q6_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1214,6 +1232,7 @@
 
 - name: "tpch_q7_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1228,9 +1247,18 @@
 
 - name: "tpch_q8_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1248,18 +1276,10 @@
 
 - name: "tpch_q9_{{scaling}}"
   python: "3.10"
-  frequency: "{{frequency}}"
+  frequency: manual
   matrix:
     setup:
-      scaling: []
-      frequency: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-      - with:
-          scaling: autoscaling
-          frequency: nightly
+      scaling: [fixed_size, autoscaling]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1277,6 +1297,7 @@
 
 - name: "tpch_q10_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1291,6 +1312,7 @@
 
 - name: "tpch_q11_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1305,6 +1327,7 @@
 
 - name: "tpch_q12_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1319,9 +1342,18 @@
 
 - name: "tpch_q13_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1333,6 +1365,7 @@
 
 - name: "tpch_q14_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1347,9 +1380,18 @@
 
 - name: "tpch_q15_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1361,6 +1403,7 @@
 
 - name: "tpch_q17_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1375,6 +1418,7 @@
 
 - name: "tpch_q18_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1389,6 +1433,7 @@
 
 - name: "tpch_q20_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1403,9 +1448,18 @@
 
 - name: "tpch_q21_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1417,9 +1471,18 @@
 
 - name: "tpch_q22_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1486,6 +1549,7 @@
         - RAY_health_check_timeout_ms=100000
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:

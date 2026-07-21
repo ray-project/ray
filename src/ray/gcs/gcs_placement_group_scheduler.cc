@@ -57,14 +57,15 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
-  // domain assignment so a new domain can be selected. If only some bundles are
-  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
+  // For topology-aware PGs: if ALL bundles are unplaced (total failure), clear
+  // the topology assignments so new values can be selected. If only some bundles
+  // are unplaced (partial failure), we attempt to reschedule onto the same
+  // assignments.
   if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetLabelDomainKey().has_value()) {
-    placement_group->ClearLabelDomainAssignments();
+      placement_group->GetTopologyStrategyKeys().has_value()) {
+    placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                  << " are unplaced, rescheduling on a new label domain";
+                  << " are unplaced, rescheduling on a new topology assignment";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
@@ -104,13 +105,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
+  // TODO(#64370) rename this to fit topology strategy
   if (scheduling_result.selected_label_domain.has_value()) {
-    const auto &[label_domain_key, label_domain_value] =
+    const auto &[topology_label_key, topology_label_value] =
         *scheduling_result.selected_label_domain;
-    placement_group->SetLabelDomainAssignment(label_domain_key, label_domain_value);
+    placement_group->SetTopologyAssignment(topology_label_key, topology_label_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
-                  << " assigned to label domain " << label_domain_key << ": "
-                  << label_domain_value;
+                  << " assigned to topology label " << topology_label_key << ": "
+                  << topology_label_value;
   }
 
   // Covert to a map of bundle to node.
@@ -256,7 +258,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
-    int current_retry_cnt) {
+    int current_retry_count) {
   if (bundle_specs.empty()) {
     RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
     return;
@@ -269,7 +271,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
 
   auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  if (max_retry == current_retry_cnt) {
+  if (max_retry == current_retry_count) {
     RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
                    << " bundle(s) for placement group " << placement_group_id
                    << " at node " << node_id
@@ -291,8 +293,8 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
        node_id,
        node,
        max_retry,
-       current_retry_cnt](const Status &status,
-                          const rpc::RemovePlacementGroupBundlesReply &reply) {
+       current_retry_count](const Status &status,
+                            const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
@@ -309,12 +311,12 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
                bundle_specs,
                node,
                max_retry,
-               current_retry_cnt] {
+               current_retry_count] {
                 RemovePlacementGroupBundles(placement_group_id,
                                             bundle_specs,
                                             node,
                                             max_retry,
-                                            current_retry_cnt + 1);
+                                            current_retry_count + 1);
               },
               std::chrono::milliseconds(1000) /* milliseconds */);
         }
@@ -517,15 +519,18 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
-  std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
-  std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
-  if (label_domain.has_value()) {
-    const std::string &label_domain_key = label_domain.value();
-    std::optional<std::string> label_value =
-        placement_group.GetLabelDomainAssignment(label_domain_key);
-    // If the label domain value is already selected for this pg, it means
-    // the bundles are being rescheduled and must be on the same domain.
-    target_label_domain = {label_domain_key, label_value};
+  std::optional<std::pair<std::string, std::optional<std::string>>>
+      target_topology_assignment;
+  std::optional<std::vector<std::string>> topology_keys =
+      placement_group.GetTopologyStrategyKeys();
+  if (topology_keys.has_value()) {
+    // Currently supports one topology label.
+    const std::string &topology_label_key = topology_keys->front();
+    std::optional<std::string> topology_label_value =
+        placement_group.GetTopologyAssignment(topology_label_key);
+    // If a topology value has already been selected for this PG, the bundles
+    // are being rescheduled and must land on the same selection.
+    target_topology_assignment = {topology_label_key, topology_label_value};
   }
 
   NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
@@ -533,17 +538,18 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
 
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack(std::move(target_label_domain));
+    return SchedulingOptions::BundlePack(std::move(target_topology_assignment));
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread(std::move(target_label_domain));
+    return SchedulingOptions::BundleSpread(std::move(target_topology_assignment));
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
                                     : scheduling::NodeID(soft_target_node_id.Binary()),
-        std::move(target_label_domain));
+        std::move(target_topology_assignment));
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id), std::move(target_label_domain));
+        CreateSchedulingContext(placement_group_id),
+        std::move(target_topology_assignment));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
@@ -682,7 +688,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
   }
 }
@@ -704,7 +710,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
     cluster_resource_scheduler_.GetClusterResourceManager()

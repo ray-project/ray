@@ -87,7 +87,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 **Stage descriptions:**
 
 - **Preprocess**: Your custom function that transforms input rows into the format expected by downstream stages (typically OpenAI chat format with ``messages``).
-- **PrepareMultimodal**: Extracts and prepares multimodal inputs. Enable with ``prepare_multimodal_stage={"enabled": True}``.
+- **PrepareMultimodal**: Extracts and prepares multimodal inputs. Enable with ``prepare_multimodal_stage=True``.
 - **ChatTemplate**: Applies the model's chat template to convert messages into a prompt string.
 - **Tokenize**: Converts the prompt string into token IDs for the model.
 - **LLM Engine**: The accelerated (GPU/TPU) inference stage running vLLM or SGLang.
@@ -151,7 +151,7 @@ Ray Data LLM also supports running batch inference with vision language
 and omni-modal models on multimodal data. To enable multimodal batch inference,
 apply the following 2 adjustments on top of the previous example:
 
-- Set `prepare_multimodal_stage={"enabled": True}` in the `vLLMEngineProcessorConfig`
+- Set `prepare_multimodal_stage=True` in the `vLLMEngineProcessorConfig`
 - Prepare multimodal data inside the preprocessor.
 
 Image batch inference with vision language model (VLM)
@@ -618,6 +618,10 @@ Each Ray release is fully tested with a compatible vLLM version.
 
    * - Ray release
      - vLLM version
+   * - nightly
+     - 0.25.1
+   * - 2.57.0
+     - 0.25.1
    * - 2.56.0
      - 0.22.0
    * - 2.55.0
@@ -647,6 +651,12 @@ If you encounter CUDA out of memory errors, try these strategies:
     :language: python
     :start-after: __gpu_memory_config_example_start__
     :end-before: __gpu_memory_config_example_end__
+
+.. admonition:: Known issue
+
+    On vLLM 0.25.1, VLM inference can OOM because the default Model Runner V2
+    skips multimodal encoder memory profiling and over-allocates KV cache memory.
+    Set ``VLLM_USE_V2_MODEL_RUNNER=0`` to fall back to Model Runner V1.
 
 Model loading at scale
 ~~~~~~~~~~~~~~~~~~~~~~

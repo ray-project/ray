@@ -35,6 +35,16 @@ class ClockInterface {
   /// Monotonic time (never goes backwards). Use for duration measurements.
   virtual SteadyTimePoint SteadyNow() const = 0;
 
+  /// Convenience: monotonic time as milliseconds since the steady-clock epoch.
+  /// Use for measuring intervals (timeouts, expiry, retry delays). Unlike
+  /// NowUnixMillis(), this never jumps with NTP or manual wall-clock changes.
+  /// Mirrors ray::current_time_ms(). Not comparable across processes/nodes.
+  int64_t SteadyNowMillis() const {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               SteadyNow().time_since_epoch())
+        .count();
+  }
+
   /// Convenience: current time as Unix milliseconds.
   int64_t NowUnixMillis() const { return absl::ToUnixMillis(Now()); }
 
