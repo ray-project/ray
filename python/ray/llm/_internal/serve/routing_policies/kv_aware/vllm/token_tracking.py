@@ -6,14 +6,13 @@ from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
-from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    KV_ROUTER_ACTOR_NAME,
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_llm_router_handle,
     get_worker_id,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
+from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
@@ -30,18 +29,19 @@ def _get_prompt_token_ids(prompt: Any) -> List[int]:
 
 
 class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to the KV router actor
-    which maintains per-replica token load statistics.
+    """Ordered, non-blocking bridge from the engine to the router-local
+    KVTokenTracker, reached via the LLMRouter deployment handle, which maintains
+    per-replica token load statistics.
 
-    ``report`` only enqueues locally, so generation never blocks on the actor.
-    A single delivery task per replica drains the queue to the actor, awaiting
+    ``report`` only enqueues locally, so generation never blocks on delivery.
+    A single delivery task per replica drains the queue to the tracker, awaiting
     one ``on_lifecycle_events`` call at a time so events arrive in the order they
     were reported. Events that pile up during a call are sent together in the
     next one.
     """
 
-    def __init__(self, actor: ActorHandle, worker_id: int):
-        self.actor = actor
+    def __init__(self, handle: DeploymentHandle, worker_id: int):
+        self.handle = handle
         self.worker_id = worker_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
@@ -61,8 +61,12 @@ class LifecycleEventForwarder:
             while not self._events.empty():
                 batch.append(self._events.get_nowait())
             try:
-                await self.actor.on_lifecycle_events.remote(batch)
-            except (RayActorError, RayTaskError) as e:
+                await self.handle.on_lifecycle_events.remote(batch)
+            except Exception as e:
+                # Best-effort delivery: any failure (the LLMRouter handle being
+                # unavailable during a redeploy, backpressure, a booking error) is
+                # dropped so the engine's token stream is never disrupted; report()
+                # restarts the delivery task on the next event.
                 logger.warning("Dropping KV lifecycle events: %s", e)
             finally:
                 for _ in batch:
@@ -136,12 +140,14 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
                 try:
-                    actor = serve.get_deployment_actor(KV_ROUTER_ACTOR_NAME)
+                    # The KVTokenTracker lives inside the LLMRouter, so
+                    # forward lifecycle events to its deployment handle method.
+                    handle = get_llm_router_handle()
                     worker_id = get_worker_id(
                         serve.get_replica_context().replica_id.unique_id
                     )
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        actor, worker_id
+                        handle, worker_id
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.
