@@ -5,7 +5,10 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray._common.test_utils import (
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray.exceptions import RayError
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import (
