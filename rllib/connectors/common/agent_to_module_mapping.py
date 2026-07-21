@@ -154,11 +154,13 @@ class AgentToModuleMapping(ConnectorV2):
         *,
         rl_module_specs: Dict[ModuleID, RLModuleSpec],
         agent_to_module_mapping_fn,
+        as_learner_connector: bool = False,
     ):
         super().__init__(input_observation_space, input_action_space)
 
         self._rl_module_specs = rl_module_specs
         self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
+        self._as_learner_connector = as_learner_connector
 
     @override(ConnectorV2)
     def __call__(
@@ -175,11 +177,27 @@ class AgentToModuleMapping(ConnectorV2):
         # agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")
         # Store in shared data, which module IDs map to which episode/agent, such
         # that the module-to-env pipeline can map the data back to agents.
+        if self._as_learner_connector:
+            agents_to_act = None
+        else:
+            agents_to_act = {
+                (episode.id_, agent_id)
+                for episode in episodes
+                # In the env-to-module pipeline, only agents that still need to send an
+                # action to the next `env.step()` call should reach the RLModule.
+                for agent_id in episode.get_agents_to_act()
+            }
+
+        def _keep(eps_id, agent_id):
+            return agents_to_act is None or (eps_id, agent_id) in agents_to_act
+
         memorized_map_structure = defaultdict(list)
         for column, agent_data in batch.items():
             if rl_module is not None and column in rl_module:
                 continue
             for eps_id, agent_id, module_id in agent_data.keys():
+                if not _keep(eps_id, agent_id):
+                    continue
                 memorized_map_structure[module_id].append((eps_id, agent_id))
             # TODO (sven): We should check that all columns have the same struct.
             break
@@ -202,6 +220,8 @@ class AgentToModuleMapping(ConnectorV2):
                 agent_id,
                 module_id,
             ), values_batch_or_list in agent_data.items():
+                if not _keep(eps_id, agent_id):
+                    continue
                 assert isinstance(values_batch_or_list, list)
                 for value in values_batch_or_list:
                     if module_id not in data_by_module:

@@ -72,6 +72,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         preserve_partition_order: If True, buffer completed reducer outputs and
             expose them downstream in ascending partition-id order.
         name: Display name shown in progress bars and logs.
+        should_emit_empty_partitions: If True (default), an empty partition emits one
+            schema-only placeholder block.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
             ``TaskPoolMapOperator`` directly downstream is fused into this
             reduce: each reduce task applies it to its output blocks before
@@ -95,6 +97,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         preserve_partition_order: bool = False,
         name: str = "ShuffleReduce",
+        should_emit_empty_partitions: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -114,6 +117,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._preserve_partition_order: bool = preserve_partition_order
+        self._emit_empty_partitions: bool = should_emit_empty_partitions
 
         # -- Reduce task config & tracking -----------------------------------
         self._reduce_ray_remote_args: Dict[str, Any] = dict(
@@ -157,6 +161,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
+        remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
 
@@ -191,7 +196,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             and isinstance(schema, pa.Schema)
             and not any((m.num_rows or 0) for m in refs.metadata)
         ):
-            self._emit_empty_partition(partition_id, refs, schema)
+            if self._emit_empty_partitions:
+                self._emit_empty_partition(partition_id, refs, schema)
+            else:
+                refs.destroy_if_owned()
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
@@ -301,8 +309,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         """Emit one empty output block for an empty partition.
 
         The partition contributed no rows, so there is nothing to reduce; we
-        build the empty block from the schema the map stage propagated onto
-        the bundle and queue it as this partition's single output block.
+        build the empty block from the schema the map stage propagated onto the
+        bundle and queue it as this partition's single output block.  Only
+        reached for schema-preserving reduces (``should_emit_empty_partitions=True``);
+        aggregation disables this path instead of emitting a partial-schema block.
         """
         empty_block = schema.empty_table()
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
