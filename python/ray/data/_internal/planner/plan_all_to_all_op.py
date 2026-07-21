@@ -179,7 +179,6 @@ def _plan_hash_shuffle_aggregate_v2(
         data_context,
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
-        disallow_block_splitting=True,
         # Empty partitions (groups absent from a partition) produce no output
         # block; a placeholder would carry the map's pre-finalize schema and
         # conflict with finalized non-empty partitions.
