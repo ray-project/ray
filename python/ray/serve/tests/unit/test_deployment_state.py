@@ -9960,5 +9960,60 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     assert ds._last_health_check_healthy_replica_ids == running_ids
 
 
+class TestRankConsistencyMembershipGate:
+    """The rank-consistency pass runs only when replica membership changes."""
+
+    def _ds(self, uids):
+        from ray.serve._private.common import DeploymentStatus
+
+        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
+        replicas = []
+        for uid in uids:
+            r = Mock()
+            r.replica_id.unique_id = uid
+            replicas.append(r)
+        ds._replicas = Mock()
+        ds._replicas.get.return_value = replicas
+        ds._replicas.count.return_value = 0
+        ds._curr_status_info = Mock(status=DeploymentStatus.HEALTHY)
+        ds._rank_manager = Mock()
+        ds._rank_manager.check_rank_consistency_and_reassign_minimally.return_value = []
+        ds._reconfigure_replicas_with_new_ranks = Mock()
+        ds._last_rank_membership_fingerprint = None
+        return ds
+
+    def test_runs_once_then_skips_for_same_membership(self):
+        ds = self._ds(["a", "b", "c"])
+        ds._maybe_check_rank_consistency()
+        ds._maybe_check_rank_consistency()
+        ds._maybe_check_rank_consistency()
+        assert (
+            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
+            == 1
+        )
+
+    def test_membership_change_reruns(self):
+        ds = self._ds(["a", "b", "c"])
+        ds._maybe_check_rank_consistency()
+        new = []
+        for uid in ["a", "b", "d"]:
+            r = Mock()
+            r.replica_id.unique_id = uid
+            new.append(r)
+        ds._replicas.get.return_value = new
+        ds._maybe_check_rank_consistency()
+        assert (
+            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
+            == 2
+        )
+
+    def test_starting_replicas_skip_entirely(self):
+        ds = self._ds(["a", "b"])
+        ds._replicas.count.return_value = 1
+        ds._maybe_check_rank_consistency()
+        ds._rank_manager.check_rank_consistency_and_reassign_minimally.assert_not_called()
+        assert ds._last_rank_membership_fingerprint is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

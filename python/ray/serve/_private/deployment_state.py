@@ -10,6 +10,8 @@ from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
+from functools import reduce
+from operator import xor
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import ray
@@ -2919,6 +2921,7 @@ class DeploymentState:
         self._rank_manager = DeploymentRankManager(
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
+        self._last_rank_membership_fingerprint: Optional[int] = None
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -4858,8 +4861,18 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
+        self._maybe_check_rank_consistency()
+
+    def _maybe_check_rank_consistency(self) -> None:
+        """Run the rank-consistency pass only when replica membership changed.
+
+        The pass is O(N) with heavy constants and used to run on every
+        control-loop tick in steady state -- at 10K+ replicas it monopolizes
+        the controller loop. Rank consistency can only be violated by
+        membership changes, so a cheap fingerprint gates it.
+        """
         active_replicas = self._replicas.get()
-        if (
+        if not (
             active_replicas
             and self._curr_status_info.status == DeploymentStatus.HEALTHY
             # Skip consistency check if there are STARTING replicas. During node
@@ -4868,14 +4881,23 @@ class DeploymentState:
             # with STARTING replicas causes "active keys without ranks" error.
             and self._replicas.count(states=[ReplicaState.STARTING]) == 0
         ):
-            replicas_to_reconfigure = (
-                self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                    active_replicas,
-                )
+            return
+        fingerprint = reduce(
+            xor,
+            (hash(r.replica_id.unique_id) for r in active_replicas),
+            len(active_replicas),
+        )
+        if fingerprint == self._last_rank_membership_fingerprint:
+            return
+        replicas_to_reconfigure = (
+            self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                active_replicas,
             )
+        )
 
-            # Reconfigure replicas that had their ranks reassigned
-            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        # Reconfigure replicas that had their ranks reassigned
+        self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        self._last_rank_membership_fingerprint = fingerprint
 
     def _handle_deployment_actor_failed_health_check(
         self,
