@@ -219,10 +219,10 @@ def ray_deps_setup():
         sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
         strip_prefix = "xz-5.2.7",
         urls = [
-            "https://cfhcable.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://superb-sea2.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://ayera.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://astuteinternet.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            # Use the SourceForge redirector, which picks a live mirror,
+            # instead of pinning specific mirrors that can go offline.
+            "https://downloads.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://tukaani.org/xz/xz-5.2.7.tar.gz",
         ],
         build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
     )
