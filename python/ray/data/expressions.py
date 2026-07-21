@@ -823,6 +823,34 @@ class Expr(ABC):
 
         return cast_udf(self)
 
+    def fill_null(self, fill_value: Any) -> "UDFExpr":
+        """Replace null values with ``fill_value``.
+
+        Args:
+            fill_value: The value used to replace nulls. Must be compatible
+                with the expression's type.
+
+        Returns:
+            A UDFExpr that replaces null values with ``fill_value``.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 1}, {"x": None}])
+            >>> ds = ds.with_column("x_filled", col("x").fill_null(0))
+            >>> # Result: x_filled = [1, 0]
+        """
+
+        @pyarrow_udf(return_dtype=self.data_type)
+        def fill_null_udf(arr: pyarrow.Array) -> pyarrow.Array:
+            if pyarrow.types.is_null(arr.type):
+                # An all-null column has the null Arrow type, which pc.fill_null
+                # would return unchanged; cast it to the fill value's type first.
+                arr = arr.cast(pyarrow.scalar(fill_value).type)
+            return pc.fill_null(arr, fill_value)
+
+        return fill_null_udf(self)
+
     @property
     def arr(self) -> "_ArrayNamespace":
         """Access array operations for this expression."""

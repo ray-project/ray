@@ -54,6 +54,32 @@ class TestPredicateIntegration:
         )
         assert rows_same(result, expected)
 
+    def test_fill_null_with_dataset(self, ray_start_regular_shared):
+        """Test fill_null expression with Ray Dataset."""
+        ds = ray.data.from_items(
+            [
+                {"value": 10, "name": "Alice"},
+                {"value": None, "name": None},
+                {"value": 30, "name": "Charlie"},
+            ]
+        )
+
+        result = (
+            ds.with_column("value_filled", col("value").fill_null(0))
+            .with_column("name_filled", col("name").fill_null("unknown"))
+            .to_pandas()
+        )
+
+        expected = pd.DataFrame(
+            {
+                "value": [10, None, 30],
+                "name": ["Alice", None, "Charlie"],
+                "value_filled": [10, 0, 30],
+                "name_filled": ["Alice", "unknown", "Charlie"],
+            }
+        )
+        assert rows_same(result, expected)
+
     def test_membership_predicates_with_dataset(self, ray_start_regular_shared):
         """Test membership predicate expressions with Ray Dataset."""
         ds = ray.data.from_items(
