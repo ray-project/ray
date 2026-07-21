@@ -916,7 +916,9 @@ class CreatePlacementGroupRequest:
     strategy: str
     target_node_id: str
     name: str
-    runtime_env: Optional[str] = None
+    # Parsed runtime env. Serve carries runtime envs as dicts elsewhere, and
+    # the core APIs that consume one reject a serialized string.
+    runtime_env: Optional[Dict[str, Any]] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
 
