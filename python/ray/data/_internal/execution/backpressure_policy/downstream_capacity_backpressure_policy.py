@@ -157,8 +157,10 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     def _get_output_to_downstream_input_ratio(self, op: "PhysicalOperator") -> float:
         """Get the ratio of buffered output bytes to downstream input bytes.
 
-        Uses get_op_usage() which includes both this operator's outputs and
-        downstream inputs. Subtracting 1 isolates the buffered output portion:
+        Uses get_op_usage(include_ineligible_downstream=True) which includes
+        this operator's outputs plus memory in ineligible downstream operators
+        (e.g. LimitOperator, OutputSplitter create new blocks registered under
+        their own ID). Subtracting 1 isolates the buffered output portion:
           output_bytes / downstream_input_bytes
           = (buffered + downstream_input) / downstream_input - 1
         """
@@ -167,7 +169,9 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
 
-        output_size_bytes = self._resource_manager.get_op_usage(op).object_store_memory
+        output_size_bytes = self._resource_manager.get_op_usage(
+            op, include_ineligible_downstream=True
+        ).object_store_memory
         return (output_size_bytes / downstream_input_size_bytes) - 1
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
@@ -196,7 +200,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if prev != result:
             downstream_input_bytes = self._get_downstream_input_size_bytes(op)
             output_size_bytes = self._resource_manager.get_op_usage(
-                op
+                op, include_ineligible_downstream=True
             ).object_store_memory
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
