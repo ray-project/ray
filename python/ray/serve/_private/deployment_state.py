@@ -3113,6 +3113,7 @@ class DeploymentState:
         self._push_stall_since: Optional[float] = None
         self._push_stall_stale: int = 0
         self._push_stall_total: int = 0
+        self._push_stall_ticks: int = 0
         # Default to the stock period so pushes are not misread as stale on
         # deployments that have no target info yet (recovery, deletion).
         self._push_stall_window_s: float = _push_freshness_window_s(
@@ -4975,15 +4976,7 @@ class DeploymentState:
         self._outstanding_dirty_set = still
         n = container.count_state(ReplicaState.RUNNING)
         if n:
-            period = self._reconcile_sweep_period_s()
-            ticks = max(
-                1,
-                int(
-                    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
-                    * period
-                    / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
-                ),
-            )
+            ticks = self._reconcile_sweep_ticks()
             slice_n = max(1, (n + ticks - 1) // ticks)
             start = self._dirty_set_rr_cursor % n
             sl = container.slice_state(ReplicaState.RUNNING, start, slice_n)
@@ -5017,10 +5010,42 @@ class DeploymentState:
                 DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
             )
 
-    def _finalize_push_stall_verdict(self) -> None:
-        """Set next sweep's probe-deferral from this sweep's staleness tally.
+    def _reconcile_sweep_ticks(self) -> int:
+        """Control-loop ticks the dirty-set takes to sweep the RUNNING bucket
+        once (see _dirty_set_active_pairs)."""
+        return max(
+            1,
+            int(
+                CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
+                * self._reconcile_sweep_period_s()
+                / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
+            ),
+        )
 
-        Most of this deployment's pushed health going stale at once (by its own
+    def _advance_push_stall_window(self) -> None:
+        """Finalize the systemic-stall verdict once enough replicas have been
+        sampled across ticks (or a full sweep elapsed), then reset the tally.
+
+        Each tick only health-checks a dirty-set slice (~N/sweep_ticks), well
+        below the guard's min-tracked floor for all but the largest deployments;
+        accumulating across ticks lets the guard reach a deployment-representative
+        sample. A large deployment whose one-tick slice already exceeds the floor
+        still finalizes next tick, so engagement stays prompt where it matters.
+        """
+        self._push_stall_ticks += 1
+        if (
+            self._push_stall_total >= HEALTH_PUSH_STALL_MIN_TRACKED
+            or self._push_stall_ticks >= self._reconcile_sweep_ticks()
+        ):
+            self._finalize_push_stall_verdict()
+            self._push_stall_stale = 0
+            self._push_stall_total = 0
+            self._push_stall_ticks = 0
+
+    def _finalize_push_stall_verdict(self) -> None:
+        """Set probe-deferral from the accumulated staleness tally.
+
+        Most of this deployment's sampled pushes going stale at once (by its own
         window) reads as controller-side ingest lag, so fallback probes are
         deferred -- bounded by HEALTH_PUSH_STALL_MAX_DEFER_S per episode so a
         genuine mass outage still falls through to probes.
@@ -5071,9 +5096,7 @@ class DeploymentState:
         with state container from previous update() cycle to see if any state
         transition happened.
         """
-        self._finalize_push_stall_verdict()
-        self._push_stall_stale = 0
-        self._push_stall_total = 0
+        self._advance_push_stall_window()
         if self._target_state.info is not None:
             self._push_stall_window_s = _push_freshness_window_s(
                 self._target_state.info.deployment_config.health_check_period_s

@@ -9791,10 +9791,11 @@ class TestDirtySet:
         s._outstanding_dirty_set = set()
         s._dirty_set_rr_cursor = 0
         s._target_state = object()  # .info access raises -> default reconcile period
-        # Bind the real period helper so _dirty_set_active_pairs can call it on the shim.
+        # Bind the real period/ticks helpers so _dirty_set_active_pairs can call them.
         s._reconcile_sweep_period_s = DeploymentState._reconcile_sweep_period_s.__get__(
             s
         )
+        s._reconcile_sweep_ticks = DeploymentState._reconcile_sweep_ticks.__get__(s)
         return s
 
     def test_covers_all_running_within_one_sweep(self):
@@ -10245,6 +10246,40 @@ class TestPushSystemicStallGuard:
         replica.replica_id.unique_id = "r0"
         ds._apply_pushed_health(replica)
         replica.defer_push_fallback_probe.assert_called_once()
+
+    def test_accumulates_across_ticks_below_slice_threshold(self):
+        # Each tick samples only a small slice (< min tracked), but accumulation
+        # across ticks reaches the sample size, so systemic lag still engages.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 1000  # long sweep -> threshold path
+        for _ in range(8):  # 8 * 10 = 80 >= HEALTH_PUSH_STALL_MIN_TRACKED
+            self._seed(ds, 10, 10)
+            self._sweep(ds, 10)
+            ds._advance_push_stall_window()
+        assert ds._push_probes_deferred
+
+    def test_tiny_deployment_never_engages_even_accumulated(self):
+        # A full sweep accumulates < min tracked -> finalize bails, never defers.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 3
+        for _ in range(3):
+            self._seed(ds, 10, 10)
+            self._sweep(ds, 10)
+            ds._advance_push_stall_window()
+        assert not ds._push_probes_deferred
+
+    def test_large_slice_engages_in_one_tick(self):
+        # A single tick whose slice already exceeds the floor finalizes next
+        # tick -- prompt engagement preserved for large deployments.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 50
+        self._seed(ds, 100, 80)
+        self._sweep(ds, 100)
+        ds._advance_push_stall_window()  # total 100 >= floor -> finalized
+        assert ds._push_probes_deferred
 
     def test_below_min_tracked_never_defers(self):
         ds = self._ds()
