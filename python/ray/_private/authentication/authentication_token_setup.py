@@ -86,32 +86,20 @@ def _warn_token_auth_disabled() -> None:
 
 
 def maybe_enable_token_auth_if_token_available() -> bool:
-    """Enable token authentication if a token is already available.
+    """Enable token auth (for ``ray start --head``) if a token already exists.
 
-    For a local cluster started with ``ray start --head``, enable token
-    authentication automatically when an authentication token is available from
-    any source (the ``RAY_AUTH_TOKEN`` environment variable, the file referenced
-    by ``RAY_AUTH_TOKEN_PATH``, or the default ``~/.ray/auth_token`` file), even
-    if the ``RAY_AUTH_MODE`` environment variable isn't set. This lets users who
-    generated a token with ``ray get-auth-token --generate`` (or who configured
-    one of the token environment variables) start an authenticated cluster
-    without also having to set ``RAY_AUTH_MODE=token``.
-
-    Only enable when a token already exists; don't generate one. Don't call this
-    for worker nodes (``ray start --address=...``) or when connecting to an
-    existing cluster, so remote cluster behavior is unchanged.
-
-    When ``RAY_AUTH_MODE`` is already set, the explicit choice is respected. When
-    token authentication ends up disabled, this logs a warning so the user knows
-    the cluster is unauthenticated.
+    When ``RAY_AUTH_MODE`` isn't set, enable token auth if a token is available
+    from any source (``RAY_AUTH_TOKEN``, ``RAY_AUTH_TOKEN_PATH``, or
+    ``~/.ray/auth_token``); otherwise warn that the cluster is unauthenticated.
+    Never generates a token. An explicit ``RAY_AUTH_MODE`` is respected.
 
     Returns:
         True if token authentication is enabled after this call, False otherwise.
 
     Raises:
         AuthenticationError: If a token source is configured but can't be read
-            (for example, an empty file at ``RAY_AUTH_TOKEN_PATH``). This fails
-            closed rather than silently starting an unauthenticated cluster.
+            (e.g. an empty ``RAY_AUTH_TOKEN_PATH`` file), so startup fails closed
+            instead of running unauthenticated.
     """
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
@@ -139,22 +127,13 @@ def maybe_enable_token_auth_if_token_available() -> bool:
 
 
 def enable_token_auth_by_default() -> bool:
-    """Enable token authentication by default for a new local cluster.
+    """Enable token auth by default for a new local ``ray.init()`` cluster.
 
-    For a new local cluster started with ``ray.init()`` (that is, ``ray.init``
-    called without an ``address``, so it bootstraps a fresh cluster), enable
-    token authentication by default when the ``RAY_AUTH_MODE`` environment
-    variable isn't set. The caller then runs
-    ``ensure_token_if_auth_enabled(..., create_token_if_missing=True)``, which
-    generates a token if none exists yet and reuses an existing one otherwise.
-
-    This only applies to a new local cluster. Don't call it when connecting to an
-    existing cluster (``ray.init(address=...)``), so that behavior is unchanged.
-
-    Unlike ``maybe_enable_token_auth_if_token_available``, this enables token
-    authentication even when no token exists yet (a token is generated), and it
-    never warns: a new local ``ray.init()`` cluster is authenticated by default
-    unless the user explicitly sets ``RAY_AUTH_MODE=disabled``.
+    When ``RAY_AUTH_MODE`` isn't set, enable token auth so the caller's
+    ``ensure_token_if_auth_enabled(..., create_token_if_missing=True)`` generates
+    a token if none exists or reuses an existing one. An explicit
+    ``RAY_AUTH_MODE`` is respected. Never warns. Only call this for a new local
+    cluster, not when connecting to an existing one (``ray.init(address=...)``).
 
     Returns:
         True if token authentication is enabled after this call, False otherwise.
