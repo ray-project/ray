@@ -1007,7 +1007,6 @@ class ActorMethod:
 
         if num_returns is None:
             num_returns = self._num_returns
-        ray_option_utils.validate_num_returns(self._is_generator, num_returns)
 
         # TODO(sang): unify option passing
         options = {
@@ -1094,7 +1093,6 @@ class ActorMethod:
     ):
         if num_returns is None:
             num_returns = self._num_returns
-        ray_option_utils.validate_num_returns(self._is_generator, num_returns)
         if max_task_retries is None:
             max_task_retries = self._max_task_retries
         if max_task_retries is None:
@@ -2555,9 +2553,8 @@ class ActorHandle(Generic[T]):
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if num_returns == "dynamic":
-            # Defensive: public entry points should reject this earlier.
-            raise ValueError(ray_option_utils.DYNAMIC_NUM_RETURNS_ERROR)
-        if num_returns == "streaming":
+            num_returns = -1
+        elif num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN

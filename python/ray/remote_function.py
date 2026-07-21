@@ -156,7 +156,9 @@ class RemoteFunction:
             )
 
         self._language = language
-        self._is_generator = inspect.isgeneratorfunction(function)
+        self._is_generator = inspect.isgeneratorfunction(
+            function
+        ) or inspect.isasyncgenfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -304,7 +306,16 @@ class RemoteFunction:
         # merging options from '@ray.remote'.
         default_options.pop("max_calls", None)
         updated_options = ray_option_utils.update_options(default_options, task_options)
-        ray_option_utils.validate_task_options(updated_options, in_options=True)
+        # Only validate num_returns when this .options() call overrides it.
+        # Otherwise a default num_returns='dynamic' from @ray.remote would
+        # re-warn on unrelated overrides like .options(num_cpus=2).
+        ray_option_utils.validate_task_options(
+            updated_options,
+            in_options=True,
+            is_generator_callable=(
+                self._is_generator if "num_returns" in task_options else None
+            ),
+        )
 
         # Only update runtime_env and re-calculate serialized runtime env info when
         # ".options()" specifies new runtime_env.
@@ -439,9 +450,8 @@ class RemoteFunction:
                 num_returns = 1
 
         if num_returns == "dynamic":
-            # Defensive: public entry points should reject this earlier.
-            raise ValueError(ray_option_utils.DYNAMIC_NUM_RETURNS_ERROR)
-        if num_returns == "streaming":
+            num_returns = -1
+        elif num_returns == "streaming":
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN

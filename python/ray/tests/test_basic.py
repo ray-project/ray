@@ -455,8 +455,8 @@ def test_invalid_arguments():
         with pytest.raises(
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
-            "a non-negative integer, or "
-            r"'streaming' \(for generators\)",
+            "a non-negative integer, "
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 

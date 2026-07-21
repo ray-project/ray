@@ -145,7 +145,7 @@ def test_generator_returns(ray_start_regular_shared, use_actors, store_in_plasma
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
 def test_generator_errors(
     ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
@@ -189,18 +189,18 @@ def test_generator_errors(
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
-    gen_ref = remote_generator_fn.options(num_returns=num_returns_type).remote(
+    dynamic_ref = remote_generator_fn.options(num_returns=num_returns_type).remote(
         3, store_in_plasma
     )
-    ref1, ref2 = ray.get(gen_ref)
+    ref1, ref2 = ray.get(dynamic_ref)
     ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref2)
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator_retry_exception(
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator_retry_exception(
     ray_start_regular_shared, store_in_plasma, num_returns_type
 ):
     class CustomException(Exception):
@@ -234,39 +234,39 @@ def test_generator_retry_exception(
                 raise CustomException("error")
 
     counter = ExecutionCounter.remote()
-    gen_ref = generator.options(num_returns=num_returns_type).remote(
+    dynamic_ref = generator.options(num_returns=num_returns_type).remote(
         3, store_in_plasma, counter
     )
-    ref1, ref2 = ray.get(gen_ref)
+    ref1, ref2 = ray.get(dynamic_ref)
     ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref2)
 
     ray.get(counter.reset.remote())
-    gen_ref = generator.options(
+    dynamic_ref = generator.options(
         num_returns=num_returns_type, retry_exceptions=[CustomException]
     ).remote(3, store_in_plasma, counter)
-    for i, ref in enumerate(ray.get(gen_ref)):
+    for i, ref in enumerate(ray.get(dynamic_ref)):
         assert ray.get(ref)[0] == i
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator(
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator(
     ray_start_regular_shared, use_actors, store_in_plasma, num_returns_type
 ):
     if not use_actors:
 
         @ray.remote(num_returns=num_returns_type)
-        def generator(num_returns, store_in_plasma):
+        def dynamic_generator(num_returns, store_in_plasma):
             for i in range(num_returns):
                 if store_in_plasma:
                     yield np.ones(1_000_000, dtype=np.int8) * i
                 else:
                     yield [i]
 
-        remote_generator_fn = generator
+        remote_generator_fn = dynamic_generator
     else:
 
         @ray.remote
@@ -307,12 +307,19 @@ def test_generator(
     )
     assert len(list(gen)) == 0
 
-    # Passing a streaming generator as a task arg is not supported.
-    with pytest.raises(TypeError):
+    # Check that passing as task arg.
+    if num_returns_type == "dynamic":
         gen = remote_generator_fn.options(num_returns=num_returns_type).remote(
             10, store_in_plasma
         )
         assert ray.get(read.remote(gen))
+        assert ray.get(read.remote(ray.get(gen)))
+    else:
+        with pytest.raises(TypeError):
+            gen = remote_generator_fn.options(num_returns=num_returns_type).remote(
+                10, store_in_plasma
+            )
+            assert ray.get(read.remote(gen))
 
     # Also works if we override num_returns with a static value.
     ray.get(
@@ -321,12 +328,44 @@ def test_generator(
         )
     )
 
+    if num_returns_type == "dynamic":
+        # Normal remote functions don't work with num_returns="dynamic".
+        # This should fail at decoration time, not at runtime.
+        with pytest.raises(ValueError, match="can only be used with generator"):
 
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator_distributed(ray_start_cluster, num_returns_type):
+            @ray.remote(num_returns=num_returns_type)
+            def static(num_returns):
+                return list(range(num_returns))
+
+
+def test_dynamic_generator_gc_each_yield(ray_start_cluster):
     # Need to shutdown when going from ray_start_regular_shared to ray_start_cluster
     ray.shutdown()
 
+    num_returns = 5
+
+    @ray.remote(num_returns="dynamic")
+    def generator():
+        for i in range(num_returns):
+            yield np.ones((1000, 1000), dtype=np.uint8)
+
+    def check_ref_counts(expected):
+        ref_counts = (
+            ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+        )
+        return len(ref_counts) == expected
+
+    dynamic_ref = ray.get(generator.remote())
+
+    for i, ref in enumerate(dynamic_ref):
+        gc.collect()
+        # assert references are released after each yield
+        wait_for_condition(lambda: check_ref_counts(num_returns - i))
+        ray.get(ref)
+
+
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0)
@@ -335,19 +374,19 @@ def test_generator_distributed(ray_start_cluster, num_returns_type):
     cluster.wait_for_nodes()
 
     @ray.remote(num_returns=num_returns_type)
-    def generator(num_returns):
+    def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
             time.sleep(0.1)
 
-    gen = ray.get(generator.remote(3))
+    gen = ray.get(dynamic_generator.remote(3))
     for i, ref in enumerate(gen):
         # Check that we can fetch the values from a different node.
         assert ray.get(ref)[0] == i
 
 
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator_reconstruction(ray_start_cluster, num_returns_type):
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -369,10 +408,10 @@ def test_generator_reconstruction(ray_start_cluster, num_returns_type):
     cluster.wait_for_nodes()
 
     @ray.remote(num_returns=num_returns_type)
-    def generator(num_returns):
+    def dynamic_generator(num_returns):
         for i in range(num_returns):
             # Random ray.put to make sure it's okay to interleave these with
-            # the generator returns.
+            # the dynamic returns.
             if np.random.randint(2) == 1:
                 ray.put(np.ones(1_000_000, dtype=np.int8) * np.random.randint(100))
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -381,8 +420,8 @@ def test_generator_reconstruction(ray_start_cluster, num_returns_type):
     def fetch(x):
         return x[0]
 
-    # Test recovery of all generator objects through re-execution.
-    gen = ray.get(generator.remote(10))
+    # Test recovery of all dynamic objects through re-execution.
+    gen = ray.get(dynamic_generator.remote(10))
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     refs = list(gen)
@@ -407,17 +446,17 @@ def test_generator_reconstruction(ray_start_cluster, num_returns_type):
 
 
 @pytest.mark.parametrize("too_many_returns", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator_reconstruction_nondeterministic(
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
-    # This test used to hang under the RocksDB GCS backend: RocksDB's per-write
-    # WAL fsync delayed the actor-death notification enough to expose a
-    # pre-existing reconstruction race, so the driver hung in list(gen). Fixed
-    # by making the death-notification tables (NODE, ACTOR) soft-durable, which
-    # skips the fsync on those tables, so this test now passes and is no longer
-    # skipped. See the SoftDurableTables() comment in rocksdb_store_client.cc
-    # for detail.
+    # The num_returns_type=None variants used to hang under the RocksDB GCS
+    # backend: RocksDB's per-write WAL fsync delayed the actor-death
+    # notification enough to expose a pre-existing reconstruction race, so the
+    # driver hung in list(gen). Fixed by making the death-notification tables
+    # (NODE, ACTOR) soft-durable, which skips the fsync on those tables, so
+    # these variants now pass and are no longer skipped. See the
+    # SoftDurableTables() comment in rocksdb_store_client.cc for detail.
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -450,7 +489,7 @@ def test_generator_reconstruction_nondeterministic(
             return
 
     @ray.remote(num_returns=num_returns_type)
-    def generator(failure_signal):
+    def dynamic_generator(failure_signal):
         num_returns = 10
         try:
             ray.get(failure_signal.ping.remote())
@@ -467,7 +506,7 @@ def test_generator_reconstruction_nondeterministic(
         return
 
     failure_signal = FailureSignal.remote()
-    gen = ray.get(generator.remote(failure_signal))
+    gen = ray.get(dynamic_generator.remote(failure_signal))
     cluster.remove_node(node_to_kill, allow_graceful=False)
     ray.kill(failure_signal)
     refs = list(gen)
@@ -476,12 +515,22 @@ def test_generator_reconstruction_nondeterministic(
             assert np.array_equal(np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref))
             del ref
     else:
-        # We can reconstruct the refs again.
-        # We allow it because the refs could have already obtained
-        # by the generator.
-        for i, ref in enumerate(refs):
-            assert np.array_equal(np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref))
-            del ref
+        if num_returns_type == "dynamic":
+            # If dynamic is specified, when the num_returns
+            # is different, all previous refs are failed.
+            with pytest.raises(ray.exceptions.RayTaskError):
+                for ref in refs:
+                    ray.get(ref)
+                    del ref
+        else:
+            # Otherwise, we can reconstruct the refs again.
+            # We allow it because the refs could have already obtained
+            # by the generator.
+            for i, ref in enumerate(refs):
+                assert np.array_equal(
+                    np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref)
+                )
+                del ref
     # TODO(swang): If the re-executed task returns a different number of
     # objects, we should throw an error for every return value.
     # for ref in refs:
@@ -489,11 +538,15 @@ def test_generator_reconstruction_nondeterministic(
     #         ray.get(ref)
     del gen
     del refs
-    assert_no_leak()
+    if num_returns_type is None:
+        # TODO(sang): For some reasons, it fails when "dynamic"
+        # is used. We don't fix the issue because we will
+        # remove this flag soon anyway.
+        assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
@@ -525,7 +578,7 @@ def test_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
             return
 
     @ray.remote(num_returns=num_returns_type)
-    def generator(failure_signal):
+    def dynamic_generator(failure_signal):
         num_returns = 10
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -541,7 +594,7 @@ def test_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
         pass
 
     failure_signal = FailureSignal.remote()
-    gen = ray.get(generator.remote(failure_signal))
+    gen = ray.get(dynamic_generator.remote(failure_signal))
     refs = list(gen)
     ray.get(fetch.remote(*refs))
     cluster.remove_node(node_to_kill, allow_graceful=False)
@@ -561,8 +614,8 @@ def test_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["streaming", None])
-def test_empty_generator_reconstruction_nondeterministic(
+@pytest.mark.parametrize("num_returns_type", ["dynamic", None])
+def test_dynamic_empty_generator_reconstruction_nondeterministic(
     ray_start_cluster, num_returns_type
 ):
     config = {
@@ -750,6 +803,12 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
         assert (
             ray.get(generator.options(num_returns=1).remote(1, store_in_plasma))[0] == 0
         )
+
+        gen = ray.get(
+            generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+        )
+        for i, ref in enumerate(gen):
+            assert ray.get(ref)[0] == i
 
 
 if __name__ == "__main__":

@@ -232,6 +232,7 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
             yield i
 
     ray.get(generator_task.options(num_returns=2).remote()[0])
+    ray.get(generator_task.options(num_returns="dynamic").remote())
     generator = generator_task.remote()
     for _ in range(4):
         ray.get(next(generator))
@@ -245,6 +246,7 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
 
     actor = UniqueName.remote()
     ray.get(actor.f.options(num_returns=2).remote()[0])
+    ray.get(actor.f.options(num_returns="dynamic").remote())
     generator = actor.f.remote()
     for _ in range(4):
         ray.get(next(generator))

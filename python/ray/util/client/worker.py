@@ -634,10 +634,7 @@ class Worker:
         task.data = dumps_from_client((args, kwargs), self._client_id)
         num_returns = instance._num_returns()
         if num_returns == "dynamic":
-            # Defensive: public entry points should reject this earlier.
-            from ray._common.ray_option_utils import DYNAMIC_NUM_RETURNS_ERROR
-
-            raise ValueError(DYNAMIC_NUM_RETURNS_ERROR)
+            num_returns = -1
         if num_returns == "streaming":
             raise RuntimeError(
                 'Streaming actor methods (num_returns="streaming") '
