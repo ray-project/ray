@@ -221,6 +221,9 @@ class ObjectRefStream {
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
   // A set of refs that's already written to a stream -> size of the object.
   absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  /// Reported returns that were stored in plasma (and can therefore be lost).
+  /// See MarkReportedInPlasma.
+  absl::flat_hash_set<ObjectID> reported_plasma_refs_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -241,9 +244,6 @@ class ObjectRefStream {
   /// out of scope). Used to decide whether a backpressured executor should be
   /// released while the stream is still retained. See MarkCallerDeleted.
   bool caller_deleted_ = false;
-  /// Reported returns that were stored in plasma (and can therefore be lost).
-  /// See MarkReportedInPlasma.
-  absl::flat_hash_set<ObjectID> reported_plasma_refs_;
 };
 
 class TaskManager : public TaskManagerInterface {
