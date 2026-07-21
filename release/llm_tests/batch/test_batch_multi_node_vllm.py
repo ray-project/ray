@@ -29,11 +29,11 @@ def test_vllm_multi_node(tp_size, pp_size):
             tensor_parallel_size=tp_size,
             distributed_executor_backend="ray",
         ),
-        tokenize=False,
-        detokenize=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
         concurrency=1,
         batch_size=64,
-        apply_chat_template=False,
+        chat_template_stage=False,
     )
 
     processor = build_processor(

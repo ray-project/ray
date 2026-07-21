@@ -5,7 +5,9 @@ autoscaler
 conda
 Dask
 [Dd]ata('s)?
+[Dd]ataset('s)?
 [Dd]atasource(s)?
+[Dd]eserializable
 [Dd]iscretizer(s)?
 docstrings
 dtype
@@ -18,9 +20,12 @@ FLAC
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
 LLM(s)?
+LeRobot
 MCAP
 Modin
 [Mm]ultiget(s)?
+[Mm]ultitenancy
+[Ss]ubcluster(s)?
 ndarray(s)?
 NLP
 [Oo]mni
@@ -56,3 +61,6 @@ YOLO
 [Ss]harded
 [Pp]arameterization(s)?
 repr
+Zarr
+[Uu]psample(d|s)?
+[Rr]ebatch(ing|ed|es)?

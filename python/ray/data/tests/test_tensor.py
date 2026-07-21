@@ -595,6 +595,8 @@ def test_tensors_in_tables_pandas_roundtrip(
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
         expected_df["two"] = list(expected_df["two"].to_numpy())
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
@@ -619,7 +621,38 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
         expected_df["two"] = _create_possibly_ragged_ndarray(
             expected_df["two"].to_numpy()
         )
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
+
+
+@pytest.mark.parametrize("element_shape", [(0,), (0, 2)])
+def test_tensors_in_tables_pandas_roundtrip_empty_elements(
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+    tensor_format_context,
+    element_shape,
+):
+    # Regression test for https://github.com/ray-project/ray/issues/64766: a
+    # fixed-shape tensor column whose per-row tensors are empty (element_shape
+    # contains a 0) must round-trip through to_pandas. Previously
+    # TensorDtype.__from_arrow__ reshaped with a -1 dimension, which numpy
+    # cannot infer from a size-0 array ("cannot reshape array of size 0 into
+    # shape (0)").
+    num_rows = 3
+    ds = ray.data.from_items(
+        [{"pts": np.zeros(element_shape, dtype=np.float32)} for _ in range(num_rows)]
+    )
+    df = ds.to_pandas()
+    assert len(df) == num_rows
+    # Empty tensors must round-trip as empty. The V1/V2 Ray tensor extension
+    # preserves the exact element shape; the native pa.fixed_shape_tensor path
+    # may report a flattened shape, so assert emptiness rather than exact shape.
+    assert all(np.asarray(v).size == 0 for v in df["pts"])
+
+    # A fully empty block (num_rows == 0) must also round-trip.
+    empty_df = ds.filter(lambda row: False).to_pandas()
+    assert len(empty_df) == 0
 
 
 def test_tensors_in_tables_parquet_roundtrip(

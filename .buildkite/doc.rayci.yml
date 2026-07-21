@@ -4,11 +4,11 @@ steps:
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy(*)
-      - ray-core-build(*)
+      - oss-ci-base_build-multipy(python=3.11)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
     matrix:
-      - "3.10"
+      - "3.11"
     env:
       PYTHON: "{{matrix}}"
       REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
@@ -17,7 +17,7 @@ steps:
   - name: docgpubuild
     label: "wanda: docgpubuild-py3.10"
     wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy(*)
+    depends_on: oss-ci-base_gpu-multipy(python=3.10)
     env:
       PYTHON: "3.10"
     tags: cibase
@@ -28,16 +28,17 @@ steps:
     commands:
       - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.11
     tags:
       - oss
       - doc
       - skip-on-premerge
 
   - label: ":book: doc: check API annotations"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
@@ -52,14 +53,15 @@ steps:
     key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.11
     commands:
       - bash ci/lint/lint.sh api_annotations
 
   - label: ":book: doc: check API doc consistency"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
@@ -74,7 +76,7 @@ steps:
     key: doc_api_policy_check
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.11
     commands:
       - bash ci/lint/lint.sh api_policy_check
 
@@ -84,7 +86,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.11
     tags:
       - oss
       - skip-on-premerge

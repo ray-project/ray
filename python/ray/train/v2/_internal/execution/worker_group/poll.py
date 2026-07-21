@@ -1,13 +1,14 @@
 import re
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Dict, Optional, Set
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
 from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
@@ -40,6 +41,8 @@ class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
+    return_value: Any = field(default=None)
+    preemption_info: Optional[PreemptionInfo] = None
 
 
 @dataclass(frozen=True)

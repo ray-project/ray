@@ -49,11 +49,14 @@ compile_pip_dependencies() {
       python/requirements/lint-requirements.txt \
       python/requirements/test-requirements.txt \
       python/requirements/cloud-requirements.txt \
+      python/requirements/serve/serve-test-requirements.txt \
       python/requirements/docker/ray-docker-requirements.txt \
       python/requirements/ml/core-requirements.txt \
       python/requirements/ml/data-requirements.txt \
       python/requirements/ml/data-test-requirements.txt \
       python/requirements/ml/dl-cpu-requirements.txt \
+      python/requirements/ml/ml-requirements.txt \
+      python/requirements/ml/third_party.txt \
       python/requirements/ml/rllib-requirements.txt \
       python/requirements/ml/rllib-test-requirements.txt \
       python/requirements/ml/train-requirements.txt \
@@ -142,8 +145,9 @@ build_dashboard_front_end() {
       if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
         if [[ -d "${HOME}/.nvm" ]]; then
           set +x  # suppress set -x since it'll get very noisy here
+          export TMPDIR="${TMPDIR:-/tmp}"
           . "${HOME}/.nvm/nvm.sh"
-          NODE_VERSION="14"
+          NODE_VERSION="20"
           nvm install $NODE_VERSION
           nvm use --silent $NODE_VERSION
         fi

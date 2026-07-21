@@ -38,6 +38,7 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
     check_running,
     get_num_alive_replicas,
+    skip_if_haproxy,
     tlog,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
@@ -152,7 +153,6 @@ class TestAutoscalingMetrics:
                 "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
-            version="v1",
             # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
             graceful_shutdown_timeout_s=0.1,
         )
@@ -340,6 +340,11 @@ class TestAutoscalingMetrics:
         # handle to `A` and fails.)
         wait_for_condition(check_num_replicas_eq, name="Router", target=1)
 
+    @skip_if_haproxy(
+        "direct ingress makes the ingress replicas self-report a source-agnostic "
+        "ongoing-request count that no handle owns, so killing the caller cannot "
+        "invalidate its still-inflight requests and the deployment never scales to 0"
+    )
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
         reason="Needs metric collection at handle.",
@@ -561,7 +566,6 @@ def test_e2e_scale_up_down_with_0_replica(
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __call__(self):
@@ -684,7 +688,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __init__(self):

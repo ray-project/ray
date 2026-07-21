@@ -190,7 +190,7 @@ def test_put_duplicate_apps(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    # Check for validation error in the response.
     assert (
         put_response.status_code == 400
         and "validation error" in put_response.text.lower()
@@ -220,7 +220,7 @@ def test_put_duplicate_routes(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    # Check for validation error in the response.
     assert (
         put_response.status_code == 400
         and "validation error" in put_response.text.lower()
@@ -618,7 +618,7 @@ class DeploymentClass:
 deployment_app = DeploymentClass.bind()
 
 
-@serve.deployment(name="hello_world", num_replicas=2, version="v2")
+@serve.deployment(name="hello_world", num_replicas=2)
 class DeploymentClassWithBlockingInit:
     def __init__(self, semaphore_handle):
         ray.get(semaphore_handle.acquire.remote())
@@ -626,6 +626,11 @@ class DeploymentClassWithBlockingInit:
 
     def __call__(self):
         return "test"
+
+
+DeploymentClassWithBlockingInit = DeploymentClassWithBlockingInit.options(
+    _internal=True, version="v2"
+)
 
 
 @pytest.mark.skipif(

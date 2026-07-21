@@ -24,12 +24,21 @@ import starlette
 import uvicorn
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
+
+try:
+    # `_IncludedRouter` only exists on FastAPI >= 0.137, where routes registered
+    # via `include_router` are nested under it instead of being flattened into
+    # the parent's `routes` list. It is `None` on older versions.
+    from fastapi.routing import _IncludedRouter
+except ImportError:  # FastAPI < 0.137
+    _IncludedRouter = None
 
 from ray._common.network_utils import is_ipv6
 from ray.exceptions import RayActorError, RayTaskError
@@ -42,6 +51,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
@@ -148,12 +158,12 @@ class Response:
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
-    def __init__(self, content=None, status_code=200):
+    def __init__(self, content: Any = None, status_code: int = 200):
         """Construct a HTTP Response based on input type.
 
         Args:
             content: Any JSON serializable object.
-            status_code (int, optional): Default status code is 200.
+            status_code: Default status code is 200.
         """
         self._messages = convert_object_to_asgi_messages(
             obj=content,
@@ -255,6 +265,9 @@ class MessageQueue(Send):
         This method should not be used together with get_messages_nowait.
         Please use either `get_one_message` or `get_messages_nowait`.
 
+        Returns:
+            The next available ASGI message in the queue.
+
         Raises:
             StopAsyncIteration: if the queue is closed and there are no
                 more messages.
@@ -338,10 +351,10 @@ class ASGIReceiveProxy:
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
-        self._queue = None
+        self._queue: Optional[asyncio.Queue] = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
-        self._disconnect_message = None
+        self._disconnect_message: Optional[Message] = None
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -415,6 +428,33 @@ class ASGIReceiveProxy:
         return message
 
 
+def _walk_fastapi_routes(router, prefix: str = ""):
+    """Yield ``(route, parent_router, prefix)`` for every API route under ``router``.
+
+    Starting with FastAPI 0.137, ``include_router`` no longer flattens the
+    included routes into the parent's ``routes`` list. Instead it appends a
+    single ``_IncludedRouter`` node that holds a reference to the original
+    router (``route.original_router``) and resolves the child routes lazily at
+    request time. We recurse into those nodes so that routes registered via
+    ``include_router`` (e.g. vLLM's OpenAI-compatible endpoints) are still
+    discovered. On older FastAPI versions ``_IncludedRouter`` doesn't exist and
+    this simply iterates the flat ``routes`` list.
+
+    ``prefix`` is the URL prefix accumulated from the ``include_router(...,
+    prefix=...)`` calls above this route. When a prefix is supplied at include
+    time (rather than baked into an ``APIRouter(prefix=...)``), FastAPI >= 0.137
+    keeps it on the ``_IncludedRouter`` node instead of in the route's own
+    ``path``, so callers need it to reconstruct the absolute path.
+    """
+    for route in router.routes:
+        if isinstance(route, (APIRoute, APIWebSocketRoute)):
+            yield route, router, prefix
+        elif _IncludedRouter is not None and isinstance(route, _IncludedRouter):
+            yield from _walk_fastapi_routes(
+                route.original_router, prefix + route.include_context.prefix
+            )
+
+
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
@@ -434,20 +474,21 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """
     # Delayed import to prevent ciruclar imports in workers.
     from fastapi import APIRouter, Depends
-    from fastapi.routing import APIRoute, APIWebSocketRoute
+    from starlette.routing import compile_path
 
     async def get_current_servable_instance():
         from ray import serve
 
         return serve.get_replica_context().servable_object
 
-    # Find all the class method routes
+    # Find all the class method routes. We walk the route tree recursively so
+    # that routes registered via `include_router` are discovered on FastAPI
+    # >= 0.137, where they are nested under `_IncludedRouter` nodes rather than
+    # flattened into `fastapi_app.routes`. Each entry keeps the parent router so
+    # the route can be removed from the correct list below.
     class_method_routes = [
-        route
-        for route in fastapi_app.routes
-        if
-        # User defined routes must all be APIRoute or APIWebSocketRoute.
-        isinstance(route, (APIRoute, APIWebSocketRoute))
+        (route, parent, prefix)
+        for route, parent, prefix in _walk_fastapi_routes(fastapi_app)
         # We want to find the route that's bound to the `cls`.
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
@@ -457,7 +498,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
         # We use "ClassName." prefix matching (not substring) to avoid false
         # positives where class "A" would incorrectly match routes from "AA".
-        and any(
+        if any(
             route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
             for base in cls.__mro__
             if base is not object
@@ -469,8 +510,20 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     # the laster fastapi_app.include_router to re-run the dependency analysis
     # for each routes.
     new_router = APIRouter()
-    for route in class_method_routes:
-        fastapi_app.routes.remove(route)
+    for route, parent, prefix in class_method_routes:
+        parent.routes.remove(route)
+
+        # Preserve the full URL path. When a route was registered via
+        # `include_router(..., prefix=...)`, FastAPI >= 0.137 keeps the prefix on
+        # the `_IncludedRouter` node rather than in `route.path`, so re-mounting
+        # the route on `new_router` (which has no prefix) would drop it. Fold the
+        # accumulated prefix back into the route's path before re-mounting.
+        if prefix:
+            full_path = prefix + route.path
+            route.path = full_path
+            route.path_regex, route.path_format, route.param_convertors = compile_path(
+                full_path
+            )
 
         # This block just adds a default values to the self parameters so that
         # FastAPI knows to inject the object when calling the route.
@@ -501,20 +554,20 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    routes_to_remove = list()
-    for route in fastapi_app.routes:
-        if not isinstance(route, (APIRoute, APIWebSocketRoute)):
-            continue
-
-        # Remove endpoints that belong to other class based views.
+    # Remove endpoints that belong to other class based views. We walk the tree
+    # recursively (see `_walk_fastapi_routes`) so that endpoints nested under
+    # `_IncludedRouter` nodes are also cleaned up on FastAPI >= 0.137.
+    for route, parent, _prefix in list(_walk_fastapi_routes(fastapi_app)):
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
-            routes_to_remove.append(route)
-    fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
+            parent.routes.remove(route)
 
 
 def set_socket_reuse_port(sock: socket.socket) -> bool:
     """Mutate a socket object to allow multiple process listening on the same port.
+
+    Args:
+        sock: The socket to configure with SO_REUSEPORT.
 
     Returns:
         success: whether the setting was successful.
@@ -545,11 +598,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -576,6 +639,7 @@ class ASGIAppReplicaWrapper:
     def docs_path(self) -> Optional[str]:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
+        return None
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
@@ -594,7 +658,7 @@ class ASGIAppReplicaWrapper:
         scope: Scope,
         receive: Receive,
         send: Send,
-    ) -> Optional[ASGIApp]:
+    ) -> None:
         """Calls into the wrapped ASGI app."""
         await self._asgi_app(
             scope,
@@ -618,7 +682,7 @@ class ASGIAppReplicaWrapper:
 
 def validate_http_proxy_callback_return(
     middlewares: Any,
-) -> [Middleware]:
+) -> List[Middleware]:
     """Validate the return value of HTTP proxy callback.
 
     Middlewares should be a list of Starlette middlewares. If it is None, we
@@ -694,10 +758,11 @@ async def start_asgi_http_server(
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
-) -> asyncio.Task:
+) -> Tuple[asyncio.Task, uvicorn.Server]:
     """Start an HTTP server to run the ASGI app.
 
-    Returns a task that blocks until the server exits (e.g., due to error).
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
     """
     app = _apply_middlewares(app, http_options.middlewares)
 
@@ -762,7 +827,7 @@ async def start_asgi_http_server(
     # the main thread and uvicorn doesn't expose a way to configure it.
     server.install_signal_handlers = lambda: None
 
-    return event_loop.create_task(server.serve(sockets=[sock]))
+    return event_loop.create_task(server.serve(sockets=[sock])), server
 
 
 def parse_request_timeout_header(
@@ -800,6 +865,45 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
         ).decode("utf-8")
         == "?1"
     )
+
+
+def _matches_session_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the configured session-id header.
+
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent
+    so intermediate proxies that rewrite the separator (nginx, AWS API
+    Gateway, ...) don't silently drop session affinity. The header name
+    itself is whatever ``SERVE_SESSION_ID`` resolves to (set via the env
+    var ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
+        "-", "_"
+    )
+
+
+def session_id_from_headers(headers: Dict[str, str]) -> Optional[str]:
+    """Return the session-id header value from str-keyed headers, or None.
+
+    Same matching rule as ``parse_session_id_header`` (which takes bytes
+    keys); use this for already-decoded ``Dict[str, str]`` headers such as
+    Starlette ``request.headers`` or ``RawRequestInfo.headers``.
+    """
+    return next(
+        (value for key, value in headers.items() if _matches_session_id_header(key)),
+        None,
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the configured session-id header value, or '' if absent.
+
+    Header name is whatever ``SERVE_SESSION_ID`` resolves to (set via
+    ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    for key, value in headers.items():
+        if _matches_session_id_header(key.decode("utf-8")):
+            return value.decode("utf-8")
+    return ""
 
 
 def get_http_response_status(
@@ -850,7 +954,9 @@ def send_http_response_on_exception(
         return []
     return convert_object_to_asgi_messages(
         status.message,
-        status_code=status.code,
+        # `ResponseStatus.code` is a `Union` shared with gRPC, but on the HTTP
+        # path it's always an `int` status code.
+        status_code=status.code,  # type: ignore[arg-type]
     )
 
 

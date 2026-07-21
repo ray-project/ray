@@ -4,6 +4,9 @@ import random
 from random import randint
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
+from fastapi import FastAPI, HTTPException, Request
+from starlette.responses import JSONResponse, StreamingResponse
+
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -28,7 +31,14 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+    DefaultConnectorBackend,
+)
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
+from ray.serve.context import (
+    _get_internal_replica_context,
+    _get_serve_request_context,
+)
 
 
 class MockVLLMEngine(LLMEngine):
@@ -44,6 +54,9 @@ class MockVLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         self.llm_config = llm_config
+        # The mock skips engine init, where setup_engine_backend attaches this.
+        if llm_config.engine_kwargs.get("kv_transfer_config"):
+            llm_config._kv_connector_backend = DefaultConnectorBackend(llm_config)
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
         self._is_sleeping = False
@@ -52,6 +65,10 @@ class MockVLLMEngine(LLMEngine):
     async def start(self):
         """Start the mock engine."""
         self.started = True
+
+    def routing_stats(self) -> Dict[str, Any]:
+        """Mock engine advertises no routing stats (no KV-cache events)."""
+        return {}
 
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve/load a LoRA model."""
@@ -141,6 +158,85 @@ class MockVLLMEngine(LLMEngine):
             True if the engine is paused, False otherwise.
         """
         return self._is_paused
+
+    async def build_asgi_app(self):
+        """Build a minimal ASGI app for direct-streaming tests."""
+        app = FastAPI()
+
+        @app.middleware("http")
+        async def _tag_serving_replica(request: Request, call_next):
+            # Tag each response with the serving replica and the session id it
+            # saw, so direct-streaming tests can assert affinity over HAProxy.
+            response = await call_next(request)
+            ctx = _get_internal_replica_context()
+            if ctx is not None:
+                response.headers["x-replica-id"] = ctx.replica_id.unique_id
+            response.headers[
+                "x-serve-session-id"
+            ] = _get_serve_request_context().session_id
+            return response
+
+        def check_model(model: Optional[str]) -> None:
+            if model is not None and model != self.llm_config.model_id:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Could not find model {model}",
+                )
+
+        async def to_response(gen):
+            try:
+                first = await gen.__anext__()
+            except StopAsyncIteration:
+                return JSONResponse(content={})
+
+            if isinstance(first, ErrorResponse):
+                raise HTTPException(
+                    status_code=first.error.code,
+                    detail=first.error.message,
+                )
+
+            if isinstance(first, str):
+
+                async def stream():
+                    yield first
+                    async for item in gen:
+                        if isinstance(item, str):
+                            yield item
+                        else:
+                            yield f"data: {item.model_dump_json()}\n\n"
+
+                return StreamingResponse(stream(), media_type="text/event-stream")
+
+            return JSONResponse(content=first.model_dump())
+
+        @app.get("/v1/models")
+        async def models():
+            return {
+                "object": "list",
+                "data": [
+                    {
+                        "id": self.llm_config.model_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "mock",
+                        "metadata": {"input_modality": "text"},
+                    }
+                ],
+            }
+
+        @app.post("/v1/chat/completions")
+        async def chat_completions(request: Request):
+            body = ChatCompletionRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.chat(body))
+
+        @app.post("/v1/completions")
+        async def completions(request: Request):
+            body = CompletionRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.completions(body))
+
+        return app
 
     async def chat(
         self,
@@ -323,6 +419,25 @@ class MockVLLMEngine(LLMEngine):
         response = DetokenizeResponse(prompt=prompt)
         yield response
 
+    def _maybe_attach_kv_transfer_params(self, request, response) -> None:
+        """Stamp the serving replica id into ``kv_transfer_params`` for P/D tests.
+
+        The orchestrator sends the prefill request with ``remote_engine_id``
+        unset; fill it with this replica's id so the response reports the prefill
+        replica. On the decode request the id is already set and passes through.
+        Lets tests observe that the session id pinned the prefill replica, not
+        just the decode ingress.
+        """
+        params = getattr(request, "kv_transfer_params", None)
+        if not params:
+            return
+        params = dict(params)
+        if params.get("remote_engine_id") is None:
+            ctx = _get_internal_replica_context()
+            if ctx is not None:
+                params["remote_engine_id"] = ctx.replica_id.unique_id
+        response.kv_transfer_params = params
+
     async def _generate_chat_response(
         self, request: ChatCompletionRequest, prompt_text: str, max_tokens: int
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
@@ -397,6 +512,7 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            self._maybe_attach_kv_transfer_params(request, response)
             yield response
 
     async def _generate_completion_response(
@@ -464,6 +580,7 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            self._maybe_attach_kv_transfer_params(request, response)
             yield response
 
     async def _generate_transcription_response(
@@ -557,6 +674,21 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
 
+class MockAsyncLLM:
+    """Mock vLLM's AsyncLLM: ``generate`` replays a fixed list of
+    ``RequestOutput``s, with ``error_after`` raising mid-stream."""
+
+    def __init__(self, script, error_after=None):
+        self.script = script
+        self.error_after = error_after
+
+    async def generate(self, prompt, sampling_params, request_id, **kwargs):
+        for i, output in enumerate(self.script):
+            if self.error_after is not None and i == self.error_after:
+                raise RuntimeError("engine failure")
+            yield output
+
+
 class FakeLoraModelLoader(LoraModelLoader):
     """Fake LoRA model loader for testing that bypasses S3 entirely."""
 
@@ -581,3 +713,15 @@ class FakeLoraModelLoader(LoraModelLoader):
             local_path="/fake/local/path",
             lora_assigned_int_id=random.randint(1, 100),
         )
+
+
+class PGCreationMockEngine(MockVLLMEngine):
+    """
+    A wrapper around the mock engine that forces it to create the placement
+    group on startup, simulating the real vLLM initialization sequence.
+    """
+
+    def __init__(self, llm_config, *args, **kwargs):
+        super().__init__(llm_config, *args, **kwargs)
+        self.engine_config = llm_config.get_engine_config()
+        self.engine_config.get_or_create_pg()
