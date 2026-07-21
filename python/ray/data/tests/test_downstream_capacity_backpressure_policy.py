@@ -19,6 +19,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -253,34 +256,25 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
-    def test_backpressure_skipped_for_materializing_downstream(self):
-        """Test that backpressure is skipped when downstream is materializing.
-
-        Creates topology: cur_op -> materializing_op (AllToAllOperator).
-        """
-        # Create the current operator
-        op, op_state = self._mock_operator()
-        # Create a materializing downstream operator
-        materializing_op, materializing_op_state = self._mock_materializing_operator()
-        # Set up topology: op -> materializing_op
-        op.output_dependencies = [materializing_op]
-        topology = {op: op_state, materializing_op: materializing_op_state}
-        context = self._create_context()
-        rm = self._mock_resource_manager()
-
-        policy = self._create_policy(
-            topology, data_context=context, resource_manager=rm
-        )
-        assert policy.can_add_input(op) is True
-
-    def test_backpressure_skipped_when_downstream_capacity_is_materializing(self):
-        """Test that an upstream op isn't backpressured by an eligible materializer."""
+    @pytest.mark.parametrize(
+        ("op_class", "throttling_disabled"),
+        [
+            (HashShufflingOperatorBase, False),
+            (AllToAllOperator, True),
+            (ShuffleMapOp, False),
+        ],
+    )
+    def test_backpressure_skipped_for_downstream_materializer(
+        self, op_class, throttling_disabled
+    ):
+        """Test that an upstream op isn't backpressured by a materializer."""
         op, op_state = self._mock_task_pool_map_operator()
         materializing_op, materializing_op_state = self._mock_operator(
-            op_class=HashShufflingOperatorBase,
+            op_class=op_class,
             obj_store_mem_pending_task_inputs=100,
+            throttling_disabled=throttling_disabled,
         )
-        materializing_op.__class__ = HashShufflingOperatorBase
+        materializing_op.__class__ = op_class
         op.output_dependencies = [materializing_op]
 
         topology = {op: op_state, materializing_op: materializing_op_state}
@@ -294,7 +288,6 @@ class TestDownstreamCapacityBackpressurePolicy:
         queue_ratio = self._set_queue_ratio(
             op, op_state, rm, queue_size=1000, downstream_capacity=100
         )
-        assert rm.is_op_eligible(materializing_op)
         assert queue_ratio > context.downstream_capacity_backpressure_ratio
 
         policy = self._create_policy(
@@ -302,7 +295,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
-    def test_backpressure_applied_when_materializer_is_beyond_capacity_op(self):
+    def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
+        self,
+    ):
         """Test that a later materializer doesn't disable normal backpressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_task_pool_map_operator()

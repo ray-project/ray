@@ -167,7 +167,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return True
 
         if self._resource_manager._is_blocking_materializing_op(op):
-            # Operator is materializing, so no need to perform backpressure.
+            # The operator or one of its ineligible downstream operators is a
+            # blocking materializer, so no need to perform backpressure.
             return True
 
         if any(
