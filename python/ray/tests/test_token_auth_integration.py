@@ -144,6 +144,100 @@ def test_local_cluster_generates_token():
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Starts a new local cluster; not compatible with client mode",
+)
+def test_ray_init_generates_token_and_enforces_auth_by_default():
+    """ray.init() (no address) enables token auth by default: it generates a
+    token and the cluster enforces authentication, even without RAY_AUTH_MODE."""
+    import requests
+
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    # RAY_AUTH_MODE intentionally unset.
+    os.environ.pop("RAY_AUTH_MODE", None)
+    reset_auth_token_state()
+
+    ctx = ray.init()
+    try:
+        # A token was generated and token auth is enabled.
+        assert default_token_path.exists()
+        token = default_token_path.read_text().strip()
+        assert len(token) == 64
+        assert get_authentication_mode() == AuthenticationMode.TOKEN
+
+        # Basic ops work for the in-process driver (it holds the token).
+        @ray.remote
+        def f():
+            return "ok"
+
+        assert ray.get(f.remote()) == "ok"
+
+        # The cluster enforces auth: an unauthenticated request is rejected and
+        # an authenticated one succeeds.
+        dashboard_url = f"http://{ctx.address_info['webui_url']}"
+        resp = requests.get(f"{dashboard_url}/api/v0/actors")
+        assert resp.status_code == 401, resp.text
+        resp = requests.get(
+            f"{dashboard_url}/api/v0/actors",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200, resp.text
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Starts a new local cluster; not compatible with client mode",
+)
+def test_ray_init_reuses_existing_token_by_default():
+    """ray.init() reuses an existing default token instead of regenerating it."""
+    from ray._private.authentication_test_utils import set_default_auth_token
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    existing_token = "a" * 64
+    default_token_path = set_default_auth_token(existing_token)
+
+    os.environ.pop("RAY_AUTH_MODE", None)
+    reset_auth_token_state()
+
+    ray.init()
+    try:
+        assert get_authentication_mode() == AuthenticationMode.TOKEN
+        # The pre-existing token is reused, not overwritten.
+        assert default_token_path.read_text().strip() == existing_token
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Starts a new local cluster; not compatible with client mode",
+)
+def test_ray_init_respects_disabled_opt_out():
+    """RAY_AUTH_MODE=disabled keeps a new local ray.init() cluster unauthenticated
+    and generates no token."""
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    set_auth_mode("disabled")
+    reset_auth_token_state()
+
+    ray.init()
+    try:
+        assert get_authentication_mode() == AuthenticationMode.DISABLED
+        assert not default_token_path.exists()
+    finally:
+        ray.shutdown()
+
+
 def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
     """Test ray.init(address=...) without token fails when auth_mode=token is set."""
     cluster_info = setup_cluster_with_token_auth
@@ -381,6 +475,56 @@ def test_maybe_enable_token_auth_for_local_head_cluster(
             assert os.environ.get("RAY_AUTH_MODE") == auth_mode_env
             assert get_authentication_mode() == AuthenticationMode.DISABLED
             mock_warning.assert_called_once()
+
+    reset_auth_token_state()
+
+
+@pytest.mark.parametrize(
+    "auth_mode_env, token_exists, expected_enabled",
+    [
+        # No RAY_AUTH_MODE set -> token auth enabled by default, token or not.
+        (None, False, True),
+        (None, True, True),
+        # Explicit RAY_AUTH_MODE wins in both directions.
+        ("disabled", True, False),
+        ("token", False, True),
+    ],
+)
+def test_maybe_enable_token_auth_for_new_local_cluster(
+    auth_mode_env, token_exists, expected_enabled
+):
+    """The helper enables token auth by default for a new local ray.init()
+    cluster unless RAY_AUTH_MODE is explicitly set, and never warns."""
+    from unittest import mock
+
+    import ray._private.authentication.authentication_token_setup as auth_setup
+    from ray._private.authentication_test_utils import set_default_auth_token
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        os.environ.pop("RAY_AUTH_MODE", None)
+
+        if auth_mode_env is not None:
+            os.environ["RAY_AUTH_MODE"] = auth_mode_env
+        if token_exists:
+            set_default_auth_token("a" * 64)
+
+        reset_auth_token_state()
+
+        with mock.patch.object(auth_setup.logger, "warning") as mock_warning:
+            enabled = auth_setup.maybe_enable_token_auth_for_new_local_cluster()
+
+        assert enabled is expected_enabled
+        # This helper never warns, regardless of outcome.
+        mock_warning.assert_not_called()
+
+        if expected_enabled:
+            assert get_authentication_mode() == AuthenticationMode.TOKEN
+        else:
+            # An explicit RAY_AUTH_MODE=disabled is preserved.
+            assert os.environ.get("RAY_AUTH_MODE") == auth_mode_env
+            assert get_authentication_mode() == AuthenticationMode.DISABLED
 
     reset_auth_token_state()
 

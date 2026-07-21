@@ -64,15 +64,16 @@ To enable authentication on your local machine for development, set the `RAY_AUT
 
 ### Local development with ray.init()
 
-When you run a script that starts a local Ray instance with `ray.init()` after setting `RAY_AUTH_MODE=token` as an environment variable, Ray handles authentication automatically:
+When you run a script that starts a new local Ray cluster with `ray.init()` (that is, `ray.init()` without an `address`, so it starts a fresh cluster), Ray enables token authentication by default and handles the token automatically:
 
 - If a token doesn't already exist at `~/.ray/auth_token`, Ray generates a token and saves it to the file. A log message displays to confirm token creation.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses the existing token automatically.
 
+This happens even when you haven't set `RAY_AUTH_MODE=token`. To start a new local cluster without authentication, set `RAY_AUTH_MODE=disabled`.
+
 The following example shows what happens on the first run:
 
 ```bash
-$ export RAY_AUTH_MODE=token
 $ python -c "import ray;ray.init()"
 ```
 
@@ -81,6 +82,8 @@ On the first run, this command (or any other script that initializes Ray) logs a
 ```bash
 Generated new authentication token and saved to /Users/<username>/.ray/auth_token
 ```
+
+Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in the "What token does Ray use?" section.
 
 ### Local development with ray start
 

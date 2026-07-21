@@ -145,6 +145,45 @@ def maybe_enable_token_auth_for_local_head_cluster() -> bool:
     return True
 
 
+def maybe_enable_token_auth_for_new_local_cluster() -> bool:
+    """Enable token authentication by default for a new local cluster.
+
+    For a new local cluster started with ``ray.init()`` (that is, ``ray.init``
+    called without an ``address``, so it bootstraps a fresh cluster), enable
+    token authentication by default when the ``RAY_AUTH_MODE`` environment
+    variable isn't set. The caller then runs
+    ``ensure_token_if_auth_enabled(..., create_token_if_missing=True)``, which
+    generates a token if none exists yet and reuses an existing one otherwise.
+
+    This only applies to a new local cluster. Don't call it when connecting to an
+    existing cluster (``ray.init(address=...)``), so that behavior is unchanged.
+
+    Unlike ``maybe_enable_token_auth_for_local_head_cluster``, this enables token
+    authentication even when no token exists yet (a token is generated), and it
+    never warns: a new local ``ray.init()`` cluster is authenticated by default
+    unless the user explicitly sets ``RAY_AUTH_MODE=disabled``.
+
+    Returns:
+        True if token authentication is enabled after this call, False otherwise.
+    """
+    auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
+    if auth_mode_env is not None:
+        # Respect an explicit RAY_AUTH_MODE setting (e.g. "token" or "disabled").
+        return auth_mode_env.lower() == "token"
+
+    # RAY_AUTH_MODE wasn't set: default to token authentication so the head node
+    # and all child processes it spawns enforce authentication. Child processes
+    # inherit this environment variable.
+    os.environ[AUTH_MODE_ENV_VAR] = "token"
+
+    # RayConfig caches env vars the first time they're read. Re-read them so this
+    # process (which connects to the cluster it's starting) also observes token
+    # mode.
+    Config.initialize("")
+
+    return True
+
+
 def ensure_token_if_auth_enabled(
     system_config: Optional[Dict[str, Any]] = None, create_token_if_missing: bool = True
 ) -> None:
