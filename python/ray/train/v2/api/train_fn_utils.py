@@ -403,23 +403,29 @@ def annotate(
     """
     assert severity in ["info", "warning", "error"]
 
-    train_context = get_train_context()
-    if rank_zero_only and train_context.get_world_rank() != 0:
-        return
+    try:
+        train_context = get_train_context()
+        if rank_zero_only and train_context.get_world_rank() != 0:
+            return
 
-    annotation_fields = {"message": message}
-    if fields:
-        annotation_fields["fields"] = json.dumps(fields, default=str)
+        annotation_fields = {"message": message}
+        if fields:
+            annotation_fields["fields"] = json.dumps(fields, default=str)
 
-    Annotation(
-        source=TRAIN_ANNOTATION_SOURCE,
-        base_tags={
-            RUN_NAME_TAG_KEY: train_context.get_experiment_name(),
-            RUN_ID_TAG_KEY: train_context.train_run_context.run_id,
-            WORKER_WORLD_RANK_TAG_KEY: str(train_context.get_world_rank()),
-        },
-    ).annotate(
-        event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
-        severity=severity,
-        **annotation_fields,
-    )
+        Annotation(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={
+                RUN_NAME_TAG_KEY: train_context.get_experiment_name(),
+                RUN_ID_TAG_KEY: train_context.train_run_context.run_id,
+                WORKER_WORLD_RANK_TAG_KEY: str(train_context.get_world_rank()),
+            },
+        ).annotate(
+            event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+            severity=severity,
+            **annotation_fields,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit the ray.train.annotate Grafana annotation; continuing.",
+            exc_info=True,
+        )

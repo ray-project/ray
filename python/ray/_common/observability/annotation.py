@@ -1,10 +1,12 @@
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, Optional
 
 _ANNOTATION_LOGGER_BASE_NAME = "ray.annotations"
+_logger_lock = threading.Lock()
 
 
 class _AnnotationFileHandler(logging.Handler):
@@ -19,28 +21,42 @@ class _AnnotationFileHandler(logging.Handler):
     def __init__(self):
         super().__init__()
         self._handler: Optional[logging.FileHandler] = None
+        self._logs_dir: Optional[str] = None
 
     def emit(self, record: logging.LogRecord) -> None:
-        if self._handler is None:
-            from ray._private.worker import _global_node
+        from ray._private.worker import _global_node
 
-            if _global_node is None:
-                # Ray is not initialized yet; retry on the next emit.
-                return
+        if _global_node is None:
+            # Ray is not initialized yet; retry on the next emit.
+            return
 
-            try:
-                # ``get_logs_dir_path`` returns the real timestamped session logs dir
-                logs_dir = _global_node.get_logs_dir_path()
-                os.makedirs(logs_dir, exist_ok=True)
+        try:
+            # ``get_logs_dir_path`` returns the real timestamped session logs dir
+            logs_dir = _global_node.get_logs_dir_path()
+            os.makedirs(logs_dir, exist_ok=True)
+        except Exception:
+            logging.exception("Creating the Annotation logger failed")
+            return
 
-                filename = f"runtime_env_annotations_{os.getpid()}.log"
-                self._handler = logging.FileHandler(os.path.join(logs_dir, filename))
-                self._handler.setFormatter(self.formatter)
-            except Exception:
-                logging.exception("Creating the Annotation logger failed")
-                return
+        if self._handler is None or self._logs_dir != logs_dir:
+            filename = f"runtime_env_annotations_{os.getpid()}.log"
+            self._handler = logging.FileHandler(os.path.join(logs_dir, filename))
+            self._handler.setFormatter(self.formatter)
+            self._logs_dir = logs_dir
 
         self._handler.emit(record)
+
+    def flush(self) -> None:
+        if self._handler is not None:
+            self._handler.flush()
+        super().flush()
+
+    def close(self) -> None:
+        if self._handler is not None:
+            self._handler.close()
+            self._handler = None
+            self._logs_dir = None
+        super().close()
 
 
 class Annotation:
@@ -87,14 +103,16 @@ class Annotation:
             The shared ``ray.annotations`` logger.
         """
         logger = logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME)
-        if not logger.handlers:
-            logger.setLevel(logging.INFO)
-            # Disable propagating to the root logger that's echoed to the terminal.
-            logger.propagate = False
-            handler = _AnnotationFileHandler()
-            # Emit the raw message (a JSON line) with no extra formatting for Loki
-            handler.setFormatter(logging.Formatter("%(message)s"))
-            logger.addHandler(handler)
+        with _logger_lock:
+            # Re-check under the lock so only one thread configures the logger.
+            if not logger.handlers:
+                logger.setLevel(logging.INFO)
+                # Disable propagating to the root logger echoed to the terminal.
+                logger.propagate = False
+                handler = _AnnotationFileHandler()
+                # Emit the raw message (a JSON line) with no extra formatting.
+                handler.setFormatter(logging.Formatter("%(message)s"))
+                logger.addHandler(handler)
 
         return logger
 
@@ -108,12 +126,23 @@ class Annotation:
                 Which fields an event carries (e.g. ``message``, ``severity``,
                 or event-specific data) is defined by the caller and the
                 dashboard queries that consume it.
+
+        Annotations are best-effort observability and never on the critical
+        path, so any failure here is swallowed rather than propagated to the
+        caller.
         """
-        record = {
-            "annotation_source": self._source,
-            "timestamp": time.time(),
-            "event": event,
-            **fields,
-            **self._base_tags,
-        }
-        self._logger.info(json.dumps(record, default=str))
+        try:
+            record = {
+                "annotation_source": self._source,
+                "timestamp": time.time(),
+                "event": event,
+                **fields,
+                **self._base_tags,
+            }
+            self._logger.info(json.dumps(record, default=str))
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to emit the %r annotation; continuing.",
+                event,
+                exc_info=True,
+            )
