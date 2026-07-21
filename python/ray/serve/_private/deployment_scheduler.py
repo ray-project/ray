@@ -592,15 +592,20 @@ class DeploymentScheduler(ABC):
         self,
         required_resources: RequestedResources,
         available_resources: Dict[str, AvailableNodeResources],
+        tie_break_key: Optional[Callable[[str], Any]] = None,
     ) -> Optional[str]:
         """Chooses a node using best fit strategy.
 
         This strategy picks the node where, if the required resources
         were to be scheduled on that node, it will leave the smallest
         remaining space. This minimizes fragmentation of resources.
+
+        If multiple nodes tie on remaining space and `tie_break_key` is
+        provided, the node with the smallest `tie_break_key` value wins.
         """
 
         min_remaining_space = None
+        min_tie_break = None
         chosen_node = None
 
         for node_id in available_resources:
@@ -610,8 +615,18 @@ class DeploymentScheduler(ABC):
             # TODO(zcin): We can make this better by only considering
             # custom resources that required_resources has.
             remaining_space = available_resources[node_id] - required_resources
+            tie_break = tie_break_key(node_id) if tie_break_key else None
+
             if min_remaining_space is None or remaining_space < min_remaining_space:
                 min_remaining_space = remaining_space
+                min_tie_break = tie_break
+                chosen_node = node_id
+            elif (
+                tie_break_key is not None
+                and remaining_space == min_remaining_space
+                and tie_break < min_tie_break
+            ):
+                min_tie_break = tie_break
                 chosen_node = node_id
 
         return chosen_node
