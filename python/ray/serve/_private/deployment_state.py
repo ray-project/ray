@@ -59,6 +59,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE,
     RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
@@ -3597,9 +3598,8 @@ class DeploymentState:
         )
 
         if deployment_info.ingress_request_router:
-            # The ingress request router gets one replica per proxy node, driven
-            # by scale_deployment_replicas from the live proxy-node set each
-            # control loop. Start at 0; it is not autoscaled.
+            # Replicas per proxy node, reconciled each control loop by
+            # scale_deployment_replicas. Not autoscaled, so start at 0.
             self._autoscaling_state_manager.deregister_deployment(self._id)
             target_num_replicas = 0
         elif deployment_info.deployment_config.autoscaling_config:
@@ -3657,8 +3657,8 @@ class DeploymentState:
     def _record_scaling_status_transition(self, old_num: int, new_num: int) -> None:
         """Transition status to UPSCALING/DOWNSCALING for an automatic scaling event.
 
-        Shared by the autoscaler and num_replicas="per_node" reconciliation so
-        node-driven scaling shows up in deployment status the same way
+        Shared by the autoscaler and the ingress request router reconciliation
+        so node-driven scaling shows up in deployment status the same way
         request-driven autoscaling does.
         """
         if new_num > old_num:
@@ -3764,37 +3764,41 @@ class DeploymentState:
         self._record_scaling_status_transition(old_num, num_replicas)
 
     def _reconcile_ingress_request_router(self, proxy_nodes: Set[str]) -> List[str]:
-        """Target one replica per proxy node for the ingress request router.
+        """Target per_node replicas on each proxy node for the ingress router.
 
-        Stops any replica whose node no longer runs a proxy and sets the target
-        count to the number of proxy nodes. Returns the proxy nodes that still
-        need a replica so the scale-up path can pin one to each. The normal
-        scale_deployment_replicas flow then owns version reconcile and status.
+        Stops replicas on nodes that no longer run a proxy and sets the target
+        count. Returns one node entry per replica still needed so the scale-up
+        path can pin each to its node.
         """
         if self._target_state.deleting:
             return []
 
-        # Map each node to the target-version replica already on it.
-        covered: Dict[str, DeploymentReplica] = {}
+        per_node = RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE
+
+        # Count target-version replicas per proxy node, and collect any on nodes
+        # that no longer run a proxy so they can be stopped.
+        replicas_per_node: Dict[str, int] = defaultdict(int)
+        stale = set()
         for replica in self._replicas.get(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
         ):
             if replica.version != self._target_state.version:
                 continue
             node = replica.target_node_id or replica.actor_node_id
-            if node is not None:
-                covered[node] = replica
-
-        stale = {
-            replica.replica_id
-            for node, replica in covered.items()
-            if node not in proxy_nodes
-        }
+            if node is None:
+                continue
+            if node in proxy_nodes:
+                replicas_per_node[node] += 1
+            else:
+                stale.add(replica.replica_id)
         if stale:
             self.stop_replicas(stale)
 
-        self._rescale_to(len(proxy_nodes))
-        uncovered = [node for node in proxy_nodes if node not in covered]
+        self._rescale_to(per_node * len(proxy_nodes))
+        uncovered = []
+        for node in proxy_nodes:
+            missing = max(0, per_node - replicas_per_node.get(node, 0))
+            uncovered.extend([node] * missing)
         # A node swap can leave the count unchanged, so force reconcile when
         # replicas were stopped or nodes still need one.
         if stale or uncovered:
@@ -4027,16 +4031,16 @@ class DeploymentState:
                 If this deployment uses gang scheduling and PGs were reserved,
                 replicas will be scheduled onto these PGs.
             proxy_nodes: Nodes that run a proxy. The ingress request router
-                targets one replica per proxy node.
+                targets a fixed number of replicas per proxy node.
 
         Returns:
             Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
                 The scheduling requests for the new replicas and the downscale request.
         """
 
-        # The ingress request router targets one replica per proxy node: stop
-        # replicas on nodes that no longer run a proxy, set the target count,
-        # and collect the nodes each new replica should pin to.
+        # The ingress request router targets a fixed number of replicas per
+        # proxy node: stop replicas on nodes that no longer run a proxy, set the
+        # target count, and collect the nodes each new replica should pin to.
         pinned_nodes: Optional[List[str]] = None
         if self.is_ingress_request_router():
             pinned_nodes = self._reconcile_ingress_request_router(proxy_nodes or set())
