@@ -104,6 +104,43 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
     assert op.has_completed()
 
 
+def test_sort_shuffle_map_handles_empty_sampling_window(
+    ray_start_regular_shared_2_cpus,
+):
+    ctx = DataContext.get_current()
+    bundles = make_ref_bundles([[], [], [3, 1, 2]])
+    op = SortShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        sort_key=SortKey("id"),
+        sample_num_blocks=2,
+        pre_map_merge_threshold=0,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    # Sampling starts after the first two empty blocks. The later non-empty
+    # block must still be range-partitioned without treating a bare None as a
+    # tuple boundary.
+    for bundle in bundles:
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+
+    assert op.boundaries == [(None,)]
+    rows = []
+    while op.has_next():
+        bundle = op.get_next()
+        for block_ref in bundle.block_refs:
+            table = _read_partition_ipc(ray.get(block_ref))
+            if table is not None:
+                rows.extend(table["id"].to_pylist())
+        bundle.destroy_if_owned()
+
+    assert rows == [1, 2, 3]
+    assert op.has_completed()
+
+
 def test_sort_shuffle_map_user_boundaries_skip_sampling(
     ray_start_regular_shared_2_cpus,
 ):

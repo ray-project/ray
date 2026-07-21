@@ -182,6 +182,15 @@ class SortShuffleMapOp(ShuffleMapOp):
             self._set_boundaries(boundaries)
 
     def _set_boundaries(self, boundaries: List) -> None:
+        # The shared V1 sampling helper represents an empty dataset with bare
+        # ``None`` boundaries. With V2's bounded sampling window, the sampled
+        # blocks can all be empty even when later buffered blocks contain rows.
+        # Range partitioning expects each boundary to be a tuple, so preserve
+        # the empty-sample fallback while normalizing it to the one-column key
+        # shape accepted by ``find_partition_index``.
+        boundaries = [
+            (None,) if boundary is None else boundary for boundary in boundaries
+        ]
         self._boundaries = boundaries
         self._sample_block_refs.clear()
         self._sample_results.clear()
