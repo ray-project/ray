@@ -34,6 +34,7 @@
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/monitors/cpu_monitor_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"

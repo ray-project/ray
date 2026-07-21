@@ -31,6 +31,7 @@
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/monitors/cpu_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
