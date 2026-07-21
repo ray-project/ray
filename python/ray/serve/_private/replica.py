@@ -721,7 +721,10 @@ class ReplicaMetricsManager:
     def self_health_snapshot(self):
         """(healthy, checked_at, consecutive_failures) from the local self-check;
         stamps that health is being carried on a response."""
-        self._last_health_carried_ts = time.time()
+        if self._self_health_checked_at is not None:
+            # Only a snapshot that actually carries health counts as carried;
+            # before the first self-check _health_kwargs sends nothing.
+            self._last_health_carried_ts = time.time()
         return (
             self._self_healthy,
             self._self_health_checked_at,
@@ -775,7 +778,8 @@ class ReplicaMetricsManager:
             # lapses.
             return
         if (
-            self._autoscaling_config is not None
+            healthy
+            and self._autoscaling_config is not None
             and RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             and self._last_health_carried_ts is not None
             and time.time() - self._last_health_carried_ts < self._self_health_period_s
@@ -784,7 +788,8 @@ class ReplicaMetricsManager:
             # their metric reports; no separate heartbeat needed.
             return
         if (
-            self._last_health_reported_via_handle_ts is not None
+            healthy
+            and self._last_health_reported_via_handle_ts is not None
             and time.time() - self._last_health_reported_via_handle_ts
             < self._self_health_period_s
         ):

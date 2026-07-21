@@ -1384,6 +1384,18 @@ class TestSelfHealthReportEntry:
         assert m.reports_carry_health()
         assert m.self_health_report_entry() is None
 
+    def test_snapshot_does_not_stamp_before_first_check(self):
+        # Before the first self-check, _health_kwargs sends nothing, so the
+        # snapshot must not stamp handle-carried recency (which would suppress
+        # the first heartbeat of a fresh replica).
+        m = self._manager()
+        m._self_health_checked_at = None
+        m.self_health_snapshot()
+        assert m._last_health_carried_ts is None
+        m._self_health_checked_at = 123.0
+        m.self_health_snapshot()
+        assert m._last_health_carried_ts is not None
+
     def test_consumption_counts_as_carried(self):
         m = self._manager()
         m._self_health_checked_at = 123.0
