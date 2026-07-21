@@ -653,7 +653,7 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-            if self._is_training_done(worker_group_status):
+            if self._is_training_succeeded(worker_group_status):
                 self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
@@ -665,9 +665,6 @@ class TrainController:
 
             # A node hosting one of the workers is being preempted: move to
             # PreemptingState to wait out the grace window before restarting.
-            # Checked before the error branch so that a worker killed by the
-            # preemption is charged against `max_preemption_failures` rather
-            # than `max_failures`.
             preemption_info = worker_group_status.get_preemption_info()
             if preemption_info is not None:
                 return TrainControllerLoopIterationResult(
@@ -725,10 +722,10 @@ class TrainController:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
     @staticmethod
-    def _is_training_done(
+    def _is_training_succeeded(
         worker_group_status: WorkerGroupPollStatus,
     ) -> bool:
-        """Whether every rank exited cleanly (returned without error)."""
+        """Whether every rank exited successfully."""
         return worker_group_status.finished and not worker_group_status.errors
 
     @staticmethod
@@ -736,14 +733,12 @@ class TrainController:
         preemption_info: "PreemptionInfo",
         detected_at_s: float,
     ) -> bool:
-        """Whether the preemption reclaim deadline has passed.
+        """Whether the preemption deadline has passed.
 
-        `deadline_ms` mirrors Ray Core's draining deadline: an epoch timestamp
-        in milliseconds, respected as-is (a staggered merge keeps the earliest
-        across all preempted nodes). Ray Core reports 0 (which the watcher maps
-        to None) when no deadline is known, in which case we fall back to
-        `DEFAULT_PREEMPTION_DEADLINE_S` from when the preemption was first
-        detected so we never wait indefinitely for the workers to exit.
+        `deadline_ms` is when the preempted node will be taken away (epoch ms),
+        used as-is. When it is unknown (None), fall back to
+        `DEFAULT_PREEMPTION_DEADLINE_S` after the preemption was first detected
+        so we don't wait forever.
         """
         deadline_ms = preemption_info.deadline_ms
         if deadline_ms is None:
@@ -753,20 +748,10 @@ class TrainController:
     async def _handle_preempting_state(
         self, controller_state: PreemptingState
     ) -> TrainControllerLoopIterationResult:
-        """Wait out the preemption grace window, then restart or finish.
-
-        A preemption drains the affected nodes: Ray Core marks them draining and
-        (usually) reports a reclaim deadline. While draining, the healthy ranks
-        keep running so they can finish just-in-time checkpoints. Terminal
-        transitions are handled first -- training finished, a non-reclaim worker
-        error, or the drain completing (all ranks exited or the deadline
-        passed); otherwise the run stays in PreemptingState and keeps draining.
-        The failure policy decides retry-vs-raise for any resulting error.
-        """
         worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-        # Training finished cleanly before the reclaim.
-        if self._is_training_done(worker_group_status):
+        # Training finished successfully before the preemption.
+        if self._is_training_succeeded(worker_group_status):
             self._return_value = worker_group_status.worker_statuses[0].return_value
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -776,9 +761,7 @@ class TrainController:
                 ),
             )
 
-        # A worker failed for a reason other than the reclaim -> fail fast
-        # rather than waiting out the drain. The failure policy classifies
-        # reclaim deaths vs. real failures.
+        # A worker failed for a reason other than the preemption should fail fast.
         if (
             worker_group_status.errors
             and not worker_group_status.has_preempted_worker()
@@ -791,7 +774,7 @@ class TrainController:
                 failure_decision, training_failed_error=worker_group_error
             )
 
-        # Merge staggered preemptions so the signal covers every drained node.
+        # Merge any new preemption info so the info covers every preempted node.
         new_preemption_info = worker_group_status.get_preemption_info()
         preemption_info = (
             merge_preemption_info(controller_state.preemption_info, new_preemption_info)
@@ -799,8 +782,6 @@ class TrainController:
             else controller_state.preemption_info
         )
 
-        # Drain complete (all ranks exited, or the reclaim deadline passed) ->
-        # restart or raise via the preemption budget.
         deadline_exceeded = self._is_preemption_deadline_exceeded(
             preemption_info, controller_state.detected_at_s
         )
@@ -816,11 +797,8 @@ class TrainController:
                 failure_decision, training_failed_error=preemption_error
             )
 
-        # Otherwise keep draining: the healthy ranks keep training/checkpointing
-        # until every rank has exited or the deadline passes.
-        # TODO(lehui): decouple the teardown from the cloud's reclaim deadline
-        # (configurable grace period + survivor emergency checkpoint) so healthy
-        # ranks can be held deliberately rather than until the deadline.
+        # Otherwise the preemption is still in progress: keep the healthy ranks
+        # running until every rank exits or the deadline passes.
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
             previous_state=controller_state,
