@@ -21,6 +21,7 @@
 
 #include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
 namespace gcs {
@@ -85,9 +86,30 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   // Select a node to lease worker for the actor.
   std::shared_ptr<const rpc::GcsNodeInfo> node;
 
+  const auto &lease_spec = actor->GetLeaseSpecification();
+
+  // If the actor is hard-pinned to a specific node via a node-id label selector,
+  // forward the lease request to that node directly. Otherwise the request may be
+  // forwarded to an arbitrary node whose local resource view has not yet synced the
+  // pinned node's labels (node liveness and node labels sync via separate paths), so
+  // the hard node affinity is transiently treated as infeasible and the actor creation
+  // is cancelled with an ActorUnschedulableError. This is especially likely for
+  // num_cpus=0 actors (e.g. CompiledDAG.DAGDriverProxyActor), which carry no resource
+  // demand and would otherwise be forwarded to a random alive node.
+  if (auto hard_node_ids = GetHardNodeAffinityValues(lease_spec.GetLabelSelector());
+      hard_node_ids.has_value()) {
+    for (const auto &node_hex : *hard_node_ids) {
+      auto maybe_node = gcs_node_manager_.GetAliveNode(NodeID::FromHex(node_hex));
+      if (maybe_node.has_value()) {
+        return NodeID::FromBinary(maybe_node.value()->node_id());
+      }
+    }
+    // None of the pinned nodes are alive; fall through to the default logic so the
+    // normal scheduler surfaces the unschedulable error (e.g. a removed node).
+  }
+
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
-  const auto &lease_spec = actor->GetLeaseSpecification();
   if (!lease_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value()
