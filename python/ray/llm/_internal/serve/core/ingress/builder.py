@@ -90,8 +90,7 @@ def _build_openai_ingress_request_router(
     ``num_cpus=0`` lets the router schedule alongside the proxy on any node,
     including a resource-less head node. ``max_ongoing_requests`` is raised
     above the Serve default because the router sits on the ingress hot path and
-    must not throttle it. Replica count and placement are left to the
-    controller, so the builder pins no scaling option.
+    must not throttle it.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
