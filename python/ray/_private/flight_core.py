@@ -169,6 +169,14 @@ class ReceivedManifest:
         self.segments = []
 
 
+def _close_quietly(sock) -> None:
+    """Close a socket, ignoring errors (already-closed / broken pipe)."""
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
 def _recv_exact(conn, n: int) -> Optional[bytes]:
     """Read exactly `n` bytes from `conn`, or None if the peer closed early."""
     chunks = []
@@ -405,6 +413,13 @@ class FlightCore:
         self._tcp_sock = None
         self._tcp_addr: Optional[str] = None
         self._tcp_server_thread = None
+        # Consumer-side pool of persistent TCP connections, keyed by producer
+        # "host:port". Reusing a connection across fetches avoids a TCP
+        # handshake (and a producer-side thread spawn) per transfer. Each active
+        # fetch checks out one idle socket (or opens a new one) and checks it
+        # back in on success; a fetch never shares a socket concurrently.
+        self._tcp_client_pool: Dict[str, List[Any]] = {}
+        self._tcp_pool_lock = threading.Lock()
 
     # ------------------------------------------------------------ public API
 
@@ -557,38 +572,72 @@ class FlightCore:
         zero-copy (arrays view the received buffer, which the table keeps alive).
         The only payload copy is the kernel->buffer recv; there is no HTTP/2
         framing, flow-control, or protobuf work on the consumer worker.
+
+        The connection is drawn from a per-producer pool and returned on
+        success, so steady-state fetches skip the TCP handshake. A reused socket
+        that turns out to be stale is transparently retried once on a fresh one.
         """
         import pyarrow as pa
         import pyarrow.ipc as ipc
 
-        host, port = tcp_addr.rsplit(":", 1)
         key_bytes = key.encode("utf-8")
+        req = struct.pack("<I", len(key_bytes)) + key_bytes
 
+        last_err: Optional[OSError] = None
+        for _attempt in range(2):
+            sock, reused = self._tcp_checkout(tcp_addr)
+            try:
+                sock.sendall(req)
+                hdr = _recv_exact(sock, 8)
+                if hdr is None:
+                    raise OSError(f"short tcp reply for key {key}")
+                (recv_size,) = struct.unpack("<q", hdr)
+                if recv_size < 0:
+                    # Miss: the connection is still healthy, so keep it pooled.
+                    self._tcp_checkin(tcp_addr, sock)
+                    raise KeyError(f"object not found: {key}")
+
+                buf = bytearray(recv_size)
+                view = memoryview(buf)
+                got = 0
+                while got < recv_size:
+                    n = sock.recv_into(view[got:], recv_size - got)
+                    if n == 0:
+                        raise OSError(
+                            f"tcp stream truncated for key {key}: {got}/{recv_size}"
+                        )
+                    got += n
+                self._tcp_checkin(tcp_addr, sock)
+                return ipc.open_stream(pa.py_buffer(buf)).read_all()
+            except OSError as e:
+                # A broken socket must not go back in the pool.
+                _close_quietly(sock)
+                last_err = e
+                # Only a *reused* socket is worth retrying (the producer may
+                # have reaped an idle connection); a fresh one failing is real.
+                if reused:
+                    continue
+                raise
+        raise last_err
+
+    def _tcp_checkout(self, addr: str):
+        """Return (sock, reused): an idle pooled connection to `addr` if one is
+        available, else a freshly connected socket. `reused` distinguishes the
+        two so the caller can retry a stale pooled socket."""
+        with self._tcp_pool_lock:
+            pool = self._tcp_client_pool.get(addr)
+            if pool:
+                return pool.pop(), True
+        host, port = addr.rsplit(":", 1)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         sock.connect((host, int(port)))
-        try:
-            sock.sendall(struct.pack("<I", len(key_bytes)) + key_bytes)
-            hdr = _recv_exact(sock, 8)
-            if hdr is None:
-                raise OSError(f"short tcp reply for key {key}")
-            (recv_size,) = struct.unpack("<q", hdr)
-            if recv_size < 0:
-                raise KeyError(f"object not found: {key}")
+        return sock, False
 
-            buf = bytearray(recv_size)
-            view = memoryview(buf)
-            got = 0
-            while got < recv_size:
-                n = sock.recv_into(view[got:], recv_size - got)
-                if n == 0:
-                    raise OSError(
-                        f"tcp stream truncated for key {key}: {got}/{recv_size}"
-                    )
-                got += n
-            return ipc.open_stream(pa.py_buffer(buf)).read_all()
-        finally:
-            sock.close()
+    def _tcp_checkin(self, addr: str, sock) -> None:
+        """Return a healthy connection to the pool for the next fetch."""
+        with self._tcp_pool_lock:
+            self._tcp_client_pool.setdefault(addr, []).append(sock)
 
     def send_delete_rpc(self, flight_uri: str, key: str) -> None:
         """Native path helper: ask producer to drop a key."""
@@ -847,31 +896,37 @@ class FlightCore:
             ).start()
 
     def _handle_tcp_conn(self, conn) -> None:
-        """Producer-side handler: read a key, stream back its Arrow IPC bytes.
+        """Producer-side handler: serve fetch requests until the peer hangs up.
 
-        Wire format: request is key_len(4) + key; reply is size(8) followed by
-        that many IPC-stream bytes on a hit, or size=-1 with no payload on a
-        miss. The payload is sent straight from the scatter-list captured by
-        put() (sink._refs), so the producer never re-serializes the table, and
-        on Linux large chunks go out via MSG_ZEROCOPY (see _send_ipc_payload).
+        Wire format per request: request is key_len(4) + key; reply is size(8)
+        followed by that many IPC-stream bytes on a hit, or size=-1 with no
+        payload on a miss. The connection is kept open and looped so a pooled
+        client can issue many fetches over it (see fetch_via_tcp); the loop ends
+        when the peer closes (_recv_exact returns None). The payload is sent
+        straight from the scatter-list captured by put() (sink._refs), so the
+        producer never re-serializes the table, and large chunks go out via
+        MSG_ZEROCOPY (see _send_ipc_payload).
         """
         try:
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            hdr = _recv_exact(conn, 4)
-            if hdr is None:
-                return
-            (key_len,) = struct.unpack("<I", hdr)
-            key_bytes = _recv_exact(conn, key_len)
-            if key_bytes is None:
-                return
-            key = key_bytes.decode("utf-8")
-            with self._lock:
-                sink = self._sinks.get(key)
-            if sink is None:
-                conn.sendall(struct.pack("<q", -1))
-                return
-            conn.sendall(struct.pack("<q", sink.tell()))
-            _send_ipc_payload(conn, sink._refs)
+            while True:
+                hdr = _recv_exact(conn, 4)
+                if hdr is None:
+                    return  # peer closed the (pooled) connection
+                (key_len,) = struct.unpack("<I", hdr)
+                key_bytes = _recv_exact(conn, key_len)
+                if key_bytes is None:
+                    return
+                key = key_bytes.decode("utf-8")
+                with self._lock:
+                    sink = self._sinks.get(key)
+                if sink is None:
+                    # Miss: report it but keep the connection open for the next
+                    # request rather than tearing down the pooled socket.
+                    conn.sendall(struct.pack("<q", -1))
+                    continue
+                conn.sendall(struct.pack("<q", sink.tell()))
+                _send_ipc_payload(conn, sink._refs)
         except OSError:
             pass
         finally:
