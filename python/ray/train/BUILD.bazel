@@ -353,6 +353,17 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_coordinator_client",
+    size = "small",
+    srcs = ["tests/test_autoscaling_coordinator_client.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
