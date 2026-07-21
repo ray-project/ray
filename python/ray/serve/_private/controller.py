@@ -440,6 +440,15 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
+        if handle_metric_report.replica_health:
+            for _rid, (
+                _checked_at,
+                _healthy,
+                _failures,
+            ) in handle_metric_report.replica_health.items():
+                self._replica_health_push_registry.record(
+                    _rid, _checked_at, _healthy, _failures
+                )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )

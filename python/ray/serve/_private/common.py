@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -908,6 +908,10 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
+    # Replica self-health piggyback (None = sender does not carry health).
+    healthy: Optional[bool] = None
+    health_checked_at: Optional[float] = None
+    health_consecutive_failures: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -1020,6 +1024,9 @@ class HandleMetricReport:
         str, Dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
+    # Latest response-carried replica self-health, keyed by replica unique id:
+    # (checked_at, healthy, consecutive_failures).
+    replica_health: Optional[Dict[str, Tuple[float, bool, Optional[int]]]] = None
 
     @property
     def total_requests(self) -> float:

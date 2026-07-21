@@ -42,6 +42,22 @@ _global_client: ServeControllerClient = None
 # handle is unusable and must not be reused. See #64647.
 _global_client_job_id: Optional[str] = None
 
+# Set inside replica processes once the self-health task runs: returns
+# (replica_unique_id, (checked_at, healthy, consecutive_failures)) or None.
+# Routers living in the same process fold it into their handle metric
+# reports, so a handle-owning replica's health rides messages that already
+# flow -- no standalone RPC.
+_self_health_report_provider: Optional[Callable] = None
+
+
+def _set_self_health_report_provider(provider: Optional[Callable]) -> None:
+    global _self_health_report_provider
+    _self_health_report_provider = provider
+
+
+def _get_self_health_report_provider() -> Optional[Callable]:
+    return _self_health_report_provider
+
 
 @DeveloperAPI
 @dataclass
