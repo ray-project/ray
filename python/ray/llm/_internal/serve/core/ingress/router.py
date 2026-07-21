@@ -114,11 +114,23 @@ class LLMRouter:
         llm_config: Optional["LLMConfig"] = None,
     ):
         self._handle: DeploymentHandle = server
-        self._handle._init()
         self._tokenizer = None
+        # Holds the KVTokenTracker (KV-aware deployments only) so the
+        # engine-facing on_lifecycle_events method can book load into it.
+        self._kv_token_tracker = None
         # A non-None llm_config signals pre-routing tokenization, which the
         # builder binds only for a KV-aware request router.
         if llm_config is not None:
+            # Build the tracker before _handle._init() below, which initializes
+            # the KVAwareRouter that looks it up. server.deployment_id is the
+            # tracked LLMServer deployment.
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                build_kv_token_tracker,
+            )
+
+            self._kv_token_tracker = build_kv_token_tracker(
+                llm_config, server.deployment_id
+            )
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
@@ -126,6 +138,7 @@ class LLMRouter:
             )
 
             self._tokenizer = await asyncio.to_thread(tokenizer.Tokenizer, llm_config)
+        self._handle._init()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -184,6 +197,15 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
+    async def on_lifecycle_events(self, batch):
+        """Engine-facing intake for request lifecycle events.
+
+        Engine replicas RPC this LLMRouter handle method to book request
+        load; it applies the batch to the KVTokenTracker on this ingress
+        replica's event loop.
+        """
+        return await self._kv_token_tracker.on_lifecycle_events(batch)
+
     async def _pick_replica(
         self,
         handle: DeploymentHandle,
@@ -206,7 +228,7 @@ class LLMRouter:
         KV-aware request router can score replicas on prompt-prefix overlap.
 
         ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
-        actor RPC and the rejection-retry loop: the real request goes out via
+        RPC and the rejection-retry loop: the real request goes out via
         HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
         the extra RPC + retry introduced burstiness compared to the prior
         local round-robin implementation.
