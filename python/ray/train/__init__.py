@@ -59,6 +59,7 @@ if is_v2_enabled():
     )
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
+        annotate,
         get_all_reported_checkpoints,
         get_checkpoint,
         get_context,
@@ -122,9 +123,12 @@ if is_v2_enabled():
             "ValidationConfig",
             "ValidationFn",
             "ValidationTaskConfig",
+            "annotate",
             "get_all_reported_checkpoints",
         ]
     )
+
+    annotate.__module__ = "ray.train"
 
     CheckpointUploadMode.__module__ = "ray.train"
     CheckpointConsistencyMode.__module__ = "ray.train"

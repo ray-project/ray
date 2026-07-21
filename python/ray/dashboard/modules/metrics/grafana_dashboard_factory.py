@@ -8,6 +8,7 @@ from typing import List, Tuple
 
 import ray
 from ray.dashboard.modules.metrics.dashboards.common import (
+    Annotation,
     DashboardConfig,
     Panel,
     PanelTemplate,
@@ -174,6 +175,31 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(train_dashboard_config)
 
 
+def generate_annotation(annotation: Annotation) -> dict:
+    """Expand an ``Annotation`` into the full Grafana annotation JSON."""
+    datasource = {
+        "type": annotation.datasource_type,
+        "uid": annotation.datasource_uid,
+    }
+
+    return {
+        "datasource": datasource,
+        "enable": annotation.enable,
+        "hide": annotation.hide,
+        "iconColor": annotation.icon_color,
+        "name": annotation.name,
+        "expr": annotation.expr,
+        "queryType": annotation.query_type,
+        "tagKeys": annotation.tag_keys,
+        "target": {
+            "datasource": dict(datasource),
+            "expr": annotation.expr,
+            "queryType": annotation.query_type,
+            "refId": annotation.ref_id,
+        },
+    }
+
+
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     """Render the Grafana dashboard JSON for the given config.
 
@@ -192,6 +218,16 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
         open(os.path.join(os.path.dirname(__file__), "dashboards", base_file_name))
     )
     base_json["panels"] = panels
+
+    # Append config-defined annotations to the base JSON's built-in annotation list.
+    if dashboard_config.annotations:
+        annotations = base_json.setdefault("annotations", {})
+        annotations_list = annotations.setdefault("list", [])
+        annotations_list.extend(
+            generate_annotation(annotation)
+            for annotation in dashboard_config.annotations
+        )
+
     # Update variables to use global_filters
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])

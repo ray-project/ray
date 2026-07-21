@@ -595,6 +595,39 @@ class Row:
 
 @DeveloperAPI
 @dataclass
+class Annotation:
+    """Defines a Grafana dashboard annotation query.
+
+    Annotations overlay event markers onto every panel's time axis. Each one runs
+    a query against a datasource and renders a marker per matching event.
+
+    Attributes:
+        name: Display name shown in the dashboard's annotation toggle.
+        expr: The datasource query used to fetch annotation events.
+        icon_color: rgba/hex color for the annotation markers.
+        ref_id: Grafana refId for the annotation's target query.
+        tag_keys: Comma-separated label keys surfaced as annotation tags.
+        datasource_type: Grafana datasource type (e.g. "loki", "prometheus").
+        datasource_uid: Datasource uid, typically a ``${var}`` template reference.
+        query_type: Datasource query type (e.g. "range").
+        enable: Whether the annotation is enabled by default.
+        hide: Whether the annotation toggle is hidden by default.
+    """
+
+    name: str
+    expr: str
+    icon_color: str
+    ref_id: str
+    tag_keys: str = ""
+    datasource_type: str = "loki"
+    datasource_uid: str = "${loki_datasource}"
+    query_type: str = "range"
+    enable: bool = True
+    hide: bool = False
+
+
+@DeveloperAPI
+@dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
     # to check for customization
@@ -609,6 +642,8 @@ class DashboardConfig:
     # If both are specified, panels will be rendered before rows.
     panels: List[Panel] = field(default_factory=list)
     rows: List[Row] = field(default_factory=list)
+    # Dashboard annotations, appended to the base JSON's built-in annotation list.
+    annotations: List[Annotation] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.panels and not self.rows:
