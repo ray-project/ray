@@ -46,8 +46,8 @@ class TestRemoteNumReturns:
                 def f():
                     return 1
 
-    def test_num_returns_dynamic_warns_and_succeeds(self):
-        """Test that deprecated num_returns='dynamic' warns but still works."""
+    def test_num_returns_dynamic_with_generator_succeeds(self):
+        """Test that num_returns='dynamic' with generator function succeeds."""
         with pytest.warns(RayDeprecationWarning, match=_DYNAMIC_WARNING):
 
             @ray.remote(num_returns="dynamic")
@@ -178,8 +178,8 @@ class TestMethodNumReturns:
                     def method(self):
                         return 1
 
-    def test_num_returns_dynamic_warns_and_succeeds(self):
-        """Test that deprecated num_returns='dynamic' warns but still works."""
+    def test_num_returns_dynamic_with_generator_succeeds(self):
+        """Test that num_returns='dynamic' with generator method succeeds."""
         with pytest.warns(RayDeprecationWarning, match=_DYNAMIC_WARNING):
 
             @ray.remote
