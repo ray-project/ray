@@ -376,7 +376,17 @@ class IcebergDatasink(
 
         # Validate DYNAMIC_OVERWRITE constraints before any worker writes data
         if self._mode == SaveMode.DYNAMIC_OVERWRITE:
+            from pyiceberg.table import Transaction
             from pyiceberg.transforms import IdentityTransform
+
+            # replace_partitions only exists in the Pinterest PyIceberg build.
+            # Fail fast with a clear message instead of an AttributeError deep
+            # in the commit path on stock pyiceberg.
+            if not hasattr(Transaction, "replace_partitions"):
+                raise RuntimeError(
+                    "SaveMode.DYNAMIC_OVERWRITE requires a Pinterest PyIceberg "
+                    "build containing Transaction.replace_partitions"
+                )
 
             spec = self._table.metadata.spec()
             if spec.is_unpartitioned():
