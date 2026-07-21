@@ -201,8 +201,12 @@ int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
     // runtime envs.
     return 0;
   }
+  // Fold the full 64-bit hash into a non-negative 31-bit key. A plain
+  // static_cast<int>(hash) drops the upper 32 bits and can be negative, raising
+  // silent worker-pool key collisions across different runtime envs (#64836).
   size_t hash = std::hash<std::string>()(serialized_runtime_env);
-  return static_cast<int>(hash);
+  hash ^= (hash >> 32);
+  return static_cast<int>(hash & 0x7fffffffULL);
 }
 
 }  // namespace ray
