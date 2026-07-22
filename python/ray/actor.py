@@ -706,7 +706,7 @@ def method(*args: Any, **kwargs: Any):
                 method
             ) or inspect.isasyncgenfunction(method)
             ray_option_utils.validate_num_returns(
-                is_generator_callable, kwargs["num_returns"]
+                is_generator_callable, kwargs["num_returns"], stacklevel=3
             )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -971,7 +971,7 @@ class ActorMethod:
 
         if "num_returns" in options:
             ray_option_utils.validate_num_returns(
-                self._is_generator, options["num_returns"]
+                self._is_generator, options["num_returns"], stacklevel=3
             )
 
         tensor_transport = options.get("tensor_transport", None)
