@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 
 import pytest
@@ -104,6 +105,22 @@ def test_client_error_drops_batch_and_raises():
     # Rejected batch is dropped, not retried.
     publisher.publish(_make_event("b"))
     assert _sent_event_names(session.requests[1]) == ["b"]
+
+
+def test_buffer_overflow_drops_oldest_and_warns(monkeypatch, caplog):
+    from ray._common.observability import dashboard_head_event_publisher as mod
+
+    monkeypatch.setattr(mod, "_MAX_BUFFERED_EVENTS", 2)
+    session = _FakeSession([requests.ConnectionError("refused")] * 3)
+    publisher = _make_publisher(session)
+    publisher.publish(_make_event("a"))
+    publisher.publish(_make_event("b"))
+    with caplog.at_level(logging.WARNING):
+        publisher.publish(_make_event("c"))
+    assert "dropping the 1 oldest" in caplog.text
+    # The next successful publish sends only the retained (newest) events.
+    publisher.publish_batch([])
+    assert _sent_event_names(session.requests[-1]) == ["b", "c"]
 
 
 def test_event_id_stable_across_retries():

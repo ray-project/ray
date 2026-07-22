@@ -11,6 +11,7 @@ from ray.includes.event_recorder cimport (
     SerializeEventsToRayEventsDataJson,
 )
 from ray.includes.common cimport move
+from ray.includes.unique_ids cimport CUniqueID
 from libc.stdint cimport int64_t
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
@@ -82,7 +83,7 @@ cdef class RayEvent:
         self._nested_event_field_number = nested_event_field_number
         # Assign the id at construction so re-serialization (e.g. publish
         # retries) keeps a stable id that consumers can dedupe on.
-        self._event_id = event_id if event_id else os.urandom(28)
+        self._event_id = event_id if event_id else CUniqueID.FromRandom().Binary()
         self._timestamp_ns = timestamp_ns
 
     cdef unique_ptr[CRayEventInterface] to_cpp_event(self):
