@@ -4883,16 +4883,88 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  rpc::FreeLocalObjectsRequest request;
-  request.add_object_ids(object_id.Binary());
-
-  for (const auto &node_id : locations) {
-    auto client = GetRayletRpcClient(node_id);
-    if (client == nullptr) {
-      continue;
+  if (!RayConfig::instance().batch_free_local_objects()) {
+    // Legacy: one FreeLocalObjects RPC per object per location.
+    rpc::FreeLocalObjectsRequest request;
+    request.add_object_ids(object_id.Binary());
+    for (const auto &node_id : locations) {
+      auto client = GetRayletRpcClient(node_id);
+      if (client == nullptr) {
+        continue;
+      }
+      client->FreeLocalObjects(request);
     }
-    client->FreeLocalObjects(request);
+    return;
   }
+
+  // Batched path: coalesce per node. Queue the id and, if this node has no RPC in
+  // flight, kick a send; otherwise it rides the batch the in-flight reply triggers.
+  for (const auto &node_id : locations) {
+    bool idle = false;
+    {
+      absl::MutexLock lock(&free_batch_mu_);
+      free_pending_[node_id].push_back(object_id);
+      idle = !free_in_flight_.contains(node_id);
+    }
+    if (idle) {
+      SendFreeLocalObjectsBatchIfIdle(node_id);
+    }
+  }
+}
+
+void CoreWorker::SendFreeLocalObjectsBatchIfIdle(const NodeID &node_id) {
+  rpc::FreeLocalObjectsRequest request;
+  {
+    absl::MutexLock lock(&free_batch_mu_);
+    if (free_in_flight_.contains(node_id)) {
+      // A batch is already in flight; its reply will drain what accumulated.
+      return;
+    }
+    auto it = free_pending_.find(node_id);
+    if (it == free_pending_.end() || it->second.empty()) {
+      if (it != free_pending_.end()) {
+        free_pending_.erase(it);
+      }
+      return;
+    }
+    auto &queue = it->second;
+    const int64_t max_batch = RayConfig::instance().max_free_local_objects_batch_size();
+    const size_t cap = max_batch <= 0 ? 1 : static_cast<size_t>(max_batch);
+    const size_t n = std::min(cap, queue.size());
+    for (size_t i = 0; i < n; i++) {
+      request.add_object_ids(queue.front().Binary());
+      queue.pop_front();
+    }
+    if (queue.empty()) {
+      free_pending_.erase(it);
+    }
+    free_in_flight_.insert(node_id);
+  }
+
+  auto client = GetRayletRpcClient(node_id);
+  if (client == nullptr) {
+    // Node is gone: clear in-flight and drop its queue so it cannot wedge.
+    absl::MutexLock lock(&free_batch_mu_);
+    free_in_flight_.erase(node_id);
+    free_pending_.erase(node_id);
+    return;
+  }
+  client->FreeLocalObjects(
+      request,
+      [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        {
+          absl::MutexLock lock(&free_batch_mu_);
+          free_in_flight_.erase(node_id);
+          if (!status.ok()) {
+            // Raylet failure: drop this node's queue so a flaky raylet cannot
+            // wedge it (the objects will be re-freed on a later deletion wave).
+            free_pending_.erase(node_id);
+            return;
+          }
+        }
+        // Self-clock: drain whatever accumulated while this batch was in flight.
+        SendFreeLocalObjectsBatchIfIdle(node_id);
+      });
 }
 
 }  // namespace ray::core

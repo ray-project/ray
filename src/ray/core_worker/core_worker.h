@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
@@ -1563,6 +1564,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
+  /// If no FreeLocalObjects RPC is in flight for \p node_id, send one carrying up
+  /// to max_free_local_objects_batch_size queued ids; the reply re-invokes this to
+  /// drain whatever accumulated meanwhile. A null client or failed reply drops the
+  /// node's queue so a dead/flaky raylet cannot wedge it. Used only on the batched
+  /// FreeObjectOnNodesAsync path.
+  void SendFreeLocalObjectsBatchIfIdle(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 
@@ -2033,6 +2041,22 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// We have to track this separately because we cannot access the thread-local worker
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
+
+  /// Coalesces owner-driven FreeLocalObjects RPCs per node, used only when
+  /// RayConfig::batch_free_local_objects() is set. At most one FreeLocalObjects
+  /// RPC is in flight per node; ids that arrive while one is in flight ride the
+  /// next batch, sent when the in-flight reply arrives (self-clocked -- no timer,
+  /// no window). Modeled on
+  /// OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded, but
+  /// guarded by its own mutex because Add (ReferenceCounter's free callback, on an
+  /// arbitrary thread) and the reply completion (io_service_) can race.
+  /// See FreeObjectOnNodesAsync / SendFreeLocalObjectsBatchIfIdle.
+  absl::Mutex free_batch_mu_;
+  /// node id -> FIFO queue of object ids waiting to be freed on that node.
+  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
+      ABSL_GUARDED_BY(free_batch_mu_);
+  /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
+  absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
 
   /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
   /// actors this will contain at most one task ID.
