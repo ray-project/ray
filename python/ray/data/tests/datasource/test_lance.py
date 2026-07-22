@@ -26,6 +26,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_read_lance_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    path = os.path.join(str(tmp_path), "trusted.lance")
+    lance.write_dataset(table, path)
+
+    rows = ray.data.read_lance(path).take_all()
+
+    assert rows == [{"col": {"key": "value"}}]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -384,24 +402,6 @@ def test_write_fragment_only_materializes_stream_when_retrying(
             "max_backoff_s": 0,
         },
     )
-
-
-def test_read_lance_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, monkeypatch
-):
-    # Set the environment variable on both the driver and the worker processes.
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
-    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
-
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
-    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
-    path = os.path.join(str(tmp_path), "trusted.lance")
-    lance.write_dataset(table, path)
-
-    rows = ray.data.read_lance(path).take_all()
-
-    assert rows == [{"col": {"key": "value"}}]
 
 
 def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
