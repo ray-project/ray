@@ -512,7 +512,12 @@ def test_delta_read_column_mapping_rejects_id_mode(tmp_path):
                 "name": "col1",
                 "type": "long",
                 "nullable": True,
-                "metadata": {"delta.columnMapping.id": 1},
+                "metadata": {
+                    "delta.columnMapping.id": 1,
+                    # delta-rs validates physical names before Ray can reject
+                    # unsupported id mapping.
+                    "delta.columnMapping.physicalName": "col1",
+                },
             }
         ],
     }
@@ -538,6 +543,42 @@ def test_delta_read_non_mapped_table_still_works(tmp_path):
     ds = ray.data.read_delta(path)
     assert ds.schema().names == ["a", "b"]
     assert rows_same(ds.to_pandas(), df)
+
+
+_DATABRICKS_INTEGRATION_ENV_VARS = (
+    "DATABRICKS_HOST",
+    "DATABRICKS_TOKEN",
+    "RAY_DATABRICKS_TEST_TABLE",
+    "RAY_DATABRICKS_TEST_COLUMNS",
+)
+
+
+@pytest.mark.skipif(
+    any(not os.getenv(name) for name in _DATABRICKS_INTEGRATION_ENV_VARS),
+    reason="requires Databricks credentials and a name-mapped Unity Catalog table",
+)
+def test_delta_read_name_mapped_unity_catalog_table():
+    """Read a real name-mapped Delta table through Unity Catalog.
+
+    This integration test is opt-in. Set ``DATABRICKS_HOST``,
+    ``DATABRICKS_TOKEN``, ``RAY_DATABRICKS_TEST_TABLE`` (a three-part Unity
+    Catalog name), and ``RAY_DATABRICKS_TEST_COLUMNS`` (comma-separated logical
+    column names). Set ``AWS_REGION`` too for an AWS-backed table.
+    """
+    expected_columns = [
+        column.strip()
+        for column in os.environ["RAY_DATABRICKS_TEST_COLUMNS"].split(",")
+    ]
+    catalog = ray.data.DatabricksUnityCatalog(
+        url=os.environ["DATABRICKS_HOST"],
+        token=os.environ["DATABRICKS_TOKEN"],
+        region=os.getenv("AWS_REGION"),
+    )
+
+    ds = ray.data.read_delta(os.environ["RAY_DATABRICKS_TEST_TABLE"], catalog=catalog)
+
+    assert ds.schema().names == expected_columns
+    assert ds.take(1)
 
 
 if __name__ == "__main__":
