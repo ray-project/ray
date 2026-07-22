@@ -798,6 +798,9 @@ class RequestMetadata:
     # Session ID.
     session_id: str = ""
 
+    # Pin routing to this replica (full id string) when set.
+    replica_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 

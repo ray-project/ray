@@ -127,6 +127,7 @@ def get_request_metadata(init_options, handle_options):
         app_name=_request_context.app_name,
         multiplexed_model_id=handle_options.multiplexed_model_id,
         session_id=handle_options.session_id,
+        replica_id=handle_options.replica_id,
         is_streaming=handle_options.stream,
         _request_protocol=request_protocol,
         grpc_context=_request_context.grpc_context,

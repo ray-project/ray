@@ -871,6 +871,44 @@ class TestAssignRequest:
             assert not replica_result._is_generator_object
             assert replica_result._replica_id == r1_id
 
+    async def test_replica_id_pin_dispatches_to_target(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        chosen_id = ReplicaID(unique_id="chosen", deployment_id=d_id)
+        pinned_id = ReplicaID(unique_id="pinned", deployment_id=d_id)
+        # choose_replica would return `chosen`; both are in curr_replicas.
+        fake_request_router.set_replica_to_return(FakeReplica(chosen_id))
+        fake_request_router.set_replica_to_return_on_retry(FakeReplica(pinned_id))
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            replica_id=pinned_id.to_full_id_str(),
+        )
+        replica_result = await router.assign_request(request_metadata)
+        assert replica_result._replica_id == pinned_id
+
+    async def test_replica_id_pin_missing_raises(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        fake_request_router.set_replica_to_return(
+            FakeReplica(ReplicaID(unique_id="present", deployment_id=d_id))
+        )
+        absent_id = ReplicaID(unique_id="absent", deployment_id=d_id)
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            replica_id=absent_id.to_full_id_str(),
+        )
+        with pytest.raises(DeploymentUnavailableError):
+            await router.assign_request(request_metadata)
+
     @pytest.mark.parametrize(
         "setup_router",
         [

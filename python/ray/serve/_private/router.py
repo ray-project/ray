@@ -1012,6 +1012,17 @@ class AsyncioRouter:
         wrapped.__cause__ = e
         return wrapped
 
+    def _resolve_pinned_replica(self, replica_id: str) -> Optional[RunningReplica]:
+        """Resolve a ``replica_id`` pin to its replica, bypassing the router."""
+        if not replica_id:
+            return None
+        replica = self.request_router.curr_replicas.get(
+            ReplicaID.from_full_id_str(replica_id)
+        )
+        if replica is None:
+            raise DeploymentUnavailableError(self.deployment_id)
+        return replica
+
     async def _route_and_send_request_once(
         self,
         pr: PendingRequest,
@@ -1030,8 +1041,13 @@ class AsyncioRouter:
 
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-                replica = await self.request_router._choose_replica_for_request(
-                    pr, is_retry=is_retry
+                pinned_replica = self._resolve_pinned_replica(pr.metadata.replica_id)
+                replica = (
+                    pinned_replica
+                    if pinned_replica is not None
+                    else await self.request_router._choose_replica_for_request(
+                        pr, is_retry=is_retry
+                    )
                 )
 
                 # If the queue len cache is disabled or we're sending a request to Java,
@@ -1040,6 +1056,7 @@ class AsyncioRouter:
                 with_rejection = (
                     self._enable_strict_max_ongoing_requests
                     and not replica.is_cross_language
+                    and pinned_replica is None
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
                 # Proactively update the queue length cache.

@@ -295,6 +295,7 @@ class _DeploymentHandleBase(Generic[T]):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        replica_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1090,6 +1091,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        replica_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1103,6 +1105,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             method_name: The method name to call on the deployment.
             multiplexed_model_id: The model ID to use for multiplexed model requests.
             session_id: Session identifier used for honoring session stickiness.
+            replica_id: Pin the request to this replica (full id string),
+                bypassing the request router. Raises
+                ``DeploymentUnavailableError`` if the replica is not running.
             stream: Whether to use streaming for the request.
             use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
@@ -1142,6 +1147,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             session_id=session_id,
+            replica_id=replica_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
             _by_reference=_by_reference,
