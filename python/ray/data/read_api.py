@@ -2918,10 +2918,10 @@ def read_lerobot(
             requesting a temporal window per frame. For each frame, the listed
             feature is returned stacked over the offsets -- a new leading time
             dimension (e.g. a camera frame becomes ``(T, H, W, C)``, an ``action``
-            vector becomes ``(T, action_dim)``) -- plus a boolean ``{key}_is_pad``
+            vector becomes ``(T, action_dim)``) and a boolean ``{key}_is_pad``
             column of shape ``(T,)``. Offsets are converted to frame steps via the
             dataset ``fps`` (each must align to the frame grid, i.e. be a multiple
-            of ``1 / fps``) and **clamped to the anchor frame's episode**: an
+            of ``1 / fps``) and clamped to the anchor frame's episode: an
             offset falling before the episode's first frame or after its last
             returns the nearest in-episode frame and sets ``is_pad`` ``True`` for
             that slot. Features not listed keep their single-frame output. ``None``
@@ -2930,13 +2930,11 @@ def read_lerobot(
             .. note::
                When ``delta_timestamps`` is set, reads are **episode-aligned**:
                each read task always covers whole episodes, so
-               ``override_num_blocks`` cannot split an episode across tasks and
-               parallelism is capped at the number of episodes (with
-               ``read_granularity="episode"``) or file groups (with ``"file"``).
-               A dataset that is a single very long episode therefore reads on one
-               task. This keeps temporal-window gathering local and correct;
-               splitting within an episode (reading a neighbour "halo") may be
-               added later.
+               ``override_num_blocks`` cannot split an episode across tasks. It
+               must not exceed the number of episodes (with
+               ``read_granularity="episode"``) or file groups (with ``"file"``) --
+               a larger value raises ``ValueError``. Leaving it unset reads one
+               task per episode / file group.
         delta_tolerance_s: Frame-grid tolerance in seconds for ``delta_timestamps``
             offsets -- each offset must be a multiple of ``1 / fps`` within this
             tolerance. Defaults to ``1e-4`` (matching lerobot's ``LeRobotDataset``).

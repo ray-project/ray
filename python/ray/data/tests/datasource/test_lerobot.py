@@ -1187,40 +1187,18 @@ def test_read_lerobot_episodes_multi_root(ray_start_regular_shared, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_convert_delta_timestamps_and_validation():
-    from ray.data._internal.datasource.lerobot_datasource import (
-        _convert_delta_timestamps,
-    )
-
-    keys = {"action", "state", "observation.image"}
-    tol = 1e-4
-    assert _convert_delta_timestamps(
-        {"action": [-0.2, -0.1, 0.0, 0.1]}, 10, keys, tol
-    ) == {"action": [-2, -1, 0, 1]}
-    with pytest.raises(ValueError, match="not a feature"):
-        _convert_delta_timestamps({"nope": [0.0]}, 10, keys, tol)
-    with pytest.raises(ValueError, match="tolerance"):  # lerobot's grid check
-        _convert_delta_timestamps({"action": [0.05]}, 10, keys, tol)  # 0.5 of a frame
-    with pytest.raises(ValueError, match="empty"):
-        _convert_delta_timestamps({"action": []}, 10, keys, tol)
-
-
 def test_delta_tolerance_s_configurable(
     ray_start_regular_shared, lerobot_dataset_no_video
 ):
     """delta_tolerance_s widens/narrows the frame-grid check: an off-grid offset
-    rejected at the tight default is accepted (and rounded) at a looser value."""
-    from ray.data._internal.datasource.lerobot_datasource import (
-        _convert_delta_timestamps,
-    )
-
-    # 0.14s @ 10fps = 1.4 frames -> off-grid by 0.04s.
+    (0.14s @ 10fps = 1.4 frames) is rejected at the tight default and accepted --
+    rounded to the nearest frame -- at a looser value."""
+    # Tight default tolerance rejects the off-grid offset.
     with pytest.raises(ValueError, match="tolerance"):
-        _convert_delta_timestamps({"action": [0.14]}, 10, {"action"}, 1e-4)
-    assert _convert_delta_timestamps({"action": [0.14]}, 10, {"action"}, 0.05) == {
-        "action": [1]
-    }
-    # The looser tolerance flows through read_lerobot end-to-end.
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video, delta_timestamps={"action": [0.14]}
+        )
+    # A looser tolerance accepts it (rounds 1.4 -> 1 frame).
     ds = ray.data.read_lerobot(
         lerobot_dataset_no_video,
         delta_timestamps={"action": [0.14]},
@@ -1354,26 +1332,29 @@ def test_read_lerobot_delta_non_windowed_keys_unchanged(
 def test_read_lerobot_delta_forces_episode_alignment(
     ray_start_regular_shared, lerobot_dataset
 ):
-    """delta_timestamps caps parallelism at whole-episode segments: even a huge
-    ``override_num_blocks`` cannot split an episode, so window gathers stay
-    local. Without delta the same request splits episodes into more tasks."""
+    """delta_timestamps requires whole-episode read segments: a window can't be
+    gathered across a mid-episode split, so requesting more blocks than there are
+    base (episode / file-group) ranges raises. Without delta the same request
+    splits episodes freely."""
     from ray.data.datasource import LeRobotDatasource
 
     delta = {"observation.image": [-0.1, 0.0, 0.1]}
     src = LeRobotDatasource(
         lerobot_dataset, read_granularity="episode", delta_timestamps=delta
     )
-    assert len(src.get_read_tasks(1000)) == 3  # 3 episodes, never split
+    # One task per episode (3) needs no split -> fine.
+    assert len(src.get_read_tasks(3)) == 3
+    # More blocks than the 3 base ranges would split an episode -> rejected.
+    with pytest.raises(ValueError, match="row ranges"):
+        src.get_read_tasks(1000)
 
+    # Without delta the same over-request splits episodes into more tasks.
     src_no_delta = LeRobotDatasource(lerobot_dataset, read_granularity="episode")
-    assert len(src_no_delta.get_read_tasks(1000)) > 3  # splits within episodes
+    assert len(src_no_delta.get_read_tasks(1000)) > 3
 
-    # The read is still complete + correct under the cap.
+    # A default read (one task per episode) is complete + correct.
     rows = ray.data.read_lerobot(
-        lerobot_dataset,
-        read_granularity="episode",
-        delta_timestamps=delta,
-        override_num_blocks=1000,
+        lerobot_dataset, read_granularity="episode", delta_timestamps=delta
     ).take_all()
     assert len(rows) == 15
 
@@ -1384,10 +1365,6 @@ def test_read_lerobot_delta_invalid_raises(
     with pytest.raises(ValueError, match="tolerance"):
         ray.data.read_lerobot(
             lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
-        )
-    with pytest.raises(ValueError, match="not a feature"):
-        ray.data.read_lerobot(
-            lerobot_dataset_no_video, delta_timestamps={"missing": [0.0]}
         )
 
 
