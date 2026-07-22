@@ -1015,6 +1015,20 @@ py_test(
 )
 
 py_test(
+    name = "test_placement_group_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_placement_group_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],
