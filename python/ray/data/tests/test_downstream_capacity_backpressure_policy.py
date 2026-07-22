@@ -288,7 +288,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         queue_ratio = self._set_queue_ratio(
             op, op_state, rm, queue_size=1000, downstream_capacity=100
         )
-        assert queue_ratio > context.downstream_capacity_backpressure_ratio
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -320,7 +320,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         queue_ratio = self._set_queue_ratio(
             op, op_state, rm, queue_size=1000, downstream_capacity=100
         )
-        assert queue_ratio > context.downstream_capacity_backpressure_ratio
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
