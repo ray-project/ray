@@ -119,7 +119,12 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        # Disable spilling check since spilling is expected in this test.
+          # In general, Ray Data shouldn't spill on stable fixed-size clusters, but
+          # we've observed occasional and negligible O(~10 GiB) spills in weekly runs.
+          # The spilling is likely due to unbalanced object distribution.
+          #
+          # To avoid creating low-signal failures, we've disabled the spill check on
+          # this test.
         - RAYTEST_FAIL_ON_SPILLING=0
   run:
     timeout: 3600
