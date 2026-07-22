@@ -375,6 +375,32 @@ llm_config = LLMConfig(
 )
 ```
 
+### Azure Blob streaming with RunAI Streamer
+
+RunAI Streamer reads Azure Blob Storage natively through the `az://` scheme, streaming weights into GPU memory without staging them on disk first. This needs a `runai-model-streamer` and vLLM version that support `az://`, so confirm the versions bundled in your image.
+
+Set `model_source` to an `az://<container>/<model>` URI and `load_format` to `runai_streamer`. The `AZURE_STORAGE_ACCOUNT_NAME` environment variable tells the streamer which storage account to read from. On AKS, bind the pod to a workload identity that holds the **Storage Blob Data Reader** role so the streamer authenticates with a Microsoft Entra ID token instead of a key.
+
+```python
+from ray.serve.llm import LLMConfig
+
+llm_config = LLMConfig(
+    model_loading_config={
+        "model_id": "phi-4",
+        "model_source": "az://models/phi-4",
+    },
+    engine_kwargs={
+        "tensor_parallel_size": 1,
+        "load_format": "runai_streamer",
+    },
+    runtime_env={"env_vars": {"AZURE_STORAGE_ACCOUNT_NAME": "mystorageacct"}},
+)
+```
+
+Unlike the `abfss://` and `azure://` bucket URIs, which download the model to disk before loading, the `az://` scheme streams directly from Blob into GPU memory.
+
+For an end-to-end AKS walkthrough that provisions the cluster, workload identity, and Blob storage, and benchmarks streaming against download-then-load, see [Stream models from Azure Blob Storage into vLLM with the RunAI Model Streamer](https://blog.aks.azure.com/2026/07/13/runai-streamer-vllm).
+
 ## Additional Optimizations
 
 ### Torch Compile Cache
