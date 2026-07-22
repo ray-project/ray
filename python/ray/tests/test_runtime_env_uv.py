@@ -89,10 +89,13 @@ def test_uv_with_version_and_check(shutdown_only):
         runtime_env={"uv": {"packages": ["requests==2.32.3"], "uv_version": "==0.4.0"}}
     )
     def f():
-        import pkg_resources
+        # Not pkg_resources: virtualenv >= 21 no longer seeds setuptools into
+        # the venvs Ray creates, and setuptools >= 83 removed pkg_resources.
+        import importlib.metadata
+
         import requests
 
-        assert pkg_resources.get_distribution("uv").version == "0.4.0"
+        assert importlib.metadata.version("uv") == "0.4.0"
         assert requests.__version__ == "2.32.3"
 
     ray.get(f.remote())

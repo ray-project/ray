@@ -1,6 +1,7 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -28,7 +29,12 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data._internal.datasource_v2.readers.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.util import MiB
+from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -135,7 +141,7 @@ def _estimate_batch_size_from_metadata(
 
 
 @DeveloperAPI
-class ParquetFileReader(FileReader):
+class ParquetFileReader(FileReader, SupportsMetadata):
     """Parquet-specific file reader with adaptive batch sizing.
 
     Extends :class:`FileReader` with:
@@ -148,6 +154,12 @@ class ParquetFileReader(FileReader):
 
     For non-Parquet formats, use :class:`FileReader` directly.
     """
+
+    # Number of files whose footers a single count task reads. Footer reads are
+    # small and network-bound, so batch several per task to amortize overhead.
+    _COUNT_ROWS_BATCH_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_COUNT_ROWS_BATCH_SIZE", 16
+    )
 
     def __init__(
         self,
@@ -457,7 +469,7 @@ class ParquetFileReader(FileReader):
         for batch in pf.iter_batches(
             batch_size=fallback_batch_size,
             columns=read_columns,
-            use_threads=False,
+            use_threads=True,
             row_groups=row_groups,
         ):
             table = pa.Table.from_batches([batch])
@@ -514,3 +526,52 @@ class ParquetFileReader(FileReader):
             "fragment_readahead": 1,
         }
         return kwargs
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
+
+        Reads only the Parquet footer (file metadata) for each path -- no data
+        columns -- so ``PushdownCountFiles`` can answer ``count()`` cheaply.
+        Footers are fetched concurrently since each read is network-bound.
+        """
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import call_with_retry
+        from ray.data.context import DataContext
+
+        filesystem = self._filesystem or LocalFileSystem()
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _num_rows(path: str) -> int:
+            # Getting the footer requires network calls, so it may fail with
+            # transient errors; retry them.
+            metadata = call_with_retry(
+                lambda: pq.read_metadata(path, filesystem=filesystem),
+                description=f"read Parquet footer for {path}",
+                match=retried_io_errors,
+            )
+            return metadata.num_rows
+
+        paths = [str(p) for p in file_manifest.paths]
+        with ThreadPoolExecutor() as executor:
+            for num_rows in executor.map(_num_rows, paths):
+                yield BlockMetadata(
+                    num_rows=num_rows,
+                    size_bytes=None,
+                    exec_stats=None,
+                    input_files=None,
+                )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A row-reducing predicate would make the footer's ``num_rows`` an
+        # overcount, so only advertise NUM_ROWS when there's no predicate.
+        # Column projection doesn't affect the row count.
+        if self._predicate is not None:
+            return set()
+        return {MetadataType.NUM_ROWS, MetadataType.NUM_BYTES}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE
