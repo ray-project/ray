@@ -649,10 +649,10 @@ def test_streaming_generator_actor_died_before_first_completion(ray_start_cluste
     class Streamer:
         @ray.method(_generator_backpressure_num_objects=1)
         def gen(self):
-            i = 0
-            while True:
-                yield np.ones(1_000_000, dtype=np.int8) * i
-                i += 1
+            # Yield once, then sleep so the first execution stays unfinished until
+            # the actor's node is killed.
+            yield np.zeros(1_000_000, dtype=np.int8)
+            time.sleep(3600)
 
     streamer = Streamer.remote()
     ref_gen = streamer.gen.remote()
@@ -675,6 +675,7 @@ def test_streaming_generator_actor_died_before_first_completion(ray_start_cluste
             pytest.fail(
                 "return stuck in pending-creation (ray.get hung) instead of failing"
             )
+    ray.kill(streamer, no_restart=True)
 
 
 def test_streaming_generator_object_lost_before_first_completion(ray_start_cluster):
@@ -717,10 +718,10 @@ def test_streaming_generator_object_lost_before_first_completion(ray_start_clust
     class Streamer:
         @ray.method(_generator_backpressure_num_objects=1)
         def gen(self):
-            i = 0
-            while True:
-                yield np.ones(1_000_000, dtype=np.int8) * i
-                i += 1
+            # Yield once, then sleep so the first execution stays unfinished until
+            # the actor's node is killed.
+            yield np.zeros(1_000_000, dtype=np.int8)
+            time.sleep(3600)
 
     streamer = Streamer.remote()
     ref_gen = streamer.gen.remote()
@@ -741,6 +742,66 @@ def test_streaming_generator_object_lost_before_first_completion(ray_start_clust
             pytest.fail(
                 "return stuck in pending-creation (ray.get hung) instead of failing"
             )
+    ray.kill(streamer, no_restart=True)
+
+
+def test_streaming_generator_actor_restarted_before_first_completion(ray_start_cluster):
+    """Same setup as test_streaming_generator_actor_died_before_first_completion,
+    but the actor can restart once (max_restarts=1). The generator task should
+    be retried on the new actor rather than permanently failed, so the
+    already-consumed plasma return is recreated and ray.get succeeds.
+    """
+    config = {
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
+        "max_direct_call_object_size": 100,
+        "object_timeout_milliseconds": 200,
+        "task_retry_delay_ms": 100,
+    }
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=config,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+    )
+    ray.init(address=cluster.address)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, object_store_memory=10**8, resources={"actor": 1}
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_restarts=1, max_task_retries=-1, resources={"actor": 1})
+    class Streamer:
+        @ray.method(_generator_backpressure_num_objects=1)
+        def gen(self):
+            # Yield once, then sleep so the first execution stays unfinished until
+            # the actor's node is killed.
+            yield np.zeros(1_000_000, dtype=np.int8)
+            time.sleep(3600)
+
+    streamer = Streamer.remote()
+    ref_gen = streamer.gen.remote()
+    # Consume the first reported ref without fetching its value, so its only copy
+    # stays on the actor's node.
+    first_ref = next(ref_gen)
+
+    # Kill the actor's node before the generator's first execution completes, then
+    # replace it so the actor can restart and the generator task can be retried.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8, resources={"actor": 1})
+    cluster.wait_for_nodes()
+
+    try:
+        result = ray.get(first_ref, timeout=60)
+    except ray.exceptions.GetTimeoutError:
+        pytest.fail(
+            "return stuck in pending-creation (ray.get hung) instead of being "
+            "recreated after actor restart"
+        )
+    assert result[0] == 0
+    ray.kill(streamer, no_restart=True)
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])
