@@ -2944,7 +2944,7 @@ def exit_actor():
     observes the actor's death rather than a return value, and methods that have
     not started executing fail with ``RayActorError``.
 
-    Tasks queued for execution will fail with ``RayActorError``. For concurrent actors, tasks currently executing will run to completion before the actor exits.
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent and async actors, tasks currently executing will run to completion before the actor exits.
 
     Any ``atexit`` handlers installed in the actor will be run.
 

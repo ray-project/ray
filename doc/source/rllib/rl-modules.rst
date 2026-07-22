@@ -369,13 +369,20 @@ tell RLlib to use the particular module class and constructor arguments:
             config = (
                 PPOConfig()
                 .environment(MultiAgentCartPole, env_config={"num_agents": 2})
+                .multi_agent(
+                    # Both agents (0 and 1) map to the same policy, so they share
+                    # a single RLModule.
+                    policies={"p0"},
+                    policy_mapping_fn=lambda agent_id, episode, **kw: "p0",
+                )
                 .rl_module(
                     rl_module_spec=MultiRLModuleSpec(
-                        # All agents (0 and 1) use the same (single) RLModule.
-                        rl_module_specs=RLModuleSpec(
-                            module_class=MyRLModuleClass,
-                            model_config={"some_key": "some_setting"},
-                        )
+                        rl_module_specs={
+                            "p0": RLModuleSpec(
+                                module_class=MyRLModuleClass,
+                                model_config={"some_key": "some_setting"},
+                            ),
+                        },
                     ),
                 )
             )

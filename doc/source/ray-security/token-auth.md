@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure token-based authentication for Ray clusters with RAY_AUTH_MODE=token and ray get-auth-token, including token storage and TLS."
+---
+
 (token-auth)=
 
 # Ray token authentication
