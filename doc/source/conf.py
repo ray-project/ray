@@ -145,6 +145,14 @@ suppress_warnings = [
     # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
     # the existing (identical) file. Benign and not fixable upstream.
     "misc.copy_overwrite",
+    # Sphinx 9's Python domain (domains/python/__init__.py) warns type='ref'
+    # subtype='python' on ambiguous unqualified cross-references. Ray's public API
+    # defines members that shadow builtin/common names -- the Polars-style
+    # accessors ray.data.expressions.Expr.str/.list, and .type on job/state objects
+    # -- so every bare `str`/`list`/`type` type-annotation xref matches both the
+    # builtin (the intended target) and those members. All ref.python warnings are
+    # this benign ambiguity; the builtin resolves correctly regardless.
+    "ref.python",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -230,6 +238,11 @@ nitpick_ignore_regex = [
     ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
     # autodoc_pydantic also emits invalid field refs for these dashboard job models.
     ("py:obj", r"ray\.dashboard\.modules\.job\.pydantic_models\.(DriverInfo|JobDetails)\.\w+"),
+    # Sphinx 9 emits py:obj refs for subscripted typing constructs (Dict[...],
+    # Literal[...], Callable[[...], ...]) in annotations that it can't resolve.
+    ("py:obj", r"typing\..*"),
+    # pydantic's ValidationError isn't in any intersphinx inventory.
+    ("py:exc", r"(pydantic\..*\.)?ValidationError"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache

@@ -114,13 +114,12 @@ def _build_standalone_app(srcdir):
     template path (so ``:template:`` references resolve), and the filename map.
     """
     import sphinx.locale
-    from sphinx.ext.autosummary.generate import DummyApplication, setup_documenters
+    from sphinx.ext.autosummary.generate import DummyApplication
     from sphinx.util import logging as sphinx_logging
 
     sphinx.locale.init_console()
     app = DummyApplication(sphinx.locale.get_translator())
     sphinx_logging.setup(app, sys.stdout, sys.stderr)
-    setup_documenters(app)
     app.config.templates_path.append(os.path.join(srcdir, "_templates"))
     app.config.autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
     return app
@@ -161,7 +160,22 @@ def generate_api_stubs(srcdir, app=None):
     # path does not). The Jinja filter functions above import_module() at
     # generation time, so they run under the mock too. ray.* is never mocked.
     with mock(absent_mock_modules()):
-        written = generate.generate_autosummary_docs(sources, app=app)
+        # generate_autosummary_docs returns Path objects but expects str sources;
+        # normalize to str throughout so the second pass can be fed its own output.
+        written = [str(f) for f in generate.generate_autosummary_docs(sources, app=app)]
+        # Sphinx 9's live-app generation writes stubs for the direct autosummary
+        # entries in `sources` (the class pages) but -- unlike the standalone
+        # DummyApplication path -- does not recurse into those freshly-generated
+        # class pages to emit their method stubs. Generate the new pages' entries
+        # explicitly until the set stops growing (class -> methods is one level;
+        # the loop is a safety net against deeper nesting).
+        pending = list(written)
+        seen = set(written)
+        while pending:
+            new = [str(f) for f in generate.generate_autosummary_docs(pending, app=app)]
+            pending = [f for f in new if f not in seen]
+            seen.update(pending)
+            written.extend(pending)
 
     if not written:
         raise RuntimeError(

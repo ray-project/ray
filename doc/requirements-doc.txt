@@ -7,7 +7,7 @@ setuptools==80.9.0
 Pygments==2.18.0
 
 # Sphinx
-sphinx==8.2.3
+sphinx==9.1.0
 sphinx-click==5.1.0
 sphinx-copybutton==0.5.2
 sphinxemoji>=0.3.2

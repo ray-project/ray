@@ -131,8 +131,6 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * Pending Cluster `target_capacity`: 0%
         * **Total Capacity: 100%**
 
-    ---
-
     **The Upgrade Cycle**
 
     * **Phase 1: Scale Up Pending Cluster (Capacity)**
@@ -154,8 +152,6 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * Pending `target_capacity`: 20%
         * **Total Capacity: 100%**
         * The Ray Autoscaler terminates pods on the active cluster as they become idle.
-
-    ---
 
 5.  **Completion & Cleanup:** This cycle of **(Scale Up Pending $\rightarrow$ Shift Traffic $\rightarrow$ Scale Down Active)** continues until the pending cluster is at 100% `target_capacity` and 100% `trafficRoutedPercent`, and the active cluster is at 0%.
 

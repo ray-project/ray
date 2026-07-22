@@ -135,7 +135,7 @@ api_policy_check() {
 
   echo "--- Check API/doc consistency"
   # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310
-  # (cp310) wheels can't import under the py3.11 docbuild image (e.g. rpds).
+  # (cp310) wheels can't import under the py3.12 docbuild image (e.g. rpds).
   # TODO(elliot-barn): #64070 switch back to bazel once hermetic python 3.11 is setup
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }

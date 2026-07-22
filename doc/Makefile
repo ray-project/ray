@@ -113,7 +113,7 @@ rtd-doctor:
 # build Read the Docs runs from a fresh checkout, so a clean build here means a
 # clean build on RtD. Distinct from the `rtd` target below, which RtD itself
 # drives as an incremental PR-preview build. The preflight doctor checks Python
-# 3.11 and the docs lock, and blocks on drift unless you pass
+# 3.12 and the docs lock, and blocks on drift unless you pass
 # RTD_DOCTOR_ARGS=--warn-only.
 rtd-build: rtd-doctor
 	@# Remove cached serve API stubs so autosummary regenerates them with correct templates

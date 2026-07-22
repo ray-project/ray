@@ -64,6 +64,7 @@ JobDetails
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    JobDetails
 
@@ -87,5 +88,6 @@ DriverInfo
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    DriverInfo
