@@ -186,16 +186,7 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
-/// If true, the owner coalesces FreeLocalObjects RPCs per node: at most one such
-/// RPC is in flight per node, and frees that arrive while one is in flight ride
-/// the next batch (sent when the in-flight reply arrives). This cuts the driver
-/// io_service reply-callback load during large deletion waves. When false, the
-/// owner sends one FreeLocalObjects RPC per object per location (legacy).
-RAY_CONFIG(bool, batch_free_local_objects, false)
-
-/// Max object ids per coalesced FreeLocalObjects RPC when batch_free_local_objects
-/// is set. Anything beyond this rides the next batch (mirrors
-/// kMaxObjectReportBatchSize for UpdateObjectLocationBatch).
+/// The maximum batch size for coalesced FreeLocalObjects RPCs.
 RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all

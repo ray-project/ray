@@ -4883,22 +4883,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  if (!RayConfig::instance().batch_free_local_objects()) {
-    // Legacy: one FreeLocalObjects RPC per object per location.
-    rpc::FreeLocalObjectsRequest request;
-    request.add_object_ids(object_id.Binary());
-    for (const auto &node_id : locations) {
-      auto client = GetRayletRpcClient(node_id);
-      if (client == nullptr) {
-        continue;
-      }
-      client->FreeLocalObjects(request);
-    }
-    return;
-  }
-
-  // Batched path: coalesce per node. Queue the id and, if this node has no RPC in
-  // flight, kick a send; otherwise it rides the batch the in-flight reply triggers.
+  // Coalesce per node. Queue the id and, if this node has no RPC in flight, kick a
+  // send; otherwise it rides the batch the in-flight reply triggers.
   for (const auto &node_id : locations) {
     bool idle = false;
     {

@@ -2042,11 +2042,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Coalesces owner-driven FreeLocalObjects RPCs per node, used only when
-  /// RayConfig::batch_free_local_objects() is set. At most one FreeLocalObjects
-  /// RPC is in flight per node; ids that arrive while one is in flight ride the
-  /// next batch, sent when the in-flight reply arrives (self-clocked -- no timer,
-  /// no window). Modeled on
+  /// Coalesces owner-driven FreeLocalObjects RPCs per node. At most one
+  /// FreeLocalObjects RPC is in flight per node; ids that arrive while one is in
+  /// flight ride the next batch, sent when the in-flight reply arrives
+  /// (self-clocked -- no timer, no window). Modeled on
   /// OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded, but
   /// guarded by its own mutex because Add (ReferenceCounter's free callback, on an
   /// arbitrary thread) and the reply completion (io_service_) can race.
