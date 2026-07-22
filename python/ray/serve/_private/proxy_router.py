@@ -25,7 +25,7 @@ class ProxyRouter:
 
     def __init__(
         self,
-        get_handle: Callable[[str, str], DeploymentHandle],
+        get_handle: Callable[[DeploymentID, EndpointInfo], DeploymentHandle],
     ):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle

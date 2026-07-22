@@ -73,6 +73,7 @@ from ray.data.read_api import (  # noqa: F401
     read_kinetica,
     read_kinetica_sql,
     read_lance,
+    read_lerobot,
     read_mcap,
     read_mongo,
     read_numpy,
@@ -87,6 +88,7 @@ from ray.data.read_api import (  # noqa: F401
     read_zarr,
 )
 from ray.data.catalog import (
+    CatalogAccessMode,
     Catalog,
     ReaderFormat,
     ResolvedSource,
@@ -193,6 +195,7 @@ __all__ = [
     "read_kinetica",
     "read_kinetica_sql",
     "read_lance",
+    "read_lerobot",
     "read_mcap",
     "read_numpy",
     "read_mongo",
@@ -204,6 +207,7 @@ __all__ = [
     "read_videos",
     "read_zarr",
     "read_webdataset",
+    "CatalogAccessMode",
     "Catalog",
     "ReaderFormat",
     "ResolvedSource",

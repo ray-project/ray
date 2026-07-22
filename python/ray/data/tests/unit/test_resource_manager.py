@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 
 import ray
@@ -22,6 +24,50 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
+from ray.util.annotations import RayDeprecationWarning
+
+
+def test_execution_options_deprecated_defaults_initialized_without_warning():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        options = ExecutionOptions()
+
+    assert options.exclude_resources == ExecutionResources.zero()
+    assert options.actor_locality_enabled is True
+
+
+@pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        ("actor_locality_enabled", False),
+        ("exclude_resources", ExecutionResources(cpu=1)),
+    ],
+)
+def test_execution_options_emits_deprecation_warning(attr, value):
+    options = ExecutionOptions()
+    with pytest.warns(RayDeprecationWarning, match=rf"ExecutionOptions\.{attr}"):
+        setattr(options, attr, value)
+
+
+def test_execution_options_exclude_resources_none_normalized():
+    options = ExecutionOptions()
+
+    with pytest.warns(
+        RayDeprecationWarning, match="ExecutionOptions\\.exclude_resources"
+    ):
+        options.exclude_resources = None
+
+    assert options.exclude_resources == ExecutionResources.zero()
+
+
+def test_execution_options_set_exclude_resources_internal_no_warning():
+    options = ExecutionOptions()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        options._set_exclude_resources(ExecutionResources(cpu=1))
+
+    assert options.exclude_resources == ExecutionResources(cpu=1)
 
 
 def test_physical_operator_tracks_output_dependencies():

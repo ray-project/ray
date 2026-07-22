@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING, Optional
+
 import ray
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.default_impl import get_controller_impl
 from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig
+
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
 
 
 @ray.remote(num_cpus=0)
@@ -23,7 +28,7 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(
+            self._controller: Optional["ActorHandle"] = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
         except ValueError:

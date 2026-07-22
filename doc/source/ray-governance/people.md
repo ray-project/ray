@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Directory of Ray project committers and maintainers, listing the people responsible for governance and ongoing development of the Ray open-source project."
+---
+
 (people)=
 
 # People
