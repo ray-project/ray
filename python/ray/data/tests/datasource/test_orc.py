@@ -85,6 +85,63 @@ def test_read_orc_override_num_blocks(ray_start_regular_shared, tmp_path):
     assert ds.materialize().num_blocks() == 1
 
 
+def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
+    from ray.data.datasource.partitioning import Partitioning
+
+    os.makedirs(os.path.join(tmp_path, "year=2024"))
+    _write_orc(
+        os.path.join(tmp_path, "year=2024", "data.orc"),
+        pa.table({"data": [0, 1]}),
+    )
+
+    ds = ray.data.read_orc(str(tmp_path), partitioning=Partitioning("hive"))
+
+    rows = ds.take_all()
+    assert sorted(row["data"] for row in rows) == [0, 1]
+    assert all(row["year"] == "2024" for row in rows)
+
+
+def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tmp_path):
+    from ray.data.datasource.partitioning import (
+        Partitioning,
+        PathPartitionFilter,
+    )
+
+    for year in ("2023", "2024"):
+        os.makedirs(os.path.join(tmp_path, f"year={year}"))
+        _write_orc(
+            os.path.join(tmp_path, f"year={year}", "data.orc"),
+            pa.table({"data": [0, 1]}),
+        )
+
+    partition_filter = PathPartitionFilter.of(
+        filter_fn=lambda partitions: partitions["year"] == "2024", style="hive"
+    )
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning("hive"),
+        partition_filter=partition_filter,
+    )
+
+    rows = ds.take_all()
+    assert len(rows) == 2
+    assert all(row["year"] == "2024" for row in rows)
+
+
+def test_read_orc_multiple_stripes(ray_start_regular_shared, tmp_path):
+    from pyarrow import orc
+
+    path = os.path.join(tmp_path, "multi.orc")
+    table = pa.table({"id": list(range(10000))})
+    with pa.OSFile(path, "wb") as sink:
+        orc.write_table(table, sink, stripe_size=64 * 1024)
+
+    ds = ray.data.read_orc(path)
+
+    assert ds.count() == 10000
+    assert sorted(row["id"] for row in ds.take_all()) == list(range(10000))
+
+
 if __name__ == "__main__":
     import sys
 
