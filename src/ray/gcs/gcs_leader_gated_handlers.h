@@ -106,6 +106,7 @@ namespace gcs {
 
 class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
  public:
+  using HandlerType = rpc::NodeInfoGcsServiceHandler;
   LeaderGatedNodeInfoHandler(
       rpc::NodeInfoGcsServiceHandler &handler,
       std::function<bool()> is_leader_fn,
@@ -166,6 +167,7 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
 
 class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
  public:
+  using HandlerType = rpc::ActorInfoGcsServiceHandler;
   LeaderGatedActorInfoHandler(rpc::ActorInfoGcsServiceHandler &handler,
                               std::function<bool()> is_leader_fn)
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
@@ -203,6 +205,7 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
 
 class LeaderGatedJobInfoHandler : public rpc::JobInfoGcsServiceHandler {
  public:
+  using HandlerType = rpc::JobInfoGcsServiceHandler;
   LeaderGatedJobInfoHandler(rpc::JobInfoGcsServiceHandler &handler,
                             std::function<bool()> is_leader_fn)
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
@@ -230,6 +233,7 @@ class LeaderGatedJobInfoHandler : public rpc::JobInfoGcsServiceHandler {
 class LeaderGatedPlacementGroupInfoHandler
     : public rpc::PlacementGroupInfoGcsServiceHandler {
  public:
+  using HandlerType = rpc::PlacementGroupInfoGcsServiceHandler;
   LeaderGatedPlacementGroupInfoHandler(rpc::PlacementGroupInfoGcsServiceHandler &handler,
                                        std::function<bool()> is_leader_fn)
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
@@ -264,6 +268,7 @@ class LeaderGatedPlacementGroupInfoHandler
 
 class LeaderGatedInternalKVHandler : public rpc::InternalKVGcsServiceHandler {
  public:
+  using HandlerType = rpc::InternalKVGcsServiceHandler;
   LeaderGatedInternalKVHandler(rpc::InternalKVGcsServiceHandler &handler,
                                std::function<bool()> is_leader_fn)
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
@@ -301,6 +306,7 @@ class LeaderGatedInternalKVHandler : public rpc::InternalKVGcsServiceHandler {
 class LeaderGatedAutoscalerStateHandler
     : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
+  using HandlerType = rpc::autoscaler::AutoscalerStateServiceHandler;
   LeaderGatedAutoscalerStateHandler(
       rpc::autoscaler::AutoscalerStateServiceHandler &handler,
       std::function<bool()> is_leader_fn)
@@ -334,6 +340,224 @@ class LeaderGatedAutoscalerStateHandler
 
  private:
   rpc::autoscaler::AutoscalerStateServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedNodeResourceInfoHandler : public rpc::NodeResourceInfoGcsServiceHandler {
+ public:
+  using HandlerType = rpc::NodeResourceInfoGcsServiceHandler;
+  LeaderGatedNodeResourceInfoHandler(rpc::NodeResourceInfoGcsServiceHandler &handler,
+                                     std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  //
+  // Minimal-allowlist principle: a passive GCS only allows what is strictly
+  // required to boot the local head (raylet registration + health/subscribe).
+  // All NodeResourceInfo consumers (autoscaler/state observers) are suppressed
+  // on a passive head, so none of these are needed until promotion.
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleGetAllAvailableResources,
+                rpc::GetAllAvailableResourcesRequest,
+                rpc::GetAllAvailableResourcesReply)
+  GCS_GATED_RPC(HandleGetAllTotalResources,
+                rpc::GetAllTotalResourcesRequest,
+                rpc::GetAllTotalResourcesReply)
+  GCS_GATED_RPC(HandleGetDrainingNodes,
+                rpc::GetDrainingNodesRequest,
+                rpc::GetDrainingNodesReply)
+  GCS_GATED_RPC(HandleGetAllResourceUsage,
+                rpc::GetAllResourceUsageRequest,
+                rpc::GetAllResourceUsageReply)
+
+ private:
+  rpc::NodeResourceInfoGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedWorkerInfoHandler : public rpc::WorkerInfoGcsServiceHandler {
+ public:
+  using HandlerType = rpc::WorkerInfoGcsServiceHandler;
+  LeaderGatedWorkerInfoHandler(rpc::WorkerInfoGcsServiceHandler &handler,
+                               std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleReportWorkerFailure,
+                rpc::ReportWorkerFailureRequest,
+                rpc::ReportWorkerFailureReply)
+  GCS_GATED_RPC(HandleAddWorkerInfo, rpc::AddWorkerInfoRequest, rpc::AddWorkerInfoReply)
+  GCS_GATED_RPC(HandleUpdateWorkerDebuggerPort,
+                rpc::UpdateWorkerDebuggerPortRequest,
+                rpc::UpdateWorkerDebuggerPortReply)
+  GCS_GATED_RPC(HandleUpdateWorkerNumPausedThreads,
+                rpc::UpdateWorkerNumPausedThreadsRequest,
+                rpc::UpdateWorkerNumPausedThreadsReply)
+
+  // Reads are also gated: no workers run on a passive head, so nothing needs
+  // to query worker info until promotion (minimal-allowlist principle).
+  GCS_GATED_RPC(HandleGetWorkerInfo, rpc::GetWorkerInfoRequest, rpc::GetWorkerInfoReply)
+  GCS_GATED_RPC(HandleGetAllWorkerInfo,
+                rpc::GetAllWorkerInfoRequest,
+                rpc::GetAllWorkerInfoReply)
+
+ private:
+  rpc::WorkerInfoGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedTaskInfoHandler : public rpc::TaskInfoGcsServiceHandler {
+ public:
+  using HandlerType = rpc::TaskInfoGcsServiceHandler;
+  LeaderGatedTaskInfoHandler(rpc::TaskInfoGcsServiceHandler &handler,
+                             std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleAddTaskEventData,
+                rpc::AddTaskEventDataRequest,
+                rpc::AddTaskEventDataReply)
+
+  // Reads are also gated: no tasks run on a passive head, so nothing needs to
+  // query task events until promotion (minimal-allowlist principle).
+  GCS_GATED_RPC(HandleGetTaskEvents, rpc::GetTaskEventsRequest, rpc::GetTaskEventsReply)
+
+ private:
+  rpc::TaskInfoGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedRuntimeEnvHandler : public rpc::RuntimeEnvGcsServiceHandler {
+ public:
+  using HandlerType = rpc::RuntimeEnvGcsServiceHandler;
+  LeaderGatedRuntimeEnvHandler(rpc::RuntimeEnvGcsServiceHandler &handler,
+                               std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  //
+  // Pinning a runtime env URI writes to the shared GCS KV store, so it must not
+  // run on a passive GCS.
+  // =========================================================================
+
+  GCS_GATED_RPC(HandlePinRuntimeEnvURI,
+                rpc::PinRuntimeEnvURIRequest,
+                rpc::PinRuntimeEnvURIReply)
+
+ private:
+  rpc::RuntimeEnvGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedControlPlanePubSubHandler
+    : public rpc::ControlPlanePubSubGcsServiceHandler {
+ public:
+  using HandlerType = rpc::ControlPlanePubSubGcsServiceHandler;
+  LeaderGatedControlPlanePubSubHandler(rpc::ControlPlanePubSubGcsServiceHandler &handler,
+                                       std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  //
+  // Publishing mutates control-plane state and must be owned by the active GCS.
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleGcsPublish, rpc::GcsPublishRequest, rpc::GcsPublishReply)
+
+  // =========================================================================
+  // Bootstrap Allowlist RPCs (Allowed on passive GCS)
+  //
+  // These are the ONLY pubsub RPCs allowed on a passive GCS, and they are
+  // required by the minimal boot path: the colocated local raylet calls
+  // AsyncSubscribeToNodeAddressAndLivenessChange during startup, which is
+  // implemented on top of GcsSubscriberPoll + GcsSubscriberCommandBatch (see
+  // GcsSubscriberClient in gcs_client.cc). Without them the local raylet
+  // cannot finish initialization on a passive head.
+  // =========================================================================
+
+  GCS_ALLOWED_RPC(HandleGcsSubscriberPoll,
+                  rpc::GcsSubscriberPollRequest,
+                  rpc::GcsSubscriberPollReply)
+  GCS_ALLOWED_RPC(HandleGcsSubscriberCommandBatch,
+                  rpc::GcsSubscriberCommandBatchRequest,
+                  rpc::GcsSubscriberCommandBatchReply)
+
+ private:
+  rpc::ControlPlanePubSubGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedObservabilityPubSubHandler
+    : public rpc::ObservabilityPubSubServiceHandler {
+ public:
+  using HandlerType = rpc::ObservabilityPubSubServiceHandler;
+  LeaderGatedObservabilityPubSubHandler(rpc::ObservabilityPubSubServiceHandler &handler,
+                                        std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  //
+  // Publishing and reporting job errors mutate control-plane state and must be
+  // owned by the active GCS.
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleGcsPublish, rpc::GcsPublishRequest, rpc::GcsPublishReply)
+  GCS_GATED_RPC(HandleReportJobError,
+                rpc::ReportJobErrorRequest,
+                rpc::ReportJobErrorReply)
+
+  // =========================================================================
+  // Bootstrap Allowlist RPCs (Allowed on passive GCS)
+  //
+  // Subscribe/long-poll are read-only and only touch in-process subscription
+  // bookkeeping (no shared-storage writes), mirroring the control-plane pubsub
+  // allowlist. Kept open so local observability subscribers can attach.
+  // =========================================================================
+
+  GCS_ALLOWED_RPC(HandleGcsSubscriberPoll,
+                  rpc::GcsSubscriberPollRequest,
+                  rpc::GcsSubscriberPollReply)
+  GCS_ALLOWED_RPC(HandleGcsSubscriberCommandBatch,
+                  rpc::GcsSubscriberCommandBatchRequest,
+                  rpc::GcsSubscriberCommandBatchReply)
+
+ private:
+  rpc::ObservabilityPubSubServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedRayEventExportHandler
+    : public rpc::events::RayEventExportGcsServiceHandler {
+ public:
+  using HandlerType = rpc::events::RayEventExportGcsServiceHandler;
+  LeaderGatedRayEventExportHandler(rpc::events::RayEventExportGcsServiceHandler &handler,
+                                   std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // =========================================================================
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  //
+  // AddEvents ingests events into the task manager; no workers run on a passive
+  // head, so it is gated until promotion (minimal-allowlist principle).
+  // =========================================================================
+
+  GCS_GATED_RPC(HandleAddEvents,
+                rpc::events::AddEventsRequest,
+                rpc::events::AddEventsReply)
+
+ private:
+  rpc::events::RayEventExportGcsServiceHandler &handler_;
   const std::function<bool()> is_leader_fn_;
 };
 

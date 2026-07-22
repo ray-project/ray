@@ -152,6 +152,42 @@ class GcsServer {
   }
 
  protected:
+  // Returns the handler that should be registered for a gRPC service.
+  //
+  // When leader election is disabled, the real handler is used directly (no
+  // wrapper, no per-RPC leadership check) so non-HA clusters behave exactly as
+  // before. When leader election is enabled, the real handler is wrapped in the
+  // corresponding LeaderGated* proxy (stored in `slot` to keep it alive for the
+  // lifetime of the GrpcService, which holds the handler by reference) so that
+  // passive GCS gates the service's mutating RPCs.
+  //
+  // Wraps `real_handler` in the corresponding LeaderGated* proxy and returns a
+  // reference (typed as the wrapper's base handler interface `GatedT::HandlerType`,
+  // which is the exact type the GrpcService expects) suitable to pass to
+  // RegisterService. The wrapper is stored in `slot` to keep it alive for the
+  // lifetime of the GrpcService, which holds the handler by reference.
+  //
+  // The wrapper is always installed, regardless of whether leader election is
+  // enabled: when it is disabled, `IsLeader()` is always true so every RPC is
+  // forwarded to the real handler unchanged (identical behavior to registering
+  // the raw handler directly). This keeps the registration path uniform and
+  // avoids per-service branching on the feature flag.
+  //
+  // Typing the return as `GatedT::HandlerType` (rather than deducing it from the
+  // concrete manager) matters for managers that implement multiple handler
+  // interfaces (e.g. GcsTaskManager implements both TaskInfo and RayEventExport
+  // handlers): the interface must be selected by the wrapper. Any `extra`
+  // arguments are forwarded to the wrapper's constructor after the is-leader
+  // callback (e.g. the cache-local-node callback for NodeInfo).
+  template <typename GatedT, typename RealHandlerT, typename... ExtraArgs>
+  typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
+                                          RealHandlerT &real_handler,
+                                          ExtraArgs &&...extra) {
+    slot = std::make_unique<GatedT>(
+        real_handler, [this]() { return IsLeader(); }, std::forward<ExtraArgs>(extra)...);
+    return *slot;
+  }
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   void DoStartLoadingDeferred();
@@ -218,6 +254,14 @@ class GcsServer {
 
   /// Initialize KV manager.
   void InitKVManager();
+
+  /// Register this GCS server's pid in the shared KV store (GCS process metrics).
+  /// Active GCS only; a passive GCS defers it until promotion.
+  void WriteGcsPid();
+
+  /// Persist the autoscaler-v2 feature flag to the shared KV store.
+  /// Active GCS only; a passive GCS defers it until promotion.
+  void WriteAutoscalerV2Flag();
 
   /// Initialize KV service.
   void InitKVService();
@@ -301,6 +345,15 @@ class GcsServer {
       gated_placement_group_info_handler_;
   std::unique_ptr<LeaderGatedAutoscalerStateHandler> gated_autoscaler_state_handler_;
   std::unique_ptr<LeaderGatedInternalKVHandler> gated_internal_kv_handler_;
+  std::unique_ptr<LeaderGatedNodeResourceInfoHandler> gated_node_resource_info_handler_;
+  std::unique_ptr<LeaderGatedWorkerInfoHandler> gated_worker_info_handler_;
+  std::unique_ptr<LeaderGatedTaskInfoHandler> gated_task_info_handler_;
+  std::unique_ptr<LeaderGatedRuntimeEnvHandler> gated_runtime_env_handler_;
+  std::unique_ptr<LeaderGatedControlPlanePubSubHandler>
+      gated_control_plane_pubsub_handler_;
+  std::unique_ptr<LeaderGatedObservabilityPubSubHandler>
+      gated_observability_pubsub_handler_;
+  std::unique_ptr<LeaderGatedRayEventExportHandler> gated_ray_event_export_handler_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

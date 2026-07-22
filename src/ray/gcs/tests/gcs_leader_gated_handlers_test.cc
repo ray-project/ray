@@ -862,5 +862,328 @@ TEST(GcsLeaderGatedHandlersTest, TestAutoscalerGating) {
   }
 }
 
+// =========================================================================
+// Helpers for body-reply gating assertions.
+// =========================================================================
+
+namespace {
+
+// Asserts that a gated RPC replied with Status::GcsPassive written into the reply
+// body, and that the underlying handler was NOT invoked.
+template <typename Reply>
+void ExpectGatedInBody(const Reply &reply, bool underlying_called) {
+  Status logical_status =
+      Status(StatusCode(reply.status().code()), reply.status().message());
+  EXPECT_TRUE(logical_status.IsGcsPassive());
+  EXPECT_FALSE(underlying_called);
+}
+
+}  // namespace
+
+// =========================================================================
+// NodeResourceInfo Service Gating Tests (all RPCs gated).
+// =========================================================================
+
+class MockNodeResourceInfoGcsServiceHandler
+    : public rpc::NodeResourceInfoGcsServiceHandler {
+ public:
+  void HandleGetAllAvailableResources(
+      rpc::GetAllAvailableResourcesRequest request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                  rpc::GetAllTotalResourcesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                              rpc::GetDrainingNodesReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  bool called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestNodeResourceInfoGating) {
+  MockNodeResourceInfoGcsServiceHandler underlying;
+  bool is_leader = false;
+  LeaderGatedNodeResourceInfoHandler proxy(underlying,
+                                           [&is_leader]() { return is_leader; });
+
+  auto noop_cb = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Passive: every RPC is gated.
+  {
+    rpc::GetAllResourceUsageReply reply;
+    proxy.HandleGetAllResourceUsage({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+  {
+    rpc::GetAllAvailableResourcesReply reply;
+    proxy.HandleGetAllAvailableResources({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+
+  // Leader: forwarded to underlying handler.
+  is_leader = true;
+  {
+    rpc::GetAllResourceUsageReply reply;
+    proxy.HandleGetAllResourceUsage({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.called_);
+  }
+}
+
+// =========================================================================
+// WorkerInfo Service Gating Tests (all RPCs gated, incl. reads).
+// =========================================================================
+
+class MockWorkerInfoGcsServiceHandler : public rpc::WorkerInfoGcsServiceHandler {
+ public:
+  void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
+                                 rpc::ReportWorkerFailureReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleGetWorkerInfo(rpc::GetWorkerInfoRequest request,
+                           rpc::GetWorkerInfoReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleGetAllWorkerInfo(rpc::GetAllWorkerInfoRequest request,
+                              rpc::GetAllWorkerInfoReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
+                           rpc::AddWorkerInfoReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleUpdateWorkerDebuggerPort(
+      rpc::UpdateWorkerDebuggerPortRequest request,
+      rpc::UpdateWorkerDebuggerPortReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleUpdateWorkerNumPausedThreads(
+      rpc::UpdateWorkerNumPausedThreadsRequest request,
+      rpc::UpdateWorkerNumPausedThreadsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  bool called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestWorkerInfoGating) {
+  MockWorkerInfoGcsServiceHandler underlying;
+  bool is_leader = false;
+  LeaderGatedWorkerInfoHandler proxy(underlying, [&is_leader]() { return is_leader; });
+
+  auto noop_cb = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Passive: writes are gated.
+  {
+    rpc::AddWorkerInfoReply reply;
+    proxy.HandleAddWorkerInfo({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+  // Passive: reads are also gated (no workers run on a passive head).
+  {
+    rpc::GetAllWorkerInfoReply reply;
+    proxy.HandleGetAllWorkerInfo({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+
+  // Leader: forwarded.
+  is_leader = true;
+  {
+    rpc::AddWorkerInfoReply reply;
+    proxy.HandleAddWorkerInfo({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.called_);
+  }
+}
+
+// =========================================================================
+// TaskInfo Service Gating Tests (all RPCs gated, incl. reads).
+// =========================================================================
+
+class MockTaskInfoGcsServiceHandler : public rpc::TaskInfoGcsServiceHandler {
+ public:
+  void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                              rpc::AddTaskEventDataReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                           rpc::GetTaskEventsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  bool called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestTaskInfoGating) {
+  MockTaskInfoGcsServiceHandler underlying;
+  bool is_leader = false;
+  LeaderGatedTaskInfoHandler proxy(underlying, [&is_leader]() { return is_leader; });
+
+  auto noop_cb = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Passive: write gated.
+  {
+    rpc::AddTaskEventDataReply reply;
+    proxy.HandleAddTaskEventData({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+  // Passive: read gated.
+  {
+    rpc::GetTaskEventsReply reply;
+    proxy.HandleGetTaskEvents({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+
+  // Leader: forwarded.
+  is_leader = true;
+  {
+    rpc::GetTaskEventsReply reply;
+    proxy.HandleGetTaskEvents({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.called_);
+  }
+}
+
+// =========================================================================
+// RuntimeEnv Service Gating Tests (single write RPC gated).
+// =========================================================================
+
+class MockRuntimeEnvGcsServiceHandler : public rpc::RuntimeEnvGcsServiceHandler {
+ public:
+  void HandlePinRuntimeEnvURI(rpc::PinRuntimeEnvURIRequest request,
+                              rpc::PinRuntimeEnvURIReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  bool called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestRuntimeEnvGating) {
+  MockRuntimeEnvGcsServiceHandler underlying;
+  bool is_leader = false;
+  LeaderGatedRuntimeEnvHandler proxy(underlying, [&is_leader]() { return is_leader; });
+
+  auto noop_cb = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Passive: gated.
+  {
+    rpc::PinRuntimeEnvURIReply reply;
+    proxy.HandlePinRuntimeEnvURI({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.called_);
+  }
+
+  // Leader: forwarded.
+  is_leader = true;
+  {
+    rpc::PinRuntimeEnvURIReply reply;
+    proxy.HandlePinRuntimeEnvURI({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.called_);
+  }
+}
+
+// =========================================================================
+// ControlPlanePubSub Service Gating Tests (publish gated, subscribe allowed).
+// =========================================================================
+
+class MockControlPlanePubSubGcsServiceHandler
+    : public rpc::ControlPlanePubSubGcsServiceHandler {
+ public:
+  void HandleGcsPublish(rpc::GcsPublishRequest request,
+                        rpc::GcsPublishReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override {
+    publish_called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleGcsSubscriberPoll(rpc::GcsSubscriberPollRequest request,
+                               rpc::GcsSubscriberPollReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override {
+    poll_called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+  void HandleGcsSubscriberCommandBatch(
+      rpc::GcsSubscriberCommandBatchRequest request,
+      rpc::GcsSubscriberCommandBatchReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override {
+    command_batch_called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  bool publish_called_ = false;
+  bool poll_called_ = false;
+  bool command_batch_called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestControlPlanePubSubGating) {
+  MockControlPlanePubSubGcsServiceHandler underlying;
+  bool is_leader = false;
+  LeaderGatedControlPlanePubSubHandler proxy(underlying,
+                                             [&is_leader]() { return is_leader; });
+
+  auto noop_cb = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Passive: publish is gated.
+  {
+    rpc::GcsPublishReply reply;
+    proxy.HandleGcsPublish({}, &reply, noop_cb);
+    ExpectGatedInBody(reply, underlying.publish_called_);
+  }
+
+  // Passive: subscribe poll and command batch are allowed (forwarded),
+  // required by the local raylet's node address/liveness subscription during
+  // startup.
+  {
+    rpc::GcsSubscriberPollReply reply;
+    proxy.HandleGcsSubscriberPoll({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.poll_called_);
+  }
+  {
+    rpc::GcsSubscriberCommandBatchReply reply;
+    proxy.HandleGcsSubscriberCommandBatch({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.command_batch_called_);
+  }
+
+  // Leader: publish is forwarded.
+  is_leader = true;
+  {
+    rpc::GcsPublishReply reply;
+    proxy.HandleGcsPublish({}, &reply, noop_cb);
+    EXPECT_TRUE(underlying.publish_called_);
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray

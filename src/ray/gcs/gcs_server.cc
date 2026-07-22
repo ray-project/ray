@@ -436,34 +436,14 @@ void GcsServer::DoStartLoadingDeferred() {
          gcs_placement_group_manager_->Initialize(*gcs_init_data);
          gcs_actor_manager_->Initialize(*gcs_init_data);
 
-         // Autoscaler V2 config initialization (only on active leader)
-         auto v2_enabled = std::to_string(
-             static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
-         kv_manager_->GetInstance().Put(
-             kGcsAutoscalerStateNamespace,
-             kGcsAutoscalerV2EnabledKey,
-             v2_enabled,
-             /*overwrite=*/true,
-             {[this, v2_enabled](bool new_value_put) {
-                if (!new_value_put) {
-                  kv_manager_->GetInstance().Get(
-                      kGcsAutoscalerStateNamespace,
-                      kGcsAutoscalerV2EnabledKey,
-                      {[v2_enabled](std::optional<std::string> value) {
-                         RAY_CHECK(value.has_value())
-                             << "Autoscaler v2 feature flag wasn't found "
-                                "in GCS, this is unexpected.";
-                         RAY_CHECK(*value == v2_enabled)
-                             << "Autoscaler v2 feature flag in GCS "
-                                "doesn't match the one we put.";
-                       },
-                       this->io_context_provider_.GetDefaultIOContext()});
-                }
-              },
-              io_context_provider_.GetDefaultIOContext()});
+         // Deferred shared-storage writes now that this GCS is active.
+         WriteAutoscalerV2Flag();
          gcs_autoscaler_state_manager_->Initialize(*gcs_init_data);
 
          gcs_node_manager_->PromoteNodeManager();
+
+         WriteGcsPid();
+
          periodical_runner_->RunFnPeriodically(
              [this] { RecordMetrics(); },
              /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
@@ -534,15 +514,14 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       [this]() { return IsLeader(); });
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
-  gated_node_info_handler_ = std::make_unique<LeaderGatedNodeInfoHandler>(
-      *gcs_node_manager_,
-      [this]() { return IsLeader(); },
-      [this](const rpc::GcsNodeInfo &node_info) {
-        gcs_node_manager_->CachePassiveLocalNode(node_info);
-      });
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
-      *gated_node_info_handler_,
+      MaybeGate(gated_node_info_handler_,
+                *gcs_node_manager_,
+                std::function<void(const rpc::GcsNodeInfo &)>(
+                    [this](const rpc::GcsNodeInfo &node_info) {
+                      gcs_node_manager_->CachePassiveLocalNode(node_info);
+                    })),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -614,7 +593,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeResourceInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gcs_resource_manager_,
+      MaybeGate(gated_node_resource_info_handler_, *gcs_resource_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 
   periodical_runner_->RunFnPeriodically(
@@ -684,11 +663,9 @@ void GcsServer::InitGcsJobManager(
                                       job_duration_in_seconds_gauge,
                                       clock_);
   gcs_job_manager_->Initialize(gcs_init_data);
-  gated_job_info_handler_ = std::make_unique<LeaderGatedJobInfoHandler>(
-      *gcs_job_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gated_job_info_handler_,
+      MaybeGate(gated_job_info_handler_, *gcs_job_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -745,11 +722,9 @@ void GcsServer::InitGcsActorManager(
       clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
-  gated_actor_info_handler_ = std::make_unique<LeaderGatedActorInfoHandler>(
-      *gcs_actor_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gated_actor_info_handler_,
+      MaybeGate(gated_actor_info_handler_, *gcs_actor_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -783,12 +758,9 @@ void GcsServer::InitGcsPlacementGroupManager(
       clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
-  gated_placement_group_info_handler_ =
-      std::make_unique<LeaderGatedPlacementGroupInfoHandler>(
-          *gcs_placement_group_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gated_placement_group_info_handler_,
+      MaybeGate(gated_placement_group_info_handler_, *gcs_placement_group_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -908,6 +880,14 @@ void GcsServer::InitKVManager() {
       config_.raylet_config_list,
       io_context);
 
+  // A passive GCS must not write to shared storage; only the active GCS registers
+  // its pid (on promotion, via DoStartLoadingDeferred).
+  if (!config_.ray_leader_elect_enabled) {
+    WriteGcsPid();
+  }
+}
+
+void GcsServer::WriteGcsPid() {
   kv_manager_->GetInstance().Put(
       "",
       kGcsPidKey,
@@ -925,12 +905,10 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
-  gated_internal_kv_handler_ = std::make_unique<LeaderGatedInternalKVHandler>(
-      *kv_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(
       std::make_unique<rpc::InternalKVGrpcService>(
           io_context_provider_.GetIOContext<GcsInternalKVManager>(),
-          *gated_internal_kv_handler_,
+          MaybeGate(gated_internal_kv_handler_, *kv_manager_),
           /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
 }
@@ -942,13 +920,17 @@ void GcsServer::InitPubSubHandler() {
 
   // This service is used to handle long poll requests, so we don't limit active RPCs.
   rpc_server_.RegisterService(std::make_unique<rpc::ControlPlanePubSubGrpcService>(
-      io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
+      io_context,
+      MaybeGate(gated_control_plane_pubsub_handler_, *pubsub_handler_),
+      /*max_active_rpcs_per_handler_=*/-1));
 
   auto &obs_io = io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>();
   observability_pubsub_handler_ =
       std::make_unique<ObservabilityPubSubHandler>(obs_io, *observability_publisher_);
   rpc_server_.RegisterService(std::make_unique<rpc::ObservabilityPubSubGrpcService>(
-      obs_io, *observability_pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
+      obs_io,
+      MaybeGate(gated_observability_pubsub_handler_, *observability_pubsub_handler_),
+      /*max_active_rpcs_per_handler_=*/-1));
 }
 
 void GcsServer::InitRuntimeEnvManager() {
@@ -991,7 +973,7 @@ void GcsServer::InitRuntimeEnvManager() {
       });
   rpc_server_.RegisterService(std::make_unique<rpc::RuntimeEnvGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *runtime_env_handler_,
+      MaybeGate(gated_runtime_env_handler_, *runtime_env_handler_),
       /*max_active_rpcs_per_handler=*/-1));
 }
 
@@ -1000,13 +982,13 @@ void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
       *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gcs_worker_manager_,
+      MaybeGate(gated_worker_info_handler_, *gcs_worker_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
   // No-op unless dead worker entries survived a GCS restart (Redis FT).
   gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
 }
 
-void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
+void GcsServer::WriteAutoscalerV2Flag() {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
   auto v2_enabled =
       std::to_string(static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
@@ -1038,6 +1020,16 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
          }
        },
        io_context_provider_.GetDefaultIOContext()});
+}
+
+void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
+
+  // A passive GCS must not write to shared storage; only the active GCS persists
+  // the autoscaler-v2 flag (on promotion, via DoStartLoadingDeferred).
+  if (!config_.ray_leader_elect_enabled) {
+    WriteAutoscalerV2Flag();
+  }
 
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
       config_.session_name,
@@ -1051,12 +1043,10 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       observability_publisher_.get(),
       clock_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
-  gated_autoscaler_state_handler_ = std::make_unique<LeaderGatedAutoscalerStateHandler>(
-      *gcs_autoscaler_state_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
           io_context_provider_.GetDefaultIOContext(),
-          *gated_autoscaler_state_handler_,
+          MaybeGate(gated_autoscaler_state_handler_, *gcs_autoscaler_state_manager_),
           RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -1074,11 +1064,11 @@ void GcsServer::InitGcsTaskManager(
   // Register service.
   rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
       io_context,
-      *gcs_task_manager_,
+      MaybeGate(gated_task_info_handler_, *gcs_task_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
   rpc_server_.RegisterService(std::make_unique<rpc::events::RayEventExportGrpcService>(
       io_context,
-      *gcs_task_manager_,
+      MaybeGate(gated_ray_event_export_handler_, *gcs_task_manager_),
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 

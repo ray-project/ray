@@ -15,6 +15,7 @@
 #include "ray/gcs_rpc_client/accessor.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -96,6 +97,22 @@ TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching) {
 
   accessor.is_gcs_leader_.store(true);
   ASSERT_TRUE(accessor.IsGcsLeader());
+}
+
+// Default (legacy) behavior guard for the leader-election feature.
+//
+// When leader election is disabled (the default), the client must behave exactly
+// like the pre-feature GCS client: it always considers itself the leader and does
+// not depend on the new `is_leader` CheckAliveReply field. This is what keeps a
+// cluster running with the feature off (including during a rolling upgrade before
+// the flag is flipped) identical to legacy.
+TEST(NodeInfoAccessorTest, TestLeaderElectionDisabledByDefault) {
+  ASSERT_FALSE(RayConfig::instance().LEADER_ELECT())
+      << "LEADER_ELECT must default to false for legacy-compatible behavior.";
+  NodeInfoAccessor accessor;
+  ASSERT_TRUE(accessor.IsGcsLeader())
+      << "With LEADER_ELECT disabled the client must always report itself as "
+         "leader, regardless of any is_leader value in CheckAlive replies.";
 }
 
 }  // namespace gcs
