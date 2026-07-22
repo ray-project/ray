@@ -680,9 +680,10 @@ class AlgorithmConfig(_Config):
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
-        Note: If using the new API stack (enable_rl_module_and_learner=True), the
-        returned dictionary will dynamically overwrite the legacy `train_batch_size` key
-        with the calculated `total_train_batch_size`.
+        Note: On the new API stack (enable_rl_module_and_learner=True), the effective
+        batch size is derived from `train_batch_size_per_learner` and `num_learners`;
+        read the `total_train_batch_size` property for it. The legacy `train_batch_size`
+        key in the returned dict is not authoritative on the new stack.
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
@@ -745,14 +746,6 @@ class AlgorithmConfig(_Config):
         ]:
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)
-
-        # If using the New API Stack, overwrite the stale legacy train_batch_size
-        # with the true computed total so to_dict() is not misleading.
-        if self.enable_rl_module_and_learner:
-            try:
-                config["train_batch_size"] = self.total_train_batch_size
-            except ValueError:
-                config["train_batch_size"] = None
 
         return config
 
@@ -1323,6 +1316,7 @@ class AlgorithmConfig(_Config):
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
+                        as_learner_connector=True,
                     )
                 )
             # Batch all data.
@@ -4689,37 +4683,21 @@ class AlgorithmConfig(_Config):
             # Default is single-agent but the user has provided a multi-agent spec
             # so the use-case is multi-agent.
             if isinstance(default_rl_module_spec, RLModuleSpec):
-                # The individual (single-agent) module specs are defined by the user
-                # in the currently setup MultiRLModuleSpec -> Use that
-                # RLModuleSpec.
-                if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    single_agent_spec = single_agent_rl_module_spec or (
-                        current_rl_module_spec.rl_module_specs
+                # Use the individual module specs defined by the user in the
+                # currently set up MultiRLModuleSpec, falling back to the provided
+                # or default RLModuleSpec for any ModuleID missing from it.
+                single_agent_spec = (
+                    single_agent_rl_module_spec or default_rl_module_spec
+                )
+                single_agent_spec.inference_only = inference_only
+                module_specs = {
+                    k: copy.deepcopy(
+                        current_rl_module_spec.rl_module_specs.get(k, single_agent_spec)
                     )
-                    single_agent_spec.inference_only = inference_only
-                    module_specs = {
-                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
-                    }
-
-                # The individual (single-agent) module specs have not been configured
-                # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the default spec (which is also a RLModuleSpec in this
-                # case).
-                else:
-                    single_agent_spec = (
-                        single_agent_rl_module_spec or default_rl_module_spec
-                    )
-                    single_agent_spec.inference_only = inference_only
-                    module_specs = {
-                        k: copy.deepcopy(
-                            current_rl_module_spec.rl_module_specs.get(
-                                k, single_agent_spec
-                            )
-                        )
-                        for k in (
-                            policy_dict | current_rl_module_spec.rl_module_specs
-                        ).keys()
-                    }
+                    for k in (
+                        policy_dict | current_rl_module_spec.rl_module_specs
+                    ).keys()
+                }
 
                 # Now construct the proper MultiRLModuleSpec.
                 # We need to infer the multi-agent class from `current_rl_module_spec`
@@ -4735,33 +4713,17 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # User provided an override RLModuleSpec -> Use this to
-                # construct the individual RLModules within the MultiRLModuleSpec.
-                if single_agent_rl_module_spec is not None:
-                    pass
-                # User has NOT provided an override RLModuleSpec.
-                else:
-                    # But the currently setup multi-agent spec has a SingleAgentRLModule
-                    # spec defined -> Use that to construct the individual RLModules
-                    # within the MultiRLModuleSpec.
-                    if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
-                        # The individual module specs are not given, it is given as one
-                        # RLModuleSpec to be re-used for all
-                        single_agent_rl_module_spec = (
-                            current_rl_module_spec.rl_module_specs
-                        )
-                    # The currently set up multi-agent spec has NO
-                    # RLModuleSpec in it -> Error (there is no way we can
-                    # infer this information from anywhere at this point).
-                    else:
-                        raise ValueError(
-                            "We have a MultiRLModuleSpec "
-                            f"({current_rl_module_spec}), but no "
-                            "`RLModuleSpec`s to compile the individual "
-                            "RLModules' specs! Use "
-                            "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., rl_module_spec=..)`."
-                        )
+                # Without an override RLModuleSpec, there is no single RLModuleSpec
+                # to reuse for all modules in this multi-agent default setup.
+                if single_agent_rl_module_spec is None:
+                    raise ValueError(
+                        "We have a MultiRLModuleSpec "
+                        f"({current_rl_module_spec}), but no "
+                        "`RLModuleSpec`s to compile the individual "
+                        "RLModules' specs! Use "
+                        "`AlgorithmConfig.get_multi_rl_module_spec("
+                        "policy_dict=.., rl_module_spec=..)`."
+                    )
 
                 single_agent_rl_module_spec.inference_only = inference_only
 
@@ -4789,16 +4751,6 @@ class AlgorithmConfig(_Config):
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
-                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    module_class = default_rl_module_spec.rl_module_specs.module_class
-                    # This should be already checked in validate() but we check it
-                    # again here just in case
-                    if module_class is None:
-                        raise ValueError(
-                            "The default rl_module spec cannot have an empty "
-                            "module_class under its RLModuleSpec."
-                        )
-                    module_spec.module_class = module_class
                 elif module_id in default_rl_module_spec.rl_module_specs:
                     module_spec.module_class = default_rl_module_spec.rl_module_specs[
                         module_id
@@ -4813,9 +4765,6 @@ class AlgorithmConfig(_Config):
             if module_spec.catalog_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.catalog_class = default_rl_module_spec.catalog_class
-                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    catalog_class = default_rl_module_spec.rl_module_specs.catalog_class
-                    module_spec.catalog_class = catalog_class
                 elif module_id in default_rl_module_spec.rl_module_specs:
                     module_spec.catalog_class = default_rl_module_spec.rl_module_specs[
                         module_id

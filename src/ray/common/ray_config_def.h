@@ -432,11 +432,40 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
+/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+/// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
+/// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
+/// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+/// The storage backend to use for the GCS. It can be 'memory', 'redis', or
+/// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// Number of worker threads in the RocksDB I/O offload pool. RocksDB I/O
+/// (including the WAL fsync that dominates per-call latency) always runs
+/// on this pool so blocking ops do not stall the GCS event loop. RocksDB
+/// serializes WAL writes internally and batches concurrent in-flight
+/// writers into one fsync (group commit), so a small pool (~4) is enough
+/// to capture the aggregate-throughput benefit on the GCS metadata
+/// workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// Number of per-key strand buckets used for single-key op ordering on
+/// the RocksDB I/O offload pool. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4).
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -631,7 +660,7 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 
 /// If a probe has been outstanding longer than this, the io_context is marked
 /// unhealthy.
-RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 30000)
 
 /// Sliding window over which the max probe latency is tracked and exported. The
 /// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
@@ -1036,8 +1065,10 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, fals
 
 // Enable per-worker process-group-based cleanup. When enabled, workers are
 // placed into their own process groups and can be cleaned up via killpg on
-// worker death. Cross-platform semantics on POSIX (no-op on Windows).
-RAY_CONFIG(bool, process_group_cleanup_enabled, false)
+// worker death. Cross-platform semantics on POSIX (no-op on Windows). Enabled by
+// default; this supersedes the deprecated subreaper-based cleanup
+// (kill_child_processes_on_worker_exit_with_raylet_subreaper).
+RAY_CONFIG(bool, process_group_cleanup_enabled, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

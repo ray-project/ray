@@ -1,3 +1,6 @@
+.. meta::
+   :description: Set up and navigate the Ray Dashboard web UI for monitoring cluster state, tracking task and actor performance, and troubleshooting distributed applications.
+
 .. _observability-getting-started:
 
 Ray Dashboard

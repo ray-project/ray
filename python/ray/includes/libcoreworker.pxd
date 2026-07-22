@@ -104,6 +104,9 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
                 int64_t generator_backpressure_num_objects,
                 (CRayStatus() nogil) check_signals)
         CRayStatus WaitAllObjectsReported()
+        CRayStatus WaitUntilObjectConsumed()
+        c_bool IsBackpressured()
+        c_bool NeedsObjectConsumedUpdates()
 
     cdef cppclass CActorWideGeneratorBackpressureWaiter "ray::core::ActorWideGeneratorBackpressureWaiter":  # noqa
         pass
@@ -112,8 +115,8 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CActorTaskBackpressureMetadata(
                 shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter)
         CRayStatus ReserveSlot(int64_t num_objects)
+        c_bool TryReserveSlot(int64_t num_objects)
         void ReleaseSlot(int64_t num_objects)
-        void OnReport(int64_t total)
         void Teardown()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
@@ -206,9 +209,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
+        CRayStatus TryReadObjectRefStreamN(
+            const CObjectID &generator_id,
+            int64_t num_items)
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
+        c_vector[pair[CObjectReference, c_bool]] PeekObjectRefStreamN(
+            const CObjectID &generator_id, int64_t num_items)
         CObjectID PeekObjectIdStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
@@ -248,6 +256,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        c_bool AddObjectOutOfScopeOrFreedCallback(
+            const CObjectID &object_id,
+            void (*callback)(const CObjectID &, void *) nogil,
+            void *callback_context)
+        CRayStatus CheckObjectOwnedByUs(const CObjectID &object_id) const
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
@@ -344,6 +357,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
             shared_ptr[CActorTaskBackpressureMetadata] actor_metadata,
             const CAddress &owner_address)
+        void SetAsyncGeneratorBackpressureUnblockNotify(
+            const CObjectID &generator_id,
+            (void(void *) noexcept nogil) fn,
+            void *ctx)
+        void ClearAsyncGeneratorBackpressureUnblockNotify(
+            const CObjectID &generator_id)
+        void NotifyAsyncGeneratorBackpressureUnblock(
+            const CObjectID &generator_id,
+            c_bool notify_all)
         shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.

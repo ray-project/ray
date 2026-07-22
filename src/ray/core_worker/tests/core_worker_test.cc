@@ -31,11 +31,13 @@
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_counter.h"
@@ -65,7 +67,9 @@ class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
-        task_execution_service_work_(task_execution_service_.get_executor()) {
+        task_execution_service_work_(task_execution_service_.get_executor()),
+        object_freed_callback_service_work_(
+            object_freed_callback_service_.get_executor()) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -135,8 +139,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
         /*clock=*/clock_,
@@ -263,6 +266,7 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
+                                                object_freed_callback_service_,
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -272,6 +276,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
+                                                object_freed_callback_thread_,
                                                 reference_counter_,
                                                 memory_store_,
                                                 nullptr,  // plasma_store_provider_
@@ -298,11 +303,19 @@ class CoreWorkerTest : public ::testing::Test {
   FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
+  instrumented_io_context object_freed_callback_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_freed_callback_service_work_;
 
   boost::thread io_thread_;
+  boost::thread object_freed_callback_thread_;
+
+  /// Flush all pending object-freed callbacks. Call this in tests after an action
+  /// that should trigger a user-registered out-of-scope callback.
+  void FlushObjectFreedCallbacks() { object_freed_callback_service_.poll(); }
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -336,6 +349,35 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
 }
 
+TaskSpecification CreateStreamingGeneratorTaskSpec() {
+  TaskSpecification task;
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_returns_dynamic(true);
+  task.GetMutableMessage().set_streaming_generator(true);
+  task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
+  return task;
+}
+
+TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
+  auto spec = CreateStreamingGeneratorTaskSpec();
+  auto generator_id = spec.ReturnId(0);
+  task_manager_->AddPendingTask(rpc_address_, spec, "call_site");
+
+  auto refs = core_worker_->PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(refs.size(), 2);
+  ASSERT_EQ(ObjectID::FromBinary(refs[0].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 2));
+  ASSERT_FALSE(refs[0].second);
+  ASSERT_EQ(ObjectID::FromBinary(refs[1].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 3));
+  ASSERT_FALSE(refs[1].second);
+  ASSERT_EQ(WorkerID::FromBinary(refs[0].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
+  ASSERT_EQ(WorkerID::FromBinary(refs[1].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
+}
+
 TEST_F(CoreWorkerTest, RecordMetrics) {
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = core_worker_->Get({}, -1, results);
@@ -351,6 +393,122 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
     ASSERT_EQ(key.at("Source"), "executor");
     ASSERT_EQ(key.at("IsRetry"), "0");
   }
+}
+
+// A running task must stay visible in the gauge on every RecordMetrics() tick,
+// not only on state transitions, so it does not vanish between scrapes when the
+// metrics backend clears gauge observations after each export (#56405).
+TEST(TaskCounterTest, RecordMetricsReEmitsRunningGaugeAcrossTicksWithoutTransitions) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // A task starts running and then stays running with no further transitions.
+  const std::string func_name = "long_running_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+
+  // First tick emits the RUNNING-state breakdown: RUNNING, the SUBMITTED_TO_WORKER
+  // negation, and the three RUNNING_IN_* sub-states.
+  task_counter.RecordMetrics();
+  auto first_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(first_tick.size(), 5) << "expected RUNNING + negation + 3 sub-states";
+
+  // Clear observations to detect re-emission on the next tick.
+  task_by_state_gauge.Clear();
+  ASSERT_TRUE(task_by_state_gauge.GetTagToValue().empty());
+
+  // With no transitions since the last tick, the gauge must still be re-asserted.
+  task_counter.RecordMetrics();
+  auto second_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(second_tick.size(), 5) << "running task must persist without a transition";
+  ASSERT_EQ(second_tick, first_tick);
+
+  // Re-emission is sustained across further ticks, not a one-time flush.
+  task_by_state_gauge.Clear();
+  task_counter.RecordMetrics();
+  auto third_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(third_tick.size(), 5);
+  ASSERT_EQ(third_tick, first_tick);
+}
+
+// When a running task finishes, its RUNNING-state gauge must be retracted to 0 on
+// the next RecordMetrics() tick (the on-change callback fires for the now-zero key),
+// rather than remaining at its last non-zero value.
+TEST(TaskCounterTest, RecordMetricsRetractsRunningGaugeWhenTaskFinishes) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // Returns the gauge value recorded for the given State tag, or -1 if absent.
+  auto value_for_state = [&task_by_state_gauge](const std::string &state) -> double {
+    for (const auto &[tags, value] : task_by_state_gauge.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+
+  const std::string func_name = "finishing_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 1) << "task should be counted as RUNNING";
+
+  // The task finishes; the RUNNING count drops to zero.
+  task_counter.MoveRunningToFinished(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 0)
+      << "RUNNING gauge must be retracted to 0, not left at its last value";
+}
+
+// Free callback used to exercise the async-generator unblock notify registry.
+// Increments the int pointed to by `ctx` (the registry treats ctx opaquely).
+static void IncrementUnblockCounter(void *ctx) { ++(*static_cast<int *>(ctx)); }
+
+TEST_F(CoreWorkerTest, AsyncGeneratorUnblockNotifyFiresOnConsumptionUpdate) {
+  const auto generator_id = ObjectID::FromRandom();
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+
+  // Register a backpressure state so the consumption handler finds a waiter,
+  // plus an async unblock notify for this generator.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  core_worker_->RegisterGeneratorBackpressureState(
+      generator_id, waiter, /*actor_metadata=*/nullptr, owner_address);
+
+  int count = 0;
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, &IncrementUnblockCounter, &count);
+
+  auto send_consumed = [&](int64_t total) {
+    rpc::UpdateGeneratorBackpressureConsumedRequest request;
+    request.set_generator_id(generator_id.Binary());
+    request.set_total_num_object_consumed(total);
+    rpc::UpdateGeneratorBackpressureConsumedReply reply;
+    core_worker_->HandleUpdateGeneratorBackpressureConsumed(
+        std::move(request),
+        &reply,
+        [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  // A consumption update through the public RPC handler wakes the async
+  // generator by firing the registered notify.
+  send_consumed(1);
+  ASSERT_EQ(count, 1);
+
+  // After clearing, a further consumption update does not fire it.
+  core_worker_->ClearAsyncGeneratorBackpressureUnblockNotify(generator_id);
+  send_consumed(2);
+  ASSERT_EQ(count, 1);
+
+  // Defense-in-depth: a null callback must not crash when the handler fires it.
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, nullptr, nullptr);
+  send_consumed(3);
+  ASSERT_EQ(count, 1);
 }
 
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
@@ -756,119 +914,9 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
-class CoreWorkerPubsubWorkerObjectEvictionChannelTest
-    : public CoreWorkerTest,
-      public ::testing::WithParamInterface<bool> {};
-
-TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatchRetries) {
-  // should_free_object: determines whether the object is freed from plasma. This is used
-  // to trigger AddObjectOutOfScopeOrFreedCallback in HandlePubsubCommandBatch which
-  // stores the unpin_object callback that publishes the message to the
-  // WORKER_OBJECT_EVICTION channel
-  // should_free_object == true: the object is freed from plasma and we expect the message
-  // to the WORKER_OBJECT_EVICTION channel to be published.
-  // should_free_object == false: the object is not freed and we expect the message to the
-  // WORKER_OBJECT_EVICTION channel to not be published.
-  bool should_free_object = GetParam();
-
-  auto subscriber_id = NodeID::FromRandom();
-  auto object_id = ObjectID::FromRandom();
-
-  rpc::Address owner_address;
-  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id,
-                                     {},
-                                     owner_address,
-                                     "",
-                                     0,
-                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                     true);
-
-  rpc::PubsubCommandBatchRequest command_batch_request;
-  command_batch_request.set_subscriber_id(subscriber_id.Binary());
-  auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  command->set_key_id(object_id.Binary());
-  auto *sub_message = command->mutable_subscribe_message();
-  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
-  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
-  real_sub_message->set_object_id(object_id.Binary());
-  *real_sub_message->mutable_subscriber_address() = rpc_address_;
-
-  rpc::PubsubCommandBatchReply command_reply1;
-  rpc::PubsubCommandBatchReply command_reply2;
-  // Each call to HandlePubsubCommandBatch causes the reference counter to store the
-  // unpin_object callback that publishes the WORKER_OBJECT_EVICTION message
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply1,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply2,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-
-  if (should_free_object) {
-    // Triggers the unpin_object callbacks that publish the message to the
-    // WORKER_OBJECT_EVICTION channel
-    reference_counter_->FreePlasmaObjects({object_id});
-  }
-
-  rpc::PubsubLongPollingRequest request;
-  request.set_subscriber_id(subscriber_id.Binary());
-  request.set_max_processed_sequence_id(0);
-  request.set_publisher_id("");
-
-  rpc::PubsubLongPollingReply reply;
-
-  // should_free_object == true: Each call to HandlePubsubCommandBatch adds an
-  // unpin_object callback that is triggered via FreePlasmaObjects which publishes the
-  // message to the WORKER_OBJECT_EVICTION channel, hence we have 1 publish per callback
-  // so 2 in total. The long poll connection is closed
-  // should_free_object == false: Since FreePlasmaObjects is not called, the unpin_object
-  // callbacks are not triggered and we have 0 publishes. NOTE: The long poll connection
-  // is not closed when should_free_object == false since there was no publish.
-  core_worker_->HandlePubsubLongPolling(
-      request,
-      &reply,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-
-  int expected_messages = should_free_object ? 2 : 0;
-  EXPECT_EQ(reply.pub_messages_size(), expected_messages);
-
-  for (int i = 0; i < expected_messages; i++) {
-    const auto &msg = reply.pub_messages(i);
-    EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    EXPECT_EQ(msg.key_id(), object_id.Binary());
-    EXPECT_EQ(msg.sequence_id(), i + 1);
-    EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
-  }
-
-  if (!should_free_object) {
-    // Since the long poll connection is not closed, we need to flush it. Otherwise this
-    // can trigger undefined behavior since unlike in prod where grpc arena allocates the
-    // reply, here we allocate the reply on the stack. Hence the normal order of
-    // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
-    // reply which access freed memory
-    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
-    object_info_publisher_->CheckDeadSubscribers();
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
-                         CoreWorkerPubsubWorkerObjectEvictionChannelTest,
-                         ::testing::Values(true, false));
-
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
   // type. The publisher was created with only:
-  // - WORKER_OBJECT_EVICTION
   // - WORKER_REF_REMOVED_CHANNEL
   // - WORKER_OBJECT_LOCATIONS_CHANNEL
   // Using a channel type that was not registered should return InvalidArgument.
@@ -911,7 +959,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
 
   rpc::PubsubCommandBatchReply command_reply;
@@ -935,7 +983,7 @@ TEST_F(CoreWorkerTest,
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   command->set_key_id(object_id.Binary());
   command->mutable_subscribe_message();
 
@@ -1317,6 +1365,186 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
+
+// Callback fires after the last local reference is dropped, and
+// FlushObjectFreedCallbacks drains the pending work.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresAfterRefDrop) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  bool fired = false;
+  ObjectID received_id;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired, &received_id](const ObjectID &id) {
+        fired = true;
+        received_id = id;
+      });
+  ASSERT_TRUE(registered);
+  ASSERT_FALSE(fired);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  // Callback is posted to the dedicated service; flush it synchronously.
+  FlushObjectFreedCallbacks();
+  ASSERT_TRUE(fired);
+  EXPECT_EQ(received_id, object_id);
+}
+
+// Returns false when the object is already out of scope; callback never fires.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_ReturnsFalseWhenAlreadyOutOfScope) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  // Add and immediately remove the reference so it goes out of scope.
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  bool fired = false;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired](const ObjectID &) { fired = true; });
+  ASSERT_FALSE(registered);
+  FlushObjectFreedCallbacks();
+  ASSERT_FALSE(fired);
+}
+
+// The callback must run on the dedicated object_freed_callback_service_ thread,
+// not on the IO thread or the test thread.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_RunsOnDedicatedThread) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  std::promise<boost::thread::id> thread_id_promise;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&thread_id_promise](const ObjectID &) {
+        thread_id_promise.set_value(boost::this_thread::get_id());
+      });
+  ASSERT_TRUE(registered);
+
+  // RemoveLocalReference fires OnObjectOutOfScopeOrFreed inline (test thread), which
+  // calls the wrapped lambda that posts the real callback to
+  // object_freed_callback_service_.
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  // Start the dedicated thread so the posted work can run.
+  object_freed_callback_thread_ =
+      boost::thread([this]() { object_freed_callback_service_.run(); });
+
+  auto tid = thread_id_promise.get_future().get();
+  auto expected_tid = object_freed_callback_thread_.get_id();
+
+  object_freed_callback_service_.stop();
+  if (object_freed_callback_thread_.joinable()) {
+    object_freed_callback_thread_.join();
+  }
+
+  EXPECT_EQ(tid, expected_tid) << "Callback must run on object_freed_callback_thread_";
+  EXPECT_NE(tid, boost::this_thread::get_id())
+      << "Callback must not run on the test thread";
+}
+
+// The C function-pointer overload (used by Cython) routes through the same
+// dedicated thread and delivers the correct object_id + user_data.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_CFunctionPointerOverload) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  struct Result {
+    ObjectID id;
+    bool fired = false;
+  } result;
+
+  auto c_callback = [](const ObjectID &id, void *data) {
+    auto *r = static_cast<Result *>(data);
+    r->id = id;
+    r->fired = true;
+  };
+
+  bool registered =
+      core_worker_->AddObjectOutOfScopeOrFreedCallback(object_id, c_callback, &result);
+  ASSERT_TRUE(registered);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  ASSERT_TRUE(result.fired);
+  EXPECT_EQ(result.id, object_id);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_MultipleCallbacksAllFire) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+        object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+  }
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  EXPECT_EQ(fire_count, 3);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+  FlushObjectFreedCallbacks();  // second flush must not re-fire
+
+  EXPECT_EQ(fire_count, 1);
+}
 
 }  // namespace core
 }  // namespace ray

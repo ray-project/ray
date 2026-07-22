@@ -11,9 +11,7 @@ LLM with RL workloads. The API is not public and won't be documented until the
 end-to-end story is finalized. Class names and endpoint names may change.
 """
 
-import subprocess
 import time
-from typing import List
 
 import pytest
 import requests
@@ -24,6 +22,8 @@ from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
+
+from test_utils import get_total_gpu_memory_mb
 
 MODEL_ID = "Qwen/Qwen2-0.5B-Instruct"
 BASE_URL = "http://localhost:8000"
@@ -52,26 +52,6 @@ def is_default_app_running():
         return default_app.status == ApplicationStatus.RUNNING
     except (KeyError, AttributeError):
         return False
-
-
-def get_gpu_memory_used_mb() -> List[float]:
-    """Get GPU memory used per device via nvidia-smi.
-
-    Returns:
-        List of memory used in MB for each GPU device.
-    """
-    result = subprocess.run(
-        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return [float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()]
-
-
-def get_total_gpu_memory_mb() -> float:
-    """Get total GPU memory used across all devices."""
-    return sum(get_gpu_memory_used_mb())
 
 
 def wait_for_server_ready(timeout: int = 240) -> None:

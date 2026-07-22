@@ -521,20 +521,21 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"location": "EveryNode"}
+    http_options = {}
+    proxy_location = ProxyLocation.EveryNode
     grpc_options = gRPCOptions()
     controller_options = None
     # Merge http_options, grpc_options, and controller_options with the ones on
     # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        http_options["location"] = config.proxy_location.value
-        config_http_options = config.http_options.model_dump()
-        http_options = {**config_http_options, **http_options}
+        proxy_location = config.proxy_location
+        http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
         controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         controller_options=controller_options,
     )
