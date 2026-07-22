@@ -350,22 +350,30 @@ def test_delta_read_column_mapping_multiple_files(tmp_path):
     assert sorted(df[logical_x].tolist()) == [1, 2, 101, 102]
 
 
-def _create_partitioned_name_mapped_delta_table(tmp_path):
+def _create_partitioned_name_mapped_delta_table(
+    tmp_path,
+    table_name="partitioned_name_mapped",
+    partition_name="country",
+    partition_type="string",
+    partition_values=(("US", [1, 2]), ("CA", [3])),
+):
     """Create name-mapped data files whose partition values live in the Delta log."""
     import pyarrow.parquet as pq
 
-    table = Path(tmp_path) / "partitioned_name_mapped"
+    table = Path(tmp_path) / table_name
     (table / "_delta_log").mkdir(parents=True)
     logical_value, physical_value = "value", "col-value"
-    logical_country, physical_country = "country", "col-country"
+    logical_partition, physical_partition = partition_name, f"col-{partition_name}"
 
     add_actions = []
-    for country, values in (("US", [1, 2]), ("CA", [3])):
-        partition_dir = table / f"{physical_country}={country}"
+    for partition_value, values in partition_values:
+        partition_dir = table / f"{physical_partition}={partition_value}"
         partition_dir.mkdir()
-        data_file = partition_dir / f"part-{country}.parquet"
+        data_file = partition_dir / f"part-{partition_value}.parquet"
         pq.write_table(pa.table({physical_value: values}), data_file)
-        add_actions.append(_add_action(table, data_file, {physical_country: country}))
+        add_actions.append(
+            _add_action(table, data_file, {physical_partition: partition_value})
+        )
 
     schema = {
         "type": "struct",
@@ -380,12 +388,12 @@ def _create_partitioned_name_mapped_delta_table(tmp_path):
                 },
             },
             {
-                "name": logical_country,
-                "type": "string",
+                "name": logical_partition,
+                "type": partition_type,
                 "nullable": True,
                 "metadata": {
                     "delta.columnMapping.id": 2,
-                    "delta.columnMapping.physicalName": physical_country,
+                    "delta.columnMapping.physicalName": physical_partition,
                 },
             },
         ],
@@ -398,7 +406,7 @@ def _create_partitioned_name_mapped_delta_table(tmp_path):
                 max_column_id=2,
                 # Delta metadata stores logical partition names; file paths and
                 # Add.partitionValues use their physical name in name mode.
-                partition_columns=[logical_country],
+                partition_columns=[logical_partition],
             )
         },
         *add_actions,
@@ -426,6 +434,21 @@ def test_delta_read_column_mapping_partition_projection_and_filter(tmp_path):
 
     filtered = ray.data.read_delta(table_path).filter(expr=col("country") == "US")
     assert filtered.to_pandas()["value"].tolist() == [1, 2]
+
+
+def test_delta_read_column_mapping_casts_partition_values(tmp_path):
+    """String Delta Add partition values cast to their logical Arrow type."""
+    table_path = _create_partitioned_name_mapped_delta_table(
+        tmp_path,
+        table_name="integer_partition",
+        partition_name="year",
+        partition_type="long",
+        partition_values=(("2024", [1, 2]), ("2025", [3])),
+    )
+
+    ds = ray.data.read_delta(table_path)
+    assert ds.schema().names == ["value", "year"]
+    assert ds.to_pandas()["year"].tolist() == [2024, 2024, 2025]
 
 
 def test_delta_read_column_mapping_schema_evolution(tmp_path):
