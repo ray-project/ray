@@ -81,6 +81,7 @@ def deployment_info(
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
     replica_config: Optional[ReplicaConfig] = None,
+    ingress_request_router: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -92,6 +93,7 @@ def deployment_info(
         ),
         replica_config=replica_config or ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
+        ingress_request_router=ingress_request_router,
     )
 
     if version is not None:
@@ -4417,6 +4419,190 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def _pinned_target_node_ids(ds) -> set:
+    return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
+
+
+def test_ingress_request_router_pins_one_replica_per_proxy_node(
+    mock_deployment_state_manager,
+):
+    """The ingress request router pins one replica to each proxy node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # Idempotent: the same proxy-node set adds nothing.
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
+
+
+def test_ingress_request_router_tracks_proxy_node_set(mock_deployment_state_manager):
+    """Replicas follow proxy nodes as they join and leave."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # A proxy node joins: a replica is pinned to it.
+    dsm.update(proxy_nodes={n1, n2, n3})
+    assert ds.target_num_replicas == 3
+    assert _pinned_target_node_ids(ds) == {n1, n2, n3}
+
+    # A proxy node leaves: its replica is stopped, the rest stay pinned.
+    dsm.update(proxy_nodes={n1, n3})
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n3}
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+
+
+def test_ingress_request_router_same_size_node_swap(mock_deployment_state_manager):
+    """A same-size membership change swaps the replica to the new node in one tick.
+
+    The replica count stays constant, so a count delta cannot detect the swap;
+    tracking node identity is what stops the old node's replica and pins the new.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # n2 leaves as n3 joins in the same tick: count stays 2, membership changes.
+    dsm.update(proxy_nodes={n1, n3})
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n3}
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+
+
+def test_ingress_request_router_status_reflects_scaling(mock_deployment_state_manager):
+    """A proxy node joining/leaving surfaces UPSCALING/DOWNSCALING, then HEALTHY."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1})
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.target_num_replicas == 2
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    dsm.update(proxy_nodes={n1})
+    assert ds.target_num_replicas == 1
+    assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+
+
+def test_ingress_request_router_scaling_only_affects_router(
+    mock_deployment_state_manager,
+):
+    """A non-router deployment ignores the proxy-node set."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    nodes = {NodeID.from_random().hex() for _ in range(3)}
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=2)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update(proxy_nodes=nodes)
+    assert ds.target_num_replicas == 2
+    check_counts(ds, total=2)
+
+
+def _pinned_node_counts(ds) -> dict:
+    counts = {}
+    for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+        counts[r.target_node_id] = counts.get(r.target_node_id, 0) + 1
+    return counts
+
+
+@patch(
+    "ray.serve._private.deployment_state.RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 2
+)
+def test_ingress_request_router_multiple_replicas_per_node(
+    mock_deployment_state_manager,
+):
+    """RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE pins that many replicas per node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.target_num_replicas == 4
+    check_counts(ds, total=4)
+    assert _pinned_node_counts(ds) == {n1: 2, n2: 2}
+
+
+def test_ingress_request_router_code_version_rollout(mock_deployment_state_manager):
+    """A router code-version change replaces the per-node replica.
+
+    The reconcile ignores outdated replicas when counting per-node coverage, so
+    a node running only an old-version router is uncovered and gets a
+    new-version replica pinned to it while the old one drains.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1 = NodeID.from_random().hex()
+
+    info_v1, v1 = deployment_info(version="1", ingress_request_router=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_v1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # Redeploy a new code version.
+    info_v2, v2 = deployment_info(version="2", ingress_request_router=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_v2)
+
+    dsm.update(proxy_nodes={n1})
+    # New version starts on n1 while the old drains; count stays one per node.
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+    )
+    assert ds.target_num_replicas == 1
+    assert _pinned_target_node_ids(ds) == {n1}
+
+    # Finish the rollout: old replica stops, new one becomes ready.
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    dsm.update(proxy_nodes={n1})
+    ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_get_deployment_ids(mock_deployment_state_manager):
