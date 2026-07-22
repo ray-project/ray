@@ -45,7 +45,6 @@ Status TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
     while (!backpressure_disabled_ &&
            total_object_unconsumed >= backpressure_threshold_) {
       backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
-      total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
       // Release before check_signals(): it acquires the GIL, and callers may take
       // this mutex while holding the GIL (async generators). Opposite order
       // deadlocks.
