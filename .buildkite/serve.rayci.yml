@@ -213,6 +213,7 @@ steps:
     parallelism: 3
     tags:
       - serve
+      - skip-on-microcheck
     instance_type: large
     commands:
       # Full serve suite with HAProxy, minus tags owned by their own steps or images.
