@@ -9,8 +9,8 @@ import {
   getAuthenticationMode,
 } from "./authentication/authentication";
 import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
-import { API_REFRESH_INTERVAL_MS } from "./common/constants";
 import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
+import { API_REFRESH_INTERVAL_MS } from "./common/constants";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import PlatformEventsPage from "./pages/events/PlatformEventsPage";
@@ -231,9 +231,8 @@ const App = () => {
     useState(false);
   const [hasAttemptedAuthentication, setHasAttemptedAuthentication] =
     useState(false);
-  const [authenticationError, setAuthenticationError] = useState<
-    string | undefined
-  >();
+  const [authenticationError, setAuthenticationError] =
+    useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
