@@ -10146,5 +10146,284 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     assert ds._last_health_check_healthy_replica_ids == running_ids
 
 
+def _dep(name: str, app: str = "app") -> DeploymentID:
+    return DeploymentID(name=name, app_name=app)
+
+
+def _deploy_running(dsm, deployment_id, outbound=None):
+    """Deploy a single replica deployment and drive it to RUNNING.
+
+    outbound is the list of DeploymentIDs the replica reports calling. Pass []
+    for a known leaf and None to model a replica that has not reported an
+    outbound set yet.
+    """
+    info, _ = deployment_info(num_replicas=1)
+    assert dsm.deploy(deployment_id, info)
+    ds = dsm._get_deployment_state_for_testing(deployment_id)
+    dsm.update()
+    for r in ds._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    assert ds._replicas.get([ReplicaState.RUNNING])
+    if outbound is not None:
+        for r in ds._replicas.get([ReplicaState.RUNNING]):
+            r._actor._outbound_deployments = list(outbound)
+    return ds
+
+
+def _finish_stopping(dsm):
+    """Simulate every currently stopping replica finishing its teardown."""
+    for ds in list(dsm._deployment_states.values()):
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+
+def _run_shutdown_to_completion(dsm, max_steps=50, wedged=None):
+    """Drive the controller's shutdown loop to completion.
+
+    Each step mirrors one control loop iteration: shutdown() advances the
+    deletion tiers and update() reconciles the teardown. Returns the order in
+    which deployments were first marked deleting, so callers can assert callers
+    drained before callees. Deployments in the wedged set never finish
+    stopping, modeling a stuck replica.
+    """
+    wedged = wedged or set()
+    delete_order = []
+    for _ in range(max_steps):
+        dsm.shutdown()
+        for deployment_id, deployment_state in dsm._deployment_states.items():
+            if deployment_state._target_state.deleting and (
+                deployment_id not in delete_order
+            ):
+                delete_order.append(deployment_id)
+        dsm.update()
+        for deployment_state in list(dsm._deployment_states.values()):
+            if deployment_state._id in wedged:
+                continue
+            for r in deployment_state._replicas.get([ReplicaState.STOPPING]):
+                r._actor.set_done_stopping()
+        dsm.update()
+        if dsm.is_ready_for_shutdown():
+            break
+    return delete_order
+
+
+class TestShutdownDeletionTiers:
+    """Unit tests for DeploymentStateManager._shutdown_deletion_tiers()."""
+
+    def test_linear_chain(self, mock_deployment_state_manager):
+        """A -> B -> C tiers out as [[A], [B], [C]]."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[a], [b], [c]]
+
+    def test_diamond(self, mock_deployment_state_manager):
+        """Ingress -> {m1, m2} -> leaf keeps the leaf in the last tier."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, m1, m2, leaf = _dep("ingress"), _dep("m1"), _dep("m2"), _dep("leaf")
+        _deploy_running(dsm, ingress, outbound=[m1, m2])
+        _deploy_running(dsm, m1, outbound=[leaf])
+        _deploy_running(dsm, m2, outbound=[leaf])
+        _deploy_running(dsm, leaf, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers[0] == [ingress]
+        assert set(tiers[1]) == {m1, m2}
+        assert tiers[2] == [leaf]
+
+    def test_cycle_appended_as_final_tier(self, mock_deployment_state_manager):
+        """A -> B -> C -> A has no safe order, so all three land in one tier."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[a])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert len(tiers) == 1
+        assert set(tiers[0]) == {a, b, c}
+
+    def test_ingress_into_cycle(self, mock_deployment_state_manager):
+        """An ingress feeding a cycle drains before the cyclic remainder."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, a, b = _dep("ingress"), _dep("a"), _dep("b")
+        _deploy_running(dsm, ingress, outbound=[a])
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[a])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers[0] == [ingress]
+        assert set(tiers[1]) == {a, b}
+
+    def test_unknown_outbound_positioned_by_callers(
+        self, mock_deployment_state_manager
+    ):
+        """A node with unknown outbound is still ordered after its caller."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b = _dep("a"), _dep("b")
+        _deploy_running(dsm, a, outbound=[b])
+        # b's replica never reported an outbound set.
+        _deploy_running(dsm, b, outbound=None)
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[a], [b]]
+
+    def test_isolated_unknown_node_in_first_tier(self, mock_deployment_state_manager):
+        """An isolated node with unknown outbound is safe to delete first."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, lone = _dep("a"), _dep("b"), _dep("lone")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[])
+        _deploy_running(dsm, lone, outbound=None)
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert set(tiers[0]) == {a, lone}
+        assert tiers[1] == [b]
+
+    def test_multi_app_independent(self, mock_deployment_state_manager):
+        """Two apps with no cross edges tier out independently."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a1, b1 = _dep("a", app="app1"), _dep("b", app="app1")
+        a2, b2 = _dep("a", app="app2"), _dep("b", app="app2")
+        _deploy_running(dsm, a1, outbound=[b1])
+        _deploy_running(dsm, b1, outbound=[])
+        _deploy_running(dsm, a2, outbound=[b2])
+        _deploy_running(dsm, b2, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert set(tiers[0]) == {a1, a2}
+        assert set(tiers[1]) == {b1, b2}
+
+    def test_no_deployments(self, mock_deployment_state_manager):
+        """No deployments produces no tiers."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        assert dsm._shutdown_deletion_tiers() == []
+
+
+class TestDependencyOrderedShutdown:
+    """Tests for the re-entrant, dependency-ordered shutdown state machine."""
+
+    def test_linear_chain_delete_order(self, mock_deployment_state_manager):
+        """A -> B -> C: each callee is deleted only after its caller is gone."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        # First tier only deletes the ingress. Downstream stays untouched.
+        dsm.shutdown()
+        assert dsm._get_deployment_state_for_testing(a)._target_state.deleting
+        assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+        assert not dsm._get_deployment_state_for_testing(c)._target_state.deleting
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [a, b, c]
+
+    def test_diamond_leaf_last(self, mock_deployment_state_manager):
+        """The shared leaf is deleted only after both middle nodes are gone."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, m1, m2, leaf = _dep("ingress"), _dep("m1"), _dep("m2"), _dep("leaf")
+        _deploy_running(dsm, ingress, outbound=[m1, m2])
+        _deploy_running(dsm, m1, outbound=[leaf])
+        _deploy_running(dsm, m2, outbound=[leaf])
+        _deploy_running(dsm, leaf, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order[0] == ingress
+        assert order[-1] == leaf
+        assert order.index(leaf) > order.index(m1)
+        assert order.index(leaf) > order.index(m2)
+
+    def test_cycle_completes(self, mock_deployment_state_manager):
+        """A dependency cycle still shuts down cleanly without hanging."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[a])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert set(order) == {a, b, c}
+
+    def test_unknown_outbound_completes(self, mock_deployment_state_manager):
+        """Unknown outbound sets do not stall shutdown."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b = _dep("a"), _dep("b")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=None)
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [a, b]
+
+    def test_multi_app_independent(self, mock_deployment_state_manager):
+        """Independent apps tear down without interfering with each other."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a1, b1 = _dep("a", app="app1"), _dep("b", app="app1")
+        a2, b2 = _dep("a", app="app2"), _dep("b", app="app2")
+        _deploy_running(dsm, a1, outbound=[b1])
+        _deploy_running(dsm, b1, outbound=[])
+        _deploy_running(dsm, a2, outbound=[b2])
+        _deploy_running(dsm, b2, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order.index(b1) > order.index(a1)
+        assert order.index(b2) > order.index(a2)
+
+    def test_wedged_tier_still_completes(self, mock_deployment_state_manager):
+        """A tier that never drains is force-advanced past after the timeout."""
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        with patch.object(ds_mod, "RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S", 5):
+            # First tier deletes A, but A's replica is wedged and never stops.
+            dsm.shutdown()
+            dsm.update()
+            assert dsm._get_deployment_state_for_testing(a)._target_state.deleting
+            assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # Before the timeout elapses we stay gated on the wedged tier.
+            dsm.shutdown()
+            assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # After the timeout we force-advance and delete the next tier even
+            # though A is still draining.
+            timer.advance(6)
+            dsm.shutdown()
+            assert dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # Once the wedged replica finally stops, shutdown completes.
+            order = _run_shutdown_to_completion(dsm)
+            assert dsm.is_ready_for_shutdown()
+            assert set(order) == {a, b, c}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
