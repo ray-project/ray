@@ -117,6 +117,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   auto it = refs_written_to_stream_.find(*object_id_out);
   if (it != refs_written_to_stream_.end()) {
     total_num_object_consumed_ += 1;
+    total_num_bytes_consumed_ += it->second;
     next_index_ += 1;
     RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
                                    << " generator id: " << generator_id_;
@@ -177,6 +178,12 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items,
     const ObjectID object_id = GetObjectRefAtIndex(next_index_ + i);
     temporarily_owned_refs_.erase(object_id);
     consumed_object_ids->push_back(object_id);
+    // Earlier refs may be unwritten (out-of-order reports); their bytes are
+    // credited when the late report arrives (see InsertToStream).
+    auto it = refs_written_to_stream_.find(object_id);
+    if (it != refs_written_to_stream_.end()) {
+      total_num_bytes_consumed_ += it->second;
+    }
   }
   total_num_object_consumed_ += num_items_to_consume;
   next_index_ += num_items_to_consume;
@@ -246,7 +253,9 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
   return false;
 }
 
-bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
+bool ObjectRefStream::InsertToStream(const ObjectID &object_id,
+                                     int64_t item_index,
+                                     int64_t object_size) {
   RAY_CHECK_EQ(object_id, GetObjectRefAtIndex(item_index));
   if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
@@ -259,7 +268,15 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
   }
 
   if (item_index < next_index_) {
-    // Index is already used. Don't write it to the stream.
+    // Index is already used. Don't write it to the stream. If the index was
+    // consumed before this (late/out-of-order) report arrived, its bytes were
+    // never counted at read time, so credit them now. The contains() guard
+    // prevents double-credit on lineage-reconstruction re-reports: entries for
+    // consumed indexes are never erased from refs_written_to_stream_.
+    if (!refs_written_to_stream_.contains(object_id)) {
+      refs_written_to_stream_.emplace(object_id, object_size);
+      total_num_bytes_consumed_ += object_size;
+    }
     return false;
   }
 
@@ -267,7 +284,7 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
     temporarily_owned_refs_.erase(object_id);
   }
 
-  auto [_, inserted] = refs_written_to_stream_.emplace(object_id);
+  auto [_, inserted] = refs_written_to_stream_.emplace(object_id, object_size);
   if (!inserted) {
     return false;
   }
@@ -718,6 +735,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   Status read_status;
   ConsumptionUpdateCallback consumption_update_callback;
   int64_t consumption_total_consumed = 0;
+  int64_t consumption_total_bytes_consumed = 0;
 
   {
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -737,12 +755,14 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
       if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
         consumption_update_callback = consumption_it->second;
         consumption_total_consumed = total_consumed;
+        consumption_total_bytes_consumed = stream_it->second.TotalNumBytesConsumed();
       }
     }
   }
 
   if (consumption_update_callback) {
-    consumption_update_callback(Status::OK(), consumption_total_consumed);
+    consumption_update_callback(
+        Status::OK(), consumption_total_consumed, consumption_total_bytes_consumed);
   }
   return read_status;
 }
@@ -755,6 +775,7 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
   std::vector<ObjectID> consumed_object_ids;
   ConsumptionUpdateCallback consumption_update_callback;
   int64_t consumption_total_consumed = 0;
+  int64_t consumption_total_bytes_consumed = 0;
 
   {
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -774,6 +795,7 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
       if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
         consumption_update_callback = consumption_it->second;
         consumption_total_consumed = stream_it->second.TotalNumObjectConsumed();
+        consumption_total_bytes_consumed = stream_it->second.TotalNumBytesConsumed();
       }
     }
 
@@ -793,7 +815,8 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
   // Fire the consumption update outside the stream lock, matching
   // TryReadObjectRefStream, since it issues an RPC to the executor.
   if (consumption_update_callback) {
-    consumption_update_callback(Status::OK(), consumption_total_consumed);
+    consumption_update_callback(
+        Status::OK(), consumption_total_consumed, consumption_total_bytes_consumed);
   }
   return status;
 }
@@ -827,7 +850,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
   if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
-    consumption_it->second(Status::NotFound("Stream is deleted."), -1);
+    consumption_it->second(Status::NotFound("Stream is deleted."), -1, -1);
     ref_stream_consumption_update_callbacks_.erase(consumption_it);
   }
 
@@ -1088,7 +1111,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
+    auto index_not_used_yet =
+        stream_it->second.InsertToStream(object_id, object_index, returned_object.size());
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -1112,6 +1136,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   // Handle backpressure if needed.
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+  auto total_bytes_consumed = stream_it->second.TotalNumBytesConsumed();
   auto last_item_index = request.returned_objects_size() == 0
                              ? item_index
                              : item_index + request.returned_objects_size() - 1;
@@ -1119,7 +1144,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK());
     if (backpressure_threshold != -1 && consumption_update_callback) {
-      consumption_update_callback(Status::OK(), total_consumed);
+      consumption_update_callback(Status::OK(), total_consumed, total_bytes_consumed);
     }
     return false;
   }

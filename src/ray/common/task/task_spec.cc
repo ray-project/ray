@@ -255,8 +255,10 @@ bool TaskSpecification::HasActorGeneratorBackpressure() const {
     return false;
   }
   const auto &ats = message_->actor_task_spec();
-  return ats.has_actor_generator_backpressure_num_objects() &&
-         ats.actor_generator_backpressure_num_objects() > 0;
+  return (ats.has_actor_generator_backpressure_num_objects() &&
+          ats.actor_generator_backpressure_num_objects() > 0) ||
+         (ats.has_actor_generator_backpressure_num_bytes() &&
+          ats.actor_generator_backpressure_num_bytes() > 0);
 }
 
 int64_t TaskSpecification::EffectiveStreamingGeneratorOwnerBackpressureThreshold() const {
@@ -525,6 +527,23 @@ int TaskSpecification::MaxActorConcurrency() const {
 int64_t TaskSpecification::ActorGeneratorBackpressureNumObjects() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().actor_generator_backpressure_num_objects();
+}
+
+int64_t TaskSpecification::ActorGeneratorBackpressureNumBytes() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().actor_generator_backpressure_num_bytes();
+}
+
+int64_t TaskSpecification::ActorGeneratorBackpressureMaxObjectBytes() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec()
+      .actor_generator_backpressure_max_object_bytes();
+}
+
+bool TaskSpecification::ActorGeneratorBackpressurePredictObjectBytes() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec()
+      .actor_generator_backpressure_predict_object_bytes();
 }
 
 const std::string &TaskSpecification::ConcurrencyGroupName() const {

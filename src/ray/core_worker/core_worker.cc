@@ -2161,7 +2161,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels,
       is_detached,
-      actor_creation_options.actor_generator_backpressure_num_objects);
+      actor_creation_options.actor_generator_backpressure_num_objects,
+      actor_creation_options.actor_generator_backpressure_num_bytes);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -2186,7 +2187,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       extension_data,
       actor_creation_options.allow_out_of_order_execution,
       root_detached_actor_id,
-      actor_creation_options.actor_generator_backpressure_num_objects);
+      actor_creation_options.actor_generator_backpressure_num_objects,
+      actor_creation_options.actor_generator_backpressure_num_bytes,
+      actor_creation_options.actor_generator_backpressure_max_object_bytes,
+      actor_creation_options.actor_generator_backpressure_predict_object_bytes);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.
@@ -2977,13 +2981,18 @@ Status CoreWorker::ExecuteTask(
                                           /*is_self=*/true);
     }
     int64_t actor_generator_bp = task_spec.ActorGeneratorBackpressureNumObjects();
-    if (actor_generator_bp > 0) {
+    int64_t actor_generator_byte_bp = task_spec.ActorGeneratorBackpressureNumBytes();
+    if (actor_generator_bp > 0 || actor_generator_byte_bp > 0) {
       // Shared waiter for all streaming-generator tasks on this actor.
       // check_signals matches what the per-task waiter uses (set in
       // CoreWorkerOptions from _raylet.pyx), so KeyboardInterrupt /
       // SystemExit propagate through ReserveSlot's wait loop.
       actor_generator_waiter_ = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
-          actor_generator_bp, options_.check_signals);
+          actor_generator_bp,
+          actor_generator_byte_bp,
+          task_spec.ActorGeneratorBackpressureMaxObjectBytes(),
+          task_spec.ActorGeneratorBackpressurePredictObjectBytes(),
+          options_.check_signals);
     }
     RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
   } else if (task_spec.IsActorTask()) {
@@ -3294,6 +3303,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
 
   std::vector<ObjectID> return_ids;
   return_ids.reserve(dynamic_return_objects.size());
+  int64_t total_return_bytes = 0;
   for (const auto &dynamic_return_object : dynamic_return_objects) {
     if (dynamic_return_object.first.IsNil()) {
       continue;
@@ -3301,6 +3311,9 @@ Status CoreWorker::ReportGeneratorItemReturns(
     SerializeReturnObject(dynamic_return_object.first,
                           dynamic_return_object.second,
                           request.add_returned_objects());
+    // Matches the size SerializeReturnObject wrote into ReturnObject.size, so
+    // the owner's byte-consumption acks account the same number charged here.
+    total_return_bytes += dynamic_return_object.second->GetSize();
     return_ids.push_back(dynamic_return_object.first);
   }
   if (!return_ids.empty()) {
@@ -3319,6 +3332,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  << ", id: " << return_id << ", count: " << return_ids.size();
 
   waiter->IncrementObjectGenerated(return_ids.size());
+  if (actor_metadata != nullptr) {
+    // Charge actual bytes now that the objects (and their sizes) exist; the
+    // actor-wide byte budget is enforced by the next ReserveSlot.
+    actor_metadata->AddBytesGenerated(return_ids.size(), total_return_bytes);
+  }
   const bool needs_consumed_updates =
       waiter->NeedsObjectConsumedUpdates() || actor_metadata != nullptr;
   if (needs_consumed_updates) {
@@ -3488,11 +3506,15 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       },
       /*consumption_update_callback=*/
       [this, worker_addr, generator_id = consumption_generator_id](
-          const Status &status, int64_t total_num_object_consumed) {
+          const Status &status,
+          int64_t total_num_object_consumed,
+          int64_t total_num_bytes_consumed) {
         rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
         update_request.set_generator_id(generator_id.Binary());
         update_request.set_total_num_object_consumed(
             status.ok() ? total_num_object_consumed : -1);
+        update_request.set_total_num_bytes_consumed(status.ok() ? total_num_bytes_consumed
+                                                                : 0);
         auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
         client->UpdateGeneratorBackpressureConsumed(
             std::move(update_request),
@@ -3536,7 +3558,8 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
       if (teardown) {
         actor_metadata->Teardown();
       } else {
-        actor_metadata->OnConsumed(total_num_object_consumed);
+        actor_metadata->OnConsumed(total_num_object_consumed,
+                                   request.total_num_bytes_consumed());
       }
     }
 

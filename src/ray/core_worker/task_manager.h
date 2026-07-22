@@ -76,7 +76,8 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &error_message,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status)>;
-using ConsumptionUpdateCallback = std::function<void(Status, int64_t)>;
+using ConsumptionUpdateCallback = std::function<void(
+    Status, int64_t total_num_object_consumed, int64_t total_num_bytes_consumed)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -146,8 +147,10 @@ class ObjectRefStream {
   /// \param[in] item_index The index where the object id will be written.
   /// If -1 is given, it means an index is not known yet. In this case,
   /// the ref will be temporarily written until it is written with an index.
+  /// \param[in] object_size The size of the object in bytes, used for
+  /// byte-based consumption accounting.
   /// \return True if the ref is written to a stream. False otherwise.
-  bool InsertToStream(const ObjectID &object_id, int64_t item_index);
+  bool InsertToStream(const ObjectID &object_id, int64_t item_index, int64_t object_size);
 
   /// Sometimes, index of the object ID is not known.
   ///
@@ -190,6 +193,7 @@ class ObjectRefStream {
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
+  int64_t TotalNumBytesConsumed() const { return total_num_bytes_consumed_; }
 
   /// Whether the caller has requested deletion of this stream (i.e. the
   /// language-frontend generator went out of scope). The stream may still be
@@ -208,8 +212,10 @@ class ObjectRefStream {
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
-  // A set of refs that's already written to a stream -> size of the object.
-  absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  // Refs that are already written to the stream -> size of the object in
+  // bytes. Entries for consumed indexes are retained (only PopUnconsumedItems
+  // erases, and only for unconsumed indexes).
+  absl::flat_hash_map<ObjectID, int64_t> refs_written_to_stream_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -226,6 +232,9 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// The total number of bytes consumed from the stream (monotonic; reported
+  /// back to the executor for actor-wide byte backpressure).
+  int64_t total_num_bytes_consumed_{};
   /// Set once the caller requests deletion of the stream (the generator went
   /// out of scope). Used to decide whether a backpressured executor should be
   /// released while the stream is still retained. See MarkCallerDeleted.

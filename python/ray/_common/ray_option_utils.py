@@ -265,6 +265,44 @@ _actor_only_options = {
             f"Got {x}."
         ),
     ),
+    # Actor-wide cap on the number of unconsumed streaming-generator bytes
+    # across all generator tasks running on the actor. Coexists with the
+    # object caps when both are set, the producer blocks when either budget is exhausted.
+    # Because an object's size is only known after it is generated, the byte
+    # cap is enforced one yield late unless
+    # `_actor_generator_backpressure_predict_object_bytes` is set. -1 (or
+    # None / unset) disables the byte cap.
+    "_actor_generator_backpressure_num_bytes": Option(
+        (int, type(None)),
+        lambda x: None
+        if (x is None or x > 0 or x == -1)
+        else (
+            "_actor_generator_backpressure_num_bytes must be > 0 to cap the "
+            "actor's total unconsumed generator bytes, or -1 to disable. "
+            f"Got {x}."
+        ),
+    ),
+    # If True, gate yield admissions on an estimate (the running average of
+    # reported object sizes) of the bytes that admitted-but-unreported yields
+    # will produce, so `_actor_generator_backpressure_num_bytes` is enforced
+    # before generating instead of one yield late. Requires
+    # `_actor_generator_backpressure_num_bytes`.
+    "_actor_generator_backpressure_predict_object_bytes": Option((bool, type(None))),
+    # Cold-start seed for the byte-size estimator: an upper bound on a single
+    # yielded object's size, used to gate admissions only until the first
+    # object is reported (after which the observed average supersedes it).
+    # Requires `_actor_generator_backpressure_predict_object_bytes`. -1 (or
+    # None / unset) leaves the estimator unseeded.
+    "_actor_generator_backpressure_max_object_bytes": Option(
+        (int, type(None)),
+        lambda x: None
+        if (x is None or x > 0 or x == -1)
+        else (
+            "_actor_generator_backpressure_max_object_bytes must be > 0 to "
+            "seed the byte-size estimator, or -1 to leave it unseeded. "
+            f"Got {x}."
+        ),
+    ),
 }
 
 # Priority is important here because during dictionary update, same key with higher

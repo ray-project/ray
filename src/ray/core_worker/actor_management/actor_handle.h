@@ -52,7 +52,8 @@ class ActorHandle {
               std::optional<bool> enable_task_events = absl::nullopt,
               const std::unordered_map<std::string, std::string> &labels = {},
               bool is_detached = false,
-              int64_t actor_generator_backpressure_num_objects = -1);
+              int64_t actor_generator_backpressure_num_objects = -1,
+              int64_t actor_generator_backpressure_num_bytes = -1);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -83,6 +84,13 @@ class ActorHandle {
   int64_t ActorGeneratorBackpressureNumObjects() const {
     if (inner_.has_actor_generator_backpressure_num_objects()) {
       return inner_.actor_generator_backpressure_num_objects();
+    }
+    return -1;
+  }
+
+  int64_t ActorGeneratorBackpressureNumBytes() const {
+    if (inner_.has_actor_generator_backpressure_num_bytes()) {
+      return inner_.actor_generator_backpressure_num_bytes();
     }
     return -1;
   }

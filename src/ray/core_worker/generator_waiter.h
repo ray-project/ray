@@ -36,6 +36,15 @@ struct ActorTaskBackpressureMetadata {
   std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_waiter;
   int64_t per_task_generated = 0;
   int64_t per_task_consumed = 0;
+  /// Bytes of this task's reported objects (charged at report time, when
+  /// object sizes are first known).
+  int64_t per_task_generated_bytes = 0;
+  /// Bytes the owner has acknowledged as consumed for this task.
+  int64_t per_task_consumed_bytes = 0;
+  /// Objects of this task whose actual bytes have been charged via
+  /// AddBytesGenerated. per_task_generated - per_task_byte_charged_objects is
+  /// this task's contribution to the waiter's in-flight object count.
+  int64_t per_task_byte_charged_objects = 0;
   bool task_alive = true;
 
   explicit ActorTaskBackpressureMetadata(
@@ -62,7 +71,10 @@ struct ActorTaskBackpressureMetadata {
    */
   bool TryReserveSlot(int64_t num_objects = 1);
   void ReleaseSlot(int64_t num_objects = 1);
-  void OnConsumed(int64_t total);
+  /// Charge the actual bytes of num_objects reported objects against the
+  /// actor-wide byte budget. Called at report time, when sizes are known.
+  void AddBytesGenerated(int64_t num_objects, int64_t num_bytes);
+  void OnConsumed(int64_t total_objects, int64_t total_bytes);
   void Teardown();
 };
 
@@ -118,12 +130,26 @@ class TaskGeneratorBackpressureWaiter {
 };
 
 /// Shared across all streaming-generator tasks on one actor; enforces
-/// `_actor_generator_backpressure_num_objects`.
+/// `_actor_generator_backpressure_num_objects` and/or
+/// `_actor_generator_backpressure_num_bytes`. When both caps are set, a yield
+/// blocks while either budget is exhausted.
 class ActorWideGeneratorBackpressureWaiter {
  public:
-  /// \param[in] actor_cap Must be > 0 (callers create this only when the actor
-  /// option is set).
-  ActorWideGeneratorBackpressureWaiter(int64_t actor_cap,
+  /// \param[in] actor_object_cap Actor-wide unconsumed-object cap; <= 0
+  /// disables the object budget.
+  /// \param[in] actor_byte_cap Actor-wide unconsumed-byte cap; <= 0 disables
+  /// the byte budget. At least one of the two caps must be > 0.
+  /// \param[in] max_object_bytes Cold-start seed for the byte-size estimator
+  /// (upper bound on a single yielded object's size); <= 0 leaves the
+  /// estimator unseeded. Only used when predict_object_bytes is true.
+  /// \param[in] predict_object_bytes If true, gate admissions on the estimated
+  /// bytes of admitted-but-unreported yields (running average of reported
+  /// object sizes, seeded by max_object_bytes before the first report) so the
+  /// byte cap is enforced before generating instead of one yield late.
+  ActorWideGeneratorBackpressureWaiter(int64_t actor_object_cap,
+                                       int64_t actor_byte_cap,
+                                       int64_t max_object_bytes,
+                                       bool predict_object_bytes,
                                        std::function<Status()> check_signals);
 
   // num_objects is the number of objects admitted/reclaimed in one call so the
@@ -145,19 +171,56 @@ class ActorWideGeneratorBackpressureWaiter {
                                int64_t num_objects = 1);
   void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata,
                             int64_t num_objects = 1);
-  void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
+  /// Charge the actual bytes of num_objects of the task's reported objects
+  /// against the shared byte budget. Called at report time (sizes are unknown
+  /// at reserve time), so it never blocks; the byte budget is enforced by the
+  /// next reserve.
+  void AddBytesGeneratedForTask(ActorTaskBackpressureMetadata &metadata,
+                                int64_t num_objects,
+                                int64_t num_bytes);
+  void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata,
+                         int64_t total_objects,
+                         int64_t total_bytes);
   void TeardownTask(ActorTaskBackpressureMetadata &metadata);
 
   int64_t TotalObjectConsumed() const;
   int64_t TotalObjectGenerated() const;
+  int64_t TotalBytesConsumed() const;
+  int64_t TotalBytesGenerated() const;
 
  private:
+  /// Whether admitting num_objects more objects would exceed either budget.
+  ///
+  /// The byte term compares outstanding bytes plus an estimate for
+  /// admitted-but-unreported objects (see BoundPerObject) against the byte
+  /// cap. When nothing is outstanding (no unconsumed bytes and no in-flight
+  /// yields) the byte budget always admits, so an estimate at or above the
+  /// cap can never deadlock the actor; without prediction the estimate is 0
+  /// and the guard is a no-op.
+  bool BudgetExhausted(int64_t num_objects) const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  /// Estimated bytes of one admitted-but-unreported object: the running
+  /// average of reported object sizes, or the max_object_bytes_ seed before
+  /// the first report. 0 when prediction is disabled.
+  int64_t BoundPerObject() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   mutable absl::Mutex mutex_;
   absl::CondVar backpressure_cond_var_;
-  const int64_t backpressure_threshold_;
+  const int64_t object_backpressure_threshold_;
+  const int64_t byte_backpressure_threshold_;
+  const int64_t max_object_bytes_;
+  const bool predict_object_bytes_;
   const std::function<Status()> check_signals_;
   int64_t total_objects_generated_ = 0;
   int64_t total_objects_consumed_ = 0;
+  int64_t total_bytes_generated_ = 0;
+  int64_t total_bytes_consumed_ = 0;
+  /// Objects admitted at reserve time whose actual bytes have not been
+  /// charged yet, so concurrent streams see each other's pending yields.
+  int64_t inflight_objects_ = 0;
+  /// Lifetime totals of reported objects/bytes for the size estimator; unlike
+  /// total_bytes_generated_, never reclaimed by release or teardown.
+  int64_t cumulative_reported_objects_ = 0;
+  int64_t cumulative_reported_bytes_ = 0;
 };
 
 }  // namespace core

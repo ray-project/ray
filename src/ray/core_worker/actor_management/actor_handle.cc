@@ -39,7 +39,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     bool is_detached,
-    int64_t actor_generator_backpressure_num_objects) {
+    int64_t actor_generator_backpressure_num_objects,
+    int64_t actor_generator_backpressure_num_bytes) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -62,6 +63,10 @@ rpc::ActorHandle CreateInnerActorHandle(
   if (actor_generator_backpressure_num_objects > 0) {
     inner.set_actor_generator_backpressure_num_objects(
         actor_generator_backpressure_num_objects);
+  }
+  if (actor_generator_backpressure_num_bytes > 0) {
+    inner.set_actor_generator_backpressure_num_bytes(
+        actor_generator_backpressure_num_bytes);
   }
   return inner;
 }
@@ -103,6 +108,12 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
     inner.set_actor_generator_backpressure_num_objects(
         actor_generator_backpressure_num_objects);
   }
+  int64_t actor_generator_backpressure_num_bytes =
+      task_spec.actor_creation_task_spec().actor_generator_backpressure_num_bytes();
+  if (actor_generator_backpressure_num_bytes > 0) {
+    inner.set_actor_generator_backpressure_num_bytes(
+        actor_generator_backpressure_num_bytes);
+  }
   return inner;
 }
 
@@ -126,7 +137,8 @@ ActorHandle::ActorHandle(
     std::optional<bool> enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     bool is_detached,
-    int64_t actor_generator_backpressure_num_objects)
+    int64_t actor_generator_backpressure_num_objects,
+    int64_t actor_generator_backpressure_num_bytes)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -144,7 +156,8 @@ ActorHandle::ActorHandle(
                                          enable_task_events,
                                          labels,
                                          is_detached,
-                                         actor_generator_backpressure_num_objects)) {}
+                                         actor_generator_backpressure_num_objects,
+                                         actor_generator_backpressure_num_bytes)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -170,6 +183,10 @@ void ActorHandle::SetActorTaskSpec(
   if (inner_.has_actor_generator_backpressure_num_objects()) {
     actor_generator_bp = inner_.actor_generator_backpressure_num_objects();
   }
+  int64_t actor_generator_byte_bp = -1;
+  if (inner_.has_actor_generator_backpressure_num_bytes()) {
+    actor_generator_byte_bp = inner_.actor_generator_backpressure_num_bytes();
+  }
   builder.SetActorTaskSpec(GetActorID(),
                            actor_creation_dummy_object_id,
                            max_retries,
@@ -178,7 +195,8 @@ void ActorHandle::SetActorTaskSpec(
                            concurrency_group_counters_[concurrency_group_name]++,
                            tensor_transport,
                            inner_.is_detached(),
-                           actor_generator_bp);
+                           actor_generator_bp,
+                           actor_generator_byte_bp);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {

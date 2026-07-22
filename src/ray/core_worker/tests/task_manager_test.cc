@@ -111,7 +111,8 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
     const ObjectID &generator_id,
     const ObjectID &dynamic_return_id,
     std::shared_ptr<Buffer> data,
-    bool set_in_plasma) {
+    bool set_in_plasma,
+    int64_t object_size = 0) {
   rpc::ReportGeneratorItemReturnsRequest request;
   rpc::Address addr;
   request.mutable_worker_addr()->CopyFrom(addr);
@@ -121,6 +122,7 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
   returned_object->set_object_id(dynamic_return_id.Binary());
   returned_object->set_data(data->Data(), data->Size());
   returned_object->set_in_plasma(set_in_plasma);
+  returned_object->set_size(object_size);
   return request;
 }
 
@@ -3347,11 +3349,12 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   int consumption_updates = 0;
   Status last_consumption_status;
   int64_t last_consumed = -2;
-  auto consumption_update = [&](Status status, int64_t num_objects_consumed) {
-    consumption_updates++;
-    last_consumption_status = status;
-    last_consumed = num_objects_consumed;
-  };
+  auto consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        consumption_updates++;
+        last_consumption_status = status;
+        last_consumed = num_objects_consumed;
+      };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
       /*execution_signal_callback*/
@@ -3446,11 +3449,12 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadBackpressure) {
   int consumption_updates = 0;
   Status last_consumption_status;
   int64_t last_consumed = -2;
-  auto consumption_update = [&](Status status, int64_t num_objects_consumed) {
-    consumption_updates++;
-    last_consumption_status = status;
-    last_consumed = num_objects_consumed;
-  };
+  auto consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        consumption_updates++;
+        last_consumption_status = status;
+        last_consumed = num_objects_consumed;
+      };
 
   // Report two objects. Nothing is consumed yet, so no consumption update fires.
   for (int64_t i = 0; i < 2; i++) {
@@ -3485,6 +3489,179 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadBackpressure) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamBytesConsumedSingleRead) {
+  /**
+   * Reads accumulate consumed bytes (from ReturnObject.size recorded at report
+   * time) and deliver the monotonic total through the consumption callback.
+   */
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  int64_t last_consumed = -2;
+  int64_t last_bytes_consumed = -2;
+  auto consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        if (status.ok()) {
+          last_consumed = num_objects_consumed;
+          last_bytes_consumed = num_bytes_consumed;
+        }
+      };
+
+  const int64_t sizes[] = {10, 20};
+  for (int64_t i = 0; i < 2; i++) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false,
+        /*object_size*/ sizes[i]);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+  }
+
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(last_consumed, 1);
+  ASSERT_EQ(last_bytes_consumed, 10);
+  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(last_consumed, 2);
+  ASSERT_EQ(last_bytes_consumed, 30);
+  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBytesConsumedBulkRead) {
+  /**
+   * Bulk reads accumulate the consumed bytes of every advanced index.
+   */
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  int64_t last_bytes_consumed = -2;
+  auto consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        if (status.ok()) {
+          last_bytes_consumed = num_bytes_consumed;
+        }
+      };
+
+  const int64_t sizes[] = {10, 20};
+  for (int64_t i = 0; i < 2; i++) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false,
+        /*object_size*/ sizes[i]);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+  }
+
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+  ASSERT_EQ(last_bytes_consumed, 30);
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamLateReportCreditsBytesOnce) {
+  /**
+   * A bulk read can advance past a not-yet-reported index; when the late
+   * report arrives, its bytes are credited exactly once (a duplicate
+   * re-report must not double-credit).
+   */
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  int64_t last_bytes_consumed = -2;
+  auto consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        if (status.ok()) {
+          last_bytes_consumed = num_bytes_consumed;
+        }
+      };
+
+  // Only index 1 (size 20) is reported; index 0 is delayed.
+  auto id0 = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto id1 = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ id1,
+      /*data*/ data,
+      /*set_in_plasma*/ false,
+      /*object_size*/ 20);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+
+  // Bulk-read both indexes; only index 1's bytes can be counted.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+  ASSERT_EQ(last_bytes_consumed, 20);
+
+  // The late report of the already-consumed index credits its bytes.
+  auto data0 = GenerateRandomBuffer();
+  auto late_req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ id0,
+      /*data*/ data0,
+      /*set_in_plasma*/ false,
+      /*object_size*/ 10);
+  last_bytes_consumed = -2;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      late_req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+  ASSERT_EQ(last_bytes_consumed, 30);
+
+  // A duplicate re-report (e.g. lineage reconstruction) must not double-credit.
+  last_bytes_consumed = -2;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      late_req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+  ASSERT_EQ(last_bytes_consumed, 30);
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   // Report visibility should be acked immediately before and after reconstruction.
   // Consumed progress is delivered only by the consumption callback.
@@ -3511,18 +3688,20 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   int initial_consumption_updates = 0;
   int retry_consumption_updates = 0;
   int64_t retry_last_consumed = -1;
-  auto initial_consumption_update = [&initial_consumption_updates](
-                                        Status status, int64_t num_objects_consumed) {
-    initial_consumption_updates++;
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(num_objects_consumed, 1);
-  };
-  auto retry_consumption_update = [&retry_consumption_updates, &retry_last_consumed](
-                                      Status status, int64_t num_objects_consumed) {
-    retry_consumption_updates++;
-    ASSERT_TRUE(status.ok());
-    retry_last_consumed = num_objects_consumed;
-  };
+  auto initial_consumption_update =
+      [&initial_consumption_updates](
+          Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        initial_consumption_updates++;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      };
+  auto retry_consumption_update =
+      [&retry_consumption_updates, &retry_last_consumed](
+          Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        retry_consumption_updates++;
+        ASSERT_TRUE(status.ok());
+        retry_last_consumed = num_objects_consumed;
+      };
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
       /*execution_signal_callback*/
@@ -3633,7 +3812,8 @@ TEST_F(TaskManagerLineageTest,
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
 
-  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+  auto noop_consumption_update =
+      [](Status /*status*/, int64_t /*consumed*/, int64_t /*bytes_consumed*/) {};
 
   // Report the first object (in plasma so it is reconstructable) and consume it.
   auto return_id = ObjectID::FromIndex(spec.TaskId(), 2);
@@ -3678,11 +3858,12 @@ TEST_F(TaskManagerLineageTest,
   // NOTE: this callback is also invoked with NotFound during the final
   // TryDelObjectRefStream teardown, so capture the status rather than asserting
   // OK inside the callback.
-  auto retry_consumption_update = [&](Status status, int64_t num_objects_consumed) {
-    retry_consumption_updates++;
-    retry_last_consumed = num_objects_consumed;
-    retry_last_consumption_status = status;
-  };
+  auto retry_consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        retry_consumption_updates++;
+        retry_last_consumed = num_objects_consumed;
+        retry_last_consumption_status = status;
+      };
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(/*idx*/ 0,
                                   /*finished*/ false,
@@ -3729,7 +3910,8 @@ TEST_F(TaskManagerLineageTest,
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
 
-  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+  auto noop_consumption_update =
+      [](Status /*status*/, int64_t /*consumed*/, int64_t /*bytes_consumed*/) {};
 
   // Report the first object and consume it. The generator keeps running: EOF is
   // never written and the task is never completed.
@@ -3762,11 +3944,12 @@ TEST_F(TaskManagerLineageTest,
   int retry_consumption_updates = 0;
   int64_t retry_last_consumed = -1;
   Status retry_last_consumption_status;
-  auto retry_consumption_update = [&](Status status, int64_t num_objects_consumed) {
-    retry_consumption_updates++;
-    retry_last_consumed = num_objects_consumed;
-    retry_last_consumption_status = status;
-  };
+  auto retry_consumption_update =
+      [&](Status status, int64_t num_objects_consumed, int64_t num_bytes_consumed) {
+        retry_consumption_updates++;
+        retry_last_consumed = num_objects_consumed;
+        retry_last_consumption_status = status;
+      };
   data = GenerateRandomBuffer();
   req = GetIntermediateTaskReturn(/*idx*/ 0,
                                   /*finished*/ false,
@@ -3837,7 +4020,8 @@ TEST_F(TaskManagerLineageTest,
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
 
-  auto noop_consumption_update = [](Status /*status*/, int64_t /*consumed*/) {};
+  auto noop_consumption_update =
+      [](Status /*status*/, int64_t /*consumed*/, int64_t /*bytes_consumed*/) {};
 
   // Raw ObjectID index = stream index + 2 (return 1 is the generator handle).
   auto id_at = [&](int64_t stream_index) {
@@ -3928,7 +4112,9 @@ TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumptio
     ack_count++;
   };
   auto bump_consumption = [&consumption_count, &last_consumed](
-                              Status callback_status, int64_t num_objects_consumed) {
+                              Status callback_status,
+                              int64_t num_objects_consumed,
+                              int64_t num_bytes_consumed) {
     ASSERT_TRUE(callback_status.ok());
     consumption_count++;
     last_consumed = num_objects_consumed;

@@ -130,21 +130,64 @@ int64_t TaskGeneratorBackpressureWaiter::TotalObjectGenerated() const {
 }
 
 ActorWideGeneratorBackpressureWaiter::ActorWideGeneratorBackpressureWaiter(
-    int64_t actor_cap, std::function<Status()> check_signals)
-    : backpressure_threshold_(actor_cap), check_signals_(std::move(check_signals)) {
-  RAY_CHECK_GT(backpressure_threshold_, 0);
+    int64_t actor_object_cap,
+    int64_t actor_byte_cap,
+    int64_t max_object_bytes,
+    bool predict_object_bytes,
+    std::function<Status()> check_signals)
+    : object_backpressure_threshold_(actor_object_cap),
+      byte_backpressure_threshold_(actor_byte_cap),
+      max_object_bytes_(max_object_bytes),
+      predict_object_bytes_(predict_object_bytes),
+      check_signals_(std::move(check_signals)) {
+  RAY_CHECK(object_backpressure_threshold_ > 0 || byte_backpressure_threshold_ > 0);
   RAY_CHECK(check_signals_ != nullptr);
+}
+
+int64_t ActorWideGeneratorBackpressureWaiter::BoundPerObject() const {
+  if (!predict_object_bytes_) {
+    return 0;
+  }
+  if (cumulative_reported_objects_ > 0) {
+    return cumulative_reported_bytes_ / cumulative_reported_objects_;
+  }
+  // No report yet; fall back to the caller-declared seed, if any. The seed is
+  // deliberately superseded by the observed average as soon as real sizes are
+  // known: a conservative seed (e.g. a max block size much larger than typical
+  // blocks) must not throttle the stream permanently.
+  return std::max<int64_t>(max_object_bytes_, 0);
+}
+
+bool ActorWideGeneratorBackpressureWaiter::BudgetExhausted(int64_t num_objects) const {
+  if (object_backpressure_threshold_ > 0 &&
+      total_objects_generated_ - total_objects_consumed_ >=
+          object_backpressure_threshold_) {
+    return true;
+  }
+  if (byte_backpressure_threshold_ > 0) {
+    const int64_t bytes_outstanding = total_bytes_generated_ - total_bytes_consumed_;
+    // With nothing outstanding at all (no unconsumed bytes and no
+    // admitted-but-unreported yields), always admit so a per-object estimate
+    // at or above the cap can never deadlock the actor. Without prediction
+    // the estimate is 0 and this guard is a no-op.
+    const bool nothing_outstanding = bytes_outstanding == 0 && inflight_objects_ == 0;
+    if (!nothing_outstanding &&
+        bytes_outstanding + BoundPerObject() * (inflight_objects_ + num_objects) >=
+            byte_backpressure_threshold_) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
     ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
   absl::MutexLock lock(&mutex_);
-  // Wait until the shared budget is below the cap, then admit the whole group
-  // of `num_objects`. A single group is admitted even if it overshoots the cap
-  // (mirrors the per-task waiter, which reports a full grouped yield before
+  // Wait until the shared budgets are below their caps, then admit the whole
+  // group of `num_objects`. A single group is admitted even if it overshoots a
+  // cap (mirrors the per-task waiter, which reports a full grouped yield before
   // blocking); otherwise a group larger than the cap could never make progress.
-  while (metadata.task_alive &&
-         total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
+  while (metadata.task_alive && BudgetExhausted(num_objects)) {
     backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
     auto status = check_signals_();
     if (!status.ok()) {
@@ -156,6 +199,7 @@ Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
   }
   total_objects_generated_ += num_objects;
   metadata.per_task_generated += num_objects;
+  inflight_objects_ += num_objects;
   return Status::OK();
 }
 
@@ -167,11 +211,12 @@ bool ActorWideGeneratorBackpressureWaiter::TryReserveActorWideSlot(
     // task is no longer alive. The caller stops streaming shortly after.
     return true;
   }
-  if (total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
+  if (BudgetExhausted(num_objects)) {
     return false;
   }
   total_objects_generated_ += num_objects;
   metadata.per_task_generated += num_objects;
+  inflight_objects_ += num_objects;
   return true;
 }
 
@@ -188,13 +233,37 @@ void ActorWideGeneratorBackpressureWaiter::ReleaseActorWideSlot(
   }
   metadata.per_task_generated -= releasable;
   total_objects_generated_ -= releasable;
-  if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
+  // Released yields produced no object, so their bytes were never charged;
+  // drop them from the in-flight count.
+  inflight_objects_ = std::max<int64_t>(inflight_objects_ - releasable, 0);
+  if (!BudgetExhausted(1)) {
+    backpressure_cond_var_.SignalAll();
+  }
+}
+
+void ActorWideGeneratorBackpressureWaiter::AddBytesGeneratedForTask(
+    ActorTaskBackpressureMetadata &metadata, int64_t num_objects, int64_t num_bytes) {
+  RAY_CHECK_GE(num_objects, 0);
+  RAY_CHECK_GE(num_bytes, 0);
+  absl::MutexLock lock(&mutex_);
+  if (!metadata.task_alive) {
+    return;
+  }
+  total_bytes_generated_ += num_bytes;
+  metadata.per_task_generated_bytes += num_bytes;
+  metadata.per_task_byte_charged_objects += num_objects;
+  cumulative_reported_objects_ += num_objects;
+  cumulative_reported_bytes_ += num_bytes;
+  inflight_objects_ = std::max<int64_t>(inflight_objects_ - num_objects, 0);
+  // With prediction on, an actual size below the current estimate can free
+  // predicted budget a parked reserver was waiting on.
+  if (!BudgetExhausted(1)) {
     backpressure_cond_var_.SignalAll();
   }
 }
 
 void ActorWideGeneratorBackpressureWaiter::OnConsumedForTask(
-    ActorTaskBackpressureMetadata &metadata, int64_t total) {
+    ActorTaskBackpressureMetadata &metadata, int64_t total_objects, int64_t total_bytes) {
   absl::MutexLock lock(&mutex_);
   if (!metadata.task_alive) {
     return;
@@ -202,14 +271,25 @@ void ActorWideGeneratorBackpressureWaiter::OnConsumedForTask(
   // per_task_generated counts ReserveActorWideSlot admissions in object units
   // (matching the owner-reported consumed total); reported totals may still not
   // line up (e.g. substitute values on RPC failure), so clamp to what we admitted.
-  const int64_t clamped_total = std::min(total, metadata.per_task_generated);
-  int64_t delta = clamped_total - metadata.per_task_consumed;
-  if (delta <= 0) {
+  // Objects and bytes advance independently: a stale ack can regress one
+  // dimension but not the other.
+  const int64_t clamped_total = std::min(total_objects, metadata.per_task_generated);
+  const int64_t delta = clamped_total - metadata.per_task_consumed;
+  if (delta > 0) {
+    metadata.per_task_consumed = clamped_total;
+    total_objects_consumed_ += delta;
+  }
+  const int64_t clamped_total_bytes =
+      std::min(total_bytes, metadata.per_task_generated_bytes);
+  const int64_t byte_delta = clamped_total_bytes - metadata.per_task_consumed_bytes;
+  if (byte_delta > 0) {
+    metadata.per_task_consumed_bytes = clamped_total_bytes;
+    total_bytes_consumed_ += byte_delta;
+  }
+  if (delta <= 0 && byte_delta <= 0) {
     return;
   }
-  metadata.per_task_consumed = clamped_total;
-  total_objects_consumed_ += delta;
-  if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
+  if (!BudgetExhausted(1)) {
     backpressure_cond_var_.SignalAll();
   }
 }
@@ -224,6 +304,17 @@ void ActorWideGeneratorBackpressureWaiter::TeardownTask(
   int64_t outstanding = metadata.per_task_generated - metadata.per_task_consumed;
   if (outstanding > 0) {
     total_objects_generated_ -= outstanding;
+  }
+  const int64_t outstanding_bytes =
+      metadata.per_task_generated_bytes - metadata.per_task_consumed_bytes;
+  if (outstanding_bytes > 0) {
+    total_bytes_generated_ -= outstanding_bytes;
+  }
+  // Objects this task admitted but never byte-charged will never report.
+  const int64_t task_inflight =
+      metadata.per_task_generated - metadata.per_task_byte_charged_objects;
+  if (task_inflight > 0) {
+    inflight_objects_ = std::max<int64_t>(inflight_objects_ - task_inflight, 0);
   }
   // Always signal so any task parked in ReserveActorWideSlot (per_task_generated
   // could still be 0 if it never got to admit anything) wakes up and rechecks
@@ -241,6 +332,16 @@ int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectGenerated() const {
   return total_objects_generated_;
 }
 
+int64_t ActorWideGeneratorBackpressureWaiter::TotalBytesConsumed() const {
+  absl::MutexLock lock(&mutex_);
+  return total_bytes_consumed_;
+}
+
+int64_t ActorWideGeneratorBackpressureWaiter::TotalBytesGenerated() const {
+  absl::MutexLock lock(&mutex_);
+  return total_bytes_generated_;
+}
+
 Status ActorTaskBackpressureMetadata::ReserveSlot(int64_t num_objects) {
   return actor_waiter->ReserveActorWideSlot(*this, num_objects);
 }
@@ -253,8 +354,14 @@ void ActorTaskBackpressureMetadata::ReleaseSlot(int64_t num_objects) {
   actor_waiter->ReleaseActorWideSlot(*this, num_objects);
 }
 
-void ActorTaskBackpressureMetadata::OnConsumed(int64_t total) {
-  actor_waiter->OnConsumedForTask(*this, total);
+void ActorTaskBackpressureMetadata::AddBytesGenerated(int64_t num_objects,
+                                                      int64_t num_bytes) {
+  actor_waiter->AddBytesGeneratedForTask(*this, num_objects, num_bytes);
+}
+
+void ActorTaskBackpressureMetadata::OnConsumed(int64_t total_objects,
+                                               int64_t total_bytes) {
+  actor_waiter->OnConsumedForTask(*this, total_objects, total_bytes);
 }
 
 void ActorTaskBackpressureMetadata::Teardown() { actor_waiter->TeardownTask(*this); }

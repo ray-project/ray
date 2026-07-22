@@ -2182,6 +2182,36 @@ class ActorClass(Generic[T]):
         if actor_generator_backpressure_num_objects is None:
             actor_generator_backpressure_num_objects = -1
 
+        actor_generator_backpressure_num_bytes = actor_options.get(
+            "_actor_generator_backpressure_num_bytes"
+        )
+        if actor_generator_backpressure_num_bytes is None:
+            actor_generator_backpressure_num_bytes = -1
+        actor_generator_backpressure_predict_object_bytes = bool(
+            actor_options.get("_actor_generator_backpressure_predict_object_bytes")
+        )
+        actor_generator_backpressure_max_object_bytes = actor_options.get(
+            "_actor_generator_backpressure_max_object_bytes"
+        )
+        if actor_generator_backpressure_max_object_bytes is None:
+            actor_generator_backpressure_max_object_bytes = -1
+        if (
+            actor_generator_backpressure_predict_object_bytes
+            and actor_generator_backpressure_num_bytes <= 0
+        ):
+            raise ValueError(
+                "_actor_generator_backpressure_predict_object_bytes requires "
+                "_actor_generator_backpressure_num_bytes to be set."
+            )
+        if (
+            actor_generator_backpressure_max_object_bytes > 0
+            and not actor_generator_backpressure_predict_object_bytes
+        ):
+            raise ValueError(
+                "_actor_generator_backpressure_max_object_bytes requires "
+                "_actor_generator_backpressure_predict_object_bytes=True."
+            )
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -2209,6 +2239,15 @@ class ActorClass(Generic[T]):
             enable_tensor_transport=meta.enable_tensor_transport,
             actor_generator_backpressure_num_objects=(
                 actor_generator_backpressure_num_objects
+            ),
+            actor_generator_backpressure_num_bytes=(
+                actor_generator_backpressure_num_bytes
+            ),
+            actor_generator_backpressure_max_object_bytes=(
+                actor_generator_backpressure_max_object_bytes
+            ),
+            actor_generator_backpressure_predict_object_bytes=(
+                actor_generator_backpressure_predict_object_bytes
             ),
         )
 
@@ -2240,6 +2279,9 @@ class ActorClass(Generic[T]):
             allow_out_of_order_execution=allow_out_of_order_execution,
             actor_generator_backpressure_num_objects=(
                 actor_generator_backpressure_num_objects
+            ),
+            actor_generator_backpressure_num_bytes=(
+                actor_generator_backpressure_num_bytes
             ),
         )
 
@@ -2344,6 +2386,7 @@ class ActorHandle(Generic[T]):
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
         actor_generator_backpressure_num_objects: int = -1,
+        actor_generator_backpressure_num_bytes: int = -1,
     ):
         """Initialize an ActorHandle.
 
@@ -2376,6 +2419,10 @@ class ActorHandle(Generic[T]):
                 streaming generator objects across concurrent generator tasks; ``-1`` means
                 disabled. Mirrors ``_actor_generator_backpressure_num_objects`` on actor
                 creation.
+            actor_generator_backpressure_num_bytes: Actor-wide cap on unconsumed
+                streaming generator bytes across concurrent generator tasks; ``-1`` means
+                disabled. Mirrors ``_actor_generator_backpressure_num_bytes`` on actor
+                creation.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -2386,6 +2433,9 @@ class ActorHandle(Generic[T]):
         self._ray_allow_out_of_order_execution = allow_out_of_order_execution
         self._ray_actor_generator_backpressure_num_objects = (
             actor_generator_backpressure_num_objects
+        )
+        self._ray_actor_generator_backpressure_num_bytes = (
+            actor_generator_backpressure_num_bytes
         )
 
         self._ray_method_is_generator = method_is_generator

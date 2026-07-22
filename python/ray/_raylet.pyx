@@ -3916,6 +3916,9 @@ cdef class CoreWorker:
                      c_bool enable_tensor_transport,
                      fallback_strategy,
                      int64_t actor_generator_backpressure_num_objects=-1,
+                     int64_t actor_generator_backpressure_num_bytes=-1,
+                     int64_t actor_generator_backpressure_max_object_bytes=-1,
+                     c_bool actor_generator_backpressure_predict_object_bytes=False,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3977,7 +3980,10 @@ cdef class CoreWorker:
                         c_labels,
                         c_label_selector,
                         c_fallback_strategy,
-                        actor_generator_backpressure_num_objects),
+                        actor_generator_backpressure_num_objects,
+                        actor_generator_backpressure_num_bytes,
+                        actor_generator_backpressure_max_object_bytes,
+                        actor_generator_backpressure_predict_object_bytes),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -4305,6 +4311,9 @@ cdef class CoreWorker:
         cdef int64_t actor_generator_bp = dereference(
             c_actor_handle
         ).ActorGeneratorBackpressureNumObjects()
+        cdef int64_t actor_generator_byte_bp = dereference(
+            c_actor_handle
+        ).ActorGeneratorBackpressureNumBytes()
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
@@ -4338,6 +4347,9 @@ cdef class CoreWorker:
                                          allow_out_of_order_execution=allow_out_of_order_execution,
                                          actor_generator_backpressure_num_objects=int(
                                              actor_generator_bp
+                                         ),
+                                         actor_generator_backpressure_num_bytes=int(
+                                             actor_generator_byte_bp
                                          ))
         else:
             return ray.actor.ActorHandle(language, actor_id,
@@ -4361,6 +4373,9 @@ cdef class CoreWorker:
                                          allow_out_of_order_execution=allow_out_of_order_execution,
                                          actor_generator_backpressure_num_objects=int(
                                              actor_generator_bp
+                                         ),
+                                         actor_generator_backpressure_num_bytes=int(
+                                             actor_generator_byte_bp
                                          ))
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,

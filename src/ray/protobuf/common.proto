@@ -844,6 +844,25 @@ message ActorCreationTaskSpec {
   // backpressure remains purely per-task via
   // TaskSpec.generator_backpressure_num_objects.
   int64 actor_generator_backpressure_num_objects = 15;
+  // The maximum number of bytes across all streaming-generator tasks
+  // running on this actor that can be unconsumed before producers block.
+  // Coexists with the object cap above: producers block when either budget
+  // is exhausted. Set to -1 (default) to disable. Because an object's size
+  // is only known after it is generated, the byte cap is enforced one yield
+  // late unless actor_generator_backpressure_predict_object_bytes is set.
+  int64 actor_generator_backpressure_num_bytes = 16;
+  // Cold-start seed for the byte-size estimator: an upper bound on a single
+  // yielded object's size, used to gate admissions only until the first
+  // object is reported (after which the observed average supersedes it).
+  // Only meaningful with actor_generator_backpressure_predict_object_bytes.
+  // Set to -1 (default) to leave the estimator unseeded.
+  int64 actor_generator_backpressure_max_object_bytes = 17;
+  // If true, gate yield admissions on an estimate (the running average of
+  // reported object sizes, seeded by
+  // actor_generator_backpressure_max_object_bytes) of the bytes that
+  // admitted-but-not-yet-reported yields will produce, so the byte cap is
+  // enforced before generating instead of one yield late.
+  bool actor_generator_backpressure_predict_object_bytes = 18;
 }
 
 // Task spec of an actor task.
@@ -860,6 +879,10 @@ message ActorTaskSpec {
   // Actor-wide streaming generator cap copied from the actor handle at submit
   // time (unset or <=0 means no actor-wide owner threshold for this task).
   optional int64 actor_generator_backpressure_num_objects = 7;
+  // Actor-wide streaming generator byte cap copied from the actor handle at
+  // submit time (unset or <=0 means no actor-wide owner threshold for this
+  // task).
+  optional int64 actor_generator_backpressure_num_bytes = 8;
 }
 
 // Represents a task, including task spec.
