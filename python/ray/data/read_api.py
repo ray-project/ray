@@ -2936,7 +2936,7 @@ def read_lerobot(
                a larger value raises ``ValueError``. Leaving it unset reads one
                task per episode / file group.
         delta_tolerance_s: Frame-grid tolerance in seconds for ``delta_timestamps``
-            offsets -- each offset must be a multiple of ``1 / fps`` within this
+            offsets. Each offset must be a multiple of ``1 / fps`` within this
             tolerance. Defaults to ``1e-4`` (matching lerobot's ``LeRobotDataset``).
             Ignored when ``delta_timestamps`` is ``None``.
         storage_options: fsspec storage options (e.g. credentials or a custom

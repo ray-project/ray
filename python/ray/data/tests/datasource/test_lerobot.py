@@ -1210,18 +1210,20 @@ def test_delta_tolerance_s_configurable(
 def test_delta_targets_clamps_to_episode():
     from ray.data._internal.datasource.lerobot_datasource import _delta_targets
 
-    # Episode [10, 15): a look-back at the first frame is clamped + padded.
-    assert _delta_targets(10, 10, 15, [-1, 0, 1]) == (
-        [10, 10, 11],
-        [True, False, False],
+    # Episode [10, 15). Scalar anchor -> (S,) arrays.
+    tgt, pad = _delta_targets(10, 10, 15, [-1, 0, 1])  # look-back clamps + pads
+    assert list(tgt) == [10, 10, 11] and list(pad) == [True, False, False]
+    tgt, pad = _delta_targets(14, 10, 15, [0, 1, 2])  # look-ahead clamps + pads
+    assert list(tgt) == [14, 14, 14] and list(pad) == [False, True, True]
+    tgt, pad = _delta_targets(12, 10, 15, [-1, 0, 1])  # interior, no pad
+    assert list(tgt) == [11, 12, 13] and list(pad) == [False, False, False]
+
+    # Vectorized over anchors: (A,) anchors + (S,) steps -> (A, S).
+    tgt, pad = _delta_targets(
+        np.array([10, 14]), np.array([10, 10]), np.array([15, 15]), [-1, 0, 1]
     )
-    # A look-ahead at the last frame is clamped + padded.
-    assert _delta_targets(14, 10, 15, [0, 1, 2]) == ([14, 14, 14], [False, True, True])
-    # Fully interior: no padding.
-    assert _delta_targets(12, 10, 15, [-1, 0, 1]) == (
-        [11, 12, 13],
-        [False, False, False],
-    )
+    assert tgt.tolist() == [[10, 10, 11], [13, 14, 14]]
+    assert pad.tolist() == [[True, False, False], [False, False, True]]
 
 
 def test_build_schema_delta_adds_pad_columns(lerobot_dataset_no_video):

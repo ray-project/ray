@@ -279,29 +279,22 @@ def _non_camera_features(features: dict) -> Dict[str, tuple]:
 
 
 def _delta_targets(
-    global_index: int, ep_from: int, ep_to: int, steps: List[int]
-) -> Tuple[List[int], List[bool]]:
-    """For an anchor at ``global_index`` in episode ``[ep_from, ep_to)``, resolve
-    each frame offset to a clamped in-episode global index and whether it was
-    padded (fell outside the episode).
+    global_index, ep_from, ep_to, steps
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Resolve each frame offset to a clamped in-episode global index and whether
+    it fell outside the episode (the pad mask).
 
-    Same clamp/pad rule as lerobot's ``DatasetReader._get_query_indices``, kept as
-    a standalone numpy-side helper because that method is bound to a torch-backed
-    reader object we don't build here."""
-    targets: List[int] = []
-    pad: List[bool] = []
-    for step in steps:
-        j = global_index + step
-        if j < ep_from:
-            targets.append(ep_from)
-            pad.append(True)
-        elif j >= ep_to:
-            targets.append(ep_to - 1)
-            pad.append(True)
-        else:
-            targets.append(j)
-            pad.append(False)
-    return targets, pad
+    Vectorized: ``global_index`` / ``ep_from`` / ``ep_to`` may be scalars or
+    ``(A,)`` arrays and ``steps`` a length-``S`` sequence, giving ``(S,)`` results
+    for a single anchor or ``(A, S)`` for an array of anchors. Same clamp/pad rule
+    as lerobot's ``DatasetReader._get_query_indices``, kept as a standalone numpy
+    helper because that method is bound to a torch-backed reader we don't build."""
+    g = np.asarray(global_index)[..., None]
+    lo = np.asarray(ep_from)[..., None]
+    hi = np.asarray(ep_to)[..., None]
+    j = g + np.asarray(steps)
+    pad = (j < lo) | (j >= hi)
+    return np.clip(j, lo, hi - 1), pad
 
 
 def _resolve_filesystem(
@@ -695,7 +688,7 @@ class _DeltaSegment(NamedTuple):
     nondelta_image_keys: List[str]
     pad_order: List[str]
     tab_base: Dict[str, np.ndarray]
-    seg_images: Dict[str, list]
+    seg_images: Dict[str, np.ndarray]
 
 
 def _read_lerobot_segment(
@@ -891,11 +884,16 @@ def _prepare_delta_segment(
         nondelta_image_keys=[ik for ik in root.image_keys if ik not in delta_steps],
         pad_order=pad_order,
         tab_base=tab_base,
-        seg_images=(
-            _decode_image_frames(root, full, keys=delta_image_keys)
-            if delta_image_keys
-            else {}
-        ),
+        # Stack each decoded image camera to one (n_seg, H, W, C) array so a batch
+        # can gather its windows by fancy-indexing with the (A, S) positions.
+        seg_images={
+            k: np.stack(v)
+            for k, v in (
+                _decode_image_frames(root, full, keys=delta_image_keys)
+                if delta_image_keys
+                else {}
+            ).items()
+        },
     )
 
 
@@ -936,14 +934,16 @@ def _build_delta_batch(
     def _targets_for(steps):
         cached = targets_cache.get(steps)
         if cached is None:
-            positions, pads = [], []
-            for p in anchors:
-                tgt, pad = _delta_targets(
-                    dseg.global_idx[p], dseg.row_from[p], dseg.row_to[p], list(steps)
-                )
-                positions.append([j - dseg.seg_lo for j in tgt])
-                pads.append(np.asarray(pad, dtype=bool))
-            cached = targets_cache[steps] = (positions, pads)
+            b0, b1 = batch_start, batch_start + batch.num_rows
+            clamped, pad = _delta_targets(
+                np.asarray(dseg.global_idx[b0:b1]),
+                np.asarray(dseg.row_from[b0:b1]),
+                np.asarray(dseg.row_to[b0:b1]),
+                steps,
+            )
+            # (A, S) row positions + pad mask; a clamped global index j is at row
+            # position j - seg_lo (the segment is contiguous).
+            cached = targets_cache[steps] = (clamped - dseg.seg_lo, pad)
         return cached
 
     # Decode all cameras up front, then assemble columns in schema order.
@@ -984,22 +984,22 @@ def _build_delta_batch(
         if name in image_set:
             if name in delta_steps:
                 positions, pad = _targets_for(tuple(delta_steps[name]))
-                src = dseg.seg_images[name]
+                # seg_images[name]: (n_seg, H, W, C); [positions] -> (A, S, H, W, C).
                 columns[name] = ArrowVariableShapedTensorArray.from_numpy(
-                    [np.stack([src[i] for i in pos], axis=0) for pos in positions]
+                    list(dseg.seg_images[name][positions])
                 )
-                pad_buffers[name] = pad
+                pad_buffers[name] = list(pad)
             else:
                 columns[name] = ArrowVariableShapedTensorArray.from_numpy(
                     nd_image_fb[name]
                 )
         elif name in delta_steps:
             positions, pad = _targets_for(tuple(delta_steps[name]))
-            base = dseg.tab_base[name]
+            # tab_base[name]: (n_seg, *shape); [positions] -> (A, S, *shape).
             columns[name] = ArrowVariableShapedTensorArray.from_numpy(
-                [base[pos] for pos in positions]
+                list(dseg.tab_base[name][positions])
             )
-            pad_buffers[name] = pad
+            pad_buffers[name] = list(pad)
         else:
             columns[name] = batch.column(name)
 
@@ -1060,8 +1060,11 @@ def _decode_video_delta(
         g, rf, rt = global_idx[p], row_from[p], row_to[p]
         chunk, fi, from_ts = ep_info[ep_col[p]]
         targets, pad = _delta_targets(g, rf, rt, steps)
-        for k, (j, _padded) in enumerate(zip(targets, pad)):
-            ts = from_ts + (j - rf) / fps
+        for k, j in enumerate(targets):
+            # int(j) keeps ts a Python float, so lerobot's torch.tensor(timestamps)
+            # is float32 and matches the decoder's loaded_ts (cdist needs one dtype);
+            # a numpy int64 here would make ts float64 and raise in cdist.
+            ts = from_ts + (int(j) - rf) / fps
             file_requests.setdefault((chunk, fi), []).append((a, k, ts))
         pads.append(np.asarray(pad, dtype=bool))
 
