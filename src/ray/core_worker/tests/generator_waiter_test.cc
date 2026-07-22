@@ -440,9 +440,11 @@ TEST(GeneratorWaiterTest, TryReserveActorWideSlotReturnsTrueWhenTaskNotAlive) {
 }
 
 TEST(GeneratorWaiterTest, ReserveActorWideSlotMultiThreadedCapNeverOverShoots) {
-  constexpr int kThreshold = 5;
-  constexpr int kThreads = 4;
-  constexpr int kPerThread = 50;
+  // static: MSVC rejects a by-ref-captured constexpr local as the array bound
+  // inside the consumer lambda below (C2131); a static local needs no capture.
+  static constexpr int kThreshold = 5;
+  static constexpr int kThreads = 4;
+  static constexpr int kPerThread = 50;
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
       kThreshold, []() { return Status::OK(); });
 
