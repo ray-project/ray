@@ -289,11 +289,31 @@ def copy_class_metadata(wrapper_cls, target_cls) -> None:
     wrapper_cls.__wrapped__ = target_cls
 
 
+def _register_thread_lock_serializer(serialization_context):
+    """Make threading locks cloudpickle-serializable.
+
+    FastAPI >= 0.137 embeds a threading.Lock in the ASGI app object, which cloudpickle
+    cannot serialize ("cannot pickle '_thread.lock' object"). serve.ingress(app) pickles
+    the app to freeze it (and again to ship it to replicas), so both fail. A lock carries
+    no transferable state and the app is frozen/shipped before it serves any request, so
+    reconstruct a fresh, unlocked lock on deserialization.
+    """
+    import threading
+
+    for lock_factory in (threading.Lock, threading.RLock):
+        serialization_context._register_cloudpickle_serializer(
+            type(lock_factory()),
+            custom_serializer=lambda lock: None,
+            custom_deserializer=lambda _serialized, factory=lock_factory: factory(),
+        )
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
+    _register_thread_lock_serializer(ctx)
 
 
 def msgpack_serialize(obj):

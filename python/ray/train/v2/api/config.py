@@ -287,6 +287,7 @@ class ScalingConfig(ScalingConfigV1):
 
     @property
     def _trainer_resources_not_none(self):
+        # V2 controller uses num_cpus=0; trainer_resources are V1-only.
         return {}
 
     @property

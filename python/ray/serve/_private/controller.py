@@ -611,7 +611,9 @@ class ServeController:
         any_recovering: Optional[bool] = None
         try:
             dsm_update_start_time = time.time()
-            any_recovering = self.deployment_state_manager.update()
+            any_recovering = self.deployment_state_manager.update(
+                proxy_nodes=self._proxy_nodes
+            )
 
             dsm_duration = time.time() - dsm_update_start_time
             self.dsm_update_duration_gauge_s.set(dsm_duration)
