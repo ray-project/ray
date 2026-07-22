@@ -1,8 +1,9 @@
 import logging
 import os
 import threading
+import time
 from collections import defaultdict
-from typing import Callable, List
+from typing import Callable, List, Optional
 from urllib.parse import unquote
 
 from opentelemetry import metrics
@@ -10,6 +11,7 @@ from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 
+import ray
 from ray._private.metrics_agent import Record
 from ray._private.telemetry.metric_cardinality import MetricCardinality
 from ray._private.telemetry.metric_types import MetricType
@@ -44,15 +46,51 @@ class OpenTelemetryMetricRecorder:
     _metrics_initialized = False
     _metrics_initialized_lock = threading.Lock()
 
-    def __init__(self):
+    def __init__(self, gauge_metric_ttl_seconds: Optional[float] = None):
         self._lock = threading.Lock()
         self._registered_instruments = {}
+        # Gauge observations are stored as tag_key -> (value, last_update_monotonic).
+        # Unlike counters/sums, gauges are evicted once they have not been refreshed
+        # within `_gauge_metric_ttl_s` (see the scrape callback below).
         self._gauge_observations_by_name = defaultdict(dict)
         self._counter_observations_by_name = defaultdict(dict)
         self._sum_observations_by_name = defaultdict(dict)
         self._histogram_bucket_midpoints = defaultdict(list)
+        self._gauge_metric_ttl_s = self._resolve_gauge_ttl_seconds(
+            gauge_metric_ttl_seconds
+        )
         self._init_metrics()
         self.meter = metrics.get_meter(__name__)
+
+    @staticmethod
+    def _resolve_gauge_ttl_seconds(override: Optional[float]) -> float:
+        """Returns how long (in seconds) a gauge observation is retained without a
+        refresh before it is evicted on scrape.
+
+        Emitters export their live gauge values to the agent every export interval.
+        The effective export interval is ``max(metrics_report_interval_ms, 1000)`` --
+        the emitter floors it at 1000ms via ``SetReportInterval`` in
+        ``src/ray/stats/stats.h`` (``GetReportInterval()`` is what actually drives the
+        OTLP export in ``InitOpenTelemetryExporter``). We apply the same floor here so
+        the TTL is exactly 2x the true export cadence, even when the raw config value
+        is below 1000ms. Retaining a value for 2 export intervals lets an
+        actively-reported series survive a missed/late export, while a series that
+        stops being reported (finished task, dead worker) ages out after ~2 intervals.
+
+        NOTE: this mirrors the ``max(..., 1000)`` clamp and the export cadence in
+        ``stats.h``. If either changes, update this derivation.
+
+        Callers may pass an explicit ``override`` (used by tests and available for
+        future injection from above).
+        """
+        if override is not None:
+            return override
+        # Mirror the emitter's SetReportInterval floor (stats.h): the export cadence is
+        # max(metrics_report_interval_ms, 1000ms), never less than 1s.
+        effective_report_interval_ms = max(
+            ray._config.metrics_report_interval_ms(), 1000
+        )
+        return 2 * effective_report_interval_ms / 1000.0
 
     def _create_observable_callback(
         self, metric_name: str, metric_type: MetricType
@@ -72,9 +110,19 @@ class OpenTelemetryMetricRecorder:
             with self._lock:
                 # Select appropriate storage based on metric type
                 if metric_type == MetricType.GAUGE:
-                    observations = self._gauge_observations_by_name.get(metric_name, {})
-                    # Clear after reading (gauges report last value)
-                    self._gauge_observations_by_name[metric_name] = {}
+                    # Gauges report the last value. Instead of clearing after each
+                    # scrape (which drops a series between reports if the emitter
+                    # hasn't re-reported in time), retain each value for a TTL and
+                    # evict only observations that have gone stale.
+                    stored = self._gauge_observations_by_name.get(metric_name, {})
+                    now = time.monotonic()
+                    retained = {}
+                    observations = {}
+                    for tag_set, (val, ts) in stored.items():
+                        if now - ts <= self._gauge_metric_ttl_s:
+                            retained[tag_set] = (val, ts)
+                            observations[tag_set] = val
+                    self._gauge_observations_by_name[metric_name] = retained
                 elif metric_type == MetricType.COUNTER:
                     observations = self._counter_observations_by_name.get(
                         metric_name, {}
@@ -268,8 +316,12 @@ class OpenTelemetryMetricRecorder:
         with self._lock:
             tag_key = frozenset(tags.items())
             if self._gauge_observations_by_name.get(name) is not None:
-                # Gauge - store the most recent value for the given tags.
-                self._gauge_observations_by_name[name][tag_key] = value
+                # Gauge - store the most recent value and its timestamp for the given
+                # tags. The timestamp is used to evict stale observations on scrape.
+                self._gauge_observations_by_name[name][tag_key] = (
+                    value,
+                    time.monotonic(),
+                )
             elif name in self._counter_observations_by_name:
                 # Counter - increment the value for the given tags.
                 self._counter_observations_by_name[name][tag_key] = (
