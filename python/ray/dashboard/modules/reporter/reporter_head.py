@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -164,6 +165,11 @@ class ReportHead(SubprocessModule):
                 "memory_duration": RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
                 "cpu_format": RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
                 "memory_format": RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
+                # py-spy only appends --native on Linux (see profile_manager),
+                # so the UI can disable the Native checkbox for the CPU/stack-
+                # trace dialogs off-Linux where it would be a silent no-op.
+                # memray native is cross-platform, so its checkbox is unaffected.
+                "pyspy_native_supported": sys.platform == "linux",
             },
         )
 

@@ -32,6 +32,11 @@ export type ProfilingDefaults = {
   memoryDuration: number;
   cpuFormat: string;
   memoryFormat: string;
+  // Whether py-spy `--native` takes effect on this platform (Linux-only). Not a
+  // configurable default -- reported by the backend so the CPU/stack-trace
+  // dialogs can disable the Native checkbox off-Linux, where it is a silent
+  // no-op. memray (memory) native is cross-platform and is unaffected.
+  pyspyNativeSupported: boolean;
 };
 
 // Fallback used before /api/profiling_enabled resolves or if it fails. These
@@ -46,6 +51,9 @@ export const DEFAULT_PROFILING_DEFAULTS: ProfilingDefaults = {
   memoryDuration: 10,
   cpuFormat: "flamegraph",
   memoryFormat: "flamegraph",
+  // Assume supported until the backend says otherwise, so an unreachable
+  // /api/profiling_enabled never spuriously disables the Native checkbox.
+  pyspyNativeSupported: true,
 };
 
 let cachedProfilingEnabled: boolean | null = null;
@@ -133,6 +141,8 @@ type ProfilingFlag = {
   label: string;
   help: string;
   initial: boolean;
+  // When true, the checkbox is rendered read-only (e.g. py-spy native off-Linux).
+  disabled: boolean;
 };
 
 // Optional numeric "duration" field.
@@ -186,7 +196,16 @@ export const ProfilingParamsDialog = ({
     Object.fromEntries(flags.map((f) => [f.key, f.initial])),
   );
 
-  const handleOpen = () => setOpen(true);
+  // Reseed state from the latest props each time the dialog opens, so it always
+  // reflects the current operator-configured defaults (which arrive
+  // asynchronously from /api/profiling_enabled) rather than whatever was
+  // captured at first mount.
+  const handleOpen = () => {
+    setDurationValue(duration?.initial ?? 0);
+    setFormatValue(format?.initial ?? "");
+    setFlagValues(Object.fromEntries(flags.map((f) => [f.key, f.initial])));
+    setOpen(true);
+  };
   const handleClose = () => setOpen(false);
 
   // Duration must be an integer in [1, 60] (matches the backend validation).
@@ -251,6 +270,7 @@ export const ProfilingParamsDialog = ({
                 control={
                   <Checkbox
                     checked={flagValues[flag.key]}
+                    disabled={flag.disabled}
                     onChange={(e) =>
                       setFlagValues((prev) => ({
                         ...prev,
@@ -354,11 +374,18 @@ const CPU_FORMAT_OPTIONS = [
   { value: "speedscope", label: "Speedscope" },
 ];
 
-const flag = (key: string, label: string, help: string, initial: boolean) => ({
+const flag = (
+  key: string,
+  label: string,
+  help: string,
+  initial: boolean,
+  disabled = false,
+) => ({
   key,
   label,
   help,
   initial,
+  disabled,
 });
 
 const NATIVE_HELP =
@@ -374,7 +401,13 @@ const flagQuery = (flags: Record<string, boolean>): string =>
     .join("");
 
 const stackTraceFlags = (defaults: ProfilingDefaults) => [
-  flag("native", "Native", NATIVE_HELP, defaults.native),
+  flag(
+    "native",
+    "Native",
+    NATIVE_HELP,
+    defaults.native && defaults.pyspyNativeSupported,
+    !defaults.pyspyNativeSupported,
+  ),
   flag(
     "subprocesses",
     "Subprocesses",
@@ -384,7 +417,13 @@ const stackTraceFlags = (defaults: ProfilingDefaults) => [
 ];
 
 const cpuProfileFlags = (defaults: ProfilingDefaults) => [
-  flag("native", "Native", NATIVE_HELP, defaults.native),
+  flag(
+    "native",
+    "Native",
+    NATIVE_HELP,
+    defaults.native && defaults.pyspyNativeSupported,
+    !defaults.pyspyNativeSupported,
+  ),
   flag("idle", "Idle", IDLE_HELP, defaults.idle),
   flag(
     "subprocesses",

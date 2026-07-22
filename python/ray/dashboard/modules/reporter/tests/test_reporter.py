@@ -1777,6 +1777,7 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
             "memoryDuration",
             "cpuFormat",
             "memoryFormat",
+            "pyspyNativeSupported",
         ):
             assert key in defaults, f"missing {key} in {defaults}"
         # Spot-check defaults match the constants' shipped values.

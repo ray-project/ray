@@ -156,6 +156,24 @@ describe("CpuStackTraceLink (worker)", () => {
     expect(href).not.toContain("native=0");
   });
 
+  it("disables and forces off Native when py-spy native is unsupported", async () => {
+    // Non-Linux dashboard: the native default is on, but py-spy drops --native
+    // off-Linux, so the checkbox is disabled and the URL must not request native.
+    mockProfiling(true, { native: true, pyspyNativeSupported: false });
+    const user = userEvent.setup();
+    render(<CpuStackTraceLink {...props} />, { wrapper: TEST_APP_WRAPPER });
+
+    await user.click(await screen.findByLabelText(/Stack Trace Config/));
+
+    expect(screen.getByRole("checkbox", { name: /Native/ })).toBeDisabled();
+    const href = (await screen.findByText(/Get stack trace/)).getAttribute(
+      "href",
+    );
+    expect(href).toBe(
+      `worker/traceback?pid=1234&node_id=node-abc&native=0&subprocesses=0`,
+    );
+  });
+
   it("shows a disabled label when profiling is off", async () => {
     mockProfiling(false);
     render(<CpuStackTraceLink {...props} />, { wrapper: TEST_APP_WRAPPER });
