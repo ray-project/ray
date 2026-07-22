@@ -6074,6 +6074,10 @@ class DeploymentStateManager:
         """
         return self._shutting_down and len(self._deployment_states) == 0
 
+    def is_shutting_down(self) -> bool:
+        """Whether a full instance shutdown is in progress."""
+        return self._shutting_down
+
     def delete_checkpoint(self) -> None:
         """Delete the deployment state checkpoint from KV store."""
         self._kv_store.delete(CHECKPOINT_KEY)

@@ -9,6 +9,7 @@ import pytest
 import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
+from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -55,10 +56,12 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
 )
+from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
     MockDeploymentActorWrapper,
+    MockKVStore,
     MockPlacementGroup,
     dead_replicas_context,
     replica_rank_context,
@@ -69,7 +72,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
-from ray.serve.schema import ReplicaRank
+from ray.serve.schema import LoggingConfig, ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
@@ -10423,6 +10426,66 @@ class TestDependencyOrderedShutdown:
             order = _run_shutdown_to_completion(dsm)
             assert dsm.is_ready_for_shutdown()
             assert set(order) == {a, b, c}
+
+
+def test_shutdown_tiers_survive_application_reconcile(mock_deployment_state_manager):
+    """Test ApplicationState does not bypass shutdown tiers."""
+    create_dsm, _, _, autoscaling_state_manager = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    app_state = ApplicationState(
+        name="app",
+        deployment_state_manager=dsm,
+        autoscaling_state_manager=autoscaling_state_manager,
+        endpoint_state=EndpointState(MockKVStore(), Mock()),
+        logging_config=LoggingConfig(),
+        external_scaler_enabled=False,
+    )
+    info_a, _ = deployment_info(num_replicas=1)
+    info_b, _ = deployment_info(num_replicas=1)
+    app_state.deploy_app({"a": info_a, "b": info_b}, external_scaler_enabled=False)
+    app_state.update()
+
+    a, b = _dep("a", app="app"), _dep("b", app="app")
+    ds_a = dsm._get_deployment_state_for_testing(a)
+    ds_b = dsm._get_deployment_state_for_testing(b)
+
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    for r in ds_b._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = [b]
+    for r in ds_b._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = []
+
+    # Start a full instance shutdown. Tier 0 (a) starts deleting, b does not.
+    dsm.shutdown()
+    assert ds_a._target_state.deleting
+    assert not ds_b._target_state.deleting
+
+    # Deleting the app wipes its target deployment list. The reconcile pass
+    # this triggers must not use that to delete b out of tier order.
+    app_state.delete()
+    app_state.update()
+    assert not ds_b._target_state.deleting
+
+    # Drain a and advance to tier 1. Only now should b start deleting.
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    dsm.shutdown()
+    app_state.update()
+    assert ds_b._target_state.deleting
+
+    dsm.update()
+    for r in ds_b._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
 
 
 if __name__ == "__main__":
