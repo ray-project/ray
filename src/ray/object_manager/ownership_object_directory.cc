@@ -342,8 +342,23 @@ void OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                                   const Status &status) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
       if (!status.ok()) {
-        RAY_LOG(INFO).WithField(obj_id) << "Owner of object died: " << status.ToString();
-        mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
+        if (is_shutting_down_) {
+          // We are shutting down, so this long-poll failure is caused by our
+          // own gRPC client being torn down, not a genuine remote owner death.
+          // Do not mark OWNER_DIED (which is fatal/non-retryable). Real owner
+          // deaths are still detected by the GCS node/worker-death path and
+          // re-evaluated when the dependent task is retried on a live node.
+          RAY_LOG(INFO).WithField(obj_id).WithField(
+              WorkerID::FromBinary(owner_address.worker_id()))
+              << "Current node is shutting down; aborting SubscribeObjectLocations "
+                 "and suppressing OWNER_DIED (local gRPC teardown, not a real owner "
+                 "death): "
+              << status.ToString();
+        } else {
+          RAY_LOG(INFO).WithField(obj_id)
+              << "Owner of object died: " << status.ToString();
+          mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
+        }
       } else {
         // Owner is still alive but published a failure because the ref was deleted.
         RAY_LOG(INFO).WithField(obj_id)

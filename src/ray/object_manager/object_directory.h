@@ -41,6 +41,12 @@ class IObjectDirectory {
  public:
   virtual ~IObjectDirectory() {}
 
+  /// Signal that the owning node is shutting down. After this call,
+  /// object-location subscription failures are no longer marked as
+  /// OWNER_DIED, since such failures are caused by our own client
+  /// teardown rather than a genuine remote owner death.
+  virtual void MarkShuttingDown() {}
+
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a
   /// location, and fires the subscribed callbacks for those objects.
