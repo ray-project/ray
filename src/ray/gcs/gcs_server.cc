@@ -535,7 +535,11 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   gated_node_info_handler_ = std::make_unique<LeaderGatedNodeInfoHandler>(
-      *gcs_node_manager_, [this]() { return IsLeader(); });
+      *gcs_node_manager_,
+      [this]() { return IsLeader(); },
+      [this](const rpc::GcsNodeInfo &node_info) {
+        gcs_node_manager_->CachePassiveLocalNode(node_info);
+      });
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
       *gated_node_info_handler_,

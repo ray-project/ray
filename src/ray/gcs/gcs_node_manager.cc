@@ -125,25 +125,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  if (!is_leader_fn_()) {
-    if (!node_info.is_head_node()) {
-      GCS_RPC_SEND_REPLY(
-          send_reply_callback,
-          reply,
-          Status::InvalidArgument(
-              "Only the local head node registration is allowed on passive GCS."));
-      return;
-    }
-    RAY_LOG(INFO).WithField(node_id) << "GCS server is in passive mode. Caching local "
-                                        "head node registration in-memory.";
-    {
-      absl::MutexLock lock(&mutex_);
-      passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    return;
-  }
-
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used

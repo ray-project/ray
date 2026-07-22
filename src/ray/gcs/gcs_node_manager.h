@@ -224,6 +224,19 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// registration to Redis.
   void PromoteNodeManager();
 
+  /// Cache the local head node registration in-memory when in passive mode.
+  /// This is called by LeaderGatedNodeInfoHandler to centralize passive mode logic.
+  ///
+  /// \param node_info The head node info to cache.
+  void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+    NodeID node_id = NodeID::FromBinary(node_info.node_id());
+    RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
+                     "registration in-memory. node_id: "
+                  << node_id;
+    absl::MutexLock lock(&mutex_);
+    passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+  }
+
   std::string DebugString() const;
 
   /// Drain the given node.

@@ -339,7 +339,13 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
-  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn);
+  // Mock storage for passive node caching.
+  std::shared_ptr<rpc::GcsNodeInfo> cached_passive_node;
+  auto cache_local_node_fn = [&cached_passive_node](const rpc::GcsNodeInfo &node_info) {
+    cached_passive_node = std::make_shared<rpc::GcsNodeInfo>(node_info);
+  };
+
+  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn, cache_local_node_fn);
 
   // 1. Passive mode: unallowed worker node registration & unregister must be BLOCKED.
   {
@@ -379,23 +385,30 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
     underlying.called_ = false;
   }
 
-  // 2. Passive mode: allowlisted local head node registration & CheckAlive must be
-  // FORWARDED.
+  // 2. Passive mode: allowlisted local head node registration is HANDLED IN PROXY,
+  // CheckAlive is FORWARDED.
   {
     rpc::RegisterNodeRequest request;
     request.mutable_node_info()->set_is_head_node(true);
     rpc::RegisterNodeReply reply;
     bool callback_called = false;
-    auto send_reply_callback = [&callback_called](Status status,
-                                                  std::function<void()> f1,
-                                                  std::function<void()> f2) {
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
       EXPECT_TRUE(status.ok());
+      // Verify the reply status code is 0 (OK)
+      EXPECT_EQ(reply.status().code(), static_cast<int>(StatusCode::OK));
       callback_called = true;
     };
     proxy.HandleRegisterNode(request, &reply, send_reply_callback);
     EXPECT_TRUE(callback_called);
-    EXPECT_TRUE(underlying.called_);
+    // Should NOT call underlying handler for head node in passive mode.
+    EXPECT_FALSE(underlying.called_);
+    // The head node should be cached in-memory via the cache callback.
+    ASSERT_NE(cached_passive_node, nullptr);
+    EXPECT_TRUE(cached_passive_node->is_head_node());
     underlying.called_ = false;
+    cached_passive_node = nullptr;
   }
   {
     rpc::CheckAliveRequest request;

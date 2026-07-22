@@ -768,19 +768,11 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLivenessPassiveNode) {
                                    clock_,
                                    []() { return false; });  // Passive GCS
 
-  // Register head node (this should be cached in passive_local_node_)
+  // Cache the local head node in-memory (passive mode). In production this is done
+  // by LeaderGatedNodeInfoHandler via the cache_local_node_fn callback.
   auto head_node = GenNodeInfo();
   head_node->set_is_head_node(true);
-
-  rpc::RegisterNodeRequest register_request;
-  register_request.mutable_node_info()->CopyFrom(*head_node);
-  rpc::RegisterNodeReply register_reply;
-  auto send_register_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {
-        EXPECT_TRUE(status.ok());
-      };
-  node_manager.HandleRegisterNode(
-      register_request, &register_reply, send_register_reply_callback);
+  node_manager.CachePassiveLocalNode(*head_node);
 
   // Test 1: Get all nodes without filter. Should return the passive local node.
   {
@@ -943,7 +935,8 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotion) {
     return future.get();
   };
 
-  // 1. Register a node (simulating local head raylet).
+  // 1. Cache a node (simulating local head raylet registration on passive GCS).
+  // In production this is done by LeaderGatedNodeInfoHandler via cache_local_node_fn.
   // It must succeed in-memory (be added to cache) but NOT be written to Redis!
   NodeID node_id = NodeID::FromRandom();
   RAY_LOG(INFO) << "TEST: Local head node B ID is " << node_id.Hex();
@@ -951,17 +944,7 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotion) {
   node_info->set_node_id(node_id.Binary());
   node_info->set_is_head_node(true);
 
-  rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(*node_info);
-  rpc::RegisterNodeReply reply;
-  std::promise<bool> promise;
-  auto send_reply_callback =
-      [&promise](Status status, std::function<void()> f1, std::function<void()> f2) {
-        EXPECT_TRUE(status.ok());
-        promise.set_value(true);
-      };
-  node_manager.HandleRegisterNode(request, &reply, send_reply_callback);
-  EXPECT_TRUE(wait_ready(promise.get_future()));
+  node_manager.CachePassiveLocalNode(*node_info);
 
   // Verify node is in cache during passive mode
   EXPECT_TRUE(node_manager.IsNodeAlive(node_id));
@@ -1085,25 +1068,15 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotionStaleHeadCleanup) {
                                    clock_,
                                    is_leader_fn);
 
-  // 3. Register the new local head node B (alive) during passive GCS.
+  // 3. Cache the new local head node B (alive) during passive GCS. In production this
+  // is done by LeaderGatedNodeInfoHandler via cache_local_node_fn.
   NodeID new_node_id = NodeID::FromRandom();
   RAY_LOG(INFO) << "TEST: Local head node B ID is " << new_node_id.Hex();
   auto new_node_info = GenNodeInfo(10, "127.0.0.1", "new_head_node");
   new_node_info->set_node_id(new_node_id.Binary());
   new_node_info->set_is_head_node(true);
 
-  rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(*new_node_info);
-  rpc::RegisterNodeReply reply;
-  std::promise<bool> reg_promise;
-  node_manager.HandleRegisterNode(
-      request,
-      &reply,
-      [&reg_promise](Status status, std::function<void()> f1, std::function<void()> f2) {
-        EXPECT_TRUE(status.ok());
-        reg_promise.set_value(true);
-      });
-  EXPECT_TRUE(wait_ready(reg_promise.get_future()));
+  node_manager.CachePassiveLocalNode(*new_node_info);
 
   // 4. Load GcsNodeManager state from Redis (Hydration simulation).
   gcs::GcsInitData init_data(*gcs_table_storage_);
@@ -1236,23 +1209,14 @@ TEST_F(GcsNodeManagerTest, TestPassiveHandleGetAllNodeInfoAndCheckAlive) {
     return future.get();
   };
 
-  // 1. Register a local head node in passive mode (cached in-memory).
+  // 1. Cache a local head node in passive mode (in-memory). In production this is done
+  // by LeaderGatedNodeInfoHandler via cache_local_node_fn.
   NodeID passive_node_id = NodeID::FromRandom();
   auto node_info = GenNodeInfo(10, "127.0.0.1", "passive_node");
   node_info->set_node_id(passive_node_id.Binary());
   node_info->set_is_head_node(true);
 
-  rpc::RegisterNodeRequest reg_request;
-  reg_request.mutable_node_info()->CopyFrom(*node_info);
-  rpc::RegisterNodeReply reg_reply;
-  std::promise<bool> reg_promise;
-  auto send_reg_reply_callback =
-      [&reg_promise](Status status, std::function<void()> f1, std::function<void()> f2) {
-        EXPECT_TRUE(status.ok());
-        reg_promise.set_value(true);
-      };
-  node_manager.HandleRegisterNode(reg_request, &reg_reply, send_reg_reply_callback);
-  EXPECT_TRUE(wait_ready(reg_promise.get_future()));
+  node_manager.CachePassiveLocalNode(*node_info);
 
   // 2. Test HandleCheckAlive for passive node.
   {
