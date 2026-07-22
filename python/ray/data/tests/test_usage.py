@@ -2,7 +2,6 @@
 
 import json
 import sys
-import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -325,28 +324,6 @@ def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
     """Each realistic query failure yields None so usage collection never breaks."""
     monkeypatch.setattr(util.requests, "get", get_fn)
     assert util.query_prometheus_counter("q") is None
-
-
-def test_join_async_round_trip():
-    """join_async returns each value when the calls finish in time."""
-    futures = [util.run_async(lambda: 2), util.run_async(lambda: 5)]
-    assert util.join_async(futures) == [2, 5]
-
-
-def test_join_async_hung_returns_none():
-    """A call that outlives the timeout ceiling degrades to None."""
-    release = threading.Event()
-
-    def slow():
-        release.wait(5)
-        return 1
-
-    futures = [util.run_async(slow)]
-    try:
-        assert util.join_async(futures, timeout=0.05) == [None]
-    finally:
-        # Let the worker thread finish so it doesn't linger past the test.
-        release.set()
 
 
 def test_session_scoped_metric_query():

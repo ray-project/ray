@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Callable, Dict, Optional
 
-from ray.data._internal.usage import collector, util
+from ray.data._internal.usage import collector
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +72,9 @@ class ClusterMetricsPoller:
             return dict(self._first_snapshot) if self._first_snapshot else None
 
     def poll_once(self) -> None:
-        """Sample every metric concurrently and publish the values as the latest
+        """Sample every metric one at a time and publish the values as the latest
         snapshot (and as the first snapshot if this is the first poll)."""
-        names = list(self._metrics)
-        futures = [util.run_async(self._metrics[name]) for name in names]
-        values = dict(zip(names, util.join_async(futures)))
+        values = {name: fn() for name, fn in self._metrics.items()}
         with self._lock:
             self._latest_snapshot = values
             if self._first_snapshot is None:

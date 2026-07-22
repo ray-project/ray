@@ -7,8 +7,7 @@ import json
 import logging
 import os
 import threading
-from concurrent.futures import Future, wait
-from typing import Callable, Dict, List, Optional, Sequence, TypeVar
+from typing import Dict, Optional
 
 import requests
 
@@ -18,17 +17,12 @@ from ray.data._internal.logical.operators import Read, ReadFiles, Write
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
-
 # The dictionary for the operator name and count.
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
 
-# Bounded timeout for the Prometheus counter HTTP queries
-_PROMETHEUS_QUERY_TIMEOUT_S = 1.0
-# Ceiling for one poll cycle: how long the poller waits for its concurrent
-# samples before publishing the metric values with whatever finished.
-_POLL_CYCLE_TIMEOUT_S = 1.0
+# Bounded timeout for the Prometheus counter HTTP queries.
+_PROMETHEUS_QUERY_TIMEOUT_S = 0.25
 
 
 def _prometheus_host() -> str:
@@ -87,47 +81,6 @@ def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:
     if start is None or end is None:
         return None
     return max(0, end - start)
-
-
-def run_async(fn: Callable[[], T]) -> "Future[T]":
-    """Run ``fn`` on a daemon thread and return a ``Future`` for its result, so
-    a blocking call runs in the background instead of blocking the caller.
-
-    Generic: ``fn`` is any zero-arg callable.
-    """
-    future: "Future[T]" = Future()
-
-    def run():
-        try:
-            future.set_result(fn())
-        except Exception as exc:
-            future.set_exception(exc)
-
-    threading.Thread(target=run, name="data-usage-bg", daemon=True).start()
-    return future
-
-
-def join_async(
-    futures: Sequence[Optional["Future[T]"]],
-    timeout: float = _POLL_CYCLE_TIMEOUT_S,
-) -> List[Optional[T]]:
-    """Join several futures started by ``run_async`` under a single ``timeout``
-    ceiling and return their results in order.
-
-    Waits for all futures concurrently, then drains each result without further
-    blocking. Any future that is missing (``None``), still running past
-    ``timeout``, or raised degrades to ``None``.
-    """
-    wait([f for f in futures if f is not None], timeout=timeout)
-    results: List[Optional[T]] = []
-    for f in futures:
-        try:
-            # append with result timeout=0.0 to avoid further blocking after the wait
-            results.append(f.result(timeout=0.0) if f is not None else None)
-        except Exception:
-            logger.debug("Future %s raised an exception", f, exc_info=True)
-            results.append(None)
-    return results
 
 
 def _is_builtin_cls(cls: type) -> bool:
