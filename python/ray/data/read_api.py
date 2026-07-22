@@ -5000,7 +5000,7 @@ def _build_column_name_mapping(dt):
     physical_to_logical = {}
     logical_to_physical = {}
     for field in dt.schema().fields:
-        physical_name = field.metadata.get("delta.columnMapping.physicalName")
+        physical_name = (field.metadata or {}).get("delta.columnMapping.physicalName")
         if physical_name is None:
             raise NotImplementedError(
                 f"Column {field.name!r} has no physical name mapping in Delta metadata."
@@ -5021,6 +5021,10 @@ class _ColumnMappingParquetDatasource(ParquetDatasource):
         # Logical predicates must execute after physical-name restoration.
         return False
 
+    def supports_projection_pushdown(self) -> bool:
+        # Logical projection must run after physical-name restoration too.
+        return False
+
 
 def _validate_name_mapped_table(dt):
     """Reject Delta features outside this temporary compatibility adapter."""
@@ -5037,7 +5041,7 @@ def _validate_name_mapped_table(dt):
             "Deletion Vectors are not supported by the Ray column-mapping adapter."
         )
     for field in dt.schema().fields:
-        if str(field.type).lower().startswith(("struct", "list", "map")):
+        if str(field.type).lower().startswith(("struct", "list", "map", "array")):
             raise NotImplementedError(
                 "Nested columns are not supported by the Ray column-mapping adapter."
             )
@@ -5355,7 +5359,7 @@ def _read_delta_with_column_mapping(
             expression = (
                 pds.field(logical_name).is_null()
                 if value is None
-                else pds.field(logical_name) == pa.scalar(value, type=field.type)
+                else pds.field(logical_name) == pa.scalar(value).cast(field.type)
             )
             partition_expression = (
                 expression
@@ -5384,6 +5388,8 @@ def _read_delta_with_column_mapping(
     is_local = isinstance(table_uri_filesystem, pafs.LocalFileSystem)
     local_scheduling = None
     if is_local:
+        import ray.util.client
+
         if ray.util.client.ray.is_connected():
             raise ValueError(
                 "Ray Client cannot read a local Delta table from cluster workers."
