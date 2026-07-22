@@ -597,7 +597,12 @@ class FlightCore:
                     self._tcp_checkin(tcp_addr, sock)
                     raise KeyError(f"object not found: {key}")
 
-                buf = bytearray(recv_size)
+                # Uninitialized Arrow buffer (like fetch_via_vm) rather than
+                # bytearray(recv_size): the latter zero-fills the whole buffer,
+                # which recv_into immediately overwrites -- a wasted full memset
+                # (and page-fault storm) over every byte received. allocate_buffer
+                # leaves it uninitialized, so we only pay for the recv copy.
+                buf = pa.allocate_buffer(recv_size)
                 view = memoryview(buf)
                 got = 0
                 while got < recv_size:
@@ -608,7 +613,7 @@ class FlightCore:
                         )
                     got += n
                 self._tcp_checkin(tcp_addr, sock)
-                return ipc.open_stream(pa.py_buffer(buf)).read_all()
+                return ipc.open_stream(buf).read_all()
             except OSError as e:
                 # A broken socket must not go back in the pool.
                 _close_quietly(sock)
