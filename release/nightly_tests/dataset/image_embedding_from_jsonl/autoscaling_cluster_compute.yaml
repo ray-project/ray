@@ -12,7 +12,7 @@ worker_nodes:
       min_nodes: 0
       max_nodes: 100
       market_type: ON_DEMAND
-    - instance_type: g5.4xlarge
+    - instance_type: g6.4xlarge
       min_nodes: 0
       max_nodes: 40
       market_type: ON_DEMAND
