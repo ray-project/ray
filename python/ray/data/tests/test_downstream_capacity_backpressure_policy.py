@@ -200,13 +200,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         """Helper to set output-to-downstream-input ratio via mocks.
 
         Matches _get_output_to_downstream_input_ratio logic:
-        - output_size = get_op_usage(op, include_ineligible_downstream=True).object_store_memory
+        - output_size = get_mem_op_outputs(op, include_ineligible_downstream=True)
         - downstream_input = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
         - ratio = (output_size / downstream_input) - 1
         """
-        usage_mock = MagicMock()
-        usage_mock.object_store_memory = output_size
-        rm.get_op_usage.return_value = usage_mock
+        rm.get_mem_op_outputs.return_value = output_size
 
         if op.output_dependencies:
             downstream_op = op.output_dependencies[0]
