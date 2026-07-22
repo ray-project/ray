@@ -58,7 +58,13 @@ def llm_config() -> LLMConfig:
 @pytest.fixture(scope="module")
 def tokenizer(llm_config) -> Tokenizer:
     # Module-scoped: construction resolves the engine config and builds the
-    # vLLM renderer once for all tests.
+    # vLLM renderer once for all tests. A GPU-less CI node has no vLLM platform,
+    # so pin a device when none is detected; tokenization needs only the model's
+    # tokenizer and chat template, not a real device.
+    from vllm.platforms import current_platform
+
+    if not current_platform.device_type:
+        current_platform.device_type = "cpu"
     return Tokenizer(llm_config)
 
 
