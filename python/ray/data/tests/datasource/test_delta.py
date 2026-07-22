@@ -283,9 +283,9 @@ def test_delta_read_column_mapping_schema_and_values(tmp_path):
     for logical_name in mapping:
         assert logical_name in schema_names, f"Missing logical name {logical_name!r}"
     for physical_name in mapping.values():
-        assert physical_name not in schema_names, (
-            f"Physical name {physical_name!r} leaked into schema"
-        )
+        assert (
+            physical_name not in schema_names
+        ), f"Physical name {physical_name!r} leaked into schema"
 
     # Data values should be correct.
     df = ds.to_pandas()
