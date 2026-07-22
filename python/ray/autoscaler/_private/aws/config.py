@@ -408,10 +408,12 @@ def _configure_key_pair(config):
             try:
                 key = ec2.create_key_pair(KeyName=key_name)
             except botocore.exceptions.ClientError as exc:
-                if (
+                error_code = (
                     exc.response.get("Error", {}).get("Code")
-                    != "InvalidKeyPair.Duplicate"
-                ):
+                    if exc.response
+                    else None
+                )
+                if error_code != "InvalidKeyPair.Duplicate":
                     raise
                 cli_logger.verbose(
                     "Key pair {} was created concurrently; trying another name.",
