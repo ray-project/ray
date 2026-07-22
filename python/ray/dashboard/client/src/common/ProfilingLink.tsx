@@ -40,7 +40,7 @@ export const DEFAULT_PROFILING_DEFAULTS: ProfilingDefaults = {
   native: false,
   subprocesses: false,
   idle: false,
-  leaks: true,
+  leaks: false,
   tracePythonAllocators: false,
   cpuDuration: 5,
   memoryDuration: 10,

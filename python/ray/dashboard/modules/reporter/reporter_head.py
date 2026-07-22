@@ -23,6 +23,8 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
     KV_NAMESPACE_DASHBOARD,
+    MAX_PROFILING_DURATION_S,
+    MIN_PROFILING_DURATION_S,
     RAY_DASHBOARD_ENABLE_PROFILING,
     RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
     RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
@@ -79,17 +81,13 @@ def _query_flag(req: aiohttp.web.Request, name: str, default: bool) -> bool:
     return default if val is None else val == "1"
 
 
-# Bounds for the profiling `duration` query parameter (seconds).
-MIN_PROFILING_DURATION_S = 1
-MAX_PROFILING_DURATION_S = 60
-
-
 def _query_duration(req: aiohttp.web.Request, default: int) -> int:
     """Parse and validate the profiling ``duration`` query param (seconds).
 
-    Falls back to ``default`` when the param is absent. Raises
-    ``aiohttp.web.HTTPBadRequest`` (HTTP 400) if the value is not an integer or
-    is outside ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    Falls back to ``default`` when the param is absent (the configured defaults
+    are already clamped to the accepted range at load time). Raises
+    ``aiohttp.web.HTTPBadRequest`` (HTTP 400) if an explicit value is not an
+    integer or is outside ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
     """
     val = req.query.get("duration")
     if val is None:

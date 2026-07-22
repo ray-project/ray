@@ -94,7 +94,7 @@ describe("ProfilerButton", () => {
   it("builds the memory profiling URL from the default params", async () => {
     const user = userEvent.setup();
     // No `defaults` prop -> falls back to DEFAULT_PROFILING_DEFAULTS
-    // (memoryDuration=10, leaks on, native off, allocators off, flamegraph).
+    // (memoryDuration=10, leaks off, native off, allocators off, flamegraph).
     render(<ProfilerButton {...mockProps} />, { wrapper: TEST_APP_WRAPPER });
     const button = screen.getByLabelText(/Memory Profiling/);
     await user.click(button);
@@ -104,7 +104,7 @@ describe("ProfilerButton", () => {
     expect(screen.getByText(/Generate report/)).toHaveAttribute(
       "href",
       `${mockProps.profilerUrl}&format=flamegraph&duration=${DEFAULT_PROFILING_DEFAULTS.memoryDuration}` +
-        `&leaks=1&native=0&trace_python_allocators=0`,
+        `&leaks=0&native=0&trace_python_allocators=0`,
     );
   });
 

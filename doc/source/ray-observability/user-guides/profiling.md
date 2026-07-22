@@ -50,7 +50,7 @@ Each profiling request (stack trace, CPU flame graph, memory profile) accepts se
   - `0`
 * - `RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT`
   - Report memory leaks instead of peak usage (memory profiling only).
-  - `1`
+  - `0`
 * - `RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT`
   - Record `pymalloc` allocations (memory profiling only).
   - `0`

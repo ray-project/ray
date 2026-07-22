@@ -180,20 +180,36 @@ RAY_DASHBOARD_PROFILING_IDLE_DEFAULT = env_bool(
     "RAY_DASHBOARD_PROFILING_IDLE_DEFAULT", False
 )
 # Report memory leaks instead of peak usage (memray; memory profiling only).
+# Defaults to False to preserve the pre-existing behavior, where an omitted
+# `leaks` query param meant peak-usage mode rather than leak mode.
 RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT = env_bool(
-    "RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT", True
+    "RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT", False
 )
 # Record pymalloc allocations (memray; memory profiling only).
 RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
     "RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT", False
 )
-# Duration in seconds for CPU profiling. Capped at 60 by the endpoint.
-RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = env_integer(
-    "RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5
+# Accepted range for a profiling `duration` (seconds). The dashboard endpoint
+# rejects explicit query values outside this range; the configured defaults below
+# are clamped to it too, so a misconfigured env var can never exceed the cap.
+MIN_PROFILING_DURATION_S = 1
+MAX_PROFILING_DURATION_S = 60
+
+
+def _clamp_profiling_duration(seconds: int) -> int:
+    """Clamp a profiling duration (seconds) into the accepted range."""
+    return max(MIN_PROFILING_DURATION_S, min(seconds, MAX_PROFILING_DURATION_S))
+
+
+# Duration in seconds for CPU profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5)
 )
-# Duration in seconds for memory profiling. Capped at 60 by the endpoint.
-RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = env_integer(
-    "RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10
+# Duration in seconds for memory profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10)
 )
 
 # Output format defaults. The valid sets DIFFER by profiler: py-spy (CPU) accepts

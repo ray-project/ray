@@ -1700,6 +1700,25 @@ def test_query_duration_invalid_raises_bad_request(value):
 
 
 @pytest.mark.parametrize(
+    "seconds, expected",
+    [
+        # In-range values pass through unchanged.
+        (1, 1),
+        (5, 5),
+        (60, 60),
+        # Out-of-range env-configured values are clamped to the accepted bound,
+        # so a misconfigured head-node default can never bypass the endpoint cap.
+        (0, 1),
+        (-5, 1),
+        (61, 60),
+        (1000, 60),
+    ],
+)
+def test_clamp_profiling_duration(seconds, expected):
+    assert ray_constants._clamp_profiling_duration(seconds) == expected
+
+
+@pytest.mark.parametrize(
     "env_value, valid_formats, expected",
     [
         # Valid values pass through unchanged.
