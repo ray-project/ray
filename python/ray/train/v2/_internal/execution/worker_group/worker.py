@@ -165,6 +165,19 @@ class RayTrainWorker:
                         "checkpoint files instead."
                     )
 
+            import ray.cloudpickle as ray_pickle
+
+            try:
+                ray_pickle.dumps(result)
+            except Exception as e:
+                raise ValueError(
+                    "The return value of the training function could not be serialized "
+                    f"and therefore cannot be returned as `Result.return_value`: {e}. "
+                    "Return only objects that can be serialized with `ray.cloudpickle`, "
+                    "or save large / non-serializable objects (e.g. models) as part of "
+                    "the checkpoint files instead."
+                ) from e
+
             return result
 
         # Create and start the training thread.

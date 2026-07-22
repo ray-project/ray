@@ -978,6 +978,49 @@ def test_multiple_workers_return_value_only_worker_zero():
     assert result.return_value == (3, 0)
 
 
+@pytest.mark.parametrize(
+    "make_return_value",
+    [
+        pytest.param(lambda: {"weights": __import__("torch").zeros(3)}, id="tensor"),
+        pytest.param(lambda: __import__("torch").nn.Linear(4, 2), id="module"),
+    ],
+)
+def test_return_value_containing_torch_tensors_raises(make_return_value):
+    """Returning a torch model / tensors should raise the clear 'Torch tensors'
+    error, since tensors throw on cross-process deserialization."""
+    pytest.importorskip("torch")
+
+    def train_fn():
+        return make_return_value()
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(WorkerGroupError, match="Torch tensors") as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
+def test_return_value_not_serializable_raises_clear_error():
+    """Returning a non-serializable object (not tensor-related) should raise a
+    clear error attributed to the return value, rather than surfacing as an
+    opaque 'worker health check failed' from the poll_status RPC."""
+
+    def train_fn():
+        import threading
+
+        return threading.Lock()
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(WorkerGroupError, match="return value") as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0], (ValueError, TypeError))
+
+
 def test_report_checkpoint_upload_fn(tmp_path):
     def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
         full_checkpoint_path = (
