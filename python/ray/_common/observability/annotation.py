@@ -39,6 +39,11 @@ class _AnnotationFileHandler(logging.Handler):
             return
 
         if self._handler is None or self._logs_dir != logs_dir:
+            # The session logs dir changed (e.g. after a shutdown/restart).
+            if self._handler is not None:
+                # Flush and close the previous handler
+                self._handler.close()
+
             filename = f"runtime_env_annotations_{os.getpid()}.log"
             self._handler = logging.FileHandler(os.path.join(logs_dir, filename))
             self._handler.setFormatter(self.formatter)

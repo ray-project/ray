@@ -6,19 +6,17 @@ import sys
 import pytest
 
 import ray
-import ray.train
 from ray._common.observability.annotation import (
     _ANNOTATION_LOGGER_BASE_NAME,
     Annotation,
     _AnnotationFileHandler,
 )
-from ray.train.v2._internal.callbacks.metrics import (
-    TRAIN_ANNOTATION_SOURCE,
-)
-from ray.train.v2._internal.metrics.base import (
-    RUN_ID_TAG_KEY,
-    RUN_NAME_TAG_KEY,
-)
+
+# The annotation module is core and has no dependency on Ray Train, so this test
+# must not import ``ray.train``
+TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+RUN_NAME_TAG_KEY = "ray_train_run_name"
+RUN_ID_TAG_KEY = "ray_train_run_id"
 
 
 @pytest.fixture
