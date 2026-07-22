@@ -431,6 +431,63 @@ def wait_for_persisted_port(
     return result.value()
 
 
+cdef extern from *:
+    """
+#if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
+#include <dlfcn.h>
+#ifndef RTLD_DEFAULT
+#define RTLD_DEFAULT ((void *)0)
+#endif
+#include "ray/core_worker/task_execution/fiber.h"
+
+typedef int (*_RaySetStackProtectionFn)(PyThreadState *, void *, size_t);
+
+/* CPython 3.14+ detects C-stack overflow by comparing the stack pointer
+ * against the thread's recorded stack bounds. Async-actor tasks run on
+ * 256 KiB boost fiber stacks CPython doesn't know about; on Linux the checks
+ * then treat the stack as overflowed and _Py_Dealloc defers every GC-object
+ * deallocation to a list that is never drained, leaking the task's whole
+ * object graph. Call this at async-actor task entry and after
+ * YieldCurrentFiber resumes (concurrent fibers share the thread state)
+ *
+ * used_upper_bound estimates the fiber stack's top from a local variable's
+ * address: it must upper-bound the fiber stack already consumed at the call
+ * site. Too big is safe (RecursionError raised slightly early); too small
+ * lets recursion run off the fiber stack (which has no guard page) and
+ * silently corrupt memory.
+ *
+ * PyUnstable_ThreadState_SetStackProtection only exists on CPython >= 3.14.2
+ * and a problem on Linux, otherwise a no-op.
+ */
+static int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound) {
+    static _RaySetStackProtectionFn set_stack_protection =
+        (_RaySetStackProtectionFn)dlsym(
+            RTLD_DEFAULT, "PyUnstable_ThreadState_SetStackProtection");
+    if (set_stack_protection == NULL) {
+        return 0;
+    }
+    char anchor;
+    uintptr_t top = (uintptr_t)&anchor + used_upper_bound;
+    size_t stack_size = ray::core::FiberState::kStackSize;
+    int rc = set_stack_protection(
+        PyThreadState_Get(), (void *)(top - stack_size), stack_size);
+    if (rc < 0) {
+        /* Cannot happen for kStackSize (only fails for sizes below
+         * _PyOS_MIN_STACK_SIZE), but never leak an exception. */
+        PyErr_Clear();
+    }
+    return rc;
+}
+#else
+static int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound) {
+    (void)used_upper_bound;
+    return 0;
+}
+#endif
+    """
+    int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound)
+
+
 cdef increase_recursion_limit():
     """
     Ray does some weird things with asio fibers and asyncio to run asyncio actors.
@@ -2544,6 +2601,16 @@ cdef CRayStatus task_execution_handler(
         int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) nogil:
     with gil, disable_client_hook():
+        # Async actor tasks run on a boost fiber stack; re-anchor CPython's
+        # stack protection to it. The handler entry is close to the top of the
+        # fiber stack, so a small used-stack upper bound suffices. Actor
+        # creation tasks are excluded: they run on the regular task-execution
+        # pthread, not a fiber, even for async actors.
+        if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .CurrentActorIsAsync()):
+            RayReanchorStackProtectionToCurrentFiberStack(32 * 1024)
+
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
@@ -4884,6 +4951,10 @@ cdef class CoreWorker:
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
+        # Re-anchor this fiber's stack before running the rest of the task on it.
+        # The bound is larger than at task entry because this call site is
+        # several C frames deeper.
+        RayReanchorStackProtectionToCurrentFiberStack(96 * 1024)
         try:
             result = future.result()
         except concurrent.futures.CancelledError:
