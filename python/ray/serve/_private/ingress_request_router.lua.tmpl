@@ -84,6 +84,12 @@ local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
+-- Comma-joined prompt token ids (digits and commas only), ridden to the
+-- chosen replica as the x-kv-prompt-ids header.
+local function extract_kv_prompt_ids(json_body)
+    return json_body:match('"kv_prompt_ids"%s*:%s*"([%d,]*)"')
+end
+
 -- Returns the original Content-Length when `body` is shorter than the
 -- advertised length (truncated by tune.bufsize), or nil otherwise.
 local function truncated_full_length(txn, body)
@@ -167,7 +173,8 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
-    local replica_id = extract_replica_id(http_response_body(response))
+    local response_body = http_response_body(response)
+    local replica_id = extract_replica_id(response_body)
     if not replica_id then
         txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
@@ -180,6 +187,12 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         -- Arm `failed`. The frontend recovers it via the fallback proxy.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
+    end
+
+    -- Large for long prompts; tune.maxrewrite reserves the rewrite headroom.
+    local kv_prompt_ids = extract_kv_prompt_ids(response_body)
+    if kv_prompt_ids and kv_prompt_ids ~= "" then
+        txn.http:req_set_header("x-kv-prompt-ids", kv_prompt_ids)
     end
 
     txn:set_var("txn.ingress_request_router_target", server_name)

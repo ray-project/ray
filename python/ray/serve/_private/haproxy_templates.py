@@ -71,6 +71,9 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
     {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
+    # Rewrite headroom for the Lua-appended x-kv-prompt-ids header; must stay
+    # <= bufsize/2.
+    tune.maxrewrite 122880
     {%- else %}
     tune.bufsize {{ config.bufsize }}
     {%- endif %}
@@ -202,6 +205,8 @@ frontend http_frontend
     {%- endfor %}
     {%- endif %}
     {%- if has_ingress_request_router %}
+    # Anti-spoofing: only the Lua action may set x-kv-prompt-ids.
+    http-request del-header x-kv-prompt-ids
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.

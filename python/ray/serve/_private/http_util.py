@@ -818,6 +818,9 @@ async def start_asgi_http_server(
             access_log=False,
             log_level=None,
             log_config=None,
+            # Accept a large x-kv-prompt-ids header; h11's default
+            # header-block limit is 16KB.
+            h11_max_incomplete_event_size=262144,
             **ssl_kwargs,
         )
     )

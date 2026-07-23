@@ -94,7 +94,9 @@ class LLMRouter:
 
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
-            succeeded.
+            succeeded. KV-aware chat picks also carry comma-joined
+            ``kv_prompt_ids``, which HAProxy rides to the replica as the
+            ``x-kv-prompt-ids`` header.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.
@@ -191,7 +193,12 @@ class LLMRouter:
             raise HTTPException(status_code=400, detail=str(e))
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
-        return {"host": host, "port": port, "replica_id": replica_id}
+        response = {"host": host, "port": port, "replica_id": replica_id}
+        if request_token_ids and hasattr(routing_payload, "messages"):
+            # Rides to the engine as the x-kv-prompt-ids header; the engine's
+            # chat path consumes it to skip re-tokenization.
+            response["kv_prompt_ids"] = ",".join(map(str, request_token_ids))
+        return response
 
     @router_app.get("/health")
     async def health(self):
