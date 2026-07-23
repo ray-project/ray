@@ -321,9 +321,10 @@ def _try_get_zero_copy_chunk_view(chunk, tensor_type, values_per_row, value_dtyp
     ):
         return None
 
-    data_buffer = chunk.buffers()[3]
-    if data_buffer is None:
+    buffers = chunk.buffers()
+    if len(buffers) < 4 or buffers[3] is None:
         return None
+    data_buffer = buffers[3]
     data_address = view.__array_interface__["data"][0]
     if (
         data_address < data_buffer.address

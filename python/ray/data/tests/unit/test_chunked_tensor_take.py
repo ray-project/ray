@@ -384,6 +384,7 @@ def test_take_table_matches_single_chunk_tensor(indices):
         np.array([5], dtype=np.int64),
         np.array([1.0, 2.0]),
         np.array([[0, 1]], dtype=np.int64),
+        np.array([4, 0, 4, 2], dtype=">i8"),
     ],
 )
 def test_take_table_preserves_fallback_exceptions(indices):
@@ -480,6 +481,34 @@ def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="injected prepare failure"):
         try_prepare_chunked_tensor_take(column, max_output_rows=10)
+
+
+def test_chunked_tensor_take_falls_back_for_truncated_buffers():
+    column, _ = _chunked_tensor(40, 64, 4)
+    chunk = next(chunk for chunk in column.chunks if len(chunk) > 0)
+
+    class TruncatedBuffersChunk:
+        def __init__(self, array):
+            self._array = array
+
+        def __getattr__(self, name):
+            return getattr(self._array, name)
+
+        def __len__(self):
+            return len(self._array)
+
+        def buffers(self):
+            return self._array.buffers()[:3]
+
+    assert (
+        chunked_tensor_take._try_get_zero_copy_chunk_view(
+            TruncatedBuffersChunk(chunk),
+            column.type,
+            64,
+            np.dtype(np.float32),
+        )
+        is None
+    )
 
 
 def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):

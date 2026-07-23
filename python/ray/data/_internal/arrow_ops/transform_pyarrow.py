@@ -238,7 +238,7 @@ def _try_normalize_take_indices(
     else:
         return None
 
-    if isinstance(indices, np.ndarray) and not indices.dtype.isnative:
+    if not values.dtype.isnative:
         return None
     if values.ndim != 1 or values.dtype.kind not in "iu":
         return None
