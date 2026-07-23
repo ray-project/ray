@@ -321,8 +321,19 @@ llm_config = LLMConfig(
 `````
 
 
+## RunAI Streamer
+
+RunAI Streamer is a vLLM extension that streams model weights directly from remote storage into GPU memory, reducing model load latency.
+
+:::{note}
+These snippets are examples. Check the
+[RunAI Streamer docs](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html)
+for S3, Azure, and GCS compatibility with your vLLM version.
+:::
+
 ### S3 and RunAI Streamer
-S3 can be combined with RunAI Streamer, an extension in vLLM that enables streaming the model weights directly from remote cloud storage into GPU memory, improving model load latency. More details can be found [here](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html).
+
+Set `model_source` to an `s3://` URI and `load_format` to `runai_streamer`:
 
 ```python
 llm_config = LLMConfig(
