@@ -419,7 +419,6 @@ def get_num_tpu_slices(
 
 @PublicAPI(stability="alpha")
 class SlicePlacementGroup:
-    _pg_per_slice: bool = False
     """
     A handle to a placement group reservation for a TPU slice.
 
