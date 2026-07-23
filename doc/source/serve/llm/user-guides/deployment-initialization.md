@@ -377,7 +377,7 @@ llm_config = LLMConfig(
 
 ### Azure Blob streaming with RunAI Streamer
 
-RunAI Streamer reads Azure Blob Storage natively through the `az://` scheme, streaming weights into GPU memory without staging them on disk first. This needs a `runai-model-streamer` and vLLM version that support `az://`, so confirm the versions bundled in your image.
+RunAI Streamer reads Azure Blob Storage natively through the `az://` scheme, streaming weights into GPU memory without staging them on disk first. This requires versions of `runai-model-streamer` and vLLM that support `az://`, so confirm the versions bundled in your image.
 
 Set `model_source` to an `az://<container>/<model>` URI and `load_format` to `runai_streamer`. The `AZURE_STORAGE_ACCOUNT_NAME` environment variable tells the streamer which storage account to read from. On AKS, bind the pod to a workload identity that holds the **Storage Blob Data Reader** role so the streamer authenticates with a Microsoft Entra ID token instead of a key.
 
@@ -397,7 +397,7 @@ llm_config = LLMConfig(
 )
 ```
 
-Unlike the `abfss://` and `azure://` bucket URIs, which download the model to disk before loading, the `az://` scheme streams directly from Blob into GPU memory.
+Unlike the `abfss://` and `azure://` schemes, which download the model to disk before loading, the `az://` scheme streams directly from Blob into GPU memory.
 
 For an end-to-end AKS walkthrough that provisions the cluster, workload identity, and Blob storage, and benchmarks streaming against download-then-load, see [Stream models from Azure Blob Storage into vLLM with the RunAI Model Streamer](https://blog.aks.azure.com/2026/07/13/runai-streamer-vllm).
 
@@ -480,11 +480,11 @@ config = LLMConfig(
 
 ### Cloud storage access errors
 
-- Verify bucket URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
+- Verify bucket or container URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
 - Check AWS/GCP/Azure credentials and regions are configured correctly
 - Ensure your IAM role, service account, or Azure identity has read access (`s3:GetObject`, `storage.objects.get`, or the **Storage Blob Data Reader** role)
 - For Azure, confirm the `adlfs` and `azure-identity` Python packages are installed on every node
-- Verify the bucket exists and is accessible from your deployment region
+- Verify the bucket or container exists and is accessible from your deployment region
 
 ### Model files not found
 
