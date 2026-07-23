@@ -65,7 +65,20 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
             absl::MutexLock lock(&objects_pending_recovery_mu_);
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
           }
-          RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
+          // Retry recovery if a concurrent node failure invalidated the location.
+          bool owned_by_us = false;
+          NodeID pinned_at;
+          bool spilled = false;
+          bool ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
+              object_id, &owned_by_us, &pinned_at, &spilled);
+          if (ref_exists && owned_by_us && pinned_at.IsNil() && !spilled) {
+            RAY_LOG(WARNING).WithField(object_id)
+                << "Object still has no valid location after recovery attempt, "
+                   "requeuing for recovery";
+            reference_counter_.MarkObjectForRecovery(object_id);
+          } else {
+            RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
+          }
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
     // gcs_client.
