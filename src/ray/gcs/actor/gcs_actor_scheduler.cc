@@ -99,9 +99,9 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   if (auto hard_node_ids = GetHardNodeAffinityValues(lease_spec.GetLabelSelector());
       hard_node_ids.has_value()) {
     for (const auto &node_hex : *hard_node_ids) {
-      auto maybe_node = gcs_node_manager_.GetAliveNode(NodeID::FromHex(node_hex));
-      if (maybe_node.has_value()) {
-        return NodeID::FromBinary(maybe_node.value()->node_id());
+      const auto node_id = NodeID::FromHex(node_hex);
+      if (gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+        return node_id;
       }
     }
     // None of the pinned nodes are alive; fall through to the default logic so the
