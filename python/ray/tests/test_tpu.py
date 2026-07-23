@@ -2231,6 +2231,96 @@ def test_refresh_cache_from_kv_tolerates_corrupt_json():
     assert "slice-c" not in ray.util.tpu._tpu_subslice_cache
 
 
+def test_wait_for_slice_resources_freed_polls_until_free():
+    """The wait returns only once every node of the slice reports full TPU
+    capacity, polling across the async removal window.
+    """
+    nodes = _slice_nodes("slice-free", "4x4")
+    busy = {f"slice-free-w{i}": {"TPU": 4} for i in range(4)}
+    busy["slice-free-w0"] = {"TPU": 0}  # reservation not yet released
+    free = {f"slice-free-w{i}": {"TPU": 4} for i in range(4)}
+    avail_seq = [busy, busy, free]
+
+    with (
+        patch("ray.nodes", return_value=nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            side_effect=avail_seq,
+        ),
+        patch("ray.util.tpu.time.sleep", return_value=None) as mock_sleep,
+    ):
+        ray.util.tpu._wait_for_slice_resources_freed(
+            "slice-free", timeout_s=10.0, poll_interval_s=0
+        )
+
+    # Polled through both busy reads before returning on the freed one.
+    assert mock_sleep.call_count == 2
+
+
+def test_wait_for_slice_resources_freed_times_out():
+    """If the reservation never frees, the wait returns after the deadline
+    rather than blocking forever.
+    """
+    nodes = _slice_nodes("slice-stuck", "4x4")
+    busy = {f"slice-stuck-w{i}": {"TPU": 4} for i in range(4)}
+    busy["slice-stuck-w0"] = {"TPU": 0}
+
+    with (
+        patch("ray.nodes", return_value=nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=busy,
+        ),
+        patch("ray.util.tpu.time.sleep", return_value=None),
+    ):
+        # Must return (not hang, not raise) once the deadline passes.
+        ray.util.tpu._wait_for_slice_resources_freed("slice-stuck", timeout_s=0.0)
+
+
+def test_subslice_waits_for_discovery_reservation_to_free():
+    """Regression: after discovery tears down its temporary full-slice PG, the
+    async remove_placement_group can leave TPU still marked as consumed. The
+    loop must wait for the release before re-reading availability, otherwise it
+    wrongly raises RuntimeError even though discovery + caching succeeded.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+    nodes = _slice_nodes("slice-race", "4x4")
+
+    idle = {f"slice-race-w{i}": {"TPU": 4} for i in range(4)}
+    busy = {f"slice-race-w{i}": {"TPU": 4} for i in range(4)}
+    busy["slice-race-w0"] = {"TPU": 0}  # reservation not yet released
+    # iter1 (slice idle -> discover); wait poll1 busy; wait poll2 idle; iter2 idle.
+    avail_seq = [idle, busy, idle, idle]
+
+    def _fake_discover(
+        parent_topology, version, chips_per_vm, timeout, target_slice_name=None
+    ):
+        # Simulate real discovery: populate the cache and report the slice.
+        ray.util.tpu._tpu_subslice_cache["slice-race"] = _SUBSLICE_2X4_LABELS
+        return "slice-race", _SUBSLICE_2X4_LABELS
+
+    with (
+        patch("ray.nodes", return_value=nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            side_effect=avail_seq,
+        ),
+        patch(
+            "ray.util.tpu._discover_and_persist_subslices", side_effect=_fake_discover
+        ),
+        patch("ray.util.tpu.placement_group", return_value=_mock_worker_pg()),
+        patch("ray.util.tpu.time.sleep", return_value=None),
+    ):
+        result = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+        )
+
+    assert isinstance(result, ray.util.tpu.SubslicePlacementGroup)
+    assert result.slice_name == "slice-race"
+
+
 def test_find_undiscovered_idle_slice_skips_held_head():
     """A slice with free chips but a held head resource on worker 0 is not
     selected, since a full-slice reservation could not actually complete.

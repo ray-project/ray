@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import threading
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
@@ -1280,6 +1281,47 @@ def _discover_and_persist_subslices(
         full_slice.shutdown()
 
 
+def _wait_for_slice_resources_freed(
+    slice_name: str,
+    timeout_s: Optional[float],
+    poll_interval_s: float = 0.5,
+) -> None:
+    """Block until every node of *slice_name* reports its full TPU capacity as
+    available, or *timeout_s* elapses (``None`` waits indefinitely).
+
+    remove_placement_group() is asynchronous, so the discovery reservation's
+    bundles can still read as consumed immediately after shutdown(). Without
+    this wait the caller would re-read availability, see the slice as busy, and
+    wrongly conclude that no subslice is schedulable even though discovery
+    succeeded.
+    """
+    from ray._private.state import available_resources_per_node
+
+    deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    while True:
+        avail = available_resources_per_node()
+        freed = True
+        for node in ray.nodes():
+            nl = node.get("Labels", {})
+            if nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) != slice_name:
+                continue
+            total = node.get("Resources", {}).get("TPU", 0)
+            if avail.get(node["NodeID"], {}).get("TPU", 0) < total:
+                freed = False
+                break
+        if freed:
+            return
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Timed out after %ss waiting for the discovery reservation on "
+                "slice '%s' to be released; proceeding anyway.",
+                timeout_s,
+                slice_name,
+            )
+            return
+        time.sleep(poll_interval_s)
+
+
 def _refresh_cache_from_kv(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
@@ -1971,10 +2013,16 @@ def subslice_placement_group(
         # newly populated cache. chips_per_vm must match the parent discovered.
         assert discoverable is not None  # guaranteed by the check above
         discoverable_parent, discoverable_slice_name = discoverable
-        _discover_and_persist_subslices(
+        discovered_slice_name, _ = _discover_and_persist_subslices(
             discoverable_parent,
             version,
             _resolve_chips_per_vm(user_chips_per_vm, discoverable_parent, version),
             head_reservation_timeout_s,
             target_slice_name=discoverable_slice_name,
+        )
+        # remove_placement_group() is async; block until the discovery
+        # reservation's TPU is released so the next iteration sees the slice as
+        # idle and can claim a subslice instead of wrongly raising.
+        _wait_for_slice_resources_freed(
+            discovered_slice_name, head_reservation_timeout_s
         )
