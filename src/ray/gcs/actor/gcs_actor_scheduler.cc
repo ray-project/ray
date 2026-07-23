@@ -88,17 +88,21 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
 
   const auto &lease_spec = actor->GetLeaseSpecification();
 
-  // If the actor is hard-pinned to a specific node -- either via a `ray.io/node-id`
-  // label selector or a hard NodeAffinitySchedulingStrategy (soft=false) -- forward the
-  // lease request to that node directly, regardless of the actor's resource demand.
-  // Otherwise the request may be forwarded to an arbitrary node whose local resource
-  // view has not yet synced the pinned node's labels (node liveness and node labels sync
-  // via separate paths), so the hard node affinity is transiently treated as infeasible
-  // and the actor creation is cancelled with an ActorUnschedulableError. This is
-  // especially likely for num_cpus=0 actors (e.g. CompiledDAG.DAGDriverProxyActor),
-  // which carry no resource demand and would otherwise be forwarded to a random alive
-  // node. If the pinned node is not alive, fall through to the default logic so the
-  // normal scheduler surfaces the unschedulable error (e.g. a removed node).
+  // If the actor targets a specific node -- either via a `ray.io/node-id` label
+  // selector or a NodeAffinitySchedulingStrategy (soft or hard) -- forward the lease
+  // request to that node directly, regardless of the actor's resource demand. Rationale:
+  //  - Hard pin: otherwise the request may be forwarded to an arbitrary node whose local
+  //    resource view has not yet synced the pinned node's labels (node liveness and node
+  //    labels sync via separate paths), so the affinity is transiently treated as
+  //    infeasible and the actor creation is cancelled with an ActorUnschedulableError.
+  //    This is especially likely for num_cpus=0 actors (e.g.
+  //    CompiledDAG.DAGDriverProxyActor), which would otherwise be forwarded to a random
+  //    alive node.
+  //  - Soft pin: this simply honors the node preference as the first placement attempt;
+  //    if the node is alive but cannot fit the actor, the raylet spills the lease back
+  //    (Schedule() sets grant_or_reject=false), so soft semantics are preserved.
+  // If the target node is not alive, fall through to the default logic so the normal
+  // scheduler handles it (e.g. a removed node surfaces the unschedulable error).
   if (auto hard_node_ids = GetHardNodeAffinityValues(lease_spec.GetLabelSelector());
       hard_node_ids.has_value()) {
     for (const auto &node_hex : *hard_node_ids) {
@@ -108,8 +112,7 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
       }
     }
   }
-  if (lease_spec.IsNodeAffinitySchedulingStrategy() &&
-      !lease_spec.GetNodeAffinitySchedulingStrategySoft()) {
+  if (lease_spec.IsNodeAffinitySchedulingStrategy()) {
     const auto node_id = lease_spec.GetNodeAffinitySchedulingStrategyNodeId();
     if (gcs_node_manager_.GetAliveNode(node_id).has_value()) {
       return node_id;
