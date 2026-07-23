@@ -488,6 +488,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest,
+              TestCreateSchedulingOptionsWithNonContiguousIndices);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestFlatBundleTopology);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest,
+              TestLegacyFlatBundleCreateSchedulingOptions);
 };
 
 }  // namespace gcs

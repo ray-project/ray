@@ -47,6 +47,31 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
+  if (!options.bundle_group_indices_.empty()) {
+    NodeScheduleFn node_schedule_fn =
+        [this](const std::vector<const ResourceRequest *> &reqs,
+               SchedulingOptions opts,
+               absl::flat_hash_set<scheduling::NodeID> nodes) {
+          const auto &inner_domain = !opts.inner_target_topology_assignment_.first.empty()
+                                         ? opts.inner_target_topology_assignment_
+                                         : opts.inner_target_label_domain_;
+          opts.target_topology_assignment_ = inner_domain;
+          opts.target_label_domain_ = inner_domain;
+          opts.topology_scheduling_strategy_ =
+              !inner_domain.first.empty() ? TopologySchedulingStrategy::STRICT_PACK
+                                          : TopologySchedulingStrategy::NONE;
+          RAY_CHECK(inner_domain.first.empty() ||
+                    opts.inner_strategy_ == rpc::PlacementStrategy::STRICT_PACK ||
+                    opts.inner_strategy_ == rpc::PlacementStrategy::PACK)
+              << "Inner topology labels currently only support STRICT_PACK or PACK.";
+          return this->Schedule(reqs, std::move(opts), std::move(nodes));
+        };
+    return hierarchical_bundle_policy_.Schedule(resource_request_list,
+                                                std::move(options),
+                                                std::move(candidate_nodes),
+                                                node_schedule_fn);
+  }
+
   if (options.topology_scheduling_strategy_ != TopologySchedulingStrategy::NONE) {
     NodeScheduleFn node_schedule_fn =
         [this](const std::vector<const ResourceRequest *> &reqs,

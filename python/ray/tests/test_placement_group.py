@@ -703,7 +703,7 @@ class TestPlacementGroupValidation:
         with pytest.raises(ValueError, match="must be a dict"):
             validate_placement_group(
                 bundles=[{"CPU": 1}],
-                topology_strategy=[{"ray.io/gpu-domain": "STRICT_PACK"}],
+                topology_strategy="INVALID",
             )
 
         with pytest.raises(ValueError, match="keys must be non-empty strings"):
@@ -722,10 +722,10 @@ class TestPlacementGroupValidation:
                 topology_strategy={NODE_ID_LABEL_KEY: "invalid"},
             )
 
-        with pytest.raises(ValueError, match="only 'STRICT_PACK' is supported"):
+        with pytest.raises(ValueError, match="Invalid topology strategy"):
             validate_placement_group(
                 bundles=[{"CPU": 1}],
-                topology_strategy={"ray.io/gpu-domain": "SPREAD"},
+                topology_strategy={"ray.io/gpu-domain": "INVALID"},
             )
 
         with pytest.raises(ValueError, match="at most one topology label"):
@@ -796,6 +796,116 @@ class TestPlacementGroupValidation:
         # Invalid label key or value syntax (delegated to validate_label_selector).
         with pytest.raises(ValueError, match="Invalid label selector provided"):
             _validate_bundle_label_selector([{"INVALID key!": "value"}])
+
+
+def test_hierarchical_pg_validations(ray_start_regular):
+    # Verify topology_strategy handles lists properly.
+    bundles = [{"CPU": 1}, {"CPU": 1}]
+    try:
+        ray.util.placement_group(
+            bundles,
+            topology_strategy=[
+                {"ray.io/tpu-slice-name": "STRICT_SPREAD"},
+                {"ray.io/node-id": "STRICT_PACK"},
+            ],
+        )
+    except Exception as e:
+        pytest.fail(f"topology_strategy list validation failed: {e}")
+
+    # Verify single-layer dict stripping ray.io/node-id does not error.
+    try:
+        ray.util.placement_group(bundles, strategy="STRICT_PACK")
+    except Exception as e:
+        pytest.fail(f"empty layer validation failed: {e}")
+
+    # Verify bundle_label_selector length validation works for nested bundles.
+    hierarchical_bundles = [[{"CPU": 1}, {"CPU": 1}], [{"CPU": 1}]]
+    selectors = [{"a": "b"}, {"c": "d"}, {"e": "f"}]
+    try:
+        ray.util.placement_group(hierarchical_bundles, bundle_label_selector=selectors)
+    except ValueError as e:
+        pytest.fail(f"Nested bundle label length validation failed: {e}")
+
+    # Verify empty inner lists raise ValueError.
+    with pytest.raises(ValueError, match="Hierarchical bundle groups cannot be empty"):
+        ray.util.placement_group([[{"CPU": 1}], [], [{"CPU": 1}]])
+
+    # Verify flat bundles with multi-layer topology_strategy raise ValueError.
+    with pytest.raises(
+        ValueError, match="Multi-layer `topology_strategy` requires hierarchical"
+    ):
+        ray.util.placement_group(
+            [{"CPU": 1}, {"CPU": 1}],
+            topology_strategy=[
+                {"ray.io/az": "PACK"},
+                {"ray.io/rack": "STRICT_PACK"},
+            ],
+        )
+
+
+def test_hierarchical_pg_fault_tolerance_partial_failure(ray_start_cluster):
+    cluster = ray_start_cluster
+
+    # We mock a small cluster with a shared topology domain.
+    # We will simulate 2 nodes in the same domain.
+    head_labels = {
+        "ray.io/test-domain": "domain-1",
+    }
+    worker_labels = {
+        "ray.io/test-domain": "domain-1",
+    }
+
+    cluster.add_node(
+        num_cpus=4,
+        labels=head_labels,
+    )
+    worker_node = cluster.add_node(
+        num_cpus=4,
+        labels=worker_labels,
+    )
+
+    ray.init(address=cluster.address)
+
+    # 1. Create a hierarchical placement group that spans 2 nodes
+    # Each bundle group requires 4 CPUs, forcing one group on head_node, one group on worker_node
+    # We use topology_strategy to ensure they share the same domain-1 but are STRICT_PACKED on node-level
+    pg = ray.util.placement_group(
+        bundles=[[{"CPU": 4}], [{"CPU": 4}]],
+        topology_strategy=[
+            {"ray.io/test-domain": "STRICT_PACK"},
+            {"ray.io/node-id": "STRICT_PACK"},
+        ],
+    )
+    ray.get(pg.ready())
+
+    # Verify that the placement group is CREATED
+    table = ray.util.placement_group_table(pg)
+    assert table["state"] == "CREATED"
+
+    # 2. Kill the worker node
+    cluster.remove_node(worker_node)
+
+    # Wait for GCS to detect failure and mark it RESCHEDULING
+    from ray._private.test_utils import wait_for_condition
+
+    def check_rescheduling():
+        t = ray.util.placement_group_table(pg)
+        return t["state"] == "RESCHEDULING"
+
+    wait_for_condition(check_rescheduling, timeout=10)
+
+    # 3. Bring up a new node with the same domain
+    cluster.add_node(
+        num_cpus=4,
+        labels=worker_labels,
+    )
+
+    # 4. Verify it recovers
+    def check_recovered():
+        t = ray.util.placement_group_table(pg)
+        return t["state"] == "CREATED"
+
+    wait_for_condition(check_recovered, timeout=15)
 
 
 if __name__ == "__main__":

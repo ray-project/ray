@@ -74,7 +74,8 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
         bundle_spread_policy_(cluster_resource_manager),
         bundle_strict_spread_policy_(cluster_resource_manager),
         bundle_strict_pack_policy_(cluster_resource_manager),
-        topology_strict_pack_policy_(cluster_resource_manager) {}
+        topology_strict_pack_policy_(cluster_resource_manager),
+        hierarchical_bundle_policy_(cluster_resource_manager) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
@@ -87,6 +88,7 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
   BundleStrictSpreadSchedulingPolicy bundle_strict_spread_policy_;
   BundleStrictPackSchedulingPolicy bundle_strict_pack_policy_;
   TopologyStrictPackSchedulingPolicy topology_strict_pack_policy_;
+  HierarchicalBundleSchedulingPolicy hierarchical_bundle_policy_;
 };
 
 }  // namespace raylet_scheduling_policy

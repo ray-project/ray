@@ -693,6 +693,11 @@ message Bundle {
   // Label selector associated with this bundle.
   // Populated from bundle_label_selector if provided.
   map<string, string> label_selector = 4;
+  optional int32 bundle_group_index = 5;
+}
+
+message TopologyStrategyLayer {
+  map<string, PlacementStrategy> entries = 1;
 }
 
 message PlacementGroupSpec {
@@ -721,7 +726,7 @@ message PlacementGroupSpec {
   bytes soft_target_node_id = 11;
   // Topology strategy. Maps non-node topology label keys (e.g.
   // "ray.io/gpu-domain") to the placement strategy applied at that label.
-  map<string, PlacementStrategy> topology_strategy = 12;
+  repeated TopologyStrategyLayer topology_strategy = 12;
 }
 
 message ObjectReference {

@@ -92,8 +92,9 @@ class PlacementGroupSpecBuilder {
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
           &bundle_label_selector = {},
-      const std::unordered_map<std::string, rpc::PlacementStrategy> &topology_strategy =
-          {}) {
+      const std::vector<std::unordered_map<std::string, rpc::PlacementStrategy>>
+          &topology_strategies = {},
+      const std::vector<int32_t> &bundle_group_indices = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -111,19 +112,14 @@ class PlacementGroupSpecBuilder {
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
     for (size_t i = 0; i < bundles.size(); i++) {
-      auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();
       auto mutable_bundle_id = message_bundle->mutable_bundle_id();
       mutable_bundle_id->set_bundle_index(i);
       mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
       auto mutable_unit_resources = message_bundle->mutable_unit_resources();
-      for (auto it = resources.begin(); it != resources.end();) {
-        auto current = it++;
-        // Remove a resource with value 0 because they are not allowed.
-        if (current->second == 0) {
-          resources.erase(current);
-        } else {
-          mutable_unit_resources->insert({current->first, current->second});
+      for (const auto &resource : bundles[i]) {
+        if (resource.second != 0) {
+          mutable_unit_resources->insert({resource.first, resource.second});
         }
       }
       // Set the label selector for this bundle if provided in bundle_label_selector.
@@ -133,10 +129,17 @@ class PlacementGroupSpecBuilder {
           (*mutable_label_selector)[pair.first] = pair.second;
         }
       }
+      if (bundle_group_indices.size() > i) {
+        if (bundle_group_indices[i] >= 0) {
+          message_bundle->set_bundle_group_index(bundle_group_indices[i]);
+        }
+      }
     }
 
-    message_->mutable_topology_strategy()->insert(topology_strategy.begin(),
-                                                  topology_strategy.end());
+    for (const auto &layer : topology_strategies) {
+      auto *layer_proto = message_->add_topology_strategy();
+      layer_proto->mutable_entries()->insert(layer.begin(), layer.end());
+    }
     return *this;
   }
 

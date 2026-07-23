@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/constants.h"
+
 namespace ray {
 namespace gcs {
 
@@ -108,6 +110,8 @@ std::string GcsPlacementGroup::DebugString() const {
 rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
   // Invalidate the cache.
   cached_bundle_specs_.clear();
+  RAY_CHECK_GE(bundle_index, 0);
+  RAY_CHECK_LT(bundle_index, placement_group_table_data_.bundles_size());
   return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 
@@ -155,9 +159,15 @@ std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKe
     return std::nullopt;
   }
   std::vector<std::string> keys;
-  keys.reserve(entries.size());
-  for (const auto &entry : entries) {
-    keys.push_back(entry.first);
+  for (const auto &layer : entries) {
+    for (const auto &entry : layer.entries()) {
+      if (entry.first != kLabelKeyNodeID) {
+        keys.push_back(entry.first);
+      }
+    }
+  }
+  if (keys.empty()) {
+    return std::nullopt;
   }
   return keys;
 }

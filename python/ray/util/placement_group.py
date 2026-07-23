@@ -167,7 +167,8 @@ def placement_group(
             placement group on a per-bundle level.
         topology_strategy: Topology strategy placement. A dict mapping each
             topology label key to a placement strategy (e.g.,
-            ``{"ray.io/gpu-domain": "STRICT_PACK"}``).
+            ``{"ray.io/gpu-domain": "STRICT_PACK"}``), or a list of such dicts
+            for hierarchical strategy layers.
             Mutually exclusive with `strategy`.
 
     Raises:
@@ -197,33 +198,59 @@ def placement_group(
 
     node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
 
-    # Current implementation derives node level strategy from topology_strategy,
-    # while we pass a topology strategy with node level strategy stripped.
     if topology_strategy is not None:
-        stripped_topology_strategy = {
-            k: v for k, v in topology_strategy.items() if k != NODE_ID_LABEL_KEY
-        }
+        if isinstance(topology_strategy, dict):
+            topology_strategy_layer = {
+                k: v for k, v in topology_strategy.items() if k != NODE_ID_LABEL_KEY
+            }
+            topology_strategy_layers = (
+                [topology_strategy_layer] if topology_strategy_layer else []
+            )
+        elif isinstance(topology_strategy, list):
+            topology_strategy_layers = []
+            for layer in topology_strategy:
+                l = {k: v for k, v in layer.items() if k != NODE_ID_LABEL_KEY}
+                if l:
+                    topology_strategy_layers.append(l)
+        else:
+            raise ValueError(
+                "`topology_strategy` must be a dict or a list of dicts, "
+                f"got {type(topology_strategy).__name__}."
+            )
     else:
-        stripped_topology_strategy = {}
+        topology_strategy_layers = []
 
     if lifetime == "detached":
         detached = True
     else:
         detached = False
 
+    flat_bundles = []
+    bundle_group_indices = []
+    if bundles and isinstance(bundles[0], list):
+        for group_idx, group in enumerate(bundles):
+            for bundle in group:
+                flat_bundles.append(bundle)
+                bundle_group_indices.append(group_idx)
+    else:
+        flat_bundles = bundles
+
     placement_group_id = worker.core_worker.create_placement_group(
         name,
-        bundles,
+        flat_bundles,
         node_level_strategy,
         detached,
         _soft_target_node_id,
         bundle_label_selector,
-        stripped_topology_strategy,
+        topology_strategy_layers,
+        bundle_group_indices,
     )
 
     return PlacementGroup(
         placement_group_id,
-        bundle_cache=[{k: float(v) for k, v in bundle.items()} for bundle in bundles],
+        bundle_cache=[
+            {k: float(v) for k, v in bundle.items()} for bundle in flat_bundles
+        ],
     )
 
 
@@ -356,12 +383,18 @@ def check_placement_group_index(
 
 
 def _derive_node_level_strategy(
-    strategy: Optional[str], topology_strategy: Optional[Dict[str, str]]
+    strategy: Optional[str],
+    topology_strategy: Optional[Union[Dict[str, str], List[Dict[str, str]]]],
 ) -> str:
     """Assumes valid strategy and topology strategy, and derives the node level
     strategy from the corresponding fields accordingly.
     """
     if topology_strategy is not None:
+        if isinstance(topology_strategy, list):
+            for layer in reversed(topology_strategy):
+                if NODE_ID_LABEL_KEY in layer:
+                    return layer[NODE_ID_LABEL_KEY]
+            return "PACK"
         return topology_strategy.get(NODE_ID_LABEL_KEY, "PACK")
     return strategy if strategy is not None else "PACK"
 
@@ -372,7 +405,7 @@ def validate_placement_group(
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
-    topology_strategy: Optional[Dict[str, str]] = None,
+    topology_strategy: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
@@ -411,8 +444,33 @@ def validate_placement_group(
 
     _validate_bundles(bundles)
 
+    if (
+        topology_strategy is not None
+        and isinstance(topology_strategy, list)
+        and len(
+            [
+                layer
+                for layer in topology_strategy
+                if any(k != NODE_ID_LABEL_KEY for k in layer)
+            ]
+        )
+        > 1
+        and bundles
+        and not isinstance(bundles[0], list)
+    ):
+        raise ValueError(
+            "Multi-layer `topology_strategy` requires hierarchical bundle groups "
+            "(a list of lists of bundle resource dicts). "
+            f"Got flat bundles instead: {bundles}"
+        )
+
     if bundle_label_selector is not None:
-        if len(bundles) != len(bundle_label_selector):
+        flat_bundles_len = (
+            sum(len(g) for g in bundles)
+            if bundles and isinstance(bundles[0], list)
+            else len(bundles)
+        )
+        if flat_bundles_len != len(bundle_label_selector):
             raise ValueError(
                 f"Invalid bundle label selector {bundle_label_selector}. "
                 f"The length of `bundle_label_selector` should equal the length of `bundles`."
@@ -426,7 +484,9 @@ def validate_placement_group(
         )
 
 
-def _validate_topology_strategy(topology_strategy: Dict[str, str]) -> None:
+def _validate_topology_strategy(
+    topology_strategy: Union[Dict[str, str], List[Dict[str, str]]]
+) -> None:
     """Validates topology_strategy shape.
 
     Currently accepts a dict containing "ray.io/node-id" and at most one other
@@ -434,48 +494,63 @@ def _validate_topology_strategy(topology_strategy: Dict[str, str]) -> None:
     parameter and accepts any value in VALID_PLACEMENT_GROUP_STRATEGIES. The
     other (topology) label is restricted to "STRICT_PACK" for now.
     """
-    if not isinstance(topology_strategy, dict):
+    if not isinstance(topology_strategy, (dict, list)):
         raise ValueError(
-            "`topology_strategy` must be a dict, "
+            "`topology_strategy` must be a dict or a list of dicts, "
             f"got {type(topology_strategy).__name__}."
         )
 
-    if not (0 <= len(topology_strategy) <= 2):
+    if isinstance(topology_strategy, list) and len(topology_strategy) > 2:
         raise ValueError(
-            "`topology_strategy` must contain 0, 1, or 2 entries: "
-            f"`{NODE_ID_LABEL_KEY}` plus an optional topology label. "
-            f"Got {len(topology_strategy)} entries."
+            "`topology_strategy` currently supports a maximum of 2 layers, "
+            f"got {len(topology_strategy)} layers."
         )
 
-    topology_label_keys = []
-    for key, value in topology_strategy.items():
-        if not isinstance(key, str) or not key:
+    if isinstance(topology_strategy, dict):
+        layers = [topology_strategy]
+    else:
+        layers = topology_strategy
+
+    for layer in layers:
+        if not isinstance(layer, dict):
             raise ValueError(
-                "`topology_strategy` keys must be non-empty strings, " f"got {key!r}."
+                "`topology_strategy` layers must be dicts, "
+                f"got {type(layer).__name__}."
             )
-        if value not in VALID_PLACEMENT_GROUP_STRATEGIES:
+
+        if not (0 <= len(layer) <= 2):
             raise ValueError(
-                f"Invalid topology strategy {value!r} for label {key!r}. "
-                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+                "`topology_strategy` layer must contain 0, 1, or 2 entries: "
+                f"`{NODE_ID_LABEL_KEY}` plus an optional topology label. "
+                f"Got {len(layer)} entries."
             )
-        # The node-id entry is just a redirect to the existing `strategy=`
-        # parameter and accepts any valid placement-group strategy. For other
-        # topology labels (e.g. "ray.io/gpu-domain"), currently only supports
-        # STRICT_PACK.
-        if not key == NODE_ID_LABEL_KEY:
-            topology_label_keys.append(key)
-            if value != "STRICT_PACK":
+
+        topology_label_keys = []
+        for key, value in layer.items():
+            if not isinstance(key, str) or not key:
                 raise ValueError(
-                    f"Topology strategy {value!r} for label {key!r} is not "
-                    "supported yet; only 'STRICT_PACK' is supported for topology "
-                    f"labels other than `{NODE_ID_LABEL_KEY}` for now."
+                    "`topology_strategy` keys must be non-empty strings, "
+                    f"got {key!r}."
                 )
+            if value not in VALID_PLACEMENT_GROUP_STRATEGIES:
+                raise ValueError(
+                    f"Invalid topology strategy {value!r} for label {key!r}. "
+                    f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+                )
+            if not key == NODE_ID_LABEL_KEY:
+                topology_label_keys.append(key)
+                if layer is not layers[0] and value not in ["STRICT_PACK", "PACK"]:
+                    raise ValueError(
+                        f"Invalid strategy {value!r} for inner topology label {key!r}. "
+                        "Inner custom topology layers currently only support "
+                        "'STRICT_PACK' or 'PACK'."
+                    )
 
-    if len(topology_label_keys) > 1:
-        raise ValueError(
-            "`topology_strategy` currently supports at most one topology label "
-            f"other than `{NODE_ID_LABEL_KEY}`. Got {topology_label_keys}."
-        )
+        if len(topology_label_keys) > 1:
+            raise ValueError(
+                "`topology_strategy` currently supports at most one topology label "
+                f"per layer other than `{NODE_ID_LABEL_KEY}`. Got {topology_label_keys}."
+            )
 
 
 def _validate_bundles(bundles: List[Dict[str, float]]):
@@ -486,14 +561,32 @@ def _validate_bundles(bundles: List[Dict[str, float]]):
             "Placement group bundles must be a list, " f"got {type(bundles)}."
         )
 
-    if len(bundles) == 0:
+    # Flatten the bundles if they are nested
+    if any(isinstance(b, list) for b in bundles):
+        flat_bundles = []
+        for group in bundles:
+            if not isinstance(group, list):
+                raise ValueError(
+                    "Cannot mix flat resource dictionaries and nested bundle lists. "
+                    "If providing hierarchical bundle groups, all elements must be lists."
+                )
+            if len(group) == 0:
+                raise ValueError(
+                    "Hierarchical bundle groups cannot be empty. "
+                    f"Got empty inner list in bundles: {bundles}"
+                )
+            flat_bundles.extend(group)
+    else:
+        flat_bundles = bundles
+
+    if len(flat_bundles) == 0:
         raise ValueError(
             "Bundles must be a non-empty list of resource "
             'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`. '
             "Got empty list instead."
         )
 
-    for bundle in bundles:
+    for bundle in flat_bundles:
         if (
             not isinstance(bundle, dict)
             or not all(isinstance(k, str) for k in bundle.keys())

@@ -694,11 +694,23 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
     if (iter != registered_placement_groups_.end()) {
-      for (const auto &bundle_index : bundle.second) {
-        iter->second->GetMutableBundle(bundle_index)->clear_node_id();
-        RAY_LOG(INFO) << "Rescheduling a bundle when a node dies, placement group id:"
-                      << iter->second->GetPlacementGroupID()
-                      << " bundle index:" << bundle_index;
+      if (iter->second->HasBundleGroups()) {
+        gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+            iter->second->GetPlacementGroupID());
+        for (size_t i = 0; i < iter->second->GetBundles().size(); i++) {
+          iter->second->GetMutableBundle(i)->clear_node_id();
+        }
+        RAY_LOG(INFO)
+            << "Rescheduling all bundles of hierarchical placement group when a "
+               "node dies, placement group id:"
+            << iter->second->GetPlacementGroupID();
+      } else {
+        for (const auto &bundle_index : bundle.second) {
+          iter->second->GetMutableBundle(bundle_index)->clear_node_id();
+          RAY_LOG(INFO) << "Rescheduling a bundle when a node dies, placement group id:"
+                        << iter->second->GetPlacementGroupID()
+                        << " bundle index:" << bundle_index;
+        }
       }
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
       // (for example gpu resource when there's only one gpu node), this can postpone

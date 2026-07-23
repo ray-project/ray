@@ -1323,14 +1323,54 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithLocalityRequirementPendingStrictSpread) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(10));
+  pg_data->set_placement_group_id(pg_id.Binary());
+  auto *layer = pg_data->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_SPREAD;
+
+  auto *bundle1 = pg_data->add_bundles();
+  (*bundle1->mutable_unit_resources())["GPU"] = 4;
+
+  auto *bundle2 = pg_data->add_bundles();
+  (*bundle2->mutable_unit_resources())["GPU"] = 4;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &selector = req.bundle_selectors(0);
+  ASSERT_EQ(selector.resource_requests_size(), 2);
+
+  ASSERT_TRUE(selector.has_locality_requirement());
+  const auto &locality_req = selector.locality_requirement();
+  ASSERT_TRUE(locality_req.has_locality_constraint());
+  EXPECT_EQ(locality_req.locality_constraint().label_name(), "ray.io/gpu-domain");
+  EXPECT_EQ(locality_req.locality_constraint().placement_strategy(),
+            rpc::PlacementStrategy::STRICT_SPREAD);
+
+  EXPECT_FALSE(locality_req.has_label_selector());
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
        TestGetPendingGangResourceRequestsWithLocalityRequirementPending) {
   rpc::PlacementGroupLoad load;
   auto *pg_data = load.add_placement_group_data();
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
   pg_data->set_placement_group_id(pg_id.Binary());
-  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
-      rpc::PlacementStrategy::STRICT_PACK;
+  auto *layer = pg_data->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/gpu-domain"] = rpc::PlacementStrategy::STRICT_PACK;
 
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["GPU"] = 4;
@@ -1369,8 +1409,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(2));
   pg_data->set_placement_group_id(pg_id.Binary());
-  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
-      rpc::PlacementStrategy::STRICT_PACK;
+  auto *layer = pg_data->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/gpu-domain"] = rpc::PlacementStrategy::STRICT_PACK;
   (*pg_data->mutable_topology_assignments())["ray.io/gpu-domain"] = "rack-1";
 
   // One placed bundle (has node_id) and one unplaced bundle.
@@ -1436,6 +1476,124 @@ TEST_F(GcsAutoscalerStateManagerTest,
   ASSERT_EQ(req.bundle_selectors_size(), 1);
   // Does not use a topology strategy, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsHierarchicalBundleGroupAggregation) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(4));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  // 4 bundles of {"CPU": 2} divided into 2 groups:
+  // Bundles 0 and 1 -> group 0 (total 4 CPUs)
+  // Bundles 2 and 3 -> group 1 (total 4 CPUs)
+  for (int i = 0; i < 4; i++) {
+    auto *bundle = pg_data->add_bundles();
+    (*bundle->mutable_unit_resources())["CPU"] = 2;
+    bundle->set_bundle_group_index(i / 2);
+  }
+
+  auto *layer = pg_data->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/az"] = rpc::PlacementStrategy::SPREAD;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &selector = req.bundle_selectors(0);
+  // Bundles sharing group indices are aggregated into 2 ResourceRequests of 4 CPUs each
+  ASSERT_EQ(selector.resource_requests_size(), 2);
+  for (int i = 0; i < 2; i++) {
+    const auto &bundle_req = selector.resource_requests(i);
+    ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 4.0);
+  }
+
+  ASSERT_TRUE(selector.has_locality_requirement());
+  EXPECT_EQ(selector.locality_requirement().locality_constraint().label_name(),
+            "ray.io/az");
+  EXPECT_EQ(selector.locality_requirement().locality_constraint().placement_strategy(),
+            rpc::PlacementStrategy::SPREAD);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsMixedBundleGroupAggregation) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(5));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  // 2 bundles grouped together in group 0 (2 CPUs each -> total 4 CPUs)
+  for (int i = 0; i < 2; i++) {
+    auto *bundle = pg_data->add_bundles();
+    (*bundle->mutable_unit_resources())["CPU"] = 2;
+    bundle->set_bundle_group_index(0);
+  }
+  // 2 flat bundles (4 CPUs each, no bundle_group_index) -> shouldn't be merged together
+  for (int i = 0; i < 2; i++) {
+    auto *bundle = pg_data->add_bundles();
+    (*bundle->mutable_unit_resources())["CPU"] = 4;
+  }
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  const auto &selector = req.bundle_selectors(0);
+  // Group 0 (aggregated to 4 CPUs) + 2 separate flat bundles (4 CPUs each) = 3
+  // ResourceRequests
+  ASSERT_EQ(selector.resource_requests_size(), 3);
+  for (int i = 0; i < 3; i++) {
+    const auto &bundle_req = selector.resource_requests(i);
+    ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 4.0);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsConflictingLabelSelectors) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(6));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  // Add 2 bundles in group 0 with conflicting label selector values.
+  auto *bundle_0 = pg_data->add_bundles();
+  (*bundle_0->mutable_unit_resources())["CPU"] = 1;
+  bundle_0->set_bundle_group_index(0);
+  (*bundle_0->mutable_label_selector())["accelerator"] = "A100";
+
+  auto *bundle_1 = pg_data->add_bundles();
+  (*bundle_1->mutable_unit_resources())["CPU"] = 1;
+  bundle_1->set_bundle_group_index(0);
+  (*bundle_1->mutable_label_selector())["accelerator"] = "H100";
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  const auto &selector = req.bundle_selectors(0);
+  ASSERT_EQ(selector.resource_requests_size(), 1);
+  const auto &bundle_req = selector.resource_requests(0);
+  ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 2.0);
+  // Conflicting selector logs a warning and deterministically retains a valid selector.
+  ASSERT_FALSE(bundle_req.label_selectors().empty());
 }
 
 }  // namespace gcs

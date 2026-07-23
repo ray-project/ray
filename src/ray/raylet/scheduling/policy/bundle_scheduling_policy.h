@@ -113,5 +113,35 @@ class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
       absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
       const SchedulingContext *context);
 };
+
+/// @brief Schedules bundles using a hierarchical topology strategy.
+///
+/// This policy evaluates a layered topology_strategy (e.g. rack, node) and
+/// groups bundles accordingly before calling a given node-level scheduling
+/// callback.
+class HierarchicalBundleSchedulingPolicy {
+ public:
+  explicit HierarchicalBundleSchedulingPolicy(
+      ClusterResourceManager &cluster_resource_manager)
+      : cluster_resource_manager_(cluster_resource_manager) {}
+
+  /// @brief Schedule a list of bundles across the cluster using hierarchical groups.
+  ///
+  /// @param resource_request_list The resource requirements for each bundle.
+  /// @param options Scheduling options including the topology strategy and groups.
+  /// @param candidate_nodes The set of nodes available for scheduling.
+  /// @param node_schedule_fn The callback to use for node-level inner scheduling.
+  /// @return A SchedulingResult indicating success or failure, with node assignments if
+  /// successful.
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      absl::flat_hash_set<scheduling::NodeID> candidate_nodes,
+      NodeScheduleFn node_schedule_fn);
+
+ private:
+  ClusterResourceManager &cluster_resource_manager_;
+};
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

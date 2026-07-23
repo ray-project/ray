@@ -245,14 +245,17 @@ struct PlacementGroupCreationOptions {
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {},
-      std::unordered_map<std::string, PlacementStrategy> topology_strategy = {})
+      std::vector<std::unordered_map<std::string, PlacementStrategy>>
+          topology_strategies = {},
+      std::vector<int32_t> bundle_group_indices = {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
         bundle_label_selector_(std::move(bundle_label_selector)),
-        topology_strategy_(std::move(topology_strategy)) {
+        topology_strategies_(std::move(topology_strategies)),
+        bundle_group_indices_(std::move(bundle_group_indices)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -273,9 +276,11 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
-  /// Topology strategy. Maps each non-node topology label (e.g.
-  /// "ray.io/gpu-domain") to the placement strategy applied at that label.
-  const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
+  /// Topology strategies, organized by layer. Each layer maps non-node topology labels
+  /// to the placement strategy applied at that label.
+  const std::vector<std::unordered_map<std::string, PlacementStrategy>>
+      topology_strategies_;
+  const std::vector<int32_t> bundle_group_indices_;
 };
 
 class ObjectLocation {

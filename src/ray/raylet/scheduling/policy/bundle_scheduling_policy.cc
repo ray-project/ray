@@ -431,5 +431,186 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
                               sorted_index);
 }
 
+SchedulingResult HierarchicalBundleSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes,
+    NodeScheduleFn node_schedule_fn) {
+  std::vector<std::vector<int>> group_indices = std::move(options.bundle_group_indices_);
+  options.bundle_group_indices_.clear();
+
+  std::vector<scheduling::NodeID> final_nodes(resource_request_list.size(),
+                                              scheduling::NodeID::Nil());
+  bool is_infeasible = false;
+
+  absl::flat_hash_set<std::string> selected_topologies =
+      options.previously_occupied_topologies_;
+
+  for (const auto &indices : group_indices) {
+    std::vector<const ResourceRequest *> sub_list;
+    for (int idx : indices) {
+      RAY_CHECK_GE(idx, 0);
+      RAY_CHECK_LT(static_cast<size_t>(idx), resource_request_list.size());
+      sub_list.push_back(resource_request_list[idx]);
+    }
+
+    absl::flat_hash_set<scheduling::NodeID> group_candidates = candidate_nodes;
+    absl::flat_hash_set<scheduling::NodeID> preferred_candidates = candidate_nodes;
+    bool use_preferred_candidates = false;
+
+    const auto &target_domain = !options.target_topology_assignment_.first.empty()
+                                    ? options.target_topology_assignment_
+                                    : options.target_label_domain_;
+    const std::string &label_key = target_domain.first;
+
+    if (options.outer_strategy_ == rpc::PlacementStrategy::STRICT_SPREAD) {
+      for (const auto &node : final_nodes) {
+        if (!node.IsNil()) {
+          group_candidates.erase(node);
+        }
+      }
+      if (!label_key.empty()) {
+        for (auto it = group_candidates.begin(); it != group_candidates.end();) {
+          const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
+          auto label_it = labels.find(label_key);
+          if (label_it != labels.end() &&
+              selected_topologies.contains(label_it->second)) {
+            group_candidates.erase(it++);
+          } else {
+            ++it;
+          }
+        }
+      }
+    } else if (options.outer_strategy_ == rpc::PlacementStrategy::SPREAD) {
+      use_preferred_candidates = true;
+      for (const auto &node : final_nodes) {
+        if (!node.IsNil()) {
+          preferred_candidates.erase(node);
+        }
+      }
+      if (!label_key.empty()) {
+        for (auto it = preferred_candidates.begin(); it != preferred_candidates.end();) {
+          const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
+          auto label_it = labels.find(label_key);
+          if (label_it != labels.end() &&
+              selected_topologies.contains(label_it->second)) {
+            preferred_candidates.erase(it++);
+          } else {
+            ++it;
+          }
+        }
+      }
+    } else if (options.outer_strategy_ == rpc::PlacementStrategy::PACK ||
+               options.outer_strategy_ == rpc::PlacementStrategy::STRICT_PACK) {
+      if (target_domain.second.has_value()) {
+        const std::string &required_domain = *target_domain.second;
+        for (auto it = group_candidates.begin(); it != group_candidates.end();) {
+          const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
+          auto label_it = labels.find(label_key);
+          if (label_it == labels.end() || label_it->second != required_domain) {
+            group_candidates.erase(it++);
+          } else {
+            ++it;
+          }
+        }
+      }
+    }
+
+    SchedulingResult result = SchedulingResult::Failed();
+    if (use_preferred_candidates && !preferred_candidates.empty()) {
+      result =
+          node_schedule_fn(sub_list,
+                           options,
+                           absl::flat_hash_set<scheduling::NodeID>(preferred_candidates));
+    }
+    if (!result.status.IsSuccess()) {
+      if (!label_key.empty() && !target_domain.second.has_value()) {
+        // Bucket candidates by their outer domain label
+        absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+            domain_buckets;
+        for (const auto &node : group_candidates) {
+          const auto &labels = cluster_resource_manager_.GetNodeLabels(node);
+          auto it = labels.find(label_key);
+          if (it != labels.end()) {
+            domain_buckets[it->second].insert(node);
+          }
+        }
+        // Attempt to schedule the entire group within a single outer domain bucket
+        for (auto &[domain_val, bucket_candidates] : domain_buckets) {
+          result = node_schedule_fn(sub_list, options, std::move(bucket_candidates));
+          if (result.status.IsSuccess()) {
+            break;
+          }
+        }
+      } else {
+        // Either no outer topology, or the domain is already pinned by a previous
+        // group/rescheduling
+        result = node_schedule_fn(sub_list, options, std::move(group_candidates));
+      }
+    }
+    if (result.status.IsSuccess()) {
+      for (size_t i = 0; i < indices.size(); i++) {
+        final_nodes[indices[i]] = result.selected_nodes[i];
+        RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+            final_nodes[indices[i]], *sub_list[i]));
+      }
+      const std::string &outer_label_key = label_key;
+      std::optional<std::string> outer_domain;
+      if (!outer_label_key.empty() && !result.selected_nodes.empty()) {
+        const auto &labels =
+            cluster_resource_manager_.GetNodeLabels(result.selected_nodes[0]);
+        auto it = labels.find(outer_label_key);
+        if (it != labels.end()) {
+          outer_domain = it->second;
+        }
+      }
+
+      if ((options.outer_strategy_ == rpc::PlacementStrategy::STRICT_SPREAD ||
+           options.outer_strategy_ == rpc::PlacementStrategy::SPREAD) &&
+          outer_domain.has_value()) {
+        selected_topologies.insert(*outer_domain);
+      } else if ((options.outer_strategy_ == rpc::PlacementStrategy::PACK ||
+                  options.outer_strategy_ == rpc::PlacementStrategy::STRICT_PACK) &&
+                 outer_domain.has_value()) {
+        // For PACK and STRICT_PACK, all bundles should be in the same label domain.
+        // Force subsequent groups into the domain selected by the first group.
+        options.target_topology_assignment_.second = *outer_domain;
+        options.target_label_domain_.second = *outer_domain;
+      }
+    } else {
+      if (result.status.IsInfeasible()) {
+        is_infeasible = true;
+      }
+      break;
+    }
+  }
+
+  // Restore the temporarily subtracted resources.
+  for (size_t i = 0; i < final_nodes.size(); i++) {
+    if (!final_nodes[i].IsNil()) {
+      RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+          final_nodes[i], resource_request_list[i]->GetResourceSet()));
+    }
+  }
+
+  for (const auto &node : final_nodes) {
+    if (node.IsNil()) {
+      return is_infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
+    }
+  }
+
+  auto success_result = SchedulingResult::Success(std::move(final_nodes));
+  const auto &target_domain = !options.target_topology_assignment_.first.empty()
+                                  ? options.target_topology_assignment_
+                                  : options.target_label_domain_;
+  if ((options.outer_strategy_ == rpc::PlacementStrategy::PACK ||
+       options.outer_strategy_ == rpc::PlacementStrategy::STRICT_PACK) &&
+      target_domain.second.has_value()) {
+    success_result.selected_topology_assignment =
+        std::make_pair(target_domain.first, *target_domain.second);
+  }
+  return success_result;
+}
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

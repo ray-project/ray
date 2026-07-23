@@ -1526,5 +1526,151 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestHierarchicalBundleScheduling) {
+  auto node0 = GenNodeInfo(0);
+  AddNode(node0, 10);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node1, 10);
+
+  NodeID node_id0 = NodeID::FromBinary(node0->node_id());
+  NodeID node_id1 = NodeID::FromBinary(node1->node_id());
+
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id0.Binary()), {{"ray.io/gpu-domain", "domain-1"}});
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id1.Binary()), {{"ray.io/gpu-domain", "domain-2"}});
+
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD, 0, 1.0);
+
+  auto *spec = request.mutable_placement_group_spec();
+  spec->clear_bundles();
+
+  // Outer Strategy: STRICT_SPREAD
+  auto *layer = spec->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_SPREAD;
+
+  // Add 2 Bundles, each assigned to a group index
+  auto *group1_bundle = spec->add_bundles();
+  group1_bundle->mutable_unit_resources()->insert({"CPU", 1.0});
+  auto pg_id_str = spec->placement_group_id();
+  group1_bundle->mutable_bundle_id()->mutable_placement_group_id()->assign(pg_id_str);
+  group1_bundle->mutable_bundle_id()->set_bundle_index(0);
+  group1_bundle->set_bundle_group_index(0);
+
+  auto *group2_bundle = spec->add_bundles();
+  group2_bundle->mutable_unit_resources()->insert({"CPU", 1.0});
+  group2_bundle->mutable_bundle_id()->mutable_placement_group_id()->assign(pg_id_str);
+  group2_bundle->mutable_bundle_id()->set_bundle_index(1);
+  group2_bundle->set_bundle_group_index(1);
+
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  ScheduleUnplacedBundles(pg);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPartialGroupRescheduleFailsGracefully) {
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 0, 1.0);
+  auto *spec = request.mutable_placement_group_spec();
+  spec->clear_bundles();
+
+  for (int i = 0; i < 2; i++) {
+    auto *bundle = spec->add_bundles();
+    bundle->mutable_unit_resources()->insert({"CPU", 1.0});
+    bundle->mutable_bundle_id()->mutable_placement_group_id()->assign(
+        spec->placement_group_id());
+    bundle->mutable_bundle_id()->set_bundle_index(i);
+    bundle->set_bundle_group_index(0);
+  }
+
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  // Mock a scenario where only ONE of the bundles in the group is unplaced.
+  // By default they are all unplaced. We will mock that the first bundle is placed.
+  pg->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
+
+  // Verify that ScheduleUnplacedBundles handles this partially unplaced group gracefully
+  bool failure_called = false;
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      /*placement_group=*/pg,
+      /*failure_callback=*/
+      [&](std::shared_ptr<GcsPlacementGroup> failure_placement_group, bool is_feasible) {
+        failure_called = true;
+      },
+      /*success_callback=*/
+      [&](std::shared_ptr<GcsPlacementGroup> success_placement_group) {}});
+  ASSERT_TRUE(failure_called);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest,
+       TestCreateSchedulingOptionsWithNonContiguousIndices) {
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD, 3, 1.0);
+
+  // Modify the request to have skipped bundle group indices.
+  auto spec = request.mutable_placement_group_spec();
+  spec->mutable_bundles(0)->set_bundle_group_index(0);
+  spec->mutable_bundles(1)->set_bundle_group_index(0);
+  spec->mutable_bundles(2)->set_bundle_group_index(3);  // Skipped 1 and 2
+
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  auto options =
+      scheduler_->CreateSchedulingOptions(*pg, rpc::PlacementStrategy::STRICT_SPREAD);
+
+  // We should have 2 bundle groups in options.bundle_group_indices_
+  ASSERT_EQ(options.bundle_group_indices_.size(), 2);
+
+  // The first group should contain bundles 0, 1.
+  ASSERT_EQ(options.bundle_group_indices_[0].size(), 2);
+  EXPECT_EQ(options.bundle_group_indices_[0][0], 0);
+  EXPECT_EQ(options.bundle_group_indices_[0][1], 1);
+
+  // The second group should contain bundle 2.
+  ASSERT_EQ(options.bundle_group_indices_[1].size(), 1);
+  EXPECT_EQ(options.bundle_group_indices_[1][0], 2);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestFlatBundleTopology) {
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 2, 1.0);
+
+  auto spec = request.mutable_placement_group_spec();
+  auto layer = spec->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/az"] = rpc::PlacementStrategy::SPREAD;
+
+  // The bundles do not have bundle_group_index set (i.e. flat bundles).
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  auto options = scheduler_->CreateSchedulingOptions(*pg, rpc::PlacementStrategy::PACK);
+
+  // Verify flat bundles with 1 layer skip the hierarchical grouping overhead
+  ASSERT_TRUE(options.bundle_group_indices_.empty());
+
+  // The outer strategy should be set to SPREAD from the first topology layer.
+  EXPECT_EQ(options.outer_strategy_, rpc::PlacementStrategy::SPREAD);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestLegacyFlatBundleCreateSchedulingOptions) {
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 2, 1.0);
+  auto spec = request.mutable_placement_group_spec();
+  auto layer = spec->add_topology_strategy();
+  (*layer->mutable_entries())["ray.io/az"] = rpc::PlacementStrategy::PACK;
+
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+  auto options = scheduler_->CreateSchedulingOptions(*pg, rpc::PlacementStrategy::PACK);
+
+  EXPECT_TRUE(options.bundle_group_indices_.empty());
+  EXPECT_EQ(options.outer_strategy_, rpc::PlacementStrategy::PACK);
+}
+
 }  // namespace gcs
 }  // namespace ray

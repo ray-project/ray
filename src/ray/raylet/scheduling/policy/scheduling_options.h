@@ -17,6 +17,7 @@
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 
@@ -202,7 +203,10 @@ struct SchedulingOptions {
   // first: the node label key used to partition nodes into groups.
   // second: if set, constrains scheduling to this topology value
   //   (bundle rescheduling). If nullopt, a new group is selected.
-  std::pair<std::string, std::optional<std::string>> target_topology_assignment_;
+  std::pair<std::string, std::optional<std::string>> target_topology_assignment_{};
+  std::pair<std::string, std::optional<std::string>> inner_target_topology_assignment_{};
+  std::pair<std::string, std::optional<std::string>> target_label_domain_{};
+  std::pair<std::string, std::optional<std::string>> inner_target_label_domain_{};
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
@@ -218,6 +222,15 @@ struct SchedulingOptions {
   std::string preferred_node_id_;
   int32_t schedule_top_k_absolute_;
   float scheduler_top_k_fraction_;
+
+  // The outer strategy if scheduling hierarchically.
+  rpc::PlacementStrategy outer_strategy_ = rpc::PlacementStrategy::PACK;
+  // The inner strategy if scheduling hierarchically.
+  rpc::PlacementStrategy inner_strategy_ = rpc::PlacementStrategy::PACK;
+  // Hierarchical bundle group indices.
+  std::vector<std::vector<int>> bundle_group_indices_;
+  // Topology domains already occupied by placed groups.
+  absl::flat_hash_set<std::string> previously_occupied_topologies_;
 
  private:
   SchedulingOptions(
@@ -244,6 +257,7 @@ struct SchedulingOptions {
             target_topology_assignment.has_value()
                 ? std::move(*target_topology_assignment)
                 : std::pair<std::string, std::optional<std::string>>{}),
+        target_label_domain_(target_topology_assignment_),
         scheduling_context_(std::move(scheduling_context)),
         preferred_node_id_(preferred_node_id),
         schedule_top_k_absolute_(schedule_top_k_absolute),

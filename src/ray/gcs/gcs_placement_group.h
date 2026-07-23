@@ -180,6 +180,16 @@ class GcsPlacementGroup {
   /// strategy PG becomes unplaced, so a fresh selection can be made).
   void ClearTopologyAssignments();
 
+  /// Return True if any bundle in this placement group has a bundle_group_index.
+  bool HasBundleGroups() const {
+    for (int i = 0; i < placement_group_table_data_.bundles_size(); i++) {
+      if (placement_group_table_data_.bundles(i).has_bundle_group_index()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   // XXX.
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);

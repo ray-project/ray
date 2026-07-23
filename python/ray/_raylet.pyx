@@ -4023,17 +4023,22 @@ cdef class CoreWorker:
                             c_bool is_detached,
                             soft_target_node_id,
                             c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
-                            dict topology_strategy):
+                            list topology_strategies,
+                            c_vector[int32_t] bundle_group_indices):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
-            unordered_map[c_string, CPlacementStrategy] c_topology_strategy
+            c_vector[unordered_map[c_string, CPlacementStrategy]] c_topology_strategies
+            unordered_map[c_string, CPlacementStrategy] c_topology_strategy_layer
 
         c_strategy = prepare_c_strategy(strategy)
 
-        for label, level_strategy in topology_strategy.items():
-            c_topology_strategy[label] = prepare_c_strategy(level_strategy)
+        for layer in topology_strategies:
+            c_topology_strategy_layer.clear()
+            for label, level_strategy in layer.items():
+                c_topology_strategy_layer[label] = prepare_c_strategy(level_strategy)
+            c_topology_strategies.push_back(c_topology_strategy_layer)
 
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
@@ -4049,7 +4054,8 @@ cdef class CoreWorker:
                                 is_detached,
                                 c_soft_target_node_id,
                                 bundle_label_selector,
-                                c_topology_strategy),
+                                c_topology_strategies,
+                                bundle_group_indices),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())

@@ -436,7 +436,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
-            const unordered_map[c_string, CPlacementStrategy] &topology_strategy,
+            const c_vector[unordered_map[c_string, CPlacementStrategy]] &topology_strategies,
+            const c_vector[int32_t] &bundle_group_indices,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
