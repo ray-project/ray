@@ -284,14 +284,16 @@ llm_config = LLMConfig(
 **Credentials**
 
 Azure authentication uses [`DefaultAzureCredential`](https://learn.microsoft.com/python/api/azure-identity/azure.identity.defaultazurecredential),
-which resolves credentials from the standard Azure credential chain, in order:
-environment variables, a workload identity, a managed identity, then the Azure
-CLI login. For production deployments on AKS, a workload identity or managed
-identity granted the **Storage Blob Data Reader** role on the container is
-recommended.
+which resolves credentials from the standard Azure credential chain. It tries
+several sources in order, including environment variables, a workload identity, a
+managed identity, and the Azure CLI login.
 
-To authenticate with a service principal, pass its credentials through
-`runtime_env` so they reach the replica and engine workers:
+For production deployments on AKS, use a [Microsoft Entra Workload
+ID](https://learn.microsoft.com/azure/aks/workload-identity-overview), or a
+managed identity, with the **Storage Blob Data Reader** role on the container.
+`DefaultAzureCredential` resolves either one automatically, so the deployment
+only needs the Azure packages. Uncomment the environment variables to fall back
+to a service principal when a workload or managed identity isn't available:
 
 ```python
 llm_config = LLMConfig(
@@ -303,11 +305,13 @@ llm_config = LLMConfig(
     ),
     runtime_env=dict(
         pip=["adlfs", "azure-identity"],
-        env_vars={
-            "AZURE_CLIENT_ID": os.environ["AZURE_CLIENT_ID"],
-            "AZURE_TENANT_ID": os.environ["AZURE_TENANT_ID"],
-            "AZURE_CLIENT_SECRET": os.environ["AZURE_CLIENT_SECRET"],
-        },
+        # A workload or managed identity resolves automatically and needs nothing here.
+        # Uncomment to fall back to a service principal instead:
+        # env_vars={
+        #     "AZURE_CLIENT_ID": os.environ["AZURE_CLIENT_ID"],
+        #     "AZURE_TENANT_ID": os.environ["AZURE_TENANT_ID"],
+        #     "AZURE_CLIENT_SECRET": os.environ["AZURE_CLIENT_SECRET"],
+        # },
     ),
 )
 ```
@@ -453,7 +457,7 @@ config = LLMConfig(
 - Verify bucket URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
 - Check AWS/GCP/Azure credentials and regions are configured correctly
 - Ensure your IAM role, service account, or Azure identity has read access (`s3:GetObject`, `storage.objects.get`, or the **Storage Blob Data Reader** role)
-- For Azure, confirm `adlfs` and `azure-identity` are installed on every node
+- For Azure, confirm the `adlfs` and `azure-identity` Python packages are installed on every node
 - Verify the bucket exists and is accessible from your deployment region
 
 ### Model files not found
