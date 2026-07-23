@@ -276,15 +276,23 @@ def _non_camera_features(features: dict) -> Dict[str, tuple]:
 def _delta_targets(
     global_index, episode_from, episode_to, steps
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Resolve each frame offset to a clamped in-episode global index and whether
-    it fell outside the episode (the pad mask).
+    """Pick the neighbouring frames at the given ``steps`` offsets, staying inside
+    the anchor frame's episode.
+
+    For an anchor at global frame ``global_index`` whose episode spans
+    ``[episode_from, episode_to)``, each offset ``s`` points at frame
+    ``global_index + s``. Offsets that land outside the episode are clamped back
+    to the nearest in-episode frame and flagged in the returned ``pad`` mask.
+
+    Example: anchor 14 in episode ``[10, 15)`` with ``steps=[-1, 0, 1]`` gives raw
+    targets ``[13, 14, 15]``; 15 is past the episode end, so it returns targets
+    ``[13, 14, 14]`` with pad ``[False, False, True]``.
 
     Vectorized: ``global_index`` / ``episode_from`` / ``episode_to`` may be scalars
-    or ``(A,)`` arrays and ``steps`` a length-``S`` sequence, giving ``(S,)``
-    results for a single anchor or ``(A, S)`` for an array of anchors. Same
-    clamp/pad rule as lerobot's ``DatasetReader._get_query_indices``, kept as a
-    standalone numpy helper because that method is bound to a torch-backed reader
-    we don't build."""
+    (``(S,)`` result) or ``(A,)`` arrays (``(A, S)`` result). Mirrors lerobot's
+    ``DatasetReader._get_query_indices`` clamp/pad rule, reimplemented here because
+    that method is bound to a torch reader we don't build.
+    """
     anchor = np.asarray(global_index)[..., None]
     low = np.asarray(episode_from)[..., None]
     high = np.asarray(episode_to)[..., None]
