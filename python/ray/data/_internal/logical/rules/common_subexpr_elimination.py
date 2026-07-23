@@ -110,7 +110,14 @@ def _find_candidates(exprs: List[Expr]) -> List[_Candidate]:
 
     buckets: Dict[Hashable, List[List[_ExpressionOccurrence]]] = defaultdict(list)
     for occurrence in occurrences:
-        if not _is_ignored_cse_root(occurrence.expr):
+        # Skip ignored roots (columns, literals, aliases, stars) and non-idempotent
+        # expressions (random/uuid/monotonically_increasing_id). Materializing a
+        # non-idempotent sub-expression once would incorrectly collapse independent
+        # evaluations (e.g. two ``uuid()`` calls) into a single shared column.
+        if (
+            not _is_ignored_cse_root(occurrence.expr)
+            and occurrence.expr.is_idempotent()
+        ):
             _add_to_structural_group(buckets[occurrence.key], occurrence)
 
     candidates: List[_Candidate] = []
@@ -391,10 +398,11 @@ class CommonSubExprElimination(Rule):
     expressions that read them.
     """
 
-    # TODO: Add a general optimizer volatility contract before treating
-    # potentially volatile expressions specially. This should apply
-    # across CSE, ProjectionPushdown, PredicatePushdown, LimitPushdown,
-    # constant folding, and any other rule that can change expression
+    # Non-idempotent expressions (random/uuid/monotonically_increasing_id) are
+    # excluded from CSE candidacy via ``is_idempotent`` in ``_find_candidates``; the
+    # same contract guards ProjectionPushdown, PredicatePushdown, and LimitPushdown.
+    # TODO: Extend the contract to per-UDF non-determinism (see ``_IdempotencyVisitor``)
+    # and to other rules (e.g. constant folding) that can change expression
     # evaluation count, timing, or placement.
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:

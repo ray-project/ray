@@ -30,7 +30,7 @@ Currently, RDT supports the following tensor transports:
 
 1. `Gloo <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
 2. `NVIDIA NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__: A collective communication library for NVIDIA GPUs.
-3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs.
+3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__: A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs. Backed by `LIBFABRIC <https://ofiwg.github.io/libfabric/>`__ on AWS instances with `EFA <https://aws.amazon.com/hpc/efa/>`__, and `UCX <https://github.com/openucx/ucx>`__ everywhere else.
 
 For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
@@ -213,7 +213,7 @@ Installation
 First, install NIXL with a plain ``pip install nixl``.
 For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. 
 
-Note that you should also set these UCX environment variables to either let UCX choose the right transport from all options, or so that you can yourself set your preferred transport option.
+When Ray selects the ``UCX`` backend (see :ref:`NIXL backend selection <nixl-backend-selection>` below), set these UCX environment variables to either let UCX choose the right transport from all options, or so that you can set your preferred transport option yourself. These variables apply only to the ``UCX`` backend and have no effect when Ray runs the ``LIBFABRIC`` backend.
 
 
 .. code-block:: bash
@@ -222,6 +222,19 @@ Note that you should also set these UCX environment variables to either let UCX 
    $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
    $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
 
+On the ``LIBFABRIC`` backend, use libfabric environment variables instead, such as ``FI_PROVIDER=efa`` to pin the provider and ``FI_LOG_LEVEL=Debug`` for diagnostics. See the `NIXL libfabric plugin documentation <https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md>`__ for additional configuration and troubleshooting.
+
+.. _nixl-backend-selection:
+
+NIXL backend selection
+^^^^^^^^^^^^^^^^^^^^^^
+
+Ray automatically selects the NIXL transport backend based on the available hardware:
+
+- **AWS instances with EFA**: Ray detects EFA devices and validates that a realistic-size CUDA memory registration succeeds before it selects the ``LIBFABRIC`` backend. If validation fails, GPUDirect is usually misconfigured (for example, missing ``nvidia-peermem`` or dmabuf support). To detect EFA both on bare hosts and inside containers, Ray checks for the EFA network device (``/sys/class/net/efa*``) and for rdma-verbs devices bound to the kernel ``efa`` driver (under ``/sys/class/infiniband``). The host network device isn't visible inside a pod, so the verbs check is what makes detection work under Kubernetes. Ordinary InfiniBand or RoCE NICs also expose verbs devices, so Ray confirms the ``efa`` driver binding to avoid treating them as EFA.
+- **All other environments**: Ray uses the ``UCX`` backend.
+
+No configuration is required. On AWS EFA instances, make sure the `EFA installer <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html>`__ has been run, which installs both the EFA driver and libfabric. If LIBFABRIC validation fails at startup, see the `NIXL libfabric plugin documentation <https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md>`__ for troubleshooting.
 
 Walkthrough
 ^^^^^^^^^^^

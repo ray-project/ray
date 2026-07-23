@@ -5,10 +5,7 @@ This section describes how to pass arguments to your applications using an appli
 
 ## Defining an application builder
 
-When writing an application, there are often parameters that you want to be able to easily change in development or production.
-For example, you might have a path to trained model weights and want to test out a newly trained model.
-In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`.
-This pattern allows you to configure deployments using ordinary Python code, but it requires modifying the code whenever one of the parameters needs to change.
+When writing an application, there are often parameters that you want to be able to easily change in development or production. For example, you might have a path to trained model weights and want to test out a newly trained model. In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`. This pattern allows you to configure deployments using ordinary Python code, but it requires modifying the code whenever one of the parameters needs to change.
 
 To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
 
@@ -18,8 +15,7 @@ To pass arguments without changing the code, define an "application builder" fun
 :language: python
 ```
 
-You can use this application builder function as the import path in the `serve run` CLI command or the config file (as shown below).
-To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
+You can use this application builder function as the import path in the `serve run` CLI command or the config file (as shown below). To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
 
 ### Passing arguments via `serve run`
 
@@ -29,8 +25,7 @@ Pass arguments to the application builder from `serve run` using the following s
 $ serve run hello:app_builder key1=val1 key2=val2
 ```
 
-The arguments are passed to the application builder as a dictionary, in this case `{"key1": "val1", "key2": "val2"}`.
-For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py`):
+The arguments are passed to the application builder as a dictionary, in this case `{"key1": "val1", "key2": "val2"}`. For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py`):
 
 ```bash
 % serve run hello:app_builder message="Hello from CLI"
@@ -81,8 +76,7 @@ Notice that the "Hello from config" message is printed from within the deploymen
 **Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
 :::
 
-To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated).
-Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
+To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated). Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_typed_builder__
@@ -105,9 +99,7 @@ Arguments are passed the same way, but the resulting dictionary is used to const
 
 ### Multiple parametrized applications using the same builder
 
-You can use application builders to run multiple applications with the same code but different parameters.
-For example, multiple applications may share preprocessing and HTTP handling logic but use many different trained model weights.
-The same application builder `import_path` can take different arguments to define multiple applications as follows:
+You can use application builders to run multiple applications with the same code but different parameters. For example, multiple applications may share preprocessing and HTTP handling logic but use many different trained model weights. The same application builder `import_path` can take different arguments to define multiple applications as follows:
 
 ```yaml
 applications:
@@ -127,8 +119,7 @@ applications:
 
 ### Configuring multiple composed deployments
 
-You can use the arguments passed to an application builder to configure multiple deployments in a single application.
-For example a model composition application might take weights to two different models as follows:
+You can use the arguments passed to an application builder to configure multiple deployments in a single application. For example a model composition application might take weights to two different models as follows:
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_composed_builder__

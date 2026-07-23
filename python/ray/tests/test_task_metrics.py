@@ -1,4 +1,3 @@
-import copy
 import multiprocessing
 import sys
 from collections import defaultdict
@@ -18,18 +17,6 @@ from ray._private.test_utils import (
     wait_for_assertion,
     wait_for_dashboard_agent_available,
 )
-
-METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 100,
-    }
-}
-
-SLOW_METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 3000,
-    }
-}
 
 
 def tasks_by_state(info, timeseries: PrometheusTimeseries, flush: bool = False) -> dict:
@@ -69,8 +56,9 @@ def tasks_breakdown(info, key_fn, timeseries: PrometheusTimeseries) -> dict:
 
 # TODO(ekl) in all these tests, we use run_string_as_driver_nonblocking to work around
 # stats reporting issues if Ray is repeatedly restarted in unit tests.
-def test_task_basic(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_basic(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
 
     driver = """
 import time
@@ -119,7 +107,7 @@ ray.get(refs + [c.remote() for _ in range(8)])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_task_custom_name_metrics(shutdown_only):
+def test_task_custom_name_metrics(monkeypatch, shutdown_only):
     """Verify that custom task names set via .options(name=...) are used in metrics.
 
     This tests that RUNNING tasks use the custom name consistently with
@@ -127,7 +115,8 @@ def test_task_custom_name_metrics(shutdown_only):
     the function name (FunctionDescriptor->CallString()) but FINISHED/FAILED used
     the custom name (TaskSpec::GetName()).
     """
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
 
     driver = """
 import ray
@@ -172,8 +161,9 @@ ray.get(a)
     proc.kill()
 
 
-def test_task_job_ids(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_job_ids(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -214,8 +204,9 @@ ray.get(a)
         proc.kill()
 
 
-def test_task_nested(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_nested(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -267,8 +258,9 @@ ray.get(w)
     proc.kill()
 
 
-def test_task_nested_wait(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_nested_wait(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -370,8 +362,9 @@ def test_task_fetch_args(ray_start_cluster):
     assert p.exitcode == 0
 
 
-def test_task_wait_on_deps(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_wait_on_deps(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -408,8 +401,9 @@ ray.get(a)
     proc.kill()
 
 
-def test_actor_tasks_queued(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_actor_tasks_queued(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -446,8 +440,9 @@ ray.get(z)
     proc.kill()
 
 
-def test_task_finish(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_finish(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -485,8 +480,9 @@ time.sleep(999)
     proc.kill()
 
 
-def test_task_retry(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_retry(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -538,8 +534,9 @@ time.sleep(999)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows. Timing out.")
-def test_actor_task_retry(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_actor_task_retry(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -592,8 +589,9 @@ time.sleep(999)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_task_failure(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_task_failure(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -628,8 +626,9 @@ time.sleep(999)
     proc.kill()
 
 
-def test_concurrent_actor_tasks(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_concurrent_actor_tasks(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -661,10 +660,10 @@ ray.get([a.f.remote() for _ in range(40)])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_metrics_export_now(shutdown_only, ray_start_cluster):
+def test_metrics_export_now(monkeypatch, shutdown_only, ray_start_cluster):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "3000")
     cluster = ray_start_cluster
     cluster.add_node(
-        **SLOW_METRIC_CONFIG,
         num_cpus=2,
     )
     wait_for_dashboard_agent_available(cluster)
@@ -702,8 +701,9 @@ ray.get(a)
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
-def test_pull_manager_stats(shutdown_only):
-    info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
+def test_pull_manager_stats(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2, object_store_memory=100_000_000)
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
@@ -770,7 +770,8 @@ def test_stale_view_cleanup_when_job_exits(monkeypatch, shutdown_only):
     timeseries = PrometheusTimeseries()
     with monkeypatch.context() as m:
         m.setenv(RAY_WORKER_TIMEOUT_S, 5)
-        info = ray.init(num_cpus=2, **METRIC_CONFIG)
+        m.setenv("RAY_metrics_report_interval_ms", "100")
+        info = ray.init(num_cpus=2)
         print(info)
 
         driver = """
@@ -788,6 +789,7 @@ ray.get(g.remote())
     """
 
         proc = run_string_as_driver_nonblocking(driver)
+        print(f"Process pid: {proc.pid} is running.")
         expected = {
             "RUNNING": 1.0,
         }
@@ -808,11 +810,10 @@ ray.get(g.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows. Timing out.")
-def test_metrics_batch(shutdown_only):
+def test_metrics_batch(monkeypatch, shutdown_only):
     """Verify metrics_report_batch_size works correctly without data loss."""
-    config_copy = copy.deepcopy(METRIC_CONFIG)
-    config_copy["_system_config"].update({"metrics_report_batch_size": 1})
-    info = ray.init(num_cpus=2, **config_copy)
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=2, _system_config={"metrics_report_batch_size": 1})
     timeseries = PrometheusTimeseries()
     driver = """
 import ray
