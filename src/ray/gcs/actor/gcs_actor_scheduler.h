@@ -384,6 +384,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
   FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
   FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity);
+  FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForNodeAffinityStrategy);
 
   friend class GcsActorSchedulerMockTest;
   FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);

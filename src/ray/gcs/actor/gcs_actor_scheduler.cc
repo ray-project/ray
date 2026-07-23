@@ -88,14 +88,17 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
 
   const auto &lease_spec = actor->GetLeaseSpecification();
 
-  // If the actor is hard-pinned to a specific node via a node-id label selector,
-  // forward the lease request to that node directly. Otherwise the request may be
-  // forwarded to an arbitrary node whose local resource view has not yet synced the
-  // pinned node's labels (node liveness and node labels sync via separate paths), so
-  // the hard node affinity is transiently treated as infeasible and the actor creation
-  // is cancelled with an ActorUnschedulableError. This is especially likely for
-  // num_cpus=0 actors (e.g. CompiledDAG.DAGDriverProxyActor), which carry no resource
-  // demand and would otherwise be forwarded to a random alive node.
+  // If the actor is hard-pinned to a specific node -- either via a `ray.io/node-id`
+  // label selector or a hard NodeAffinitySchedulingStrategy (soft=false) -- forward the
+  // lease request to that node directly, regardless of the actor's resource demand.
+  // Otherwise the request may be forwarded to an arbitrary node whose local resource
+  // view has not yet synced the pinned node's labels (node liveness and node labels sync
+  // via separate paths), so the hard node affinity is transiently treated as infeasible
+  // and the actor creation is cancelled with an ActorUnschedulableError. This is
+  // especially likely for num_cpus=0 actors (e.g. CompiledDAG.DAGDriverProxyActor),
+  // which carry no resource demand and would otherwise be forwarded to a random alive
+  // node. If the pinned node is not alive, fall through to the default logic so the
+  // normal scheduler surfaces the unschedulable error (e.g. a removed node).
   if (auto hard_node_ids = GetHardNodeAffinityValues(lease_spec.GetLabelSelector());
       hard_node_ids.has_value()) {
     for (const auto &node_hex : *hard_node_ids) {
@@ -104,8 +107,13 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
         return node_id;
       }
     }
-    // None of the pinned nodes are alive; fall through to the default logic so the
-    // normal scheduler surfaces the unschedulable error (e.g. a removed node).
+  }
+  if (lease_spec.IsNodeAffinitySchedulingStrategy() &&
+      !lease_spec.GetNodeAffinitySchedulingStrategySoft()) {
+    const auto node_id = lease_spec.GetNodeAffinitySchedulingStrategyNodeId();
+    if (gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+      return node_id;
+    }
   }
 
   // If an actor has resource requirements, we will try to schedule it on the same node as

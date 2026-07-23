@@ -182,34 +182,61 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                            /*session_name=*/"");
   }
 
-  // Creates a 0-resource actor hard-pinned to `node_id_hex` via a
-  // `ray.io/node-id` label selector (as CompiledDAG.DAGDriverProxyActor does).
-  std::shared_ptr<gcs::GcsActor> NewGcsActorPinnedToNode(const std::string &node_id_hex) {
+  // Builds the actor-creation task message for an actor with the given resource
+  // requirement (used by the hard-pin helpers below).
+  rpc::TaskSpec MakeActorTaskSpec(
+      const std::unordered_map<std::string, double> &resources) {
     rpc::Address owner_address;
     owner_address.set_node_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("127.0.0.1");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     auto job_id = JobID::FromInt(1);
-    std::unordered_map<std::string, double> empty_resources;
     auto actor_creating_task_spec = GenActorCreationTask(job_id,
                                                          /*max_restarts=*/1,
                                                          /*detached=*/true,
                                                          /*name=*/"",
                                                          "",
                                                          owner_address,
-                                                         empty_resources,
-                                                         empty_resources);
-    rpc::TaskSpec msg = actor_creating_task_spec.GetMessage();
-    auto *constraint = msg.mutable_label_selector()->add_label_constraints();
-    constraint->set_label_key(kLabelKeyNodeID);
-    constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-    constraint->add_label_values(node_id_hex);
+                                                         resources,
+                                                         resources);
+    return actor_creating_task_spec.GetMessage();
+  }
+
+  std::shared_ptr<gcs::GcsActor> MakeGcsActor(const rpc::TaskSpec &msg) {
     return std::make_shared<gcs::GcsActor>(msg,
                                            /*ray_namespace=*/"",
                                            /*counter=*/counter,
                                            /*recorder=*/fake_ray_event_recorder_,
                                            /*session_name=*/"");
+  }
+
+  // Creates an actor hard-pinned to `node_id_hex` via a `ray.io/node-id` label
+  // selector (as CompiledDAG.DAGDriverProxyActor does), with an optional resource
+  // requirement.
+  std::shared_ptr<gcs::GcsActor> NewGcsActorPinnedToNode(
+      const std::string &node_id_hex,
+      const std::unordered_map<std::string, double> &resources = {}) {
+    rpc::TaskSpec msg = MakeActorTaskSpec(resources);
+    auto *constraint = msg.mutable_label_selector()->add_label_constraints();
+    constraint->set_label_key(kLabelKeyNodeID);
+    constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+    constraint->add_label_values(node_id_hex);
+    return MakeGcsActor(msg);
+  }
+
+  // Creates an actor with a NodeAffinitySchedulingStrategy pinning it to `node_id`,
+  // with an optional resource requirement.
+  std::shared_ptr<gcs::GcsActor> NewGcsActorWithNodeAffinity(
+      const NodeID &node_id,
+      bool soft,
+      const std::unordered_map<std::string, double> &resources = {}) {
+    rpc::TaskSpec msg = MakeActorTaskSpec(resources);
+    auto *strategy =
+        msg.mutable_scheduling_strategy()->mutable_node_affinity_scheduling_strategy();
+    strategy->set_node_id(node_id.Binary());
+    strategy->set_soft(soft);
+    return MakeGcsActor(msg);
   }
 
   std::shared_ptr<rpc::GcsNodeInfo> AddNewNode(
@@ -747,9 +774,14 @@ TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity) {
   // `test_driver_as_reader` flake). Repeat to defeat the random fallback by luck.
   auto pinned_to_a = NewGcsActorPinnedToNode(node_a_id.Hex());
   auto pinned_to_b = NewGcsActorPinnedToNode(node_b_id.Hex());
+  // The pin must be honored regardless of resource demand, so also cover an actor
+  // with a non-zero resource requirement.
+  auto pinned_to_a_with_cpu = NewGcsActorPinnedToNode(node_a_id.Hex(), {{"CPU", 1.0}});
   for (int i = 0; i < 20; i++) {
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a), node_a_id);
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_b), node_b_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a_with_cpu),
+              node_a_id);
   }
 
   // An unpinned 0-resource actor keeps the existing behavior: forwarded to some
@@ -763,6 +795,34 @@ TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity) {
   // later by the raylet, not by forwarding).
   auto pinned_to_dead = NewGcsActorPinnedToNode(NodeID::FromRandom().Hex());
   auto fallback = gcs_actor_scheduler_->SelectForwardingNode(pinned_to_dead);
+  ASSERT_TRUE(fallback == node_a_id || fallback == node_b_id);
+}
+
+TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForNodeAffinityStrategy) {
+  // Two alive nodes.
+  auto node_a = AddNewNode({{"CPU", 8.0}});
+  auto node_b = AddNewNode({{"CPU", 8.0}});
+  auto node_a_id = NodeID::FromBinary(node_a->node_id());
+  auto node_b_id = NodeID::FromBinary(node_b->node_id());
+
+  // A hard (soft=false) NodeAffinitySchedulingStrategy is the legacy equivalent of
+  // the node-id label pin and must likewise be forwarded to the pinned node,
+  // regardless of resource demand.
+  auto affinity_a = NewGcsActorWithNodeAffinity(node_a_id, /*soft=*/false);
+  auto affinity_b = NewGcsActorWithNodeAffinity(node_b_id, /*soft=*/false);
+  auto affinity_a_with_cpu =
+      NewGcsActorWithNodeAffinity(node_a_id, /*soft=*/false, {{"CPU", 1.0}});
+  for (int i = 0; i < 20; i++) {
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_a), node_a_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_b), node_b_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_a_with_cpu), node_a_id);
+  }
+
+  // A hard affinity to a node that is not alive falls back to the default logic
+  // (an alive node is still returned here; the unschedulable error is surfaced
+  // later by the raylet, not by forwarding).
+  auto affinity_dead = NewGcsActorWithNodeAffinity(NodeID::FromRandom(), /*soft=*/false);
+  auto fallback = gcs_actor_scheduler_->SelectForwardingNode(affinity_dead);
   ASSERT_TRUE(fallback == node_a_id || fallback == node_b_id);
 }
 
