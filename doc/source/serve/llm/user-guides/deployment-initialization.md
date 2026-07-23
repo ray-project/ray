@@ -127,7 +127,13 @@ Load models from S3, GCS, or Azure storage instead of Hugging Face. This is usef
 - Faster loading from cloud storage in the same region
 - Custom model formats or fine-tuned models
 
-### S3 bucket structure
+Select your cloud provider for backend-specific configuration:
+
+`````{tab-set}
+
+````{tab-item} S3
+
+**Bucket structure**
 
 Your S3 bucket should contain the model files in a Hugging Face-compatible structure:
 
@@ -145,7 +151,7 @@ $ aws s3 ls air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/
 2025-03-25 11:37:53      54528 tokenizer_config.json
 ```
 
-### Configure S3 loading (YAML)
+**Configure with YAML**
 
 Use the `bucket_uri` parameter in `model_loading_config`:
 
@@ -172,9 +178,7 @@ Deploy with:
 serve deploy config.yaml
 ```
 
-### Configure S3 loading (Python API)
-
-You can also configure S3 loading with Python:
+**Configure with the Python API**
 
 ```python
 from ray import serve
@@ -197,57 +201,11 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 ```
 
-### Configure GCS bucket loading (YAML)
+**Credentials**
 
-For Google Cloud Storage, use the `gs://` protocol:
+For private S3 buckets, configure AWS credentials.
 
-```yaml
-model_loading_config:
-  model_id: my_model
-  model_source:
-    bucket_uri: gs://my-gcs-bucket/path/to/model
-```
-
-### Configure Azure loading (YAML)
-
-For Azure Blob Storage or Azure Data Lake Storage (ADLS) Gen2, use the `azure://`
-or `abfss://` protocol. The URI must embed the container and storage account as
-`container@account.<domain>`:
-
-- `abfss://<container>@<account>.dfs.core.windows.net/path/to/model` (ADLS Gen2)
-- `azure://<container>@<account>.blob.core.windows.net/path/to/model` (Blob Storage)
-
-```yaml
-model_loading_config:
-  model_id: my_model
-  model_source:
-    bucket_uri: abfss://my-container@myaccount.dfs.core.windows.net/path/to/model
-```
-
-### Configure Azure loading (Python API)
-
-Configure the same Azure source with the Python API. Azure loading requires the
-`adlfs` and `azure-identity` packages on every node that loads the model. Ship
-them through `runtime_env` so Ray installs them on each node's download task, no
-image rebuild required:
-
-```python
-llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="my_model",
-        model_source=dict(
-            bucket_uri="abfss://my-container@myaccount.dfs.core.windows.net/path/to/model"
-        ),
-    ),
-    runtime_env=dict(pip=["adlfs", "azure-identity"]),
-)
-```
-
-### S3 credentials
-
-For private S3 buckets, configure AWS credentials:
-
-1. **Option 1: Environment variables**
+Option 1: Environment variables
 
 ```python
 llm_config = LLMConfig(
@@ -266,12 +224,64 @@ llm_config = LLMConfig(
 )
 ```
 
-2. **Option 2: IAM roles** (recommended for production)
+Option 2: IAM roles (recommended for production)
 
 Use EC2 instance profiles or EKS service accounts with appropriate S3 read permissions.
 
+````
 
-### Azure credentials
+````{tab-item} GCS
+
+**Configure with YAML**
+
+For Google Cloud Storage, use the `gs://` protocol:
+
+```yaml
+model_loading_config:
+  model_id: my_model
+  model_source:
+    bucket_uri: gs://my-gcs-bucket/path/to/model
+```
+
+````
+
+````{tab-item} Azure
+
+For Azure Blob Storage or Azure Data Lake Storage (ADLS) Gen2, use the `azure://`
+or `abfss://` protocol. The URI must embed the container and storage account as
+`container@account.<domain>`:
+
+- `abfss://<container>@<account>.dfs.core.windows.net/path/to/model` (ADLS Gen2)
+- `azure://<container>@<account>.blob.core.windows.net/path/to/model` (Blob Storage)
+
+**Configure with YAML**
+
+```yaml
+model_loading_config:
+  model_id: my_model
+  model_source:
+    bucket_uri: abfss://my-container@myaccount.dfs.core.windows.net/path/to/model
+```
+
+**Configure with the Python API**
+
+Azure loading requires the `adlfs` and `azure-identity` packages on every node
+that loads the model. Ship them through `runtime_env` so Ray installs them on
+each node's download task, no image rebuild required:
+
+```python
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="my_model",
+        model_source=dict(
+            bucket_uri="abfss://my-container@myaccount.dfs.core.windows.net/path/to/model"
+        ),
+    ),
+    runtime_env=dict(pip=["adlfs", "azure-identity"]),
+)
+```
+
+**Credentials**
 
 Azure authentication uses [`DefaultAzureCredential`](https://learn.microsoft.com/python/api/azure-identity/azure.identity.defaultazurecredential),
 which resolves credentials from the standard Azure credential chain, in order:
@@ -301,6 +311,10 @@ llm_config = LLMConfig(
     ),
 )
 ```
+
+````
+
+`````
 
 
 ### S3 and RunAI Streamer
