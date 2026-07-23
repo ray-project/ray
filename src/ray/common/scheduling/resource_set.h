@@ -205,10 +205,15 @@ namespace std {
 template <>
 struct hash<ray::ResourceSet> {
   size_t operator()(ray::ResourceSet const &k) const {
-    size_t seed = k.GetResourceMap().size();
-    for (auto &elem : k.GetResourceMap()) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
+    // Hash the underlying ResourceID -> FixedPoint map directly. GetResourceMap()
+    // would allocate a fresh string-keyed map and take a lock per entry (via
+    // ResourceID::Binary()) on every call, and this runs on the scheduling path.
+    // XOR-accumulate per entry so the result is independent of map iteration
+    // order, which is not stable for flat_hash_map.
+    size_t seed = k.Resources().size();
+    for (const auto &[id, quantity] : k.Resources()) {
+      seed ^= std::hash<ray::scheduling::ResourceID>()(id) ^
+              (std::hash<double>()(quantity.Double()) << 1);
     }
     return seed;
   }
