@@ -6,7 +6,7 @@ Dynamic generators
 
 .. warning::
 
-    ``num_returns="dynamic"`` :ref:`generator API <dynamic_generators>` is soft deprecated as of Ray 2.8 due to its :ref:`limitation <dynamic-generators-limitation>`.
+    ``num_returns="dynamic"`` :ref:`generator API <dynamic_generators>` is deprecated and will be removed in an upcoming version.
     Use the :ref:`streaming generator API<generators>` instead.
     Ray emits a runtime ``RayDeprecationWarning`` when you use ``num_returns="dynamic"``.
 
