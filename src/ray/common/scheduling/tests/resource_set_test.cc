@@ -109,6 +109,20 @@ TEST_F(ResourceSetTest, TestHashConsistentWithEquality) {
   ResourceSet c(map_c);
   ASSERT_NE(a, c);
 
+  // Swapping quantities between resources must not collide.
+  absl::flat_hash_map<std::string, double> map_d = {{"CPU", 1}, {"GPU", 2}};
+  absl::flat_hash_map<std::string, double> map_e = {{"CPU", 2}, {"GPU", 1}};
+  ResourceSet d(map_d);
+  ResourceSet e(map_e);
+  EXPECT_NE(std::hash<ResourceSet>()(d), std::hash<ResourceSet>()(e));
+
+  // Repeated quantities on different resources must not cancel out.
+  absl::flat_hash_map<std::string, double> map_f = {{"CPU", 1}, {"GPU", 1}};
+  absl::flat_hash_map<std::string, double> map_g = {{"CPU", 2}, {"GPU", 2}};
+  ResourceSet f(map_f);
+  ResourceSet g(map_g);
+  EXPECT_NE(std::hash<ResourceSet>()(f), std::hash<ResourceSet>()(g));
+
   // Usable as a hash-map key.
   absl::flat_hash_map<ResourceSet, int> counts;
   counts[a]++;
