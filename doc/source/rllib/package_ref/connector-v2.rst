@@ -10,7 +10,7 @@ ConnectorV2 API
 rllib.connectors.connector_v2.ConnectorV2
 -----------------------------------------
 
-.. autoclass:: ray.rllib.connectors.connector_v2.ConnectorV2
+.. autoclass:: ConnectorV2
     :special-members: __call__
     :members:
 
@@ -18,7 +18,9 @@ rllib.connectors.connector_v2.ConnectorV2
 rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2
 ----------------------------------------------------------
 
-.. autoclass:: ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2
+.. currentmodule:: ray.rllib.connectors.connector_pipeline_v2
+
+.. autoclass:: ConnectorPipelineV2
     :members:
 
 
@@ -30,7 +32,7 @@ Observation preprocessors
 rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
 ------------------------------------------------------------------------------------------
 
-.. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor
+.. autoclass:: SingleAgentObservationPreprocessor
 
     .. automethod:: recompute_output_observation_space
     .. automethod:: preprocess
@@ -39,7 +41,7 @@ rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPr
 rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor
 -----------------------------------------------------------------------------------------
 
-.. autoclass:: ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor
+.. autoclass:: MultiAgentObservationPreprocessor
 
     .. automethod:: recompute_output_observation_space
     .. automethod:: preprocess

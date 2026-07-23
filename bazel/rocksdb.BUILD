@@ -76,7 +76,14 @@ cmake(
         ":tsan_build": _TSAN_CACHE_ENTRIES,
         "//conditions:default": _CACHE_ENTRIES,
     }),
-    generate_args = ["-G Ninja"],
+    # Use CMake's Make generator, not Ninja. rules_foreign_cc has no system
+    # ninja, so "-G Ninja" makes it bootstrap ninja from source, which invokes
+    # `c++` under a scrubbed PATH (/bin:/usr/bin:/usr/local/bin). The aarch64
+    # manylinux image has no `c++` there, so the ninja bootstrap fails with
+    # "c++: command not found" whenever the tool isn't served from the Bazel
+    # remote cache -- breaking the aarch64 core wheel build. Make uses the
+    # preinstalled toolchain (like jemalloc/openssl) and needs no bootstrap.
+    generate_args = ["-G", "Unix Makefiles"],
     lib_source = ":all_srcs",
     out_static_libs = ["librocksdb.a"],
     visibility = ["//visibility:public"],
