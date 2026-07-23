@@ -78,6 +78,11 @@ CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
     "RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1
 )
 
+# Interval of the background node-info refresh loop.
+RAY_SERVE_NODE_INFO_REFRESH_S = get_env_float_positive(
+    "RAY_SERVE_NODE_INFO_REFRESH_S", 1.0
+)
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
