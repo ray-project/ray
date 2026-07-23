@@ -1,7 +1,7 @@
 diff --git a/sglang/srt/observability/metrics_collector.py b/sglang/srt/observability/metrics_collector.py
 --- a/sglang/srt/observability/metrics_collector.py
 +++ b/sglang/srt/observability/metrics_collector.py
-@@ -1705,6 +1705,10 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
+@@ -1689,6 +1689,10 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
          self.histogram_time_to_first_token.labels(**labels).observe(value)
  
      def check_time_to_first_token_straggler(self, value: float) -> bool:
@@ -12,7 +12,7 @@ diff --git a/sglang/srt/observability/metrics_collector.py b/sglang/srt/observab
          his = self.histogram_time_to_first_token.labels(**self.labels)
          total_observations = sum(bucket._value for bucket in his._buckets)
          if total_observations < 100:
-@@ -1721,10 +1725,17 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
+@@ -1705,10 +1709,17 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
          self, labels: Dict[str, str], internval: float, num_new_tokens: int
      ):
          adjusted_interval = internval / num_new_tokens
@@ -126,5 +126,5 @@ diff --git a/sglang/srt/ray/engine.py b/sglang/srt/ray/engine.py
 +
 +            kwargs["stat_loggers"] = build_ray_stat_loggers()
          server_args = ServerArgs(**kwargs)
-         server_args.override("ray.placement_group", placement_group=placement_group)
+         server_args.placement_group = placement_group
          super().__init__(server_args=server_args)

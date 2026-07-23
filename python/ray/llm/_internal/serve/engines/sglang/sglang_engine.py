@@ -278,14 +278,6 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
-    async def stop(self) -> None:
-        # Lifecycle hook for replica teardown. Shut the engine down explicitly so
-        # RayEngine's scheduler actors (which hold GPUs) are killed on replica
-        # teardown rather than leaked until the atexit handler fires.
-        engine = getattr(self, "engine", None)
-        if engine is not None:
-            engine.shutdown()
-
     async def __serve_build_asgi_app__(self) -> Any:
         """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
 
