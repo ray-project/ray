@@ -1110,6 +1110,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (!put_res.ok()) {
       RAY_LOG(WARNING).WithField(object_id)
           << "Failed to handle streaming dynamic return: " << put_res.status();
+    } else if (!put_res.value()) {
+      // HandleTaskReturn returns false when the object was stored in plasma
+      // (true means it was inlined into the in-memory store). Remember the
+      // plasma-backed reports so they can be failed if the generator task fails
+      // before its first completion records them on the task spec. Inline
+      // reports live in the owner's memory store and are not lost this way.
+      stream_it->second.MarkReportedInPlasma(object_id);
     }
   }
 
@@ -1817,6 +1824,16 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   return store_in_plasma_ids;
 }
 
+std::vector<ObjectID> TaskManager::GetStreamingGeneratorReportedPlasmaRefs(
+    const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto it = object_ref_streams_.find(generator_id);
+  if (it == object_ref_streams_.end()) {
+    return {};
+  }
+  return it->second.GetReportedPlasmaRefs();
+}
+
 void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec,
     rpc::ErrorType error_type,
@@ -1889,6 +1906,25 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         in_memory_store_.Put(error,
                              generator_return_id,
                              reference_counter_.HasReference(generator_return_id));
+      }
+    }
+    // num_streaming_generator_returns is only populated on the first complete
+    // execution; after that, reconstructable returns are failed from the task
+    // spec + store_in_plasma_ids. If the task fails before then, it is 0, so
+    // also fail plasma refs already reported to the stream; otherwise those
+    // lost objects never get an error and stay pending creation forever.
+    // Reported refs always go through plasma: a plasma-pull-blocked ray.get
+    // wakes only when the error lands in plasma.
+    if (num_streaming_generator_returns == 0) {
+      for (const auto &reported_id :
+           GetStreamingGeneratorReportedPlasmaRefs(generator_id)) {
+        Status s = put_in_local_plasma_callback_(error, reported_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(reported_id)
+              << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(
+              error, reported_id, reference_counter_.HasReference(reported_id));
+        }
       }
     }
   }
