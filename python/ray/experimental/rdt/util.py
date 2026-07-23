@@ -336,6 +336,53 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     nixl_transport.register_nixl_memory_pool(size, device)
 
 
+@PublicAPI(stability="alpha")
+def set_nixl_cuda_stream(stream: Optional["torch.cuda.Stream"]) -> None:
+    """Sets the CUDA stream to synchronize before NIXL memory registration.
+
+    When an actor creates an RDT object (via ``ray.put(_tensor_transport="nixl")``
+    or by returning tensors from a task annotated with
+    ``@ray.method(tensor_transport="nixl")``), Ray must synchronize the device
+    before registering the tensor memory with NIXL, because NIXL does not
+    guarantee the tensor storage has been allocated. By default Ray calls
+    ``torch.cuda.synchronize`` for each device, which blocks *all* streams on
+    that device. Use this function to instead block only on the specific
+    stream that produced the tensors.
+
+    The stream applies to all subsequent RDT object creations on this actor
+    until changed. Calling this again overwrites the previous stream. Pass
+    ``None`` to clear it and restore the default full-device synchronization.
+
+    Args:
+        stream: The CUDA stream to synchronize, or ``None`` to block on all
+            streams of each device.
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import set_nixl_cuda_stream
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    # A long-lived stream this actor produces its RDT tensors on.
+                    self.stream = torch.cuda.Stream()
+                    # Only block on `self.stream` instead of every stream on the
+                    # device. Set once; it applies to all subsequent ray.put calls.
+                    set_nixl_cuda_stream(self.stream)
+
+                def get_weight_ref(self):
+                    with torch.cuda.stream(self.stream):
+                        weight = torch.randn(1000, 1000, device="cuda")
+                    return ray.put(weight, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.set_cuda_stream(stream)
+
+
 def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
 ) -> List["torch.Tensor"]:
