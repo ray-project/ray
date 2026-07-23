@@ -66,19 +66,23 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
           }
           // Retry recovery if a concurrent node failure invalidated the location.
-          bool owned_by_us = false;
-          NodeID pinned_at;
-          bool spilled = false;
-          bool ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
-              object_id, &owned_by_us, &pinned_at, &spilled);
-          if (ref_exists && owned_by_us && pinned_at.IsNil() && !spilled) {
-            RAY_LOG(WARNING).WithField(object_id)
-                << "Object still has no valid location after recovery attempt, "
-                   "requeuing for recovery";
-            reference_counter_.MarkObjectForRecovery(object_id);
-          } else {
-            RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
+          bool was_successful_recovery = obj != nullptr && obj->IsInPlasmaError();
+          if (was_successful_recovery) {
+            bool cb_owned_by_us = false;
+            NodeID cb_pinned_at;
+            bool cb_spilled = false;
+            bool cb_ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
+                object_id, &cb_owned_by_us, &cb_pinned_at, &cb_spilled);
+            if (cb_ref_exists && cb_owned_by_us && cb_pinned_at.IsNil() &&
+                !cb_spilled) {
+              RAY_LOG(WARNING).WithField(object_id)
+                  << "Object still has no valid location after recovery attempt, "
+                     "requeuing for recovery";
+              reference_counter_.MarkObjectForRecovery(object_id);
+              return;
+            }
           }
+          RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
     // gcs_client.
