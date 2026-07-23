@@ -775,12 +775,18 @@ TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity) {
   auto pinned_to_a = NewGcsActorPinnedToNode(node_a_id.Hex());
   auto pinned_to_b = NewGcsActorPinnedToNode(node_b_id.Hex());
   // The pin must be honored regardless of resource demand, so also cover an actor
-  // with a non-zero resource requirement.
+  // with a non-zero resource requirement, and one whose requirement exceeds the
+  // pinned node's capacity (node A has 8 CPUs). Forwarding still targets the pinned
+  // node; whether it ultimately fits (or spills back) is decided later by the
+  // raylet, not by this forwarding step.
   auto pinned_to_a_with_cpu = NewGcsActorPinnedToNode(node_a_id.Hex(), {{"CPU", 1.0}});
+  auto pinned_to_a_over_cpu = NewGcsActorPinnedToNode(node_a_id.Hex(), {{"CPU", 16.0}});
   for (int i = 0; i < 20; i++) {
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a), node_a_id);
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_b), node_b_id);
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a_with_cpu),
+              node_a_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(pinned_to_a_over_cpu),
               node_a_id);
   }
 
@@ -812,10 +818,16 @@ TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForNodeAffinityStrategy) {
   auto affinity_b = NewGcsActorWithNodeAffinity(node_b_id, /*soft=*/false);
   auto affinity_a_with_cpu =
       NewGcsActorWithNodeAffinity(node_a_id, /*soft=*/false, {{"CPU", 1.0}});
+  // Also cover a requirement that exceeds the pinned node's capacity (node A has 8
+  // CPUs): forwarding still targets node A; the fit/spillback decision is left to
+  // the raylet.
+  auto affinity_a_over_cpu =
+      NewGcsActorWithNodeAffinity(node_a_id, /*soft=*/false, {{"CPU", 16.0}});
   for (int i = 0; i < 20; i++) {
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_a), node_a_id);
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_b), node_b_id);
     ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_a_with_cpu), node_a_id);
+    ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(affinity_a_over_cpu), node_a_id);
   }
 
   // A hard affinity to a node that is not alive falls back to the default logic
