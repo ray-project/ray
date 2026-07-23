@@ -148,9 +148,12 @@ describe("ActorTable", () => {
   });
 
   it("renders a table of actors sorted by state", () => {
-    const { getByRole } = render(<ActorTable actors={MOCK_ACTORS} />, {
-      wrapper: TEST_APP_WRAPPER,
-    });
+    const { getByRole } = render(
+      <ActorTable actors={MOCK_ACTORS} showAcceleratorColumns={false} />,
+      {
+        wrapper: TEST_APP_WRAPPER,
+      },
+    );
 
     const actor1Row = getByRole("row", {
       name: /ACTOR_1/,
