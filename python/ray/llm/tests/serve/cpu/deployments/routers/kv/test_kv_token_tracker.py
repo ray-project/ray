@@ -133,7 +133,7 @@ async def test_lifecycle_booking_end_to_end():
 @pytest.fixture(scope="module")
 def serve_instance():
     if not ray.is_initialized():
-        ray.init(address="auto")
+        ray.init()
     yield
     serve.shutdown()
 
