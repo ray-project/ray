@@ -29,10 +29,9 @@ def test_get_wheel_names():
     ray_version = "2.50.0"
     wheel_names = _get_wheel_names(ray_version)
 
-    assert (
-        len(wheel_names)
-        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(ALL_PLATFORMS) - 2
-    )  # Except for the win_amd64 wheel for cp313 and cp314
+    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(
+        ALL_PLATFORMS
+    )
     python_versions = list(PYTHON_VERSIONS) + ["py3-none"]
 
     for wheel_name in wheel_names:
