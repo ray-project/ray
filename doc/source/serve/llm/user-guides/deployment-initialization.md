@@ -121,13 +121,19 @@ serve.run(app, blocking=True)
 
 ## Model Loading from remote storage
 
-Load models from S3 or GCS buckets instead of Hugging Face. This is useful for:
+Load models from S3, GCS, or Azure storage instead of Hugging Face. This is useful for:
 
 - Private models not hosted on Hugging Face
 - Faster loading from cloud storage in the same region
 - Custom model formats or fine-tuned models
 
-### S3 bucket structure
+Select your cloud provider for backend-specific configuration:
+
+`````{tab-set}
+
+````{tab-item} S3
+
+**Bucket structure**
 
 Your S3 bucket should contain the model files in a Hugging Face-compatible structure:
 
@@ -145,7 +151,7 @@ $ aws s3 ls air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/
 2025-03-25 11:37:53      54528 tokenizer_config.json
 ```
 
-### Configure S3 loading (YAML)
+**Configure with YAML**
 
 Use the `bucket_uri` parameter in `model_loading_config`:
 
@@ -172,9 +178,7 @@ Deploy with:
 serve deploy config.yaml
 ```
 
-### Configure S3 loading (Python API)
-
-You can also configure S3 loading with Python:
+**Configure with the Python API**
 
 ```python
 from ray import serve
@@ -197,22 +201,11 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 ```
 
-### Configure GCS bucket loading (YAML)
+**Credentials**
 
-For Google Cloud Storage, use the `gs://` protocol:
+For private S3 buckets, configure AWS credentials.
 
-```yaml
-model_loading_config:
-  model_id: my_model
-  model_source:
-    bucket_uri: gs://my-gcs-bucket/path/to/model
-```
-
-### S3 credentials
-
-For private S3 buckets, configure AWS credentials:
-
-1. **Option 1: Environment variables**
+Option 1: Environment variables
 
 ```python
 llm_config = LLMConfig(
@@ -231,9 +224,101 @@ llm_config = LLMConfig(
 )
 ```
 
-2. **Option 2: IAM roles** (recommended for production)
+Option 2: IAM roles (recommended for production)
 
 Use EC2 instance profiles or EKS service accounts with appropriate S3 read permissions.
+
+````
+
+````{tab-item} GCS
+
+**Configure with YAML**
+
+For Google Cloud Storage, use the `gs://` protocol:
+
+```yaml
+model_loading_config:
+  model_id: my_model
+  model_source:
+    bucket_uri: gs://my-gcs-bucket/path/to/model
+```
+
+````
+
+````{tab-item} Azure
+
+For Azure Blob Storage or Azure Data Lake Storage (ADLS) Gen2, use the `azure://`
+or `abfss://` protocol. The URI must embed the container and storage account as
+`container@account.<domain>`:
+
+- `abfss://<container>@<account>.dfs.core.windows.net/path/to/model` (ADLS Gen2)
+- `azure://<container>@<account>.blob.core.windows.net/path/to/model` (Blob Storage)
+
+**Configure with YAML**
+
+```yaml
+model_loading_config:
+  model_id: my_model
+  model_source:
+    bucket_uri: abfss://my-container@myaccount.dfs.core.windows.net/path/to/model
+```
+
+**Configure with the Python API**
+
+Azure loading requires the `adlfs` and `azure-identity` packages on every node
+that loads the model. Ship them through `runtime_env` so Ray installs them on
+each node's download task, no image rebuild required:
+
+```python
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="my_model",
+        model_source=dict(
+            bucket_uri="abfss://my-container@myaccount.dfs.core.windows.net/path/to/model"
+        ),
+    ),
+    runtime_env=dict(pip=["adlfs", "azure-identity"]),
+)
+```
+
+**Credentials**
+
+Azure authentication uses [`DefaultAzureCredential`](https://learn.microsoft.com/python/api/azure-identity/azure.identity.defaultazurecredential),
+which resolves credentials from the standard Azure credential chain. It tries
+several sources in order, including environment variables, a workload identity, a
+managed identity, and the Azure CLI login.
+
+For production deployments on AKS, use a [Microsoft Entra Workload
+ID](https://learn.microsoft.com/azure/aks/workload-identity-overview), or a
+managed identity, with the **Storage Blob Data Reader** role on the container.
+`DefaultAzureCredential` resolves either one automatically, so the deployment
+only needs the Azure packages. Uncomment the environment variables to fall back
+to a service principal when a workload or managed identity isn't available:
+
+```python
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="my_model",
+        model_source=dict(
+            bucket_uri="abfss://my-container@myaccount.dfs.core.windows.net/model"
+        )
+    ),
+    runtime_env=dict(
+        pip=["adlfs", "azure-identity"],
+        # A workload or managed identity resolves automatically and needs nothing here.
+        # Uncomment to fall back to a service principal instead:
+        # env_vars={
+        #     "AZURE_CLIENT_ID": os.environ["AZURE_CLIENT_ID"],
+        #     "AZURE_TENANT_ID": os.environ["AZURE_TENANT_ID"],
+        #     "AZURE_CLIENT_SECRET": os.environ["AZURE_CLIENT_SECRET"],
+        # },
+    ),
+)
+```
+
+````
+
+`````
 
 
 ### S3 and RunAI Streamer
@@ -251,6 +336,26 @@ llm_config = LLMConfig(
         "load_format": "runai_streamer",
     },
     ...
+)
+```
+
+### RunAI Streamer from a local path
+
+When `load_format` is `runai_streamer`, Ray Serve LLM doesn't download the model. It passes `model_source` to the streamer, which reads it directly. The streamer supports a local path on each node in addition to remote object stores, and the set of supported remote schemes depends on your `runai-model-streamer` and vLLM versions. Use a local path when the weights are already staged on a volume mounted on every node or copied to local disk, such as weights pulled from another source before serving. Point `model_source` at the path, set `load_format` to `runai_streamer`, and tune the number of concurrent read streams with the `RUNAI_STREAMER_CONCURRENCY` environment variable:
+
+```python
+from ray.serve.llm import LLMConfig
+
+llm_config = LLMConfig(
+    model_loading_config={
+        "model_id": "my-model",
+        "model_source": "/path/to/model",
+    },
+    engine_kwargs={
+        "tensor_parallel_size": 16,
+        "load_format": "runai_streamer",
+    },
+    runtime_env={"env_vars": {"RUNAI_STREAMER_CONCURRENCY": "16"}},
 )
 ```
 
@@ -345,13 +450,14 @@ config = LLMConfig(
 
 - Install `hf_transfer`: `pip install hf_transfer`
 - Set `HF_HUB_ENABLE_HF_TRANSFER=1` in `runtime_env`
-- Consider moving the model to S3/GCS in your cloud region and using RunAI streamer, and use sharding for large models
+- Consider moving the model to S3, GCS, or Azure storage in your cloud region and using RunAI streamer, and use sharding for large models
 
-### S3/GCS access errors
+### Cloud storage access errors
 
-- Verify bucket URI format (for example, `s3://bucket/path` or `gs://bucket/path`)
-- Check AWS/GCP credentials and regions are configured correctly
-- Ensure your IAM role or service account has `s3:GetObject` or `storage.objects.get` permissions
+- Verify bucket URI format (for example, `s3://bucket/path`, `gs://bucket/path`, or `abfss://container@account.dfs.core.windows.net/path`)
+- Check AWS/GCP/Azure credentials and regions are configured correctly
+- Ensure your IAM role, service account, or Azure identity has read access (`s3:GetObject`, `storage.objects.get`, or the **Storage Blob Data Reader** role)
+- For Azure, confirm the `adlfs` and `azure-identity` Python packages are installed on every node
 - Verify the bucket exists and is accessible from your deployment region
 
 ### Model files not found

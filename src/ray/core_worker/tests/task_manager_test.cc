@@ -3907,6 +3907,55 @@ TEST_F(TaskManagerLineageTest,
   ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
+TEST_F(TaskManagerTest, TestStreamingGeneratorFailsReportedReturnsBeforeFirstCompletion) {
+  // If a streaming generator task fails before its first completion has recorded
+  // its returns on the task spec (e.g. the executing actor died and cannot be
+  // restarted), the already-reported returns must still be failed. Otherwise
+  // their lost objects never get an error value and stay pending creation
+  // forever, hanging ray.get with no ObjectLost/ActorDied error.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ -1);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+
+  // Report one plasma return and consume it, but never complete the task, so
+  // spec.NumStreamingGeneratorReturns() stays 0.
+  auto return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(/*idx*/ 0,
+                                       /*finished*/ false,
+                                       generator_id,
+                                       /*dynamic_return_id*/ return_id,
+                                       /*data*/ data,
+                                       /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(obj_id, return_id);
+  ASSERT_EQ(manager_.GetTaskSpec(spec.TaskId())->NumStreamingGeneratorReturns(), 0u);
+
+  // Simulate the object being lost: its only copy was on the dead node, and
+  // object recovery deletes the in-memory marker before attempting recovery.
+  store_->Delete({return_id});
+  ASSERT_FALSE(stored_in_plasma.count(return_id));
+
+  // The task fails permanently (no retries left). With the fix the reported
+  // plasma return is failed through the plasma path (put_in_local_plasma_callback_)
+  // so its error lands in plasma and wakes a plasma-pull-blocked ray.get, rather
+  // than being left with no value (which would hang forever in pending creation).
+  auto error = rpc::ErrorType::ACTOR_DIED;
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_TRUE(stored_in_plasma.count(return_id));
+
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+}
+
 TEST_F(TaskManagerTest, TestActorWideBackpressureSeparatesReportAckAndConsumption) {
   // Actor-wide backpressure acknowledges report visibility immediately while consumed
   // progress is delivered through the separate consumption callback.
