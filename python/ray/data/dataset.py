@@ -6139,7 +6139,7 @@ class Dataset:
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Union[TorchDeviceType, Literal["auto"]] = "auto",
         collate_fn: Optional[
-            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+            Union[Callable[[Dict[str, np.ndarray]], CollatedData], CollateFn]
         ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
