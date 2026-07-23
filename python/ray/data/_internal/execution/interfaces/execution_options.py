@@ -447,6 +447,16 @@ class ExecutionOptions:
             f"label_selector={self.label_selector})"
         )
 
+    def __eq__(self, other: "ExecutionOptions") -> bool:
+        return (
+            self.resource_limits == other.resource_limits
+            and self.exclude_resources == other.exclude_resources
+            and self.preserve_order == other.preserve_order
+            and self.actor_locality_enabled == other.actor_locality_enabled
+            and self.verbose_progress == other.verbose_progress
+            and self.label_selector == other.label_selector
+        )
+
     @property
     def resource_limits(self) -> ExecutionResources:
         return self._resource_limits

@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 import ray.train
+from ray.data.context import DataContext
+from ray.train.v2._internal.data_integration.dataset_manager import DatasetManager
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
     DatasetShardProvider,
@@ -20,7 +22,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, NodeIdStr
-    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +31,10 @@ class RayDatasetShardProvider:
         self,
         datasets: Dict[str, GenDataset],
         data_config: ray.train.DataConfig,
-        data_context: "DataContext",
+        data_context: DataContext,
         world_size: int,
         worker_node_ids: List["NodeIdStr"],
     ):
-        from ray.train.v2._internal.data_integration.dataset_manager import (
-            DatasetManager,
-        )
-
         self._dataset_names = set(datasets)
         self._dataset_manager = (
             ray.remote(DatasetManager)
@@ -93,7 +90,6 @@ class DatasetsCallback(WorkerGroupCallback):
     ):
         self._datasets = datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
-        self._scaling_config = train_run_context.scaling_config
         self._dataset_shard_provider: Optional[RayDatasetShardProvider] = None
 
         # Capture the current DataContext to propagate it to
@@ -104,22 +100,7 @@ class DatasetsCallback(WorkerGroupCallback):
         # 3. Lastly, when the worker group is initialized, the Controller
         #    will call the `after_worker_group_start` callback to propagate
         #    the DataContext to Train workers.
-        from ray.data.context import DataContext
-
         self._data_context = copy.deepcopy(DataContext.get_current())
-
-    def get_train_total_resources(
-        self, scaling_config: ray.train.ScalingConfig
-    ) -> Dict[str, float]:
-        """Return the resources reserved for training, so that Data can exclude
-        these resources logically from its available pool."""
-        if scaling_config.elasticity_enabled:
-            # If Train is running with a variable number of workers,
-            # we can't provide a fixed number of resources to exclude.
-            # Instead, Train and Data should coordinate via the autoscaling
-            # coordinator to allocate resources dynamically.
-            return {}
-        return scaling_config.total_resources
 
     # --------------------------
     # WorkerGroupCallback
@@ -132,13 +113,6 @@ class DatasetsCallback(WorkerGroupCallback):
         worker_node_ids = [worker.metadata.node_id for worker in workers]
         datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
 
-        # TODO: Move this to the constructor.
-        # Notify the DataConfig about the total resources reserved for training.
-        total_train_resources = self.get_train_total_resources(self._scaling_config)
-        self._data_config.set_train_total_resources(
-            total_train_resources.get("CPU", 0), total_train_resources.get("GPU", 0)
-        )
-
         self._dataset_shard_provider = RayDatasetShardProvider(
             datasets=datasets,
             data_config=self._data_config,
@@ -150,9 +124,7 @@ class DatasetsCallback(WorkerGroupCallback):
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext
-        from ray.data.context import DataContext
-
-        def _propagate_data_context(ctx: "DataContext"):
+        def _propagate_data_context(ctx: DataContext):
             DataContext._set_current(ctx)
 
         worker_group.execute(
