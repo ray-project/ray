@@ -128,7 +128,7 @@ headGroupSpec:
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
 ```
 
-This only blocks voluntary evictions by the Cluster Autoscaler—it doesn't prevent node failures, manual Pod deletion, or reclamation of the underlying node (e.g., spot instances).
+This setting blocks eviction during autoscaling events. This doesn't prevent Ray head Pod errors such events as node failure, manual Pod deletion, or reclamation of the underlying node (such as spot instance preemption).
 
 #### image
 The Ray container images specified in the `RayCluster` CR should carry the same Ray version as the CR's `spec.rayVersion`. If you are using a nightly or development Ray image, you can specify Ray's latest release version under `spec.rayVersion`.
