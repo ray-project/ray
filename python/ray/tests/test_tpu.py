@@ -353,6 +353,42 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
     ]
 
 
+def test_pg_per_slice(ray_tpu_cluster):
+    """Test that pg_per_slice=True returns a list of per-slice PlacementGroups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+    assert len(multi_slice_placement_group.slice_placement_groups) == 2
+    for pg in multi_slice_placement_group.slice_placement_groups:
+        assert pg.bundle_count == 2
+        assert pg.bundle_specs == [
+            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 1.0},
+        ]
+    with pytest.raises(
+        ValueError,
+        match="pg_per_slice=True, use `slice_placement_groups` instead.",
+    ):
+        _ = multi_slice_placement_group.slice_placement_group
+
+
+def test_pg_per_slice_false_raises(ray_tpu_cluster):
+    """Test that pg_per_slice=False raises an error when accessing slice_placement_groups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=False,
+    )
+    with pytest.raises(
+        ValueError, match="pg_per_slice=False, use `slice_placement_group` instead."
+    ):
+        _ = multi_slice_placement_group.slice_placement_groups
+
+
 @patch("ray.util.tpu.placement_group")
 @patch("ray.util.tpu.remove_placement_group")
 @patch("ray.util.tpu.reserve_tpu_slice")
@@ -903,6 +939,30 @@ def test_release_head_pgs_idempotent(ray_tpu_cluster):
     assert len(slice_pg.head_placement_groups) == 0
 
 
+def test_pg_per_slice_release_head_pgs(ray_tpu_cluster):
+    """Test that release_head_pgs(slice_index) releases the head PG for a specific slice."""
+    multi_slice_pg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+
+    assert len(multi_slice_pg.head_placement_groups) == 2
+
+    # Release head PG for slice 0
+    multi_slice_pg.release_head_pgs(slice_index=0)
+    assert len(multi_slice_pg.head_placement_groups) == 1
+
+    # Release head PG for slice 1
+    multi_slice_pg.release_head_pgs(slice_index=1)
+    assert len(multi_slice_pg.head_placement_groups) == 0
+
+    # Ensure idempotence
+    multi_slice_pg.release_head_pgs(slice_index=1)
+    assert len(multi_slice_pg.head_placement_groups) == 0
+
+
 def test_shutdown_idempotent(ray_tpu_cluster):
     """Verifies that shutdown() is idempotent."""
     slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
@@ -967,13 +1027,19 @@ def test_chips_per_vm_zero_raises_value_error():
         )
 
 
-def _make_mock_slice_handle(num_bundles=2, chips_per_host=4, tpu_per_bundle=4):
+def _make_mock_slice_handle(
+    num_bundles=2, chips_per_host=4, tpu_per_bundle=4, num_slices=1
+):
     """Return a MagicMock that looks like a SlicePlacementGroup."""
     mock_handle = MagicMock(spec=SlicePlacementGroup)
+    mock_handle._pg_per_slice = False
+    mock_handle.num_slices = num_slices
     mock_handle.num_bundles = num_bundles
     mock_handle.chips_per_host = chips_per_host
     mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
-    mock_handle.placement_group = MagicMock()
+    mock_pg = MagicMock()
+    mock_handle.slice_placement_group = mock_pg
+    mock_handle.placement_group = mock_pg
     return mock_handle
 
 
@@ -1040,6 +1106,40 @@ def test_dispatch_missing_topology_raises():
         ValueError, match="topology and accelerator_version are required"
     ):
         ray.util.tpu.dispatch(_make_mock_fn(), topology="2x2x2")
+
+
+def test_dispatch_raises_value_error_if_slice_index_without_tpu_slice():
+    with pytest.raises(
+        ValueError,
+        match="slice_index can only be used when an existing tpu_slice is provided.",
+    ):
+        ray.util.tpu.dispatch(
+            _make_mock_fn(), topology="2x2x2", accelerator_version="v4", slice_index=0
+        )
+
+
+def test_dispatch_raises_value_error_if_slice_index_but_not_pg_per_slice():
+    mock_slice = _make_mock_slice_handle()
+    mock_slice._pg_per_slice = False
+    with pytest.raises(
+        ValueError,
+        match="slice_index can only be used when tpu_slice was created with pg_per_slice=True.",
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=0)
+
+
+def test_dispatch_raises_value_error_if_invalid_slice_index():
+    mock_slice = _make_mock_slice_handle()
+    mock_slice._pg_per_slice = True
+    mock_slice.num_slices = 2
+    with pytest.raises(
+        ValueError, match="Invalid slice_index 2. Must be between 0 and 1."
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=2)
+    with pytest.raises(
+        ValueError, match="Invalid slice_index -1. Must be between 0 and 1."
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=-1)
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
@@ -1200,16 +1300,22 @@ def test_dispatch_does_not_release_head_pgs_when_provided(mock_spg_cls):
     existing_handle.release_head_pgs.assert_not_called()
 
 
-def test_dispatch_raises_if_provided_slice_is_shut_down():
-    """A clear ValueError is raised when tpu_slice has already been shut down
-    (placement_group is None), rather than a confusing AttributeError."""
-    shut_down_handle = _make_mock_slice_handle()
-    shut_down_handle.placement_group = None
+@pytest.mark.parametrize("pg_per_slice, slice_index", [(False, None), (True, 0)])
+def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_index):
+    """A ValueError is raised when tpu_slice has already been shut down."""
+    shut_down_handle = _make_mock_slice_handle(num_slices=2)
+    shut_down_handle._pg_per_slice = pg_per_slice
+    if pg_per_slice:
+        shut_down_handle.slice_placement_groups = []
+    else:
+        shut_down_handle.slice_placement_group = None
+        shut_down_handle.placement_group = None
 
     with pytest.raises(ValueError, match="already been shut down"):
         ray.util.tpu.dispatch(
             _make_mock_fn(),
             tpu_slice=shut_down_handle,
+            slice_index=slice_index,
         )
 
 
@@ -1327,6 +1433,47 @@ def test_dispatch_integration_with_provided_slice(ray_tpu_cluster):
 
     # The slice handle is intact: caller can still use and shut it down.
     assert slice_handle.placement_group is not None
+    slice_handle.shutdown()
+
+
+def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
+    """Test dispatching to specific slices when pg_per_slice=True."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    slice_handle = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+    ray.get([pg.ready() for pg in slice_handle.slice_placement_groups])
+
+    # Dispatch to slice 0
+    refs_0 = ray.util.tpu.dispatch(
+        tpu_work,
+        tpu_slice=slice_handle,
+        slice_index=0,
+    )
+    assert len(refs_0) == 2
+
+    # Dispatch to slice 1
+    refs_1 = ray.util.tpu.dispatch(
+        tpu_work,
+        tpu_slice=slice_handle,
+        slice_index=1,
+    )
+    assert len(refs_1) == 2
+
+    node_ids_0 = set(ray.get(refs_0))
+    node_ids_1 = set(ray.get(refs_1))
+
+    assert len(node_ids_0) == 2
+    assert len(node_ids_1) == 2
+    assert node_ids_0.isdisjoint(node_ids_1)
+
     slice_handle.shutdown()
 
 
