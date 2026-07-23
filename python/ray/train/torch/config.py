@@ -244,9 +244,12 @@ class _TorchBackend(Backend):
                     f"be either 'env' or 'tcp'."
                 )
 
+            from ray.train.v2._internal.constants import is_v2_enabled
+
             # PyTorch distributed backends require LOCAL_RANK and other env vars
             # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
-            worker_group.execute(_set_torch_distributed_env_vars)
+            if is_v2_enabled():
+                worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -280,3 +283,11 @@ class _TorchBackend(Backend):
             logger.warning(
                 f"Torch process group shutdown timed out after {timeout_s} seconds"
             )
+
+    def on_training_start(
+        self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
+    ):
+        from ray.train.v2._internal.constants import is_v2_enabled
+
+        if not is_v2_enabled():
+            worker_group.execute(_set_torch_distributed_env_vars)
