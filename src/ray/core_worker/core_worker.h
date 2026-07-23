@@ -1564,11 +1564,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
-  /// Send a FreeLocalObjects batch from free_pending_ to the node.
-  /// We only allow 1 in-flight request per node for backpressure. If there's
-  /// already an in-flight request, this method just buffers the id and batches
-  /// it in the next request. A null client or failed reply drops the node's
-  /// queue so a dead / flaky raylet cannot wedge it.
+  /// Send a FreeLocalObjects batch from free_pending_ to the node. We only allow
+  /// 1 in-flight request per node for backpressure; ids that arrive meanwhile
+  /// batch into the next request. A null client or failed reply drops the node's
+  /// queue so a flaky raylet cannot wedge it.
   void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
@@ -2042,14 +2041,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Coalesces owner-driven FreeLocalObjects RPCs per node. At most one
-  /// FreeLocalObjects RPC is in flight per node; ids that arrive while one is in
-  /// flight ride the next batch, sent when the in-flight reply arrives
-  /// (self-clocked -- no timer, no window). Modeled on
-  /// OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded, but
-  /// guarded by its own mutex because Add (ReferenceCounter's free callback, on an
-  /// arbitrary thread) and the reply completion (io_service_) can race.
-  /// See FreeObjectOnNodesAsync / SendFreeLocalObjectsBatchIfNeeded.
+  /// Coalesces owner-driven FreeLocalObjects RPCs: at most one in flight per node.
+  /// Needs a mutex (unlike the io_service-only OBOD coalescer it mirrors) because
+  /// the free callback runs on an arbitrary ReferenceCounter thread while the reply
+  /// completion runs on io_service_. See SendFreeLocalObjectsBatchIfNeeded.
   absl::Mutex free_batch_mu_;
   /// node id -> FIFO queue of object ids waiting to be freed on that node.
   absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_

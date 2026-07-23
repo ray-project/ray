@@ -227,7 +227,7 @@ class RayletClientInterface {
 
   /// Free objects from the raylet's local object store. \p callback, if set, is
   /// invoked on the caller's io_service when the reply (or a channel-health
-  /// failure) arrives; it drives owner-side FreeLocalObjects batching.
+  /// failure) arrives.
   virtual void FreeLocalObjects(
       const rpc::FreeLocalObjectsRequest &request,
       const rpc::ClientCallback<rpc::FreeLocalObjectsReply> &callback = {}) = 0;
