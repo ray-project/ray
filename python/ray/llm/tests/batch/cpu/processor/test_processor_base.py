@@ -167,6 +167,7 @@ def test_processor_uses_map_batches_internal():
         stages=[DummyStage()],
     )
     dataset = Mock(spec=ray.data.Dataset)
+    dataset.map.return_value = dataset
     dataset.map_batches_internal.return_value = dataset
 
     assert processor(dataset) is dataset
