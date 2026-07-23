@@ -180,6 +180,8 @@ message PubsubLongPollingRequest {
   /// max_processed_sequence_id if the publisher_id doesn't match.
   /// This usually happens when gcs failover.
   bytes publisher_id = 3;
+  /// Return NOT_FOUND instead of creating state for an unknown subscriber.
+  bool reject_if_subscriber_missing = 4;
 }
 
 message PubsubLongPollingReply {

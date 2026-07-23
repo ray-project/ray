@@ -48,6 +48,7 @@ void PubSubHandlerBase::HandleGcsSubscriberPoll(
   pubsub_req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
   pubsub_req.set_publisher_id(std::move(*request.mutable_publisher_id()));
   pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+  pubsub_req.set_reject_if_subscriber_missing(request.reject_if_subscriber_missing());
   publisher_.ConnectToSubscriber(pubsub_req,
                                  reply->mutable_publisher_id(),
                                  reply->mutable_pub_messages(),

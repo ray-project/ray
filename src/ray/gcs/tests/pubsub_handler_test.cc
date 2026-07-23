@@ -74,6 +74,28 @@ class PubSubHandlerTest : public ::testing::Test {
   }
 
  protected:
+  void RegisterNodeSubscriber(const UniqueID &subscriber_id) {
+    rpc::GcsSubscriberCommandBatchRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    auto *command = request.add_commands();
+    command->set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+    command->mutable_subscribe_message();
+
+    rpc::GcsSubscriberCommandBatchReply reply;
+    Status received_status;
+    pubsub_handler_->HandleGcsSubscriberCommandBatch(
+        request,
+        &reply,
+        [&received_status](const Status &status,
+                           std::function<void()>,
+                           std::function<void()>) { received_status = status; });
+    ASSERT_TRUE(received_status.ok()) << received_status;
+  }
+
+  void PublishNodeInfo() {
+    gcs_publisher_->PublishNodeInfo(NodeID::FromRandom(), rpc::GcsNodeInfo());
+  }
+
   std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
 
@@ -141,6 +163,77 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchValidChannelType) {
                          std::function<void()>) { received_status = status; });
 
   ASSERT_TRUE(received_status.ok()) << received_status.message();
+}
+
+TEST_F(PubSubHandlerTest, HandleGcsSubscriberPollRejectsMissingStrictSubscriber) {
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(UniqueID::FromRandom().Binary());
+  request.set_reject_if_subscriber_missing(true);
+
+  rpc::GcsSubscriberPollReply reply;
+  Status received_status;
+  pubsub_handler_->HandleGcsSubscriberPoll(
+      request,
+      &reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsNotFound()) << received_status;
+}
+
+TEST_F(PubSubHandlerTest, HandleGcsSubscriberPollAllowsMissingDefaultSubscriber) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+
+  rpc::GcsSubscriberPollReply reply;
+  Status received_status;
+  bool reply_sent = false;
+  pubsub_handler_->HandleGcsSubscriberPoll(
+      request,
+      &reply,
+      [&received_status, &reply_sent](
+          const Status &status, std::function<void()>, std::function<void()>) {
+        received_status = status;
+        reply_sent = true;
+      });
+  ASSERT_FALSE(reply_sent);
+
+  RegisterNodeSubscriber(subscriber_id);
+  PublishNodeInfo();
+
+  ASSERT_TRUE(reply_sent);
+  ASSERT_TRUE(received_status.ok()) << received_status;
+  ASSERT_EQ(reply.pub_messages_size(), 1);
+}
+
+TEST_F(PubSubHandlerTest, HandleGcsSubscriberPollAllowsRegisteredStrictSubscriber) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  RegisterNodeSubscriber(subscriber_id);
+
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_reject_if_subscriber_missing(true);
+
+  rpc::GcsSubscriberPollReply reply;
+  Status received_status;
+  bool reply_sent = false;
+  pubsub_handler_->HandleGcsSubscriberPoll(
+      request,
+      &reply,
+      [&received_status, &reply_sent](
+          const Status &status, std::function<void()>, std::function<void()>) {
+        received_status = status;
+        reply_sent = true;
+      });
+  ASSERT_FALSE(reply_sent);
+
+  PublishNodeInfo();
+
+  ASSERT_TRUE(reply_sent);
+  ASSERT_TRUE(received_status.ok()) << received_status;
+  ASSERT_EQ(reply.pub_messages_size(), 1);
 }
 
 TEST_F(

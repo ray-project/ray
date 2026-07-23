@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import random
@@ -7,6 +8,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
+import grpc
 import pytest
 import requests
 
@@ -18,9 +20,94 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
+from ray.dashboard.modules.node import node_consts, node_head as node_head_module
+from ray.dashboard.modules.node.node_head import NodeHead
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
+
+
+class _FakeRpcError(grpc.RpcError):
+    def __init__(self, status_code):
+        self._status_code = status_code
+
+    def code(self):
+        return self._status_code
+
+
+def _node_info(node_id, state):
+    return {
+        "nodeId": node_id,
+        "state": state,
+        "isHeadNode": False,
+        "nodeManagerAddress": "127.0.0.1",
+        "nodeManagerPort": 10001,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status_code",
+    [grpc.StatusCode.NOT_FOUND, grpc.StatusCode.UNAVAILABLE],
+)
+async def test_node_subscription_recovers_and_refreshes_snapshot(
+    monkeypatch, status_code
+):
+    node_head = NodeHead.__new__(NodeHead)
+    node_head.gcs_address = "127.0.0.1:1234"
+    node_head._loop = asyncio.get_running_loop()
+    node_head._node_executor = None
+
+    snapshots = [
+        [_node_info("node-id", "ALIVE")],
+        [_node_info("node-id", "DEAD")],
+    ]
+
+    class FakeGcsClient:
+        def __init__(self):
+            self.get_all_calls = 0
+
+        async def async_get_all_node_info(self, timeout=None):
+            snapshot = snapshots[self.get_all_calls]
+            self.get_all_calls += 1
+            return ({node["nodeId"]: node for node in snapshot}, None)
+
+    class FakeSubscriber:
+        instances = []
+
+        def __init__(self, address):
+            self.index = len(self.instances)
+            self.closed = False
+            self.instances.append(self)
+
+        async def subscribe(self):
+            pass
+
+        async def poll(self, batch_size):
+            if self.index == 0:
+                raise _FakeRpcError(status_code)
+            await asyncio.Event().wait()
+
+        async def close(self):
+            self.closed = True
+
+    node_head.gcs_client = FakeGcsClient()
+    monkeypatch.setattr(node_head_module, "GcsAioNodeInfoSubscriber", FakeSubscriber)
+    monkeypatch.setattr(
+        node_head_module, "_gcs_node_info_to_dict", lambda message: message
+    )
+    monkeypatch.setattr(node_consts, "RETRY_GCS_NODE_SUBSCRIPTION_INTERVAL_SECONDS", 0)
+
+    updates = node_head._subscribe_for_node_updates()
+    try:
+        assert (await anext(updates))["state"] == "ALIVE"
+        assert (await anext(updates))["state"] == "DEAD"
+    finally:
+        await updates.aclose()
+
+    assert node_head.gcs_client.get_all_calls == 2
+    assert len(FakeSubscriber.instances) == 2
+    assert all(subscriber.closed for subscriber in FakeSubscriber.instances)
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
