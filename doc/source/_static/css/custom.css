@@ -378,6 +378,16 @@ table.autosummary tr > td:first-child > p > a > code > span {
   overflow-wrap: break-word;
 }
 
+/* The theme bolds the whole signature via `dt { font-weight: 700 }`, flattening
+   its hierarchy. Reset to normal weight and re-bold only the object name so it
+   stays the scannable anchor. */
+dt.sig {
+  font-weight: normal;
+}
+dt.sig .sig-name {
+  font-weight: 700;
+}
+
 /* RTD footer container makes the parent */
 /* #main-sidebar always scrollable if you don't remove negative margin. */
 /* Restrict width to 30% of the window */
