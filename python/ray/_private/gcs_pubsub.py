@@ -25,6 +25,13 @@ _OBSERVABILITY_PUBSUB_CHANNELS = (
 )
 
 
+class GcsSubscriberStateMissingError(grpc.RpcError):
+    """The GCS publisher no longer has state for a registered subscriber."""
+
+    def code(self) -> grpc.StatusCode:
+        return grpc.StatusCode.NOT_FOUND
+
+
 class _SubscriberBase:
     def __init__(self, worker_id: bytes = None):
         self._worker_id = worker_id
@@ -288,7 +295,17 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         Returns:
             A list of tuples of (node_id, GcsNodeInfo).
         """
-        await self._poll(timeout=timeout, raise_on_unavailable=True)
+        try:
+            await self._poll(timeout=timeout, raise_on_unavailable=True)
+        except grpc.RpcError as error:
+            # RayStatusToGrpcStatus transports internal Ray statuses as ABORTED
+            # and places the Ray status name in the gRPC details.
+            if (
+                error.code() == grpc.StatusCode.ABORTED
+                and error.details() == "NotFound"
+            ):
+                raise GcsSubscriberStateMissingError() from error
+            raise
         return self._pop_node_infos(self._queue, batch_size=batch_size)
 
     @staticmethod
