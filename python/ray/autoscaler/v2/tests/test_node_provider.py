@@ -789,22 +789,29 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._delete_ray_cluster()
         path = f"rayclusters/{self.provider._cluster_name}"
         assert path in self.mock_client._deletes
-        assert self.provider._deletion_requested is True
 
-    def test_delete_ray_cluster_idempotent(self):
-        self.provider._deletion_requested = True
+    def test_delete_ray_cluster_skips_when_deletion_in_progress(self):
+        self.provider._ray_cluster["metadata"][
+            "deletionTimestamp"
+        ] = "2026-01-01T00:00:00Z"
         self.provider._delete_ray_cluster()
         path = f"rayclusters/{self.provider._cluster_name}"
         assert path not in self.mock_client._deletes
 
     def test_delete_ray_cluster_swallows_delete_failure(self):
+        original_delete = self.mock_client.delete
+
         def failing_delete(*args, **kwargs):
             raise RuntimeError("k8s unreachable")
 
         self.mock_client.delete = failing_delete
-        # Should not raise, and the flag stays False so the next loop retries.
+        # Do not raise. The resource is not yet marked for deletion, so the next
+        # reconcile loop will retry the delete operation.
         self.provider._delete_ray_cluster()
-        assert self.provider._deletion_requested is False
+        self.mock_client.delete = original_delete
+        self.provider._delete_ray_cluster()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path in self.mock_client._deletes
 
     # --- No-driver termination predicate + dispatch ---
 

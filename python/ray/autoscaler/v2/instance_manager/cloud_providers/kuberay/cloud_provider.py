@@ -92,9 +92,6 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._last_seen_job_end_time = 0
         # No-driver timeout (seconds) from the CR; None disables the feature.
         self._no_driver_timeout_seconds: Optional[float] = None
-        # Whether a cluster deletion has already been requested; guards against
-        # re-issuing DELETE while the CR lingers during finalizer termination.
-        self._deletion_requested = False
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
@@ -727,10 +724,10 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Deletes the RayCluster CR once the no-driver TTL has expired.
 
         The autoscaler's service account is scoped by KubeRay to allow deleting
-        only its own RayCluster. Idempotent via ``_deletion_requested``; DELETE
-        errors are swallowed so the next reconcile loop retries.
+        only its own RayCluster. Skips when a deletion is already in progress.
+        DELETE errors are swallowed so the next reconcile loop retries.
         """
-        if self._deletion_requested:
+        if "deletionTimestamp" in self._ray_cluster["metadata"]:
             return
 
         try:
@@ -739,7 +736,6 @@ class KubeRayProvider(ICloudInstanceProvider):
             logger.exception("Failed to DELETE RayCluster %s", self._cluster_name)
             return
 
-        self._deletion_requested = True
         logger.info(
             "Deleted RayCluster %s (no-driver TTL expired).", self._cluster_name
         )
