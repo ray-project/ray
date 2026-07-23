@@ -15,12 +15,15 @@ local FORWARD_BODY = ${FORWARD_BODY}
 -- ConsistentHashRouter) can use it.
 local SESSION_HEADER = "${SESSION_HEADER}"
 
--- Per-app state. The frontend sets txn.ingress_request_router_app to the
--- backend name whose path prefix matched, and we look up that app's
--- router pool and replica map here. Each app routes through its own
--- router; replica IDs are scoped to the app to avoid cross-app pinning.
+-- Per-app router pool and replica map. The frontend sets
+-- txn.ingress_request_router_app to the matched backend name. We look up its
+-- routers and replicas here. ROUTERS[app] is a list we round-robin over.
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
+
+-- Per-app round-robin cursor, one Lua state per worker thread under
+-- lua-load-per-thread, so rotation needs no cross-thread synchronization.
+local _rr_cursor = {}
 
 local function call_router(router, body, truncated_length, session_id)
     local sock = core.tcp()
@@ -94,7 +97,7 @@ end
 -- txn.via_ingress_request_router (success) or txn.ingress_request_router_failed
 -- (failure). Both outcomes are timed by the caller; only the silent early
 -- returns in the action handler skip timing because no routing was attempted.
-local function _route_via_ingress_request_router(txn, router, replica_map)
+local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- FORWARD_BODY=false: don't read or forward the body; call the router
     -- with body="" so a Content-Length: 0 POST still goes through routing
     -- (any policy that needs the body must opt in via FORWARD_BODY=true).
@@ -141,7 +144,20 @@ local function _route_via_ingress_request_router(txn, router, replica_map)
         end
     end
 
-    local response = call_router(router, body, truncated, session_id)
+    -- Round-robin over the app's routers, one cursor step per request. On a
+    -- connection failure try the next router. A non-200 is the router's answer
+    -- and is not retried.
+    local n = #pool
+    local start = _rr_cursor[app] or 0
+    _rr_cursor[app] = start + 1
+    local response = nil
+    for i = 0, n - 1 do
+        local router = pool[(start + i) % n + 1]
+        response = call_router(router, body, truncated, session_id)
+        if response then
+            break
+        end
+    end
     if not response then
         txn:set_var("txn.ingress_request_router_failed", "router_unreachable")
         return
@@ -196,12 +212,12 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     if not app then
         return
     end
-    local router = ROUTERS[app]
+    local pool = ROUTERS[app]
     local replica_map = REPLICA_TARGETS[app]
-    if not router or not replica_map then
+    if not pool or not replica_map then
         return
     end
 
-    _route_via_ingress_request_router(txn, router, replica_map)
+    _route_via_ingress_request_router(txn, app, pool, replica_map)
     ${METRICS_POST_CALL_ROUTER}
 end, 0)
