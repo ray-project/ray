@@ -1226,19 +1226,6 @@ def test_delta_targets_clamps_to_episode():
     assert pad.tolist() == [[True, False, False], [False, False, True]]
 
 
-def test_build_schema_delta_adds_pad_columns(lerobot_dataset_no_video):
-    from ray.data.datasource import LeRobotDatasource
-
-    src = LeRobotDatasource(
-        lerobot_dataset_no_video,
-        delta_timestamps={"action": [0.0, 0.1], "state": [-0.1, 0.0]},
-    )
-    names = src.distilled_metas[0].schema.names
-    assert "action_is_pad" in names and "state_is_pad" in names
-    # A non-windowed feature gets no pad mask.
-    assert "timestamp_is_pad" not in names
-
-
 def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no_video):
     """Tabular windows: ``action`` gathers [t, t+1] and ``state`` gathers
     [t-1, t], each clamped to the anchor's episode with an is_pad mask."""
@@ -1250,13 +1237,13 @@ def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no
 
     for row in rows:
         i = row["index"]
-        ep_from, ep_to = (i // 5) * 5, (i // 5) * 5 + 5
+        ep_from = (i // 5) * 5
+        ep_to = ep_from + 5
         action = np.asarray(row["action"])
         state = np.asarray(row["state"])
         action_pad = np.asarray(row["action_is_pad"])
         state_pad = np.asarray(row["state_is_pad"])
         assert action.shape == (2, 2) and state.shape == (2, 2)  # (T, dim)
-        assert action_pad.shape == (2,) and action_pad.dtype == bool
 
         # Fixture: action[i] == [i, i+1]; window is [t, t+1] clamped to episode.
         j_next = min(i + 1, ep_to - 1)

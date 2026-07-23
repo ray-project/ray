@@ -49,12 +49,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Default frame-grid tolerance (seconds) for delta_timestamps offsets; matches
-# lerobot's ``LeRobotDataset(tolerance_s=1e-4)`` default. Overridable per read via
-# ``read_lerobot(delta_tolerance_s=...)``.
-_DEFAULT_DELTA_TOLERANCE_S = 1e-4
-
-
 class _LeRobotRoot(NamedTuple):
     """Per-root derived state for the LeRobot datasource built on the driver."""
 
@@ -443,7 +437,8 @@ def _build_root(
     video_storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float] = None,
     delta_timestamps: Optional[Dict[str, List[float]]] = None,
-    delta_tolerance_s: float = _DEFAULT_DELTA_TOLERANCE_S,
+    *,
+    delta_tolerance_s: float,
 ) -> Tuple[_LeRobotRoot, pa.Table]:
     """Compute the per-root derived state bundle for a lerobot
     ``LeRobotDatasetMetadata`` instance.
@@ -579,7 +574,8 @@ def _resolve_root(
     storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float],
     delta_timestamps: Optional[Dict[str, List[float]]] = None,
-    delta_tolerance_s: float = _DEFAULT_DELTA_TOLERANCE_S,
+    *,
+    delta_tolerance_s: float,
 ) -> Tuple[_LeRobotRoot, pa.Table, "LeRobotDatasetMetadata"]:
     """Resolve one root into its read-task bundle + per-episode table.
 
@@ -1353,7 +1349,7 @@ class LeRobotDatasource(Datasource):
         storage_options: Optional[Dict[str, Any]] = None,
         frame_tolerance_s: Optional[float] = None,
         delta_timestamps: Optional[Dict[str, List[float]]] = None,
-        delta_tolerance_s: float = _DEFAULT_DELTA_TOLERANCE_S,
+        delta_tolerance_s: float = 1e-4,
     ):
         """Initialize LeRobot datasource.
 
