@@ -449,7 +449,6 @@ class RDTManager:
             # metadata instead; set_rdt_metadata applies it when the ref registers.
             if obj_id not in self._managed_rdt_metadata:
                 self._pending_tensor_transport_meta[obj_id] = tensor_transport_meta
-                self._tensor_transport_meta_cv.notify_all()
                 return
             self._managed_rdt_metadata[obj_id] = self._managed_rdt_metadata[
                 obj_id
@@ -922,9 +921,6 @@ class RDTManager:
 
         with self._lock:
             rdt_meta = self._managed_rdt_metadata.pop(object_id)
-            # Drop any metadata stashed before registration so it does not leak if the
-            # object is freed before its ref ever registered.
-            self._pending_tensor_transport_meta.pop(object_id, None)
         # TODO(#60434): Once the driver has some notion about where rdt args are stored, we can
         # integrate __ray_free__ with the current free objects RPC and avoid having to call
         # an actor task here.
