@@ -238,6 +238,11 @@ class NodeHead(SubprocessModule):
                     "refreshing node state.",
                     error.code(),
                 )
+            except Exception:
+                logger.exception(
+                    "Failed handling updated nodes. Reconnecting and refreshing "
+                    "node state."
+                )
             finally:
                 await subscriber.close()
 
@@ -280,7 +285,10 @@ class NodeHead(SubprocessModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        if not is_alive:
+        if is_alive:
+            if DataSource.nodes.get(node_id, {}).get("state") == "DEAD":
+                self._remove_from_dead_node_queue(node_id)
+        else:
             self._remove_from_dead_node_queue(node_id)
             # Remove the agent address from the internal KV.
             keys = [

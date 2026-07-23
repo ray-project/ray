@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import traceback
+from collections import deque
 from datetime import datetime, timedelta
 
 import grpc
@@ -47,11 +48,21 @@ def _node_info(node_id, state):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "status_code",
-    [grpc.StatusCode.NOT_FOUND, grpc.StatusCode.UNAVAILABLE],
+    "poll_error",
+    [
+        pytest.param(
+            _FakeRpcError(grpc.StatusCode.NOT_FOUND),
+            id="subscriber-not-found",
+        ),
+        pytest.param(
+            _FakeRpcError(grpc.StatusCode.UNAVAILABLE),
+            id="gcs-unavailable",
+        ),
+        pytest.param(RuntimeError("poll failed"), id="non-grpc-error"),
+    ],
 )
 async def test_node_subscription_recovers_and_refreshes_snapshot(
-    monkeypatch, status_code
+    monkeypatch, poll_error
 ):
     node_head = NodeHead.__new__(NodeHead)
     node_head.gcs_address = "127.0.0.1:1234"
@@ -85,7 +96,7 @@ async def test_node_subscription_recovers_and_refreshes_snapshot(
 
         async def poll(self, batch_size):
             if self.index == 0:
-                raise _FakeRpcError(status_code)
+                raise poll_error
             await asyncio.Event().wait()
 
         async def close(self):
@@ -108,6 +119,38 @@ async def test_node_subscription_recovers_and_refreshes_snapshot(
     assert node_head.gcs_client.get_all_calls == 2
     assert len(FakeSubscriber.instances) == 2
     assert all(subscriber.closed for subscriber in FakeSubscriber.instances)
+
+
+@pytest.mark.asyncio
+async def test_alive_node_is_removed_from_dead_node_queue(monkeypatch):
+    node_id = "node-id"
+    node_head = NodeHead.__new__(NodeHead)
+    node_head._dead_node_queue = deque([node_id])
+    node_head._stubs = {}
+
+    channel = object()
+    stub = object()
+    monkeypatch.setitem(
+        node_head_module.DataSource.nodes,
+        node_id,
+        _node_info(node_id, "DEAD"),
+    )
+    monkeypatch.setattr(
+        node_head_module,
+        "init_grpc_channel",
+        lambda *args, **kwargs: channel,
+    )
+    monkeypatch.setattr(
+        node_head_module.node_manager_pb2_grpc,
+        "NodeManagerServiceStub",
+        lambda actual_channel: stub,
+    )
+
+    await node_head._update_node(_node_info(node_id, "ALIVE"))
+
+    assert list(node_head._dead_node_queue) == []
+    assert node_head_module.DataSource.nodes[node_id]["state"] == "ALIVE"
+    assert node_head._stubs[node_id] is stub
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
