@@ -53,6 +53,9 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_PROMPT_IDS_HEADER,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -112,6 +115,35 @@ def _canonicalize_request_id_header(
         return RawRequestInfo(headers=headers)
     # Preserve any non-header fields RawRequestInfo carries (now or in the future).
     return dataclasses.replace(raw_request_info, headers=headers)
+
+
+def _install_prompt_ids_forwarding(serving_chat: Any) -> None:
+    """Stage ``x-kv-prompt-ids`` header ids into ``kv_transfer_params`` so the
+    renderer skips re-tokenization (vllm-project/vllm#48145). A missing or
+    malformed header leaves the normal render path."""
+    if serving_chat is None:
+        return
+    orig_create = serving_chat.create_chat_completion
+
+    async def create_chat_completion(request, raw_request=None, **kwargs):
+        raw_ids = (
+            raw_request.headers.get(KV_PROMPT_IDS_HEADER)
+            if raw_request is not None
+            else None
+        )
+        if raw_ids:
+            try:
+                ids = [int(t) for t in raw_ids.split(",")]
+            except ValueError:
+                ids = None
+            if ids:
+                request.kv_transfer_params = {
+                    **(request.kv_transfer_params or {}),
+                    "prompt_token_ids": ids,
+                }
+        return await orig_create(request, raw_request, **kwargs)
+
+    serving_chat.create_chat_completion = create_chat_completion
 
 
 def _convert_config_dicts(merged: dict) -> dict:
@@ -337,6 +369,10 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
+        if is_kv_aware(self.llm_config):
+            _install_prompt_ids_forwarding(
+                getattr(app.state, "openai_serving_chat", None)
+            )
         return app
 
     async def start(self) -> None:
