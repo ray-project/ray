@@ -10,15 +10,9 @@ from dynamo.llm import compute_block_hash_for_seq
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
-from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
-    configure_kv_events_for_kv_routing,
-)
-from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 
-from utils import _TestKVAwareRouter, patch_ingress
+from utils import MODEL_ID, _TestKVAwareRouter, build_kv_app, patch_ingress
 
-MODEL_ID = "Qwen/Qwen3-0.6B"
 APP_NAME = "lifecycle_tracking_gpu_test"
 REQUEST_ID = "gpu-req-1"
 BLOCK_SIZE = 16
@@ -67,40 +61,13 @@ class TestLifecycleTracking:
             ray.init(address="auto")
         serve.shutdown()
 
-        engine_kwargs = dict(
-            max_model_len=2048,
-            enforce_eager=True,
-            gpu_memory_utilization=0.4,
-            use_tqdm_on_load=False,
-        )
-        llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(
-                model_id=MODEL_ID,
-                model_source=MODEL_ID,
-            ),
-            deployment_config=dict(
-                autoscaling_config=dict(min_replicas=1, max_replicas=1),
-                # KVAwareRouter gates engine token tracking and the KV-events
-                # plane; the ingress builds the KVTokenTracker.
-                request_router_config=RequestRouterConfig(
-                    request_router_class=_TestKVAwareRouter
-                ),
-            ),
-            engine_kwargs=engine_kwargs,
-            placement_group_config={"bundles": [{"GPU": 1}]},
-            experimental_configs={"KV_EVENTS_PORT_BASE": 21600},
-            runtime_env=dict(env_vars={"VLLM_DISABLE_COMPILE_CACHE": "1"}),
-            log_engine_metrics=False,
-        )
-        # Emit engine KV-cache events so the tracker registers the replica's
-        # worker (making it schedulable, required to book a reservation) and the
-        # service indexes the prompt's blocks.
-        configure_kv_events_for_kv_routing(llm_config)
-
         # Swap the ingress for the introspection LLMRouter so booked lifecycle
         # events and the tracker's state are reachable over the deployment handle.
         with patch_ingress():
-            app = build_openai_app({"llm_configs": [llm_config]})
+            app = build_kv_app(
+                request_router_class=_TestKVAwareRouter,
+                kv_events_port_base=21600,
+            )
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
