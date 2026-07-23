@@ -324,6 +324,10 @@ def get_all_modules(module_type):
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
     ):
+        # Skip test packages and test modules.
+        leaf = name.rpartition(".")[2]
+        if leaf == "tests" or leaf.startswith("test_"):
+            continue
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as e:
