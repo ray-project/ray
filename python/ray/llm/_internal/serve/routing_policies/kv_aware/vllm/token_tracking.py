@@ -29,15 +29,16 @@ def _get_prompt_token_ids(prompt: Any) -> List[int]:
 
 
 class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to the router-local
-    KVTokenTracker, reached via the LLMRouter deployment handle, which maintains
-    per-replica token load statistics.
+    """Ordered, non-blocking bridge from the engine to every LLMRouter
+    replica's KVTokenTracker, which maintains per-replica token load
+    statistics. Each batch is broadcast to all ingress replicas so their
+    trackers share one booked-load view without any peer-to-peer sync.
 
     ``report`` only enqueues locally, so generation never blocks on delivery.
-    A single delivery task per replica drains the queue to the tracker, awaiting
-    one ``on_lifecycle_events`` call at a time so events arrive in the order they
-    were reported. Events that pile up during a call are sent together in the
-    next one.
+    A single delivery task per replica drains the queue to the trackers,
+    awaiting one broadcast at a time so events arrive everywhere in the order
+    they were reported. Events that pile up during a call are sent together in
+    the next one.
     """
 
     def __init__(self, handle: DeploymentHandle, worker_id: int):
@@ -61,10 +62,22 @@ class LifecycleEventForwarder:
             while not self._events.empty():
                 batch.append(self._events.get_nowait())
             try:
-                await self.handle.on_lifecycle_events.remote(batch)
+                # return_exceptions so one failed replica cannot mask delivery
+                # to the rest; failures are logged and dropped below.
+                results = await self.handle.broadcast(
+                    "on_lifecycle_events", batch
+                ).results_async(return_exceptions=True)
+                errors = [r for r in results if isinstance(r, Exception)]
+                if errors:
+                    logger.warning(
+                        "KV lifecycle events dropped on %d/%d ingress replicas: %s",
+                        len(errors),
+                        len(results),
+                        errors[0],
+                    )
             except Exception as e:
-                # Best-effort delivery: any failure (the LLMRouter handle being
-                # unavailable during a redeploy, backpressure, a booking error) is
+                # Best-effort delivery: any failure (no LLMRouter replica being
+                # available during a redeploy, backpressure, a booking error) is
                 # dropped so the engine's token stream is never disrupted; report()
                 # restarts the delivery task on the next event.
                 logger.warning("Dropping KV lifecycle events: %s", e)

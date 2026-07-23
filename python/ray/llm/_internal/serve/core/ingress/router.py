@@ -200,9 +200,9 @@ class LLMRouter:
     async def on_lifecycle_events(self, batch):
         """Engine-facing intake for request lifecycle events.
 
-        Engine replicas RPC this LLMRouter handle method to book request
-        load; it applies the batch to the KVTokenTracker on this ingress
-        replica's event loop.
+        Engine replicas broadcast each batch to every LLMRouter replica to
+        book request load; this applies it to the KVTokenTracker on this
+        ingress replica's event loop.
         """
         return await self._kv_token_tracker.on_lifecycle_events(batch)
 
