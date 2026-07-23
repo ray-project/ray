@@ -21,6 +21,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+    RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_EWMA_ALPHA,
+    RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -2181,6 +2183,127 @@ def test_compute_backoff_s_does_not_overflow():
     )
 
     assert router._compute_backoff_s(2048) == router.max_backoff_s
+
+
+@pytest.mark.asyncio
+async def test_probe_deadline_adapts_to_rtt_ewma(pow_2_router):
+    """The per-request probe deadline is seeded from the EWMA of recent successful
+    probe round-trip times (padded by RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER),
+    bounded below by the base deadline and above by the max."""
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.1
+    s.max_queue_len_response_deadline_s = 1.0
+    mult = RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER
+
+    async def first_deadline_for_ewma(name, ewma):
+        r = FakeRunningReplica(name)
+        r.set_queue_len_response(0)  # respond immediately -> clean round
+        s._probe_rtt_ewma_s = ewma
+        await s._probe_queue_lens([r], 0)
+        return r.queue_len_deadline_history[0]
+
+    # In-range EWMA -> the starting deadline tracks ewma * multiplier.
+    assert await first_deadline_for_ewma("mid", 0.2) == pytest.approx(0.2 * mult)
+    # Tiny EWMA -> floored at the base deadline (healthy cluster stays fast).
+    assert await first_deadline_for_ewma("low", 1e-6) == pytest.approx(0.1)
+    # Huge EWMA -> capped at the max deadline.
+    assert await first_deadline_for_ewma("high", 100.0) == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_probe_rtt_ewma_updates_only_on_clean_round(pow_2_router):
+    """The RTT EWMA is updated from a clean probe round (every replica answered) and
+    left unchanged when a probe times out (a censored sample)."""
+    s = pow_2_router
+    assert s._probe_rtt_ewma_s is None
+
+    # Clean round: replica answers within the deadline -> EWMA becomes set.
+    r_ok = FakeRunningReplica("ok")
+    r_ok.set_queue_len_response(0)
+    await s._probe_queue_lens([r_ok], 0)
+    assert s._probe_rtt_ewma_s is not None
+    assert s._probe_rtt_ewma_s >= 0.0
+
+    # Timed-out round: replica never answers -> EWMA left unchanged.
+    prev = s._probe_rtt_ewma_s
+    s.queue_len_response_deadline_s = 0.001
+    s.max_queue_len_response_deadline_s = 0.001
+    r_slow = FakeRunningReplica("slow")  # no response set -> times out
+    await s._probe_queue_lens([r_slow], 0)
+    assert s._probe_rtt_ewma_s == prev
+
+
+def test_update_probe_rtt_ewma_blends_each_sample(pow_2_router):
+    """Each probe RTT is folded with equal per-sample weight: the prior decays by
+    (1 - alpha) per sample and the newest enters with weight alpha; the first sample
+    seeds the EWMA and a multi-sample round folds each in order."""
+    s = pow_2_router
+    alpha = RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_EWMA_ALPHA
+    assert s._probe_rtt_ewma_s is None
+    s._update_probe_rtt_ewma([0.10])  # first sample seeds
+    assert s._probe_rtt_ewma_s == pytest.approx(0.10)
+    s._update_probe_rtt_ewma([0.20])  # second blends
+    assert s._probe_rtt_ewma_s == pytest.approx((1 - alpha) * 0.10 + alpha * 0.20)
+    # A two-sample round folds each in order -> same as two sequential single folds.
+    s._probe_rtt_ewma_s = None
+    s._update_probe_rtt_ewma([0.10, 0.20])
+    assert s._probe_rtt_ewma_s == pytest.approx((1 - alpha) * 0.10 + alpha * 0.20)
+
+
+def test_update_probe_rtt_ewma_decays_toward_recent(pow_2_router):
+    """After a high sample, repeated low samples pull the EWMA back down toward the
+    recent (low) RTT -- the estimate recovers when probe latency drops."""
+    s = pow_2_router
+    s._update_probe_rtt_ewma([1.0])
+    assert s._probe_rtt_ewma_s == pytest.approx(1.0)
+    for _ in range(50):
+        s._update_probe_rtt_ewma([0.01])
+    assert s._probe_rtt_ewma_s == pytest.approx(0.01, abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_probe_rtt_ewma_skips_partial_rounds(pow_2_router):
+    """A censored round -- some probed replicas time out while others succeed -- must
+    NOT update the EWMA. Folding only the fast successes would bias it low, below
+    what the slow (timed-out) replica needs."""
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.05
+    s.max_queue_len_response_deadline_s = 0.05
+    assert s._probe_rtt_ewma_s is None
+    r_ok = FakeRunningReplica("ok")
+    r_ok.set_queue_len_response(0)
+    r_slow = FakeRunningReplica("slow")  # never answers -> times out
+    await s._probe_queue_lens([r_ok, r_slow], 0)
+    # Partial round (r_ok answered, r_slow timed out) -> EWMA left unchanged.
+    assert s._probe_rtt_ewma_s is None
+
+
+@pytest.mark.asyncio
+async def test_probe_deadline_seeds_from_folded_rtt_and_scales_with_backoff(
+    pow_2_router,
+):
+    """End-to-end fold -> seed: a folded RTT seeds the next round's deadline (padded by
+    the multiplier), and the seed scales by 2 ** backoff_index."""
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.1
+    s.max_queue_len_response_deadline_s = 10.0
+    mult = RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER
+
+    async def deadline_at(backoff_index):
+        r = FakeRunningReplica(f"r{backoff_index}")
+        r.set_queue_len_response(0)  # clean round; deadline recorded before this folds
+        await s._probe_queue_lens([r], backoff_index)
+        return r.queue_len_deadline_history[0]
+
+    # Folding a 0.3s RTT seeds the deadline at ewma * multiplier.
+    s._update_probe_rtt_ewma([0.3])
+    assert await deadline_at(0) == pytest.approx(0.3 * mult)
+    # The seed scales by 2 ** backoff_index (reset the EWMA -- the probe above folded a
+    # ~0 sample into it -- so we isolate the backoff scaling).
+    s._probe_rtt_ewma_s = 0.3
+    assert await deadline_at(1) == pytest.approx(0.3 * mult * 2)
+    s._probe_rtt_ewma_s = 0.3
+    assert await deadline_at(2) == pytest.approx(0.3 * mult * 4)
 
 
 if __name__ == "__main__":
