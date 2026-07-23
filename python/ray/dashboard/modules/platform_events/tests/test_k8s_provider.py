@@ -8,13 +8,13 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from kubernetes.client.rest import ApiException
 
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.platform_event_pb2 import Source
 from ray.dashboard.modules.platform_events.providers.k8s_provider import (
     KUBERAY_LABEL_KEY_CLUSTER,
     MAX_NON_CLUSTER_POD_CACHE,
+    ApiException,
     KubernetesEventProvider,
 )
 
