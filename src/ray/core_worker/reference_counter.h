@@ -539,15 +539,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Callbacks extracted under the lock to be invoked after release.
-  using DeferredCallbacks =
-      std::vector<std::pair<ObjectID, std::function<void(const ObjectID &)>>>;
+  /// Work extracted under the lock to be invoked after release.
+  struct DeferredWork {
+    std::vector<std::pair<ObjectID, std::function<void(const ObjectID &)>>> callbacks;
+    std::vector<std::pair<ObjectID, absl::flat_hash_set<NodeID>>> frees;
+  };
 
   /// This should be called whenever the object is out of scope or manually freed.
-  /// When `deferred_cbs` is non-null, OOS callbacks are collected into it
-  /// instead of being invoked inline under the mutex.
+  /// When `deferred` is non-null, OOS callbacks and free_object_on_nodes
+  /// requests are collected into it instead of being invoked under the mutex.
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
-                                 DeferredCallbacks *deferred_cbs = nullptr)
+                                 DeferredWork *deferred = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
@@ -662,7 +664,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted,
-                               DeferredCallbacks *deferred_cbs = nullptr)
+                               DeferredWork *deferred = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// To respond to the object's owner once we are no longer borrowing it.  The
@@ -732,7 +734,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// calling this method.
   void RemoveLocalReferenceInternal(const ObjectID &object_id,
                                     std::vector<ObjectID> *deleted,
-                                    DeferredCallbacks *deferred_cbs = nullptr)
+                                    DeferredWork *deferred = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
