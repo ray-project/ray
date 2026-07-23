@@ -1564,12 +1564,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
-  /// If no FreeLocalObjects RPC is in flight for \p node_id, send one carrying up
-  /// to max_free_local_objects_batch_size queued ids; the reply re-invokes this to
-  /// drain whatever accumulated meanwhile. A null client or failed reply drops the
-  /// node's queue so a dead/flaky raylet cannot wedge it. Used only on the batched
-  /// FreeObjectOnNodesAsync path.
-  void SendFreeLocalObjectsBatchIfIdle(const NodeID &node_id);
+  /// Send a FreeLocalObjects batch from free_pending_ to the node.
+  /// We only allow 1 in-flight request per node for backpressure. If there's
+  /// already an in-flight request, this method just buffers the id and batches
+  /// it in the next request. A null client or failed reply drops the node's
+  /// queue so a dead / flaky raylet cannot wedge it.
+  void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -2049,7 +2049,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded, but
   /// guarded by its own mutex because Add (ReferenceCounter's free callback, on an
   /// arbitrary thread) and the reply completion (io_service_) can race.
-  /// See FreeObjectOnNodesAsync / SendFreeLocalObjectsBatchIfIdle.
+  /// See FreeObjectOnNodesAsync / SendFreeLocalObjectsBatchIfNeeded.
   absl::Mutex free_batch_mu_;
   /// node id -> FIFO queue of object ids waiting to be freed on that node.
   absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_

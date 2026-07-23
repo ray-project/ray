@@ -4883,27 +4883,22 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  // Coalesce per node. Queue the id and, if this node has no RPC in flight, kick a
-  // send; otherwise it rides the batch the in-flight reply triggers.
   for (const auto &node_id : locations) {
-    bool idle = false;
     {
       absl::MutexLock lock(&free_batch_mu_);
       free_pending_[node_id].push_back(object_id);
-      idle = !free_in_flight_.contains(node_id);
     }
-    if (idle) {
-      SendFreeLocalObjectsBatchIfIdle(node_id);
-    }
+    SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
 }
 
-void CoreWorker::SendFreeLocalObjectsBatchIfIdle(const NodeID &node_id) {
+void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
   rpc::FreeLocalObjectsRequest request;
   {
     absl::MutexLock lock(&free_batch_mu_);
     if (free_in_flight_.contains(node_id)) {
-      // A batch is already in flight; its reply will drain what accumulated.
+      // If there's an in-flight request, the queue will be sent once the request
+      // is replied from the raylet.
       return;
     }
     auto it = free_pending_.find(node_id);
@@ -4948,8 +4943,7 @@ void CoreWorker::SendFreeLocalObjectsBatchIfIdle(const NodeID &node_id) {
             return;
           }
         }
-        // Self-clock: drain whatever accumulated while this batch was in flight.
-        SendFreeLocalObjectsBatchIfIdle(node_id);
+        SendFreeLocalObjectsBatchIfNeeded(node_id);
       });
 }
 
