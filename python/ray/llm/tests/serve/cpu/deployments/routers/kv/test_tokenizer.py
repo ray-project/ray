@@ -131,6 +131,28 @@ class TestRoute:
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
 
     @pytest.mark.asyncio
+    async def test_chat_pick_carries_kv_prompt_ids(self):
+        # A tokenized chat pick returns the ids for HAProxy to ride to the
+        # engine; a completion pick does not.
+        router = LLMRouter.__new__(LLMRouter)
+        router._handle = MagicMock()
+        router._tokenizer = MagicMock()
+        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid"))
+
+        request = MagicMock()
+        request.body = AsyncMock(
+            return_value=b'{"model": "m", "messages": [{"role": "user", "content": "hi"}]}'
+        )
+        request.headers = Headers({})
+        response = await router.route(request)
+        assert response["kv_prompt_ids"] == "5,6,7"
+
+        request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
+        response = await router.route(request)
+        assert "kv_prompt_ids" not in response
+
+    @pytest.mark.asyncio
     async def test_unparseable_body_skips_tokenization(self):
         # A truncated/unparseable body derives no routing payload, so the
         # tokenizer is never called and request_token_ids stays None.

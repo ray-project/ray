@@ -54,9 +54,16 @@ def check_haproxy_ready(stats_port: int, timeout: int = 2) -> bool:
 
 
 def _serve_fastapi_app(
-    app: FastAPI, port: int, ready_check, timeout_keep_alive: int = 60
+    app: FastAPI,
+    port: int,
+    ready_check,
+    timeout_keep_alive: int = 60,
+    h11_max_incomplete_event_size: Optional[int] = None,
 ):
     """Run `app` on uvicorn in a daemon thread; block until `ready_check()` is True."""
+    extra = {}
+    if h11_max_incomplete_event_size is not None:
+        extra["h11_max_incomplete_event_size"] = h11_max_incomplete_event_size
     config = uvicorn.Config(
         app=app,
         host="127.0.0.1",
@@ -64,6 +71,7 @@ def _serve_fastapi_app(
         log_level="error",
         access_log=False,
         timeout_keep_alive=timeout_keep_alive,
+        **extra,
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=lambda: asyncio.run(server.serve()), daemon=True)
@@ -995,8 +1003,13 @@ def test_ingress_request_router_forward_body_gate_renders(
             assert "local FORWARD_BODY = false" in lua, lua
 
 
-def _create_replica_server(port: int, replica_id_header: str):
-    """Fake data-plane replica that echoes its identity in a response header."""
+def _create_replica_server(
+    port: int,
+    replica_id_header: str,
+    h11_max_incomplete_event_size: Optional[int] = None,
+):
+    """Fake data-plane replica that echoes its identity in a response header
+    and the request headers it received in the body."""
     app = FastAPI()
 
     @app.get("/-/healthz")
@@ -1007,14 +1020,26 @@ def _create_replica_server(port: int, replica_id_header: str):
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
         body = await req.body()
-        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+        return {
+            "replica": replica_id_header,
+            "echo": body.decode("utf-8"),
+            "headers": dict(req.headers),
+        }
 
-    return _serve_fastapi_app(app, port, _healthz_ready(port))
+    return _serve_fastapi_app(
+        app,
+        port,
+        _healthz_ready(port),
+        h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+    )
 
 
-def _create_router_server(port: int, replica_id_to_return: str):
+def _create_router_server(
+    port: int, replica_id_to_return: str, kv_prompt_ids: Optional[str] = None
+):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    forwards the buffered request body prefix to the router."""
+    forwards the buffered request body prefix to the router. Like the real
+    KV-aware router, ``kv_prompt_ids`` is returned only for chat bodies."""
     app = FastAPI()
     captured = {"bodies": []}
 
@@ -1022,7 +1047,10 @@ def _create_router_server(port: int, replica_id_to_return: str):
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
-        return {"replica_id": replica_id_to_return}
+        response = {"replica_id": replica_id_to_return}
+        if kv_prompt_ids is not None and b"messages" in body:
+            response["kv_prompt_ids"] = kv_prompt_ids
+        return response
 
     def ready():
         return (
@@ -1195,6 +1223,87 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 (replica_a, replica_b, router),
                 (replica_a_thread, replica_b_thread, router_thread),
             )
+
+
+@pytest.mark.asyncio
+async def test_ingress_request_router_rides_kv_prompt_ids(
+    haproxy_api_cleanup, monkeypatch
+):
+    """kv_prompt_ids on the route reply rides to the replica as the
+    x-kv-prompt-ids header, and a client-supplied value never reaches the
+    replica -- overridden when the router returns ids, stripped when not."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
+    # Large enough (~49KB) to need HAProxy's rewrite headroom and exceed h11's
+    # 16KB default header limit on the receiving server.
+    kv_prompt_ids = ",".join(map(str, range(10_000)))
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        router_port = find_free_port()
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port,
+            replica_id_header="A",
+            h11_max_incomplete_event_size=262144,
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port,
+            replica_id_to_return=actor_name,
+            kv_prompt_ids=kv_prompt_ids,
+        )
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            spoof = {"x-kv-prompt-ids": "999"}
+            # Chat body: the router returns ids and they override the spoof.
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json={"messages": [{"role": "user", "content": "hi"}]},
+                headers=spoof,
+                timeout=10,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["headers"].get("x-kv-prompt-ids") == kv_prompt_ids
+
+            # Non-chat body: no ids on the reply and the spoof is stripped.
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json={"prompt": "hi"},
+                headers=spoof,
+                timeout=10,
+            )
+            assert resp.status_code == 200, resp.text
+            assert "x-kv-prompt-ids" not in resp.json()["headers"]
+        finally:
+            _shutdown_fake_servers((replica, router), (replica_thread, router_thread))
 
 
 def _create_broken_router_server(port: int, status_code: int = 500):
