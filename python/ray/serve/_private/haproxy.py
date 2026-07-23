@@ -138,13 +138,15 @@ def _load_lua_template() -> string.Template:
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
+    local_host: "Optional[str]" = None,
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router pool and replica map, restricted to backends with both.
 
-    Pick deterministically within each router pool to avoid the first-response
-    latency regression from cycling routers across requests.
+    Prefers routers co-located with this HAProxy so the /internal/route hop
+    stays on-node. Falls back to the lexicographically smallest router when none
+    is co-located.
     """
-    routers: Dict[str, ServerConfig] = {}
+    routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
@@ -154,21 +156,29 @@ def _routers_and_targets_by_backend(
         ]
         if not entries:
             continue
-        # Host-first so co-located routers sort adjacent in debug output.
-        routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
-        )
+        candidates = backend.ingress_request_router_servers
+        colocated = [s for s in candidates if s.host == local_host]
+        if colocated:
+            pool = sorted(colocated, key=lambda s: (s.host, s.port))
+        else:
+            pool = [min(candidates, key=lambda s: (s.host, s.port))]
+        routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
 
 
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
+def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
+    """Render {backend_name: [ServerConfig, ...]} as a Lua table literal."""
+
+    def _server_lua(s: "ServerConfig") -> str:
+        return (
+            f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+            f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        )
+
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
+        f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
+        for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
 
@@ -1220,7 +1230,9 @@ class HAProxyApi(ProxyApi):
         Returns the script path, or None if no backend has both ingress
         request routers AND replicas with replica IDs.
         """
-        routers, targets = _routers_and_targets_by_backend(backends)
+        routers, targets = _routers_and_targets_by_backend(
+            backends, local_host=get_localhost_ip()
+        )
         if not routers:
             return None
 
