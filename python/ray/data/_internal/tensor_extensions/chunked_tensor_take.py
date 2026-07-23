@@ -5,14 +5,19 @@ from typing import Any, NamedTuple
 import numpy as np
 import pyarrow as pa
 
+from ray._common.utils import env_bool
+
+ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
+    "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE",
+    True,
+)
+
 # Cap for simultaneously allocated per-subbatch NumPy gather/index buffers.
 # The final output, Arrow offsets, and zero-copy chunk-view metadata are excluded.
 TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
-# Narrow large columns stay on Ray's native path because grouping can cost more
-# than the full-column copy it avoids. Small columns remain eligible because their
-# total copy cost is bounded.
+# Narrow columns stay on Ray's native path because grouping can cost more than
+# the full-column copy it avoids.
 _MIN_FAST_ROW_BYTES = 256
-_SMALL_COLUMN_ROWS = 512
 # Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
 # the number of chunks makes repeated full-subbatch masks expensive.
 _MAX_MASK_GROUP_CHUNKS = 16
@@ -62,7 +67,7 @@ def _try_get_chunked_tensor_take_plan(
         return None
 
     values_per_row, row_bytes, value_dtype = layout
-    if input_rows >= _SMALL_COLUMN_ROWS and row_bytes < _MIN_FAST_ROW_BYTES:
+    if row_bytes < _MIN_FAST_ROW_BYTES:
         return None
     if not _offsets_can_represent_output(tensor_type, output_rows, values_per_row):
         return None
@@ -84,6 +89,9 @@ def try_prepare_chunked_tensor_take(
     max_output_rows: int,
 ) -> PreparedChunkedTensorTakePlan | None:
     """Validate and prepare one immutable chunked tensor source for repeated takes."""
+    if not ENABLE_CHUNKED_TENSOR_TAKE:
+        return None
+
     tensor_type = column.type
     if column.null_count > 0:
         return None

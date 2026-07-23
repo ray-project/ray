@@ -221,10 +221,35 @@ def test_prepared_chunked_tensor_take_plan_owns_source_lifetime():
     np.testing.assert_array_equal(output.to_numpy(), expected)
 
 
-def test_chunked_tensor_take_fallbacks():
-    narrow, _ = _chunked_tensor(1024, 8, 4)
+@pytest.mark.parametrize("rows", [64, 1024])
+def test_narrow_chunked_tensor_take_falls_back(rows):
+    narrow, _ = _chunked_tensor(rows, 8, 4)
     assert try_prepare_chunked_tensor_take(narrow, max_output_rows=10) is None
 
+
+def test_chunked_tensor_take_can_be_disabled(monkeypatch):
+    column, values = _chunked_tensor(40, 64, 4)
+    indices = np.array([39, 1, 20], dtype=np.int64)
+    monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
+
+    assert try_prepare_chunked_tensor_take(column, max_output_rows=10) is None
+
+    table = pa.table({"tensor": column})
+    output = take_table(table, indices)
+    np.testing.assert_array_equal(
+        output.column("tensor").combine_chunks().to_numpy(),
+        values[indices],
+    )
+
+    prepared_table, plans = _prepare_local_shuffle_arrow_table(
+        table,
+        max_output_rows=10,
+    )
+    assert not plans
+    assert prepared_table.column("tensor").num_chunks == 1
+
+
+def test_chunked_tensor_take_fallbacks():
     single = pa.chunked_array([_chunked_tensor(20, 64, 2)[0].combine_chunks()])
     assert try_prepare_chunked_tensor_take(single, max_output_rows=10) is None
 
