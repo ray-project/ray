@@ -214,7 +214,9 @@ describe("CpuProfilingLink (worker)", () => {
     await user.click(await screen.findByLabelText(/CPU Profiling Config/));
     // Error helper text is shown.
     expect(
-      await screen.findByText(/Duration must be between 1 and 60/),
+      await screen.findByText(
+        `Duration must be between 1 and ${DEFAULT_PROFILING_DEFAULTS.maxDuration}`,
+      ),
     ).toBeInTheDocument();
     // The submit button (rendered as an anchor) is disabled.
     const submit = screen.getByText(/Generate report/);

@@ -163,6 +163,10 @@ class ReportHead(SubprocessModule):
                 ),
                 "cpu_duration": RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
                 "memory_duration": RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
+                # Upper bound the endpoint enforces on `duration` (operator-
+                # configurable). Exposed so the UI validates against the real cap
+                # instead of a hardcoded one. The lower bound is always 1s.
+                "max_duration": MAX_PROFILING_DURATION_S,
                 "cpu_format": RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
                 "memory_format": RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
                 # py-spy only appends --native on Linux (see profile_manager),

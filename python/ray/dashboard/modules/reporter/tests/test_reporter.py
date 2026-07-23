@@ -1673,9 +1673,13 @@ def test_query_flag(query, default, expected):
         ({}, 10, 10),
         # Param present and in range -> parsed as int, ignoring the default.
         ({"duration": "30"}, 5, 30),
-        # Boundary values are accepted.
+        # Boundary values are accepted (min is always 1; max is configurable).
         ({"duration": "1"}, 5, 1),
-        ({"duration": "60"}, 5, 60),
+        (
+            {"duration": str(ray_constants.MAX_PROFILING_DURATION_S)},
+            5,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
     ],
 )
 def test_query_duration_valid(query, default, expected):
@@ -1688,8 +1692,8 @@ def test_query_duration_valid(query, default, expected):
         "abc",  # not an integer
         "0",  # below the minimum
         "-5",  # negative
-        "61",  # above the maximum
-        "1000",  # far above the maximum
+        # just above the (operator-configurable) maximum
+        str(ray_constants.MAX_PROFILING_DURATION_S + 1),
     ],
 )
 def test_query_duration_invalid_raises_bad_request(value):
@@ -1705,13 +1709,19 @@ def test_query_duration_invalid_raises_bad_request(value):
         # In-range values pass through unchanged.
         (1, 1),
         (5, 5),
-        (60, 60),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
         # Out-of-range env-configured values are clamped to the accepted bound,
         # so a misconfigured head-node default can never bypass the endpoint cap.
         (0, 1),
         (-5, 1),
-        (61, 60),
-        (1000, 60),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S + 1,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+        (10**9, ray_constants.MAX_PROFILING_DURATION_S),
     ],
 )
 def test_clamp_profiling_duration(seconds, expected):
@@ -1775,6 +1785,7 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
             "tracePythonAllocators",
             "cpuDuration",
             "memoryDuration",
+            "maxDuration",
             "cpuFormat",
             "memoryFormat",
             "pyspyNativeSupported",

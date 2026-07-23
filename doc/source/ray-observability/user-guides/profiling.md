@@ -55,11 +55,14 @@ Each profiling request (stack trace, CPU flame graph, memory profile) accepts se
   - Record `pymalloc` allocations (memory profiling only).
   - `0`
 * - `RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT`
-  - Duration in seconds for CPU profiling (capped at 60).
+  - Duration in seconds for CPU profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
   - `5`
 * - `RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT`
-  - Duration in seconds for memory profiling (capped at 60).
+  - Duration in seconds for memory profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
   - `10`
+* - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
+  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so it's capped rather than open-ended; raise or lower it per cluster. The minimum is always 1s. Explicit `duration` query values above this return HTTP 400.
+  - `300`
 * - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
   - Output format for CPU profiling. One of `flamegraph`, `raw`, `speedscope`.
   - `flamegraph`

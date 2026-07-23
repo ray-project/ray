@@ -30,6 +30,9 @@ export type ProfilingDefaults = {
   tracePythonAllocators: boolean;
   cpuDuration: number;
   memoryDuration: number;
+  // Upper bound the backend enforces on `duration` (operator-configurable via
+  // RAY_DASHBOARD_PROFILING_MAX_DURATION_S). The lower bound is always 1.
+  maxDuration: number;
   cpuFormat: string;
   memoryFormat: string;
   // Whether py-spy `--native` takes effect on this platform (Linux-only). Not a
@@ -49,6 +52,7 @@ export const DEFAULT_PROFILING_DEFAULTS: ProfilingDefaults = {
   tracePythonAllocators: false,
   cpuDuration: 5,
   memoryDuration: 10,
+  maxDuration: 300,
   cpuFormat: "flamegraph",
   memoryFormat: "flamegraph",
   // Assume supported until the backend says otherwise, so an unreachable
@@ -148,6 +152,8 @@ type ProfilingFlag = {
 // Optional numeric "duration" field.
 type ProfilingDurationField = {
   initial: number;
+  // Inclusive upper bound accepted by the backend (lower bound is always 1).
+  max: number;
 };
 
 // Optional "format" select over a fixed set of allowed values.
@@ -208,11 +214,14 @@ export const ProfilingParamsDialog = ({
   };
   const handleClose = () => setOpen(false);
 
-  // Duration must be an integer in [1, 60] (matches the backend validation).
-  // Only relevant when the dialog shows a duration field.
+  // Duration must be an integer in [1, duration.max] (matches the backend
+  // validation, whose upper bound is operator-configurable). Only relevant when
+  // the dialog shows a duration field.
   const durationInvalid =
     duration !== undefined &&
-    (Number.isNaN(durationValue) || durationValue < 1 || durationValue > 60);
+    (Number.isNaN(durationValue) ||
+      durationValue < 1 ||
+      durationValue > duration.max);
 
   return (
     <div>
@@ -257,7 +266,9 @@ export const ProfilingParamsDialog = ({
                 onChange={(e) => setDurationValue(parseInt(e.target.value, 10))}
                 error={durationInvalid}
                 helperText={
-                  durationInvalid ? "Duration must be between 1 and 60" : ""
+                  durationInvalid
+                    ? `Duration must be between 1 and ${duration?.max}`
+                    : ""
                 }
                 required
               />
@@ -454,7 +465,7 @@ export const TaskCpuProfilingLink = ({
       dialogTitle="CPU Profiling Config"
       triggerTitle="Profile the Python worker and display a CPU flame graph."
       submitLabel="Generate report"
-      duration={{ initial: defaults.cpuDuration }}
+      duration={{ initial: defaults.cpuDuration, max: defaults.maxDuration }}
       format={{ initial: defaults.cpuFormat, options: CPU_FORMAT_OPTIONS }}
       flags={cpuProfileFlags(defaults)}
       buildUrl={({ duration, format, flags }) =>
@@ -561,7 +572,7 @@ export const CpuProfilingLink = ({
       dialogTitle="CPU Profiling Config"
       triggerTitle="Profile the Python worker and display a CPU flame graph."
       submitLabel="Generate report"
-      duration={{ initial: defaults.cpuDuration }}
+      duration={{ initial: defaults.cpuDuration, max: defaults.maxDuration }}
       format={{ initial: defaults.cpuFormat, options: CPU_FORMAT_OPTIONS }}
       flags={cpuProfileFlags(defaults)}
       buildUrl={({ duration, format, flags }) =>
@@ -592,7 +603,7 @@ export const ProfilerButton = ({
       dialogTitle="Memory Profiling Config"
       triggerTitle="Profile the memory usage of this worker."
       submitLabel="Generate report"
-      duration={{ initial: defaults.memoryDuration }}
+      duration={{ initial: defaults.memoryDuration, max: defaults.maxDuration }}
       format={{
         initial: defaults.memoryFormat,
         options: MEMORY_FORMAT_OPTIONS,

@@ -213,8 +213,17 @@ RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
 # Accepted range for a profiling `duration` (seconds). The dashboard endpoint
 # rejects explicit query values outside this range; the configured defaults below
 # are clamped to it too, so a misconfigured env var can never exceed the cap.
+# The minimum is a hard floor. The maximum is operator-configurable via
+# RAY_DASHBOARD_PROFILING_MAX_DURATION_S: a synchronous profile blocks the request
+# for its whole duration and py-spy/memray output grows with it, so it is capped
+# rather than left open-ended, but the cap is raised or lowered per cluster.
+# Floored at the minimum so a misconfigured max can never invert the range (which
+# would otherwise reject every duration).
 MIN_PROFILING_DURATION_S = 1
-MAX_PROFILING_DURATION_S = 60
+MAX_PROFILING_DURATION_S = max(
+    env_integer("RAY_DASHBOARD_PROFILING_MAX_DURATION_S", 300),
+    MIN_PROFILING_DURATION_S,
+)
 
 
 def _clamp_profiling_duration(seconds: int) -> int:
