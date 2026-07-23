@@ -1,6 +1,6 @@
 import sys
 from typing import Any, AsyncIterator, Dict, List, Type
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pydantic
 import pytest
@@ -159,6 +159,19 @@ class DummyStage(StatefulStage):
 
 class DummyProcessorConfig(ProcessorConfig):
     pass
+
+
+def test_processor_uses_map_batches_internal():
+    processor = Processor(
+        config=ProcessorConfig(batch_size=64),
+        stages=[DummyStage()],
+    )
+    dataset = Mock(spec=ray.data.Dataset)
+    dataset.map_batches_internal.return_value = dataset
+
+    assert processor(dataset) is dataset
+    dataset.map_batches_internal.assert_called_once()
+    dataset.map_batches.assert_not_called()
 
 
 def test_builder():

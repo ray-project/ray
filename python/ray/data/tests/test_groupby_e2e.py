@@ -37,6 +37,7 @@ from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 RANDOM_SEED = 123
 
@@ -1168,10 +1169,13 @@ def test_groupby_map_groups_ray_remote_args_fn(
         df["value"] = int(os.environ["__MY_TEST__"])
         return df
 
-    ds = ds.groupby("group").map_groups(
-        func,
-        ray_remote_args_fn=lambda: {"runtime_env": {"env_vars": {"__MY_TEST__": "69"}}},
-    )
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds = ds.groupby("group").map_groups(
+            func,
+            ray_remote_args_fn=lambda: {
+                "runtime_env": {"env_vars": {"__MY_TEST__": "69"}}
+            },
+        )
     assert sorted([x["value"] for x in ds.take()]) == [69, 69, 69, 69]
 
 

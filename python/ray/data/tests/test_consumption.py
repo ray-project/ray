@@ -29,6 +29,7 @@ from ray.data.tests.conftest import (
 )
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -180,9 +181,10 @@ def test_ray_remote_args_fn(shutdown_only, remove_named_placement_groups):
             assert ray.util.get_current_placement_group() == pg
             return batch
 
-    ray.data.range(1).map_batches(
-        ActorClass, concurrency=1, ray_remote_args_fn=ray_remote_args_fn
-    ).take_all()
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ray.data.range(1).map_batches(
+            ActorClass, concurrency=1, ray_remote_args_fn=ray_remote_args_fn
+        ).take_all()
 
 
 def test_dataset_lineage_serialization(shutdown_only):
