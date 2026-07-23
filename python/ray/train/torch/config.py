@@ -280,8 +280,3 @@ class _TorchBackend(Backend):
             logger.warning(
                 f"Torch process group shutdown timed out after {timeout_s} seconds"
             )
-
-    def on_training_start(
-        self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
-    ):
-        worker_group.execute(_set_torch_distributed_env_vars)
