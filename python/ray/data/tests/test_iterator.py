@@ -107,9 +107,9 @@ def test_iter_batches_early_break_flushes_metrics(ray_start_regular_shared):
     captured_stats = []
     orig = _StatsManager.update_iteration_metrics
 
-    def spy(stats, dataset_tag):
+    def spy(stats, dataset_tag, split_index):
         captured_stats.append(stats)
-        return orig(stats, dataset_tag)
+        return orig(stats, dataset_tag, split_index)
 
     with patch.object(_StatsManager, "update_iteration_metrics", spy):
         for i, _ in enumerate(it.iter_batches(batch_size=10)):

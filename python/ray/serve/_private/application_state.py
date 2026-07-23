@@ -1904,13 +1904,23 @@ def override_deployment_info(
                         **request_router_config
                     )
 
+        # _serialized_actor_class is a PrivateAttr dropped by model_dump() above;
+        # carry it over so it survives the DeploymentConfig reconstruction.
+        serialized_actors = {
+            cfg.name: cfg._serialized_actor_class
+            for cfg in (info.deployment_config.deployment_actors or [])
+            if cfg._serialized_actor_class
+        }
+
         if (
             deployment_to_serialized_deployment_actors
             and deployment_name in deployment_to_serialized_deployment_actors
         ):
-            serialized_actors = deployment_to_serialized_deployment_actors[
+            serialized_actors |= deployment_to_serialized_deployment_actors[
                 deployment_name
             ]
+
+        if serialized_actors:
             actors_list = options.get(
                 "deployment_actors",
                 original_options.get("deployment_actors"),
