@@ -393,7 +393,9 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         )
         # 200 (OK) and 202 (Accepted, async delete with finalizers) both mean the
         # deletion was accepted; 404 means the resource is already gone.
-        if result.status_code not in (200, 202, 404):
+        if result.status_code == 404:
+            return {}
+        if result.status_code not in (200, 202):
             result.raise_for_status()
         return result.json() if result.content else {}
 
