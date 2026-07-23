@@ -119,6 +119,8 @@ ERROR_TYPE = [
     "OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND",
     "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
     "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
+    "WORKER_STARTUP_FAILED",
+    "STREAMING_GENERATOR_REPLAY_INCONSISTENT",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.

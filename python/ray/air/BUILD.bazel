@@ -124,7 +124,10 @@ py_test(
     name = "test_keras_callback",
     size = "medium",
     srcs = ["tests/test_keras_callback.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",

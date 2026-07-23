@@ -19,7 +19,8 @@ def validate_path(path: str) -> None:
 
 def validate_uri(uri: str):
     try:
-        from ray._private.runtime_env.packaging import Protocol, parse_uri
+        from ray._common.runtime_env_uri import parse_uri
+        from ray._private.runtime_env.protocol import Protocol
 
         protocol, path = parse_uri(uri)
     except ValueError:
@@ -29,12 +30,13 @@ def validate_uri(uri: str):
             "(i.e., passed to `ray.init`)."
         )
 
-    if (
-        protocol in Protocol.remote_protocols()
-        and not path.endswith(".zip")
-        and not path.endswith(".whl")
+    supported_extensions = (".zip", ".whl", ".tar.gz", ".tgz")
+    if protocol in Protocol.remote_protocols() and not any(
+        path.endswith(ext) for ext in supported_extensions
     ):
-        raise ValueError("Only .zip or .whl files supported for remote URIs.")
+        raise ValueError(
+            "Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs."
+        )
 
 
 def _handle_local_deps_requirement_file(requirements_file: str):

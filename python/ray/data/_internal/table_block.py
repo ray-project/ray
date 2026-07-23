@@ -128,12 +128,11 @@ class TableBlockBuilder(BlockBuilder):
         return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
+        # Preserve insertion order: previously-compacted tables (older) first,
+        # then any rows added since the last compaction (newest) last.
+        tables = list(self._tables)
         if self._columns:
-            tables = [self._table_from_pydict(self._columns)]
-        else:
-            tables = []
-
-        tables.extend(self._tables)
+            tables.append(self._table_from_pydict(self._columns))
 
         if len(tables) == 0:
             return self._empty_table()
@@ -462,7 +461,8 @@ class TableBlockAccessor(BlockAccessor):
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
+                                accumulators[i],
+                                r[resolved_agg_names[i]],
                             )
                 # Build the row.
                 row = {}

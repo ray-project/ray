@@ -249,6 +249,9 @@ class Experiment:
         Args:
             name: Name of Experiment.
             spec: JSON configuration of experiment.
+
+        Returns:
+            An ``Experiment`` constructed from the provided ``spec``.
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
@@ -427,13 +430,15 @@ def _convert_to_experiment_list(experiments: Union[Experiment, List[Experiment],
         exp_list = []
     elif isinstance(experiments, Experiment):
         exp_list = [experiments]
-    elif type(experiments) is dict:
+    elif isinstance(experiments, dict):
         exp_list = [
             Experiment.from_json(name, spec) for name, spec in experiments.items()
         ]
 
     # Validate exp_list
-    if type(exp_list) is list and all(isinstance(exp, Experiment) for exp in exp_list):
+    if isinstance(exp_list, list) and all(
+        isinstance(exp, Experiment) for exp in exp_list
+    ):
         if len(exp_list) > 1:
             logger.info(
                 "Running with multiple concurrent experiments. "

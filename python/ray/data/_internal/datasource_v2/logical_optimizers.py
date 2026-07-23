@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
-from ray.data._internal.datasource_v2 import InputSplit
-from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 
 @DeveloperAPI
@@ -16,9 +17,7 @@ class SupportsFilterPushdown(ABC):
     """
 
     @abstractmethod
-    def push_filters(
-        self, predicate: "Expr"
-    ) -> Tuple["Scanner[InputSplit]", Optional["Expr"]]:
+    def push_filters(self, predicate: "Expr") -> Tuple["Scanner", Optional["Expr"]]:
         """Push a filter predicate down to the scanner.
 
         Args:
@@ -42,7 +41,7 @@ class SupportsColumnPruning(ABC):
     """
 
     @abstractmethod
-    def prune_columns(self, columns: List[str]) -> "Scanner[InputSplit]":
+    def prune_columns(self, columns: List[str]) -> "Scanner":
         """Prune the scanner to only read the specified columns.
 
         Args:
@@ -50,6 +49,17 @@ class SupportsColumnPruning(ABC):
 
         Returns:
             New Scanner instance configured to read only the specified columns.
+        """
+        ...
+
+    @abstractmethod
+    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
+        """Physical column names selected after pruning, if any.
+
+        Returns:
+            ``None`` when no pruning has been applied (read all columns).
+            A tuple (possibly empty) after :meth:`prune_columns` has been
+            applied, listing on-disk / reader column names in read order.
         """
         ...
 
@@ -63,7 +73,7 @@ class SupportsLimitPushdown(ABC):
     """
 
     @abstractmethod
-    def push_limit(self, limit: int) -> "Scanner[InputSplit]":
+    def push_limit(self, limit: int) -> "Scanner":
         """Push a row limit down to the scanner.
 
         Args:
@@ -83,15 +93,28 @@ class SupportsPartitionPruning(ABC):
     predicates that reference partition columns.
     """
 
+    @property
     @abstractmethod
-    def prune_partitions(
-        self, predicate: "Expr", partition_columns: Set[str]
-    ) -> "Scanner[InputSplit]":
+    def partition_columns(self) -> Set[str]:
+        """Names of columns that are partition keys.
+
+        Callers (e.g. the predicate-pushdown rule) use this to decide
+        whether a predicate should be routed through :meth:`push_filters`
+        (data columns) or :meth:`prune_partitions` (partition columns).
+        Must be fully populated by schema inference at planning time.
+        """
+        ...
+
+    @abstractmethod
+    def prune_partitions(self, predicate: "Expr") -> "Scanner":
         """Prune partitions based on a predicate.
+
+        The scanner determines its partition columns from its
+        ``Partitioning`` configuration, which is fully populated
+        by schema inference at planning time.
 
         Args:
             predicate: Expression to evaluate against partition values.
-            partition_columns: Set of column names that are partition columns.
 
         Returns:
             New Scanner instance with partition pruning applied.

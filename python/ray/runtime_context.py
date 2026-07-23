@@ -658,6 +658,8 @@ def get_runtime_context() -> RuntimeContext:
             # Get the task id.
             ray.get_runtime_context().get_task_id()
 
+    Returns:
+        The :class:`RuntimeContext` for the current driver, worker, or actor.
     """
     with _runtime_context_lock:
         global _runtime_context

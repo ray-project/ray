@@ -16,6 +16,12 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -176,6 +182,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm._get_downstream_ineligible_ops = types.MethodType(
             ResourceManager._get_downstream_ineligible_ops, rm
         )
+        rm.get_downstream_eligible_ops = types.MethodType(
+            ResourceManager.get_downstream_eligible_ops, rm
+        )
         rm._is_blocking_materializing_op = types.MethodType(
             ResourceManager._is_blocking_materializing_op, rm
         )
@@ -190,8 +199,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         """Helper to set utilized budget fraction.
 
         The policy checks: utilized_fraction <= OBJECT_STORE_BUDGET_UTIL_THRESHOLD
-        With threshold=0.9, skip backpressure when utilized_fraction <= 0.9.
-        To trigger backpressure, set utilized_fraction > 0.9.
+        With threshold=0.5, skip backpressure when utilized_fraction <= 0.5.
+        To trigger backpressure, set utilized_fraction > 0.5.
         """
         self._mock_get_utilized_budget_fraction.return_value = fraction
         return fraction
@@ -247,25 +256,76 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
-    def test_backpressure_skipped_for_materializing_downstream(self):
-        """Test that backpressure is skipped when downstream is materializing.
-
-        Creates topology: cur_op -> materializing_op (AllToAllOperator).
-        """
-        # Create the current operator
-        op, op_state = self._mock_operator()
-        # Create a materializing downstream operator
-        materializing_op, materializing_op_state = self._mock_materializing_operator()
-        # Set up topology: op -> materializing_op
+    @pytest.mark.parametrize(
+        ("op_class", "throttling_disabled"),
+        [
+            (HashShufflingOperatorBase, False),
+            (AllToAllOperator, True),
+            (ShuffleMapOp, False),
+        ],
+    )
+    def test_backpressure_skipped_for_downstream_materializer(
+        self, op_class, throttling_disabled
+    ):
+        """Test that an upstream op isn't backpressured by a materializer."""
+        op, op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_operator(
+            op_class=op_class,
+            obj_store_mem_pending_task_inputs=100,
+            throttling_disabled=throttling_disabled,
+        )
+        materializing_op.__class__ = op_class
         op.output_dependencies = [materializing_op]
+
         topology = {op: op_state, materializing_op: materializing_op_state}
-        context = self._create_context()
+        context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        )
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
+        self,
+    ):
+        """Test that a later materializer doesn't disable normal backpressure."""
+        op, op_state = self._mock_task_pool_map_operator()
+        downstream_op, downstream_op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_materializing_operator()
+        op.output_dependencies = [downstream_op]
+        downstream_op.output_dependencies = [materializing_op]
+
+        topology = {
+            op: op_state,
+            downstream_op: downstream_op_state,
+            materializing_op: materializing_op_state,
+        }
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        )
+        assert queue_ratio > 2.0
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+        assert policy.can_add_input(op) is False
 
     def test_backpressure_skipped_for_low_utilization(self):
         """Test backpressure skipped when utilized budget fraction is low."""
@@ -275,11 +335,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction below threshold = skip backpressure
-        # With threshold=0.9, skip backpressure when utilized <= 0.9
+        # With threshold=0.5, skip backpressure when utilized <= 0.5
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -294,11 +354,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction at threshold = skip backpressure
-        # With threshold=0.9, utilized <= 0.9 skips backpressure
+        # With threshold=0.5, utilized <= 0.5 skips backpressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold)  # 0.9
+        self._set_utilized_budget_fraction(rm, threshold)  # 0.5
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -315,11 +375,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction above threshold = apply backpressure
-        # With threshold=0.9, apply backpressure when utilized > 0.9
+        # With threshold=0.5, apply backpressure when utilized > 0.5
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Queue ratio > 2.0: 1000 / 200 = 5
         queue_ratio = self._set_queue_ratio(
@@ -345,7 +405,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Queue ratio > 2.0: 1000 / 200 = 5
         queue_ratio = self._set_queue_ratio(
@@ -371,7 +431,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.8
+        self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.4
 
         # Queue ratio < 2.0: 500 / 1000 = 0.5
         queue_ratio = self._set_queue_ratio(
@@ -397,7 +457,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -437,7 +497,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -457,7 +517,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Queue ratio > 2.0: 1000 / 200 = 5
         self._set_queue_ratio(
@@ -482,7 +542,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Queue ratio > 2.0: 1000 / 200 = 5
         self._set_queue_ratio(
@@ -507,7 +567,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Queue ratio < 2.0: 500 / 1000 = 0.5
         self._set_queue_ratio(

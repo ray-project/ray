@@ -7,7 +7,11 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
-import { ServeDeployment, ServeSystemActor } from "../../type/serve";
+import {
+  ServeDeployment,
+  ServeReplicaState,
+  ServeSystemActor,
+} from "../../type/serve";
 import { LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS } from "./ServeReplicaDetailPage";
 import {
   LOG_CONTEXT_KEY_SERVE_CONTROLLER,
@@ -51,13 +55,19 @@ export const ServeEntityLogViewer = ({
   );
 
   const allReplicas = deployments.flatMap(
-    ({ name: deploymentName, replicas }) =>
-      replicas.map((replica) => ({
-        ...replica,
-        name: showDeploymentName
+    ({ name: deploymentName, replicas, recent_dead_replicas }) =>
+      [...replicas, ...(recent_dead_replicas ?? [])].map((replica) => {
+        const baseName = showDeploymentName
           ? `${deploymentName}#${replica.replica_id}`
-          : replica.replica_id,
-      })),
+          : replica.replica_id;
+        return {
+          ...replica,
+          name:
+            replica.state === ServeReplicaState.STOPPED
+              ? `${baseName} (stopped)`
+              : baseName,
+        };
+      }),
   );
 
   const selectedReplicaId =

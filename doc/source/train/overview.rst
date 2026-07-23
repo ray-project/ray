@@ -1,3 +1,6 @@
+.. meta::
+   :description: Core Ray Train concepts: the training function, worker processes, ScalingConfig for CPU/GPU resources, and the Trainer class.
+
 .. _train-key-concepts:
 
 .. _train-overview:

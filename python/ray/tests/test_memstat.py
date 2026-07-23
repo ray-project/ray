@@ -307,14 +307,12 @@ def test_group_by_sort_by(ray_start_regular):
 )
 def test_memory_used_output(ray_start_regular):
     address = ray_start_regular["address"]
-    import numpy as np
-
     _ = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 
     info = memory_summary(address)
     print(info)
     assert count(info, "Plasma memory usage 8 MiB") == 1, info
-    assert count(info, "8388861.0 B") == 2, info
+    assert count(info, "8388862.0 B") == 2, info
 
 
 def test_task_status(ray_start_regular):

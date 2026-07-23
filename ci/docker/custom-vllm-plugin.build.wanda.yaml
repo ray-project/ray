@@ -1,0 +1,13 @@
+name: "custom-vllm-plugin-gpubuild"
+froms: ["cr.ray.io/rayproject/llmgpubuild"]
+dockerfile: ci/docker/custom-vllm-plugin.build.Dockerfile
+srcs:
+  # The plugin source, installed on top of the LLM GPU image (see the Dockerfile).
+  - doc/source/llm/doc_code/serve/custom_vllm/setup.py
+  - doc/source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/__init__.py
+  - doc/source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/qwen3_rm.py
+  - doc/source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/serve_hook.py
+tags:
+  - cr.ray.io/rayproject/custom-vllm-plugin-gpubuild
+build_args:
+  - DOCKER_IMAGE_BASE=cr.ray.io/rayproject/llmgpubuild

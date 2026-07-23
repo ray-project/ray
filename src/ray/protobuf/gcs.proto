@@ -681,6 +681,13 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // Tracks the selected topology values. Maps each topology label to the
+  // value the scheduler has selected for this PG (e.g. {"rack_id": "rack-1"}).
+  map<string, string> topology_assignments = 17;
+  // Topology strategy that applies to this PG. Mirrors
+  // PlacementGroupSpec.topology_strategy. Empty if the PG does not use
+  // a topology strategy.
+  map<string, PlacementStrategy> topology_strategy = 18;
 }
 
 message JobTableData {

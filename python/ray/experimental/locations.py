@@ -13,7 +13,7 @@ def get_object_locations(
     those objects whose location lookup failed.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs.
+        obj_refs: List of object refs.
         timeout_ms: The maximum amount of time in micro seconds to wait
             before returning. Wait infinitely if it's negative.
 
@@ -52,7 +52,7 @@ def get_local_object_locations(
     those objects whose location lookup failed.
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs.
+        obj_refs: List of object refs.
 
     Returns:
         A dict maps from an object to its location. The dict excludes those

@@ -241,7 +241,7 @@ if __name__ == "__main__":
                 file=sys.stderr,
             )
 
-            _emit("ml tune train data serve core_cpp cpp java python doc")
+            _emit("ml tune train data serve core_cpp cpp java core_python doc")
             _emit("linux_wheels macos_wheels dashboard tools release_tests")
 
         # Log the modified environment variables visible in console.

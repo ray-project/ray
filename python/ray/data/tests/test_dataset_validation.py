@@ -33,7 +33,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only):
 
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    ray.init(runtime_env={"pip": ["pyarrow==8.0.0"]})
+    # Pin numpy<2 since pyarrow 8.0.0 is incompatible with numpy>=2,
+    # which is now the default on the data CI images.
+    ray.init(runtime_env={"pip": ["numpy==1.26.4", "pyarrow==8.0.0"]})
 
     @ray.remote
     def should_error():
@@ -41,7 +43,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only):
 
     with pytest.raises(
         Exception,
-        match=r".*Dataset requires pyarrow >= 9.0.0, but 8.0.0 is installed.*",
+        match=r".*Dataset requires pyarrow >= 17.0.0, but 8.0.0 is installed.*",
     ):
         ray.get(should_error.remote())
 
@@ -56,7 +58,7 @@ class LoggerWarningCalled(Exception):
 
 
 def test_warning_execute_with_no_cpu(ray_start_cluster):
-    """Tests ExecutionPlan.execute() to ensure a warning is logged
+    """Tests Dataset._execute() to ensure a warning is logged
     when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
     ray.shutdown()
@@ -74,13 +76,13 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
 
 
 def test_nowarning_execute_with_cpu(ray_start_cluster):
-    """Tests ExecutionPlan.execute() to ensure no warning is logged
+    """Tests Dataset._execute() to ensure no warning is logged
     when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.shutdown()
     ray.init(ray_start_cluster.address)
 
-    logger = logging.getLogger("ray.data._internal.plan")
+    logger = logging.getLogger("ray.data.dataset")
     with patch.object(
         logger,
         "warning",

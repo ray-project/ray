@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 import torch
-import torch.distributed as dist
 
 import ray
 import ray.experimental.internal_kv as internal_kv
@@ -30,12 +29,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TORCH_REDUCE_OP_MAP = {
-    ReduceOp.SUM: dist.ReduceOp.SUM,
-    ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
-    ReduceOp.MIN: dist.ReduceOp.MIN,
-    ReduceOp.MAX: dist.ReduceOp.MAX,
-}
+try:
+    import torch.distributed as dist
+
+    _TORCH_DISTRIBUTED_AVAILABLE = True
+    TORCH_REDUCE_OP_MAP = {
+        ReduceOp.SUM: dist.ReduceOp.SUM,
+        ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
+        ReduceOp.MIN: dist.ReduceOp.MIN,
+        ReduceOp.MAX: dist.ReduceOp.MAX,
+    }
+except ImportError:
+    _TORCH_DISTRIBUTED_AVAILABLE = False
+    TORCH_REDUCE_OP_MAP = None
 
 
 def get_master_address_metadata_key(group_name: str):
@@ -69,7 +75,7 @@ class TorchGLOOGroup(BaseGroup):
                 raise RuntimeError(
                     f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
                     "TorchGLOOGroup should not be instantiated directly. "
-                    "Use ray.experimental.collective.create_collective_group to create the group."
+                    "Use ray.experimental.collective.create_collective_group to create a group."
                 )
             if metadata is None:
                 raise RuntimeError(
@@ -158,6 +164,10 @@ class TorchGLOOGroup(BaseGroup):
     def backend(cls):
         """The backend of this collective group."""
         return Backend.GLOO
+
+    @classmethod
+    def check_backend_availability(cls) -> bool:
+        return _TORCH_DISTRIBUTED_AVAILABLE
 
     def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
         """ray.util.collective wraps tensor arguments in a list.

@@ -7,6 +7,9 @@ from ray.util.annotations import PublicAPI
 class SaveMode(str, Enum):
     """Enum of possible modes for saving/writing data."""
 
+    """Create new data and error if data already exists."""
+    CREATE = "create"
+
     """Add new data without modifying existing data."""
     APPEND = "append"
 

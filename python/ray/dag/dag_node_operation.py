@@ -45,7 +45,8 @@ class _DAGNodeOperation:
         operation_type: _DAGNodeOperationType,
         method_name: Optional[str] = None,
     ):
-        """
+        """Initialize a _DAGNodeOperation.
+
         Args:
             exec_task_idx: The index of the task that this operation belongs to
                 in the actor's ExecutableTask list. The index is not the same
@@ -255,6 +256,8 @@ def _add_edge(
         to_node: The node to which the edge points.
         label: The label of the edge. This will be used to annotate the edge
             in the visualization of the execution schedule.
+        control_dependency: If True, the edge represents a control dependency
+            (used for visualization) rather than a data dependency.
     """
     from_node.out_edges[(to_node.task_idx, to_node.operation.type)] = (
         label,
@@ -540,12 +543,15 @@ def _build_dag_node_operation_graph(
     return graph
 
 
-def _actor_viz_label(actor: "ray.actor.ActorHandle"):
+def _actor_viz_label(actor: "ray.actor.ActorHandle") -> str:
     """
     Returns the label of an actor in the visualization of the execution schedule.
 
     Args:
         actor: The actor to be represented.
+
+    Returns:
+        A human-readable label combining the actor's class name and ID.
     """
     class_name = actor._ray_actor_creation_function_descriptor.class_name
     actor_id = actor._ray_actor_id.hex()
@@ -554,7 +560,7 @@ def _actor_viz_label(actor: "ray.actor.ActorHandle"):
 
 def _node_viz_id_and_label(
     node: _DAGOperationGraphNode, idx: int, optimized_index: int
-):
+) -> Tuple[str, str]:
     """
     Returns the visualization id and label of a node. The visualization id is unique
     across all nodes.
@@ -563,6 +569,9 @@ def _node_viz_id_and_label(
         node: The node to be represented.
         idx: The index of the node in the execution schedule.
         optimized_index: The index of the node in the optimized execution schedule.
+
+    Returns:
+        A ``(node_viz_id, node_viz_label)`` tuple suitable for visualization.
     """
     node_viz_label = node.viz_str() + f" {idx},{optimized_index}"
     node_viz_id = f"{node._actor_id}_{node_viz_label}"
