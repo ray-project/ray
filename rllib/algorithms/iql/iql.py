@@ -197,15 +197,18 @@ class IQLConfig(MARWILConfig):
         return pipeline
 
     @override(MARWILConfig)
+    def _validate_beta(self) -> None:
+        if self.beta <= 0.0:
+            self._value_error(
+                "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
+            )
+
+    @override(MARWILConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
 
         # Ensure hyperparameters are meaningful.
-        if self.beta <= 0.0:
-            self._value_error(
-                "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
-            )
         if not 0.0 < self.expectile < 1.0:
             self._value_error(
                 "For meaningful results, `expectile` parameter must be in (0, 1)."
