@@ -132,7 +132,7 @@ Esbonio also works with neovim. [See the lspconfig repository for installation i
 
 The Ray documentation is built with the [`sphinx`](https://www.sphinx-doc.org/) build system. We use the [PyData Sphinx Theme](https://pydata-sphinx-theme.readthedocs.io/en/stable/) for the documentation.
 
-We use [`myst-parser`](https://myst-parser.readthedocs.io/en/latest/) so you can write Ray documentation in either Sphinx's native [reStructuredText (rST)](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) or [Markedly Structured Text (MyST)](https://myst-parser.readthedocs.io/en/latest/). You can convert the two formats to each other, so the choice is up to you. MyST is [common markdown compliant](https://myst-parser.readthedocs.io/en/latest/syntax/reference.html#commonmark-block-tokens). Most developers are familiar with `md` syntax, so if you intend to add a new document, we recommend starting from an `.md` file.
+We use [`myst-parser`](https://myst-parser.readthedocs.io/en/latest/) so Ray documentation supports both Sphinx's native [reStructuredText (rST)](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) and [Markedly Structured Text (MyST)](https://myst-parser.readthedocs.io/en/latest/). New pages must be MyST Markdown (`.md`). A lint check rejects newly added `.rst` files, though edits to existing `.rst` files are fine. MyST is [CommonMark-compliant](https://myst-parser.readthedocs.io/en/latest/syntax/reference.html#commonmark-block-tokens), and you can convert between the two formats, so existing rST pages are straightforward to work with.
 
 The Ray documentation also fully supports executable formats such as [Jupyter Notebooks](https://jupyter.org/). Many of our examples are notebooks with [MyST markdown cells](https://myst-nb.readthedocs.io/en/latest/index.html).
 
@@ -166,14 +166,14 @@ We use [Sphinx's autodoc extension](https://www.sphinx-doc.org/en/master/usage/e
 For example, here's how you can add a function or class reference using `autofunction` and `autoclass`:
 
 ```markdown
-.. autofunction:: ray.tune.integration.docker.DockerSyncer
+.. autofunction:: ray.tune.register_env
 
-.. autoclass:: ray.tune.integration.keras.TuneReportCallback
+.. autoclass:: ray.tune.Tuner
 ```
 
-The above snippet comes from the [Tune API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/integration.rst), which you can look at for reference.
+These directives appear throughout the API reference, such as the [Tune API documentation](https://github.com/ray-project/ray/tree/master/doc/source/tune/api), which you can look at for reference.
 
-If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.integration.docker.DockerSyncer`, you would [change the following source file](https://github.com/ray-project/ray/blob/7f1bacc7dc9caf6d0ec042e39499bbf1d9a7d065/python/ray/tune/integration/docker.py#L15-L38).
+If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.register_env`, you would edit its docstring in the [source file](https://github.com/ray-project/ray/blob/master/python/ray/tune/registry.py).
 
 To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets).
 
@@ -244,45 +244,28 @@ If you write a notebook in `.md` format, you need this YAML front matter at the 
 
 ````markdown
 ```python
+from ray.rllib.algorithms.ppo import PPOConfig
 
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
+# Configure PPO on the CartPole environment.
+config = PPOConfig().environment("CartPole-v1")
 
-def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
-    trainer.train()
-    trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
-
-
-checkpoint_path = train_ppo_model()
+# Build the algorithm and train it for one iteration.
+algo = config.build_algo()
+algo.train()
 ```
 ````
 
 Putting this markdown block into your document renders as follows in the browser:
 
 ```python
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
+from ray.rllib.algorithms.ppo import PPOConfig
 
-def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
-    trainer.train()
-    trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
+# Configure PPO on the CartPole environment.
+config = PPOConfig().environment("CartPole-v1")
 
-
-checkpoint_path = train_ppo_model()
+# Build the algorithm and train it for one iteration.
+algo = config.build_algo()
+algo.train()
 ```
 
 ### Tags for your notebook
@@ -349,7 +332,7 @@ In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--t
 ## How to use Vale
 ### What is Vale?
 
-[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). It's only enforced on the Ray Data documentation.
+[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). CI enforces it on the Ray Data documentation and the example gallery.
 
 Vale catches typos and grammatical errors. It also enforces stylistic rules such as "use contractions" and "use second person." For the full list of rules, see the [configuration in the Ray repository](https://github.com/ray-project/ray/tree/master/.vale/styles/Google).
 
@@ -438,7 +421,7 @@ Vale errors if you use a word that isn't on [Google's word list](https://develop
                       'check'.
 ```
 
-If you want to use the word anyway, modify the appropriate field in the [WordList configuration](https://github.com/ray-project/ray/blob/81c169bde2414fe4237f3d2f05fc76fccfd52dee/.vale/styles/Google/WordList.yml#L41).
+If you want to use the word anyway, modify the appropriate field in the [WordList configuration](https://github.com/ray-project/ray/blob/master/.vale/styles/Google/WordList.yml).
 
 ## Troubleshooting
 

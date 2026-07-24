@@ -395,6 +395,74 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
   }
 }
 
+// A running task must stay visible in the gauge on every RecordMetrics() tick,
+// not only on state transitions, so it does not vanish between scrapes when the
+// metrics backend clears gauge observations after each export (#56405).
+TEST(TaskCounterTest, RecordMetricsReEmitsRunningGaugeAcrossTicksWithoutTransitions) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // A task starts running and then stays running with no further transitions.
+  const std::string func_name = "long_running_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+
+  // First tick emits the RUNNING-state breakdown: RUNNING, the SUBMITTED_TO_WORKER
+  // negation, and the three RUNNING_IN_* sub-states.
+  task_counter.RecordMetrics();
+  auto first_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(first_tick.size(), 5) << "expected RUNNING + negation + 3 sub-states";
+
+  // Clear observations to detect re-emission on the next tick.
+  task_by_state_gauge.Clear();
+  ASSERT_TRUE(task_by_state_gauge.GetTagToValue().empty());
+
+  // With no transitions since the last tick, the gauge must still be re-asserted.
+  task_counter.RecordMetrics();
+  auto second_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(second_tick.size(), 5) << "running task must persist without a transition";
+  ASSERT_EQ(second_tick, first_tick);
+
+  // Re-emission is sustained across further ticks, not a one-time flush.
+  task_by_state_gauge.Clear();
+  task_counter.RecordMetrics();
+  auto third_tick = task_by_state_gauge.GetTagToValue();
+  ASSERT_EQ(third_tick.size(), 5);
+  ASSERT_EQ(third_tick, first_tick);
+}
+
+// When a running task finishes, its RUNNING-state gauge must be retracted to 0 on
+// the next RecordMetrics() tick (the on-change callback fires for the now-zero key),
+// rather than remaining at its last non-zero value.
+TEST(TaskCounterTest, RecordMetricsRetractsRunningGaugeWhenTaskFinishes) {
+  ray::observability::FakeGauge task_by_state_gauge;
+  ray::observability::FakeGauge actor_by_state_gauge;
+  TaskCounter task_counter(task_by_state_gauge, actor_by_state_gauge);
+
+  // Returns the gauge value recorded for the given State tag, or -1 if absent.
+  auto value_for_state = [&task_by_state_gauge](const std::string &state) -> double {
+    for (const auto &[tags, value] : task_by_state_gauge.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+
+  const std::string func_name = "finishing_task";
+  task_counter.IncPending(func_name, /*is_retry=*/false);
+  task_counter.MovePendingToRunning(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 1) << "task should be counted as RUNNING";
+
+  // The task finishes; the RUNNING count drops to zero.
+  task_counter.MoveRunningToFinished(func_name, /*is_retry=*/false);
+  task_counter.RecordMetrics();
+  ASSERT_EQ(value_for_state("RUNNING"), 0)
+      << "RUNNING gauge must be retracted to 0, not left at its last value";
+}
+
 // Free callback used to exercise the async-generator unblock notify registry.
 // Increments the int pointed to by `ctx` (the registry treats ctx opaquely).
 static void IncrementUnblockCounter(void *ctx) { ++(*static_cast<int *>(ctx)); }
@@ -844,6 +912,60 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_object_calls[0].begin(),
                                        fake_raylet->async_get_object_calls[0].end());
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
+}
+
+TEST_F(CoreWorkerTest, NamedActorRegisterFailureReleasesHandleReference) {
+  // Named actors register synchronously. If the registration times out, the
+  // handle reference must still drop to zero so the GCS later learns there
+  // are no references and deletes the actor.
+  auto function = RayFunction(
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("module", "class", "actor_fn", ""));
+  std::string ray_namespace = "test_ns";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  auto named_options = [&](std::string name) {
+    return ActorCreationOptions(
+        /*max_restarts=*/0,
+        /*max_task_retries=*/0,
+        /*max_concurrency=*/1,
+        /*resources=*/{},
+        /*placement_resources=*/{},
+        /*dynamic_worker_options=*/{},
+        /*is_detached=*/false,
+        std::move(name),
+        ray_namespace,
+        /*is_asyncio=*/false,
+        scheduling_strategy,
+        // With an empty runtime env, CreateActor falls back to the current
+        // task's env. This test worker has no task, so give a fake one here.
+        R"({"serialized_runtime_env": "{\"env_vars\": {\"T\": \"1\"}}"})");
+  };
+
+  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ =
+      Status::TimedOut("injected registration timeout");
+  ActorID actor_id;
+  auto status = core_worker_->CreateActor(function,
+                                          {},
+                                          named_options("register_timeout_squatter"),
+                                          /*extension_data=*/"",
+                                          /*call_site=*/"",
+                                          &actor_id);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  EXPECT_FALSE(reference_counter_->HasReference(ObjectID::ForActorHandle(actor_id)));
+  EXPECT_EQ(task_manager_->NumPendingTasks(), 0);
+
+  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ = Status::OK();
+  ActorID ok_actor_id;
+  status = core_worker_->CreateActor(function,
+                                     {},
+                                     named_options("register_ok"),
+                                     /*extension_data=*/"",
+                                     /*call_site=*/"",
+                                     &ok_actor_id);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_TRUE(reference_counter_->HasReference(ObjectID::ForActorHandle(ok_actor_id)));
+  EXPECT_EQ(task_manager_->NumPendingTasks(), 1);
 }
 
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {

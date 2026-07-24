@@ -21,6 +21,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
+    skip_if_haproxy,
 )
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
@@ -91,6 +92,10 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
+    @skip_if_haproxy(
+        "direct ingress invokes the ingress deployment without a handle or router "
+        "hop, so these metrics are not emitted"
+    )
     def test_request_context_pass_for_http_proxy(self, metrics_start_shutdown):
         """Test HTTP proxy passing request context"""
 
@@ -208,6 +213,10 @@ class TestRequestContextMetrics:
             assert metrics_app_name["g"] == "app2", msg
             assert metrics_app_name["h"] == "app3", msg
 
+    @skip_if_haproxy(
+        "direct ingress skips the handle and router hop and HAProxy counts its "
+        "health-check probes in these metrics"
+    )
     def test_request_context_pass_for_grpc_proxy(self, metrics_start_shutdown):
         """Test gRPC proxy passing request context"""
 
@@ -749,6 +758,10 @@ class TestHandleMetrics:
             expected=0,
         )
 
+    @skip_if_haproxy(
+        "asserts num_scheduling_tasks, a proxy-router metric that direct ingress "
+        "bypasses so the gauge stays at 0"
+    )
     def test_queued_queries_disconnected(self, metrics_start_shutdown):
         """Check that disconnected queued queries are tracked correctly."""
 

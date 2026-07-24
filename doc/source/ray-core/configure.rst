@@ -1,3 +1,6 @@
+.. meta::
+   :description: How to configure Ray from the Python API (ray.init) and the command line (ray start), including cluster resource overrides and other runtime settings.
+
 .. _configuring-ray:
 
 Configuring Ray

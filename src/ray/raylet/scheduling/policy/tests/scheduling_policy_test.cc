@@ -70,7 +70,7 @@ class SchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
-                             /*target_label_domain*/ std::nullopt,
+                             /*target_topology_assignment*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred node*/ "",
                              schedule_top_k_absolute,
@@ -735,7 +735,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
@@ -748,13 +748,13 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   };
 
   // Schedule should return SUCCESS with 15 nodes all from rack-1
-  SchedulingResult result_1 = label_domain_policy.Schedule(
+  SchedulingResult result_1 = topology_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result_1.status.IsSuccess());
-  ASSERT_TRUE(result_1.selected_label_domain.has_value());
-  ASSERT_EQ(result_1.selected_label_domain->first, kDomainLabelKey);
-  ASSERT_EQ(result_1.selected_label_domain->second, "rack-1");
+  ASSERT_TRUE(result_1.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_1.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_1.selected_topology_assignment->second, "rack-1");
   ASSERT_EQ(result_1.selected_nodes.size(), 15);
 
   for (const scheduling::NodeID &node_id : result_1.selected_nodes) {
@@ -763,7 +763,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, result_1.selected_label_domain->second);
+    ASSERT_EQ(it->second, result_1.selected_topology_assignment->second);
   }
 
   // Subtract the resources from the selected nodes
@@ -776,15 +776,15 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
 
   SchedulingResult result_2 =
-      label_domain_policy.Schedule(req_list_2,
-                                   options,
-                                   GetCandidateNodes(*cluster_resource_manager),
-                                   node_schedule_fn);
+      topology_policy.Schedule(req_list_2,
+                               options,
+                               GetCandidateNodes(*cluster_resource_manager),
+                               node_schedule_fn);
 
   ASSERT_TRUE(result_2.status.IsSuccess());
-  ASSERT_TRUE(result_2.selected_label_domain.has_value());
-  ASSERT_EQ(result_2.selected_label_domain->first, kDomainLabelKey);
-  ASSERT_EQ(result_2.selected_label_domain->second, "rack-1");
+  ASSERT_TRUE(result_2.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_2.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_2.selected_topology_assignment->second, "rack-1");
   ASSERT_EQ(result_2.selected_nodes.size(), 3);
 
   for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
@@ -793,7 +793,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, result_2.selected_label_domain->second);
+    ASSERT_EQ(it->second, result_2.selected_topology_assignment->second);
   }
 
   // Verify the remaining 3 bundles uses nodes that weren't fully consumed by the first 15
@@ -830,7 +830,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
@@ -842,11 +842,11 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
     return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
   };
 
-  SchedulingResult result = label_domain_policy.Schedule(
+  SchedulingResult result = topology_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result.status.IsInfeasible());
-  ASSERT_FALSE(result.selected_label_domain.has_value());
+  ASSERT_FALSE(result.selected_topology_assignment.has_value());
 }
 
 }  // namespace raylet

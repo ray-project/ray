@@ -14,10 +14,14 @@
 
 #include "ray/gcs/gcs_worker_manager.h"
 
+#include <array>
 #include <limits>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
+
+#include "ray/gcs/gcs_init_data.h"
 
 namespace ray {
 namespace gcs {
@@ -26,6 +30,11 @@ namespace {
 bool IsIntentionalWorkerFailure(rpc::WorkerExitType exit_type) {
   return exit_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
          exit_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+}
+
+// Retention priority tier for a dead worker (lower index = evicted first)
+size_t DeadWorkerTier(rpc::WorkerExitType exit_type) {
+  return IsIntentionalWorkerFailure(exit_type) ? 0 : 1;
 }
 }  // namespace
 
@@ -61,6 +70,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                   "are lots of this logs, that might indicate there are "
                   "unexpected failures in the cluster.";
          }
+         // If the worker was already marked as dead, we don't need to update the worker
+         // table again.
+         const bool is_duplicate_death_report = result.has_value() && !result->is_alive();
          auto worker_failure_data =
              result.has_value()
                  ? std::make_shared<rpc::WorkerTableData>(std::move(*result))
@@ -77,6 +89,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          worker_id,
                          worker_failure_data,
                          reply,
+                         is_duplicate_death_report,
                          send_reply_callback,
                          worker_ip_address =
                              worker_address.ip_address()](const Status &status) {
@@ -95,6 +108,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                  worker_failure_data->worker_address().worker_id());
              worker_failure.set_node_id(worker_failure_data->worker_address().node_id());
              gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
+             if (!is_duplicate_death_report) {
+               TrimDeadWorkers(worker_id, worker_failure_data->exit_type());
+             }
            }
            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
          };
@@ -105,7 +121,6 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          // https://github.com/ray-project/ray/pull/11599
          gcs_table_storage_.WorkerTable().Put(
              worker_id, *worker_failure_data, {std::move(on_done), io_context_});
-
          if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
              request.worker_failure().exit_type() ==
                  rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
@@ -330,6 +345,69 @@ void GcsWorkerManager::GetWorkerInfo(
             }
             return data;
           }));
+}
+
+void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data) {
+  std::array<std::vector<std::pair<uint64_t, WorkerID>>, kNumDeadWorkerTiers>
+      dead_workers_bucket;
+  for (const auto &[worker_id, data] : gcs_init_data.Workers()) {
+    if (!data.is_alive()) {
+      dead_workers_bucket[DeadWorkerTier(data.exit_type())].emplace_back(
+          data.end_time_ms() != 0 ? data.end_time_ms()
+                                  : static_cast<uint64_t>(data.timestamp() * 1000),
+          worker_id);
+    }
+  }
+  for (size_t tier = 0; tier < kNumDeadWorkerTiers; ++tier) {
+    std::sort(
+        dead_workers_bucket[tier].begin(),
+        dead_workers_bucket[tier].end(),
+        [](const auto &left, const auto &right) { return left.first < right.first; });
+    for (const auto &entry : dead_workers_bucket[tier]) {
+      dead_workers_by_tier_[tier].push_back(entry.second);
+    }
+  }
+  const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
+  const size_t total = TotalDeadWorkers();
+  // Steady-state trimming keeps the table at or below the cap, so `overflow` is
+  // normally 0 here. It can be positive only when the persisted (Redis FT) table
+  // was bounded to a larger cap than the current one — i.e. the operator lowered
+  // maximum_gcs_dead_worker_cached_count across a restart.
+  size_t overflow = total > cap ? total - cap : 0;
+  std::vector<WorkerID> to_evict;
+  to_evict.reserve(overflow);
+  for (auto &tier : dead_workers_by_tier_) {
+    while (overflow > 0 && !tier.empty()) {
+      to_evict.push_back(tier.front());
+      tier.pop_front();
+      --overflow;
+    }
+    if (overflow == 0) {
+      break;
+    }
+  }
+  if (!to_evict.empty()) {
+    gcs_table_storage_.WorkerTable().BatchDelete(to_evict,
+                                                 {[](const auto &) {}, io_context_});
+  }
+}
+
+void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id,
+                                       rpc::WorkerExitType exit_type) {
+  dead_workers_by_tier_[DeadWorkerTier(exit_type)].push_back(worker_id);
+  if (TotalDeadWorkers() <=
+      RayConfig::instance().maximum_gcs_dead_worker_cached_count()) {
+    return;
+  }
+  for (auto &tier : dead_workers_by_tier_) {
+    if (!tier.empty()) {
+      const WorkerID evict_id = tier.front();
+      tier.pop_front();
+      gcs_table_storage_.WorkerTable().Delete(evict_id,
+                                              {[](const auto &) {}, io_context_});
+      break;
+    }
+  }
 }
 
 }  // namespace gcs
