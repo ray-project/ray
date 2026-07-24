@@ -1173,6 +1173,7 @@ def _make_mock_slice_handle(
     mock_handle.num_slices = num_slices
     mock_handle.num_bundles = num_bundles
     mock_handle.chips_per_host = chips_per_host
+    mock_handle.devices_per_host = chips_per_host
     mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
     mock_pg = MagicMock()
     mock_handle.slice_placement_group = mock_pg
@@ -1351,11 +1352,12 @@ def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_tpu_count_falls_back_to_chips_per_host(mock_spg_cls):
+def test_dispatch_tpu_count_falls_back_to_devices_per_host(mock_spg_cls):
     """When bundle_resources has no 'TPU' key, the TPU resource count
-    falls back to chips_per_host."""
-    chips_per_host = 4
-    mock_handle = _make_mock_slice_handle(chips_per_host=chips_per_host)
+    falls back to devices_per_host."""
+    devices_per_host = 8
+    mock_handle = _make_mock_slice_handle()
+    mock_handle.devices_per_host = devices_per_host
     # Remove the 'TPU' key so the fallback path is exercised.
     mock_handle.bundle_resources = {"CPU": 1.0}
     mock_spg_cls.return_value = mock_handle
@@ -1366,7 +1368,7 @@ def test_dispatch_tpu_count_falls_back_to_chips_per_host(mock_spg_cls):
             ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
-        assert call.kwargs["resources"] == {"TPU": chips_per_host}
+        assert call.kwargs["resources"] == {"TPU": devices_per_host}
 
 
 def test_dispatch_non_remote_fn_raises_type_error():

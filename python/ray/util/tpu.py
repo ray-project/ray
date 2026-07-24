@@ -1118,7 +1118,7 @@ def dispatch(
         pgs = [pgs[slice_index]]
 
     tpu_per_bundle = slice_handle.bundle_resources.get(
-        "TPU", slice_handle.chips_per_host
+        "TPU", slice_handle.devices_per_host
     )
 
     ready, _ = ray.wait(
