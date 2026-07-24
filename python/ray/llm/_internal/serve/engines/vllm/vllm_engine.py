@@ -167,6 +167,8 @@ def _dict_to_namespace(obj: Any) -> Any:
 
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
+    *,
+    device_type: Optional[str] = None,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
 
@@ -185,6 +187,11 @@ def _get_vllm_engine_config(
     from vllm.usage.usage_lib import UsageContext
 
     try:
+        if device_type is not None:
+            from vllm.platforms import current_platform
+
+            current_platform.device_type = device_type
+
         async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
             **engine_config.get_initialization_kwargs()
         )
