@@ -8,7 +8,7 @@ import ray
 from ray.experimental.rdt import nic_allocator
 from ray.experimental.rdt.nic_allocator import (
     RDT_NIC_PINNING_ENV_VAR,
-    NICAllocator,
+    _NICAllocatorImpl,
     acquire_nic_for_current_actor,
     discover_rdma_nics,
     release_nic_for_current_actor,
@@ -64,7 +64,10 @@ class TestNICAllocatorLogic:
     """Drive the allocator's underlying class directly, no cluster needed."""
 
     def _allocator(self):
-        return NICAllocator.__ray_metadata__.modified_class()
+        # The actor class is wrapped lazily in ray.remote() only when a real
+        # allocator handle is needed; here we exercise the plain
+        # implementation directly, with no cluster required.
+        return _NICAllocatorImpl()
 
     def test_acquire_release_cycle(self):
         alloc = self._allocator()
@@ -135,6 +138,57 @@ def test_release_noop_without_acquired_nic(monkeypatch):
     with mock.patch("ray.get_actor") as mock_get_actor:
         release_nic_for_current_actor()
     mock_get_actor.assert_not_called()
+
+
+def test_release_preserves_acquired_nic_on_failure(monkeypatch):
+    """If the release RPC fails, _acquired_nic must NOT be cleared: the
+    allocator may still show this process as the owner, so erasing the
+    local record here would silence any future retry and leak the NIC."""
+    monkeypatch.setenv(RDT_NIC_PINNING_ENV_VAR, "1")
+    nic_allocator._acquired_nic = "mlx5_0:1"
+
+    with (
+        mock.patch("ray.get_actor", side_effect=RuntimeError("allocator unreachable")),
+        mock.patch("ray.get_runtime_context") as mock_ctx,
+    ):
+        mock_ctx.return_value.get_actor_id.return_value = "actorA"
+        mock_ctx.return_value.get_node_id.return_value = "node1"
+        release_nic_for_current_actor()
+
+    assert nic_allocator._acquired_nic == "mlx5_0:1"
+
+
+def test_shutdown_releases_nic_even_if_flag_cleared(monkeypatch):
+    """release_nic_for_current_actor's own decision to act must depend only
+    on whether this process actually holds a NIC (_acquired_nic), never on
+    the current value of RAY_RDT_NIC_PINNING -- the env var can be changed
+    at any time and is unrelated to whether a NIC was already acquired."""
+    # Simulate: NIC was acquired earlier while the flag was on...
+    nic_allocator._acquired_nic = "mlx5_0:1"
+    # ...then the flag got cleared before shutdown runs.
+    monkeypatch.delenv(RDT_NIC_PINNING_ENV_VAR, raising=False)
+
+    released = {}
+
+    class FakeAllocatorHandle:
+        release = mock.Mock()
+        release.remote = mock.Mock(
+            side_effect=lambda node_id, actor_id: released.update(
+                node_id=node_id, actor_id=actor_id
+            )
+        )
+
+    with (
+        mock.patch("ray.get_actor", return_value=FakeAllocatorHandle()),
+        mock.patch("ray.get_runtime_context") as mock_ctx,
+        mock.patch("ray.get", return_value=None),
+    ):
+        mock_ctx.return_value.get_actor_id.return_value = "actorA"
+        mock_ctx.return_value.get_node_id.return_value = "node1"
+        release_nic_for_current_actor()
+
+    assert released == {"node_id": "node1", "actor_id": "actorA"}
+    assert nic_allocator._acquired_nic is None
 
 
 def test_release_clears_acquired_nic_after_success(ray_start_regular, tmp_path):

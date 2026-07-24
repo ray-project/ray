@@ -1162,16 +1162,19 @@ class Worker:
         # This runs regardless of whether an RDTManager was ever lazily
         # created (e.g. an actor that only calls register_nixl_memory /
         # register_nixl_memory_pool directly never creates one, but can
-        # still hold an exclusive NIC via NixlTensorTransport). Checked as
-        # a plain env lookup first so the import -- and the
-        # @ray.remote(NICAllocator) class definition it triggers -- is
-        # fully skipped when NIC pinning is disabled (the default).
-        if os.environ.get("RAY_RDT_NIC_PINNING", "0") == "1":
-            from ray.experimental.rdt.nic_allocator import (
-                release_nic_for_current_actor,
-            )
+        # still hold an exclusive NIC via NixlTensorTransport).
+        #
+        # Always imported and called unconditionally -- correctness must
+        # rest on whether *this process* actually holds a NIC
+        # (release_nic_for_current_actor's own _acquired_nic check), not on
+        # the current value of the RAY_RDT_NIC_PINNING env var, which can be
+        # toggled at any time and is unrelated to whether a NIC was already
+        # acquired. The import itself is cheap: nic_allocator wraps its
+        # actor class lazily, so no Ray actor-class registration happens
+        # here when NIC pinning was never used.
+        from ray.experimental.rdt.nic_allocator import release_nic_for_current_actor
 
-            release_nic_for_current_actor()
+        release_nic_for_current_actor()
 
 
 _connect_or_shutdown_lock = threading.RLock()

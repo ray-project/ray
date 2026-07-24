@@ -58,13 +58,17 @@ def _nic_pinning_enabled() -> bool:
     return os.environ.get(RDT_NIC_PINNING_ENV_VAR, "0") == "1"
 
 
-@ray.remote(num_cpus=0)
-class NICAllocator:
+class _NICAllocatorImpl:
     """Cluster-wide registry mapping (node, NIC) -> owning actor.
 
     A single detached instance serves the whole cluster. All methods run in
     the actor's single-threaded event loop, so no additional locking is
     needed.
+
+    Left undecorated (not ``@ray.remote`` directly) and wrapped lazily by
+    ``_get_or_create_allocator`` below, so simply importing this module
+    (e.g. from a shutdown hook, to check ``_acquired_nic``) never pays the
+    cost of Ray actor-class registration when NIC pinning was never used.
     """
 
     def __init__(self):
@@ -116,12 +120,24 @@ class NICAllocator:
         return self._nics
 
 
+# The @ray.remote-wrapped actor class, built lazily on first use (see
+# _get_nic_allocator_actor_cls) rather than at module import time.
+_NICAllocatorActorCls = None
+
+
+def _get_nic_allocator_actor_cls():
+    global _NICAllocatorActorCls
+    if _NICAllocatorActorCls is None:
+        _NICAllocatorActorCls = ray.remote(num_cpus=0)(_NICAllocatorImpl)
+    return _NICAllocatorActorCls
+
+
 def _get_or_create_allocator() -> "ray.actor.ActorHandle":
     try:
         return ray.get_actor(NIC_ALLOCATOR_NAME, namespace=NIC_ALLOCATOR_NAMESPACE)
     except ValueError:
         # get_if_exists resolves concurrent creation races atomically.
-        return NICAllocator.options(
+        return _get_nic_allocator_actor_cls().options(
             name=NIC_ALLOCATOR_NAME,
             namespace=NIC_ALLOCATOR_NAMESPACE,
             lifetime="detached",
@@ -213,6 +229,12 @@ def release_nic_for_current_actor(timeout_s: float = 5.0) -> None:
     Returns immediately, without any GCS/allocator call, if this process
     never successfully acquired a NIC (pinning disabled, no NICs found, or
     the pool was exhausted) -- the common case during actor teardown.
+
+    ``_acquired_nic`` is only cleared once the release RPC is confirmed to
+    succeed. If it fails (allocator unreachable, timeout, etc.), the local
+    record is left as-is: the allocator may still show this actor as the
+    owner, so clearing our own note here would make the leak permanent by
+    silencing any future retry.
     """
     global _acquired_nic
 
@@ -229,6 +251,10 @@ def release_nic_for_current_actor(timeout_s: float = 5.0) -> None:
             timeout=timeout_s,
         )
     except Exception:
-        logger.debug("RDT NIC release skipped.", exc_info=True)
-    finally:
-        _acquired_nic = None
+        logger.debug(
+            "RDT NIC release failed; keeping local record so a later "
+            "retry can still attempt it.",
+            exc_info=True,
+        )
+        return
+    _acquired_nic = None
