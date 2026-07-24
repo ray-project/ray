@@ -20,6 +20,7 @@ from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
@@ -138,7 +139,7 @@ def _setup_torch_process_group(
                 f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
-    elif backend == "hccl":
+    elif backend in ("hccl", "tpu_dist"):
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
@@ -180,6 +181,27 @@ def _set_torch_distributed_env_vars():
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 
+def _validate_tpu_resources(worker_group: BaseWorkerGroup):
+    resources = worker_group.get_resources_per_worker()
+    num_tpus_per_worker = resources.get("TPU", 0)
+    if num_tpus_per_worker != 1:
+        logger.warning(
+            "For PyTorch TPU training, it is recommended that each worker "
+            f"has exactly 1 TPU device. Got resources_per_worker={{'TPU': {num_tpus_per_worker}}}. "
+            "Note that the PyTorch TPU runtime binds each process to a single TPU device."
+        )
+
+    if hasattr(worker_group, "get_worker_group_context"):
+        num_slices = worker_group.get_worker_group_context().num_slices
+        if num_slices > 1:
+            # TODO (ryanaoleary): Once TorchTPU supports multi-slice, remove this ValueError
+            # and implement multi-slice TPU coordinator setup.
+            raise ValueError(
+                "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported. "
+                "For now, please restrict Torch TPU training to a single slice."
+            )
+
+
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
@@ -189,9 +211,12 @@ class _TorchBackend(Backend):
             if backend_config.backend is None:
                 resources = worker_group.get_resources_per_worker()
                 num_gpus_per_worker = resources.get("GPU", 0)
+                num_tpus_per_worker = resources.get("TPU", 0)
 
                 if num_gpus_per_worker > 0:
                     backend = "nccl"
+                elif num_tpus_per_worker > 0:
+                    backend = "tpu_dist"
                 else:
                     backend = "gloo"
             else:
@@ -200,6 +225,9 @@ class _TorchBackend(Backend):
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
+
+            if backend == "tpu_dist":
+                _validate_tpu_resources(worker_group)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -216,6 +244,11 @@ class _TorchBackend(Backend):
                     f"{backend_config.init_method}) is not supported. Must "
                     f"be either 'env' or 'tcp'."
                 )
+
+            # PyTorch distributed backends require LOCAL_RANK and other env vars
+            # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
+            if is_v2_enabled():
+                worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -253,4 +286,5 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
-        worker_group.execute(_set_torch_distributed_env_vars)
+        if not is_v2_enabled():
+            worker_group.execute(_set_torch_distributed_env_vars)

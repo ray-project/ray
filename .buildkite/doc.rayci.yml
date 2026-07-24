@@ -35,9 +35,10 @@ steps:
       - skip-on-premerge
 
   - label: ":book: doc: check API annotations"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
@@ -57,9 +58,10 @@ steps:
       - bash ci/lint/lint.sh api_annotations
 
   - label: ":book: doc: check API doc consistency"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
