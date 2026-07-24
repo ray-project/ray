@@ -14,38 +14,35 @@ _EXCEPTION_SUMMARY_RE = re.compile(
     r"^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*): (.+)$", re.MULTILINE
 )
 
-# Strips an embedded traceback header and everything after it from an exception
-# message, leaving just the human-readable prefix (e.g. "Request failed with
-# status code 400").
-_TRACEBACK_TRAILER_RE = re.compile(r":\s*Traceback \(most recent call last\).*", re.DOTALL)
-
 
 def extract_concise_error_message(message: str) -> str:
-    """Extract the innermost exception summary from a chain of nested tracebacks.
+    """Collapse a chain of nested job-submission tracebacks to the last stack.
 
     Ray's job submission errors are RuntimeErrors whose message embeds the
     traceback text of the next hop in the CLI -> dashboard SDK -> job head ->
-    job agent -> job manager forwarding chain, so the real, actionable error is
-    the last "ExceptionType: message" line, buried under internal plumbing
-    frames. Returns the original message unchanged if no such line is found.
+    job agent -> job manager forwarding chain. Each outer hop only wraps the
+    next hop's traceback in an HTTP status message (e.g. "Request failed with
+    status code 500"), so the actionable error is the last (deepest) stack.
 
-    When the chain has multiple hops, also preserves the context from the
-    immediately enclosing exception (e.g. "Request failed with status code 400")
-    so the output shows both the HTTP status and the root cause in one line.
+    Drops the outer forwarding hops but keeps that last stack trace in full --
+    its frames and root-cause exception line -- so it stays debuggable. Returns
+    the message unchanged when it has no exception summary line, and just the
+    single summary line when there is no nesting to collapse.
     """
-    matches = _EXCEPTION_SUMMARY_RE.findall(message)
+    matches = list(_EXCEPTION_SUMMARY_RE.finditer(message))
     if not matches:
         return message
-    exc_type, exc_message = matches[-1]
-    innermost = f"{exc_type}: {exc_message}"
+    last = matches[-1]
+    innermost = f"{last.group(1)}: {last.group(2)}"
     if len(matches) < 2:
         return innermost
-    _, outer_msg = matches[-2]
-    # Strip the embedded traceback so only the human-readable prefix remains.
-    outer_msg = _TRACEBACK_TRAILER_RE.sub("", outer_msg).strip()
-    if not outer_msg:
+    penultimate = matches[-2]
+    # Only collapse when the penultimate summary line actually introduces
+    # another (outer) traceback, i.e. this really is a nested forwarding chain.
+    if "Traceback (most recent call last)" not in penultimate.group(2):
         return innermost
-    return f"{outer_msg}: {innermost}"
+    # Keep the last stack in full, dropping only the outer forwarding hop(s).
+    return message[penultimate.start() :].strip()
 
 
 def bool_cast(string: str) -> Union[bool, str]:
