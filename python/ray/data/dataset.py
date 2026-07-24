@@ -6198,12 +6198,14 @@ class Dataset:
                 ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of collate_fn.
+                If the output of ``collate_fn`` is a `TensorBatchType`, it is
+                automatically moved to the target device (see ``device``);
+                otherwise, you must handle the device transfer manually.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
@@ -6211,7 +6213,7 @@ class Dataset:
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
                 experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+                conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
