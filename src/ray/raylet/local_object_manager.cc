@@ -70,8 +70,6 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
   // Called for both primary and secondary copies. For primary copies, do primary
   // copy bookkeeping. For secondary copies, there is no primary copy bookkeeping,
   // so the only work below is enqueueing for the next free batch.
-  // The !is_freed_ guard makes a repeated free a no-op (idempotency for RPC
-  // retries): it short-circuits the bookkeeping and the RAY_CHECK below.
   auto it = local_objects_.find(object_id);
   if (it != local_objects_.end() && !it->second.is_freed_) {
     // Mark the object as freed. NOTE(swang): We have to mark this instead of

@@ -2040,10 +2040,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Coalesces owner-driven FreeLocalObjects RPCs: at most one in flight per node.
-  /// Needs a mutex (unlike the io_service-only OBOD coalescer it mirrors) because
-  /// the free callback runs on an arbitrary ReferenceCounter thread while the reply
-  /// completion runs on io_service_. See SendFreeLocalObjectsBatchIfNeeded.
   absl::Mutex free_batch_mu_;
   /// node id -> FIFO queue of object ids waiting to be freed on that node.
   absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_

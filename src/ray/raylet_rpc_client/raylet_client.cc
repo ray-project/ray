@@ -573,8 +573,6 @@ void RayletClient::FreeLocalObjects(
               << "Error freeing local objects from raylet, the raylet may have died: "
               << status;
         }
-        // Forward completion (success or failure) so owner-side batching can
-        // advance the node's queue and never wedge on a flaky raylet.
         if (callback != nullptr) {
           callback(status, std::move(reply));
         }
