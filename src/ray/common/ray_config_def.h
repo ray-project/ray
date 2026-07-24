@@ -191,8 +191,7 @@ RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
 
 /// Warn when a node's buffered FreeLocalObjects backlog reaches this many bytes
 /// (converted to an object count via sizeof(ObjectID)), then again every 1024
-/// objects. A large backlog means the node is not draining (in-flight RPC stuck
-/// or unreachable).
+/// objects.
 RAY_CONFIG(int64_t, free_local_objects_backlog_warn_bytes_per_node, 16L * 1024 * 1024)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
