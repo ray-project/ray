@@ -1,7 +1,7 @@
 (kuberay-rayjob-sidecar-submitter-restart)=
 # RayJob SidecarSubmitterRestart
 
-This guide walks through enabling the `SidecarSubmitterRestart` feature gate and verifying that the submitter container recovers from a simulated crash without failing the RayJob. If you are unfamiliar with RayJob and KubeRay, see the {ref}`RayJob Quickstart <kuberay-rayjob-quickstart>` first.
+`SidecarMode` runs the RayJob submitter as a container inside the Ray head Pod. Unlike `K8sJobMode`, `SidecarMode` does not require pulling a duplicated Ray image and avoids the need for inter-pod communication as the submitter container reaches the head container through localhost. Keeping everything in one Pod also makes it easier for batch schedulers to reason about, and lets KubeRay check the submitter's status from the Pod's container status, which it already watches via its informer cache, instead of polling the Ray dashboard on every reconciliation. Compared to `HTTPMode`, users can also see logs directly in STDOUT/STDERR. Despite these benefits, it couples the submitter's lifecycle to the head Pod's. This guide walks through enabling the `SidecarSubmitterRestart` feature gate, which softens that coupling by letting the submitter container recover from transient failures without failing the RayJob. If you are unfamiliar with RayJob and KubeRay, see the {ref}`RayJob Quickstart <kuberay-rayjob-quickstart>` first.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ This guide walks through enabling the `SidecarSubmitterRestart` feature gate and
 * The submitter container's `restartPolicy` is set to `OnFailure` at the container level, independent of the head Pod's pod-level `restartPolicy: Never`. A non-zero exit code restarts only the submitter container in place without restarting the `ray-head` container. A failure in the Ray job's own code doesn't make the submitter exit non-zero, so it won't trigger a restart by itself.
 * On restart, the submitter checks the Ray job status first. If the Ray job is still running, the submitter reattaches to the log stream instead of resubmitting, so a dropped log-follow connection doesn't force-kill a running job.
 * The KubeRay operator only validates the API server version. Per the Kubernetes version skew policy, worker node kubelets can be up to 3 minor versions older, so the node running the Ray head Pod must also be on v1.35+. If that kubelet doesn't support `ContainerRestartRules`, the per-container restart policy is silently ignored, and the operator's default 30-second submitter-finished timeout can mark the RayJob `Failed` even though the Ray job is still running.
-* Exceeding `submitterConfig.backoffLimit` still marks the RayJob as failed even if the Ray job itself is still running.
+* Exceeding `submitterConfig.backoffLimit` still marks the RayJob as failed even if the Ray job itself is still running. The default is 2, and it currently can't be overridden for `SidecarMode` as the KubeRay validating webhook rejects any `submitterConfig` when `submissionMode` is `SidecarMode`.
 
 ## Verifying SidecarSubmitterRestart on kind
 
@@ -45,8 +45,6 @@ metadata:
 spec:
   submissionMode: SidecarMode
   entrypoint: python /home/ray/samples/sample_code.py
-  submitterConfig:
-    backoffLimit: 3
   rayClusterSpec:
     rayVersion: '2.56.0'
     headGroupSpec:
@@ -59,7 +57,7 @@ spec:
             resources:
               limits:
                 cpu: "1"
-                memory: "2Gi"
+                memory: "5Gi"
             volumeMounts:
             - mountPath: /home/ray/samples
               name: code-sample
@@ -134,9 +132,11 @@ docker exec rayjob-test-control-plane crictl stop $CONTAINER_ID
 The submitter container should restart and reattach to the log stream. The RayJob should remain `Running`:
 
 ```sh
-# restartCount for ray-job-submitter should increment to 1
+# restartCount for ray-job-submitter should increment to 1 while ray-head should remain 0
 kubectl get pod $HEAD_POD \
   -o jsonpath='{range .status.containerStatuses[*]}{.name}{" restartCount="}{.restartCount}{"\n"}{end}'
+# ray-head restartCount=0
+# ray-job-submitter restartCount=1
 
 # RayJob deployment status should still be Running
 kubectl get rayjob rayjob-sidecar-restart -o jsonpath='{.status.jobDeploymentStatus}'

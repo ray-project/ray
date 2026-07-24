@@ -60,7 +60,7 @@ To understand the following content better, you should understand the difference
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
     * See [ray-job.sample.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
-  * `submitterConfig` (Optional): Additional configurations for the submitter. Used in `K8sJobMode` (always) and `SidecarMode` (when `SidecarSubmitterRestart` is enabled).
+  * `submitterConfig` (Optional): Additional configurations for the submitter. Used in `K8sJobMode` (always). `SidecarMode` also honors `backoffLimit` internally when `SidecarSubmitterRestart` is enabled, but the field currently can't be set via the RayJob custom resource for `SidecarMode`. See {ref}`kuberay-rayjob-sidecar-submitter-restart`.
     * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter as failed. The default value is 2.
   * `SidecarSubmitterRestart` (alpha in v1.7, disabled by default): Lets the submitter container restart in place on transient failures, independent of the head Pod's pod-level `restartPolicy: Never`. Requires Kubernetes v1.35+ and Ray v2.54.0+. See {ref}`kuberay-rayjob-sidecar-submitter-restart` for the full walkthrough, restart/reattach behavior, and version-skew caveats.
 * Automatic resource cleanup
