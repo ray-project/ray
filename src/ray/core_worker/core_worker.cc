@@ -4889,10 +4889,24 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
+  const size_t warn_backlog = std::max<size_t>(
+      1,
+      RayConfig::instance().free_local_objects_backlog_warn_bytes_per_node() /
+          sizeof(ObjectID));
   for (const auto &node_id : locations) {
     {
       absl::MutexLock lock(&free_batch_mu_);
-      free_pending_[node_id].push_back(object_id);
+      auto &queue = free_pending_[node_id];
+      queue.push_back(object_id);
+      if (queue.size() == warn_backlog) {
+        // Node isn't draining (in-flight RPC stuck or unreachable). Warn but keep
+        // buffering: this is the only path that unpins the raylet's copy, so
+        // dropping would leak it on a live node. A dead node is cleared by the
+        // reply's failure path below.
+        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " reached "
+                         << warn_backlog
+                         << " objects; it is draining slowly or is unreachable.";
+      }
     }
     SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
@@ -4918,6 +4932,7 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     const int64_t max_batch = RayConfig::instance().max_free_local_objects_batch_size();
     const size_t cap = max_batch <= 0 ? 1 : static_cast<size_t>(max_batch);
     const size_t n = std::min(cap, queue.size());
+    request.mutable_object_ids()->Reserve(static_cast<int>(n));
     for (size_t i = 0; i < n; i++) {
       request.add_object_ids(queue.front().Binary());
       queue.pop_front();
@@ -4937,14 +4952,13 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     return;
   }
   client->FreeLocalObjects(
-      request,
-      [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+      request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
         {
           absl::MutexLock lock(&free_batch_mu_);
           free_in_flight_.erase(node_id);
           if (!status.ok()) {
-            // Raylet failure: drop this node's queue so a flaky raylet cannot
-            // wedge it (the objects will be re-freed on a later deletion wave).
+            // The retryable client only surfaces an error once the node is dead;
+            // its copies died with it, so drop the queue instead of wedging.
             free_pending_.erase(node_id);
             return;
           }

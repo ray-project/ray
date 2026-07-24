@@ -3758,6 +3758,10 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       });
 }
 
+// Idempotent (safe to retry via the retryable client, which is at-least-once,
+// not dedup): re-freeing an id is a no-op. Relies on ObjectIDs never being reused
+// and on free being owner-driven and terminal, so a stale free can't unpin a live
+// object.
 void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
                                          rpc::FreeLocalObjectsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
