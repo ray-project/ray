@@ -4,7 +4,6 @@ import hashlib
 import logging
 from typing import Any, Dict, Optional
 
-import transformers
 from pydantic import Field, root_validator
 
 import ray
@@ -24,12 +23,6 @@ from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
 )
-from ray.llm._internal.batch.stages import (
-    ChatTemplateStage,
-    DetokenizeStage,
-    SGLangEngineStage,
-    TokenizeStage,
-)
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
@@ -37,10 +30,6 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.common.utils.download_utils import (
-    NodeModelDownloadable,
-    download_model_files,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +102,24 @@ def build_sglang_engine_processor(
     Returns:
         The constructed processor.
     """
+    # Deferred imports: these modules transitively pull in heavy optional
+    # dependencies (transformers, sglang, ...). Importing them lazily keeps
+    # `import ray.data.llm` lightweight for users that only need lightweight
+    # processors (e.g. HTTP). See ray-project/ray#62861 for the same pattern
+    # applied to the ``stages`` / ``processor`` package __init__ files.
+    import transformers
+
+    from ray.llm._internal.batch.stages import (
+        ChatTemplateStage,
+        DetokenizeStage,
+        SGLangEngineStage,
+        TokenizeStage,
+    )
+    from ray.llm._internal.common.utils.download_utils import (
+        NodeModelDownloadable,
+        download_model_files,
+    )
+
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []

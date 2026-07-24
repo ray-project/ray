@@ -11,9 +11,6 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
     ProcessorConfig,
 )
-from ray.llm._internal.batch.stages import (
-    ServeDeploymentStage,
-)
 
 
 class ServeDeploymentProcessorConfig(ProcessorConfig):
@@ -74,6 +71,14 @@ def build_serve_deployment_processor(
     Returns:
         The constructed processor.
     """
+    # Deferred import: ``serve_deployment_stage`` imports ``ray.serve``, which
+    # requires the Ray Serve optional dependencies (starlette, fastapi, ...).
+    # Importing it lazily keeps `import ray.data.llm` lightweight for users
+    # that only need lightweight processors (e.g. HTTP). See
+    # ray-project/ray#62861 for the same pattern applied to the ``stages`` /
+    # ``processor`` package __init__ files.
+    from ray.llm._internal.batch.stages import ServeDeploymentStage
+
     stages = [
         ServeDeploymentStage(
             fn_constructor_kwargs=dict(
