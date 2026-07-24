@@ -1981,11 +1981,10 @@ def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
             "ray.util.tpu.reserve_tpu_slice",
             return_value=(slice_name, mock_head_pg),
         ),
-        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg) as mock_pg,
+        patch("ray.util.tpu.remove_placement_group"),
         patch("ray.get") as mock_ray_get,
     ):
-        # Exactly one ray.get call is expected: for full_slice.placement_group.ready().
-        # A second call would indicate the libtpu fan-out ran despite the KV hit.
         mock_ray_get.return_value = None
 
         result_name, result_labels = ray.util.tpu._discover_and_persist_subslices(
@@ -1994,10 +1993,14 @@ def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
 
     assert result_name == slice_name
     assert result_labels == preloaded_labels
-    assert mock_ray_get.call_count == 1, (
-        f"Expected ray.get called once (for .ready()), got {mock_ray_get.call_count}. "
-        "The libtpu fan-out ran despite KV data being present."
+    # The KV is checked immediately after the head reservation, before the
+    # worker PG is built or awaited, so a hit does zero ray.get (no .ready(),
+    # no fan-out) and never even constructs the worker PG.
+    assert mock_ray_get.call_count == 0, (
+        f"Expected no ray.get on a KV hit, got {mock_ray_get.call_count}. "
+        "The worker PG was built/awaited despite KV data being present."
     )
+    assert mock_pg.call_count == 0
 
 
 def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
@@ -2036,6 +2039,7 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
             return_value=(slice_name, mock_head_pg),
         ),
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.util.tpu.remove_placement_group"),
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
     ):
@@ -2043,8 +2047,9 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
         mock_ray_get.side_effect = [None, single_host_discovery]
 
         # Must not raise RuntimeError("incomplete: labeled 1 of 2 expected").
+        # Discovery always pins to a specific slice (as the main loop does).
         result_name, result_labels = ray.util.tpu._discover_and_persist_subslices(
-            "2x4", "v6e", 8, None
+            "2x4", "v6e", 8, None, target_slice_name=slice_name
         )
 
     assert result_name == slice_name
@@ -2074,6 +2079,7 @@ def test_discover_raises_when_workers_incomplete(mock_4x4_pgs):
             return_value=(slice_name, mock_head_pg),
         ),
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.util.tpu.remove_placement_group"),
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
     ):
@@ -2145,6 +2151,7 @@ def test_discover_bounds_worker_pg_ready_wait(mock_4x4_pgs):
             return_value=(slice_name, mock_head_pg),
         ),
         patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.util.tpu.remove_placement_group"),
         patch("ray.get", side_effect=ray.exceptions.GetTimeoutError("not ready")),
     ):
         with pytest.raises(TimeoutError, match="become ready for subslice"):

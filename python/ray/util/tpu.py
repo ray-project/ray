@@ -465,8 +465,6 @@ class SlicePlacementGroup:
             indefinitely.
         bundle_label_selector: Optional list of label selectors to apply per bundle. These label
             selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
-        target_slice_name: Optionally pin the reservation to a specific slice by name. Only valid
-            with ``num_slices=1``; used by subslice discovery to target a slice known to be idle.
         pg_per_slice: If False, creates 1 placement group for all slices.
             If True, creates `num_slices` placement groups, 1 per slice.
 
@@ -513,12 +511,8 @@ class SlicePlacementGroup:
             DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
         ),
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
-        target_slice_name: Optional[str] = None,
         pg_per_slice: bool = False,
     ):
-        if target_slice_name is not None and num_slices != 1:
-            raise ValueError("target_slice_name can only be used with num_slices=1.")
-        self._target_slice_name = target_slice_name
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._managed_pgs: List[PlacementGroup] = []
@@ -608,19 +602,6 @@ class SlicePlacementGroup:
             accelerator_type = "TPU-" + self.accelerator_version.upper()
 
             for slice_idx in range(self.num_slices):
-                reservation = reserve_tpu_slice(
-                    self._topology,
-                    accelerator_type,
-                    timeout_s=self._head_reservation_timeout_s,
-                    slice_name=self._target_slice_name,
-                )
-                if not reservation:
-                    raise RuntimeError(
-                        f"Failed to reserve TPU slice. Requested {self.num_slices} "
-                        f"slice(s) of topology '{self._topology}' with accelerator type "
-                        f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
-                        f"available in the cluster."
-                    )
                 tpu_slice_name_label = {}
 
                 if not is_single_host:
@@ -1278,12 +1259,12 @@ def _discover_and_persist_subslices(
     head_reservation_timeout_s: Optional[float],
     target_slice_name: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Dict[str, str]]]:
-    """Reserve a full slice, run libtpu discovery, compute and persist subslice
-    labels to internal KV, then release the slice.
+    """Reserve a full slice, run libtpu discovery, persist subslice labels to
+    internal KV, then release the slice.
 
-    When *target_slice_name* is given, the reservation is pinned to that
-    specific slice so discovery runs on the slice known to be fully idle
-    (rather than any slice whose worker 0 happens to be free).
+    The head PG reservation serializes concurrent discovery of the same slice:
+    the loser reuses the winner's persisted result. The worker PG is scheduled
+    onto the reserved slice by name, so it does not reserve a second head.
 
     Returns ``(slice_name, {worker_id_label: {label_key: label_value}})``.
     """
@@ -1293,37 +1274,27 @@ def _discover_and_persist_subslices(
         accelerator_version,
     )
 
-    # Reserve a full slice.
-    full_slice = SlicePlacementGroup(
-        topology=parent_topology,
-        accelerator_version=accelerator_version,
-        chips_per_vm=chips_per_vm,
-        head_reservation_timeout_s=head_reservation_timeout_s,
-        target_slice_name=target_slice_name,
+    accelerator_type = "TPU-" + accelerator_version.upper()
+    reservation = reserve_tpu_slice(
+        parent_topology,
+        accelerator_type,
+        timeout_s=head_reservation_timeout_s,
+        slice_name=target_slice_name,
     )
+    if not reservation:
+        raise RuntimeError(
+            f"Failed to reserve TPU slice '{target_slice_name or parent_topology}' "
+            f"of topology '{parent_topology}' with accelerator type "
+            f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
+            "available in the cluster."
+        )
+    slice_name, head_pg = reservation
+
+    full_slice = None
     try:
-        try:
-            ray.get(
-                full_slice.placement_group.ready(),
-                timeout=head_reservation_timeout_s,
-            )
-        except ray.exceptions.GetTimeoutError as e:
-            raise TimeoutError(
-                f"Timed out after {head_reservation_timeout_s}s waiting for the "
-                f"full '{parent_topology}' slice to become ready for subslice "
-                f"discovery; it may have become busy after being observed idle."
-            ) from e
-
-        # All bundle selectors carry the same reserved slice name.
-        slice_name = full_slice.bundle_label_selector[0][
-            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
-        ]
-
-        # Short-circuit: a concurrent caller may have already discovered this
-        # slice. The head-PG mechanism guarantees that when this caller
-        # acquired the head resource, the previous holder had already persisted
-        # to KV (persist happens before shutdown()). Skip the expensive libtpu
-        # fan-out and return the cached data.
+        # A concurrent caller may have discovered this slice while we were
+        # blocked on the head; persist precedes head release, so any KV entry is
+        # complete. Reuse it and skip the libtpu fan-out.
         try:
             existing = ray.experimental.internal_kv._internal_kv_get(
                 _get_subslice_kv_key(slice_name),
@@ -1344,6 +1315,34 @@ def _discover_and_persist_subslices(
                 "KV pre-check for '%s' failed; proceeding with full discovery.",
                 slice_name,
             )
+
+        # Schedule the worker PG onto the reserved slice by name.
+        num_bundles, _ = get_tpu_worker_resources(
+            topology=parent_topology,
+            accelerator_type=accelerator_version,
+            chips_per_vm=chips_per_vm,
+        )
+        full_slice = SlicePlacementGroup(
+            topology=parent_topology,
+            accelerator_version=accelerator_version,
+            chips_per_vm=chips_per_vm,
+            head_reservation_timeout_s=head_reservation_timeout_s,
+            bundle_label_selector=[
+                {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
+                for _ in range(num_bundles)
+            ],
+        )
+        try:
+            ray.get(
+                full_slice.placement_group.ready(),
+                timeout=head_reservation_timeout_s,
+            )
+        except ray.exceptions.GetTimeoutError as e:
+            raise TimeoutError(
+                f"Timed out after {head_reservation_timeout_s}s waiting for the "
+                f"full '{parent_topology}' slice to become ready for subslice "
+                f"discovery; it may have become busy after being observed idle."
+            ) from e
 
         # Fan out coordinate discovery to every worker in the slice.
         discover_remote = ray.remote(_discover_tpu_node_coords)
@@ -1438,7 +1437,14 @@ def _discover_and_persist_subslices(
         return slice_name, subslice_labels_by_worker_id
 
     finally:
-        full_slice.shutdown()
+        if full_slice is not None:
+            full_slice.shutdown()
+        try:
+            remove_placement_group(head_pg)
+        except Exception:
+            logger.exception(
+                "Failed to remove discovery head PG for slice '%s'", slice_name
+            )
 
 
 def _wait_for_slice_resources_freed(
