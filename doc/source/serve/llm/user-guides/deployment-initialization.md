@@ -328,10 +328,14 @@ RunAI Streamer is a vLLM extension that streams model weights directly from remo
 :::{note}
 These snippets are examples. Check the
 [RunAI Streamer docs](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html)
-for S3, Azure, and GCS compatibility with your vLLM version.
+for installation and S3, Azure, and GCS compatibility with your vLLM version.
 :::
 
-### S3 and RunAI Streamer
+Select your model source:
+
+`````{tab-set}
+
+````{tab-item} S3
 
 Set `model_source` to an `s3://` URI and `load_format` to `runai_streamer`:
 
@@ -350,43 +354,9 @@ llm_config = LLMConfig(
 )
 ```
 
-### RunAI Streamer from a local path
+````
 
-When `load_format` is `runai_streamer`, Ray Serve LLM doesn't download the model. It passes `model_source` to the streamer, which reads it directly. The streamer supports a local path on each node in addition to remote object stores, and the set of supported remote schemes depends on your `runai-model-streamer` and vLLM versions. Use a local path when the weights are already staged on a volume mounted on every node or copied to local disk, such as weights pulled from another source before serving. Point `model_source` at the path, set `load_format` to `runai_streamer`, and tune the number of concurrent read streams with the `RUNAI_STREAMER_CONCURRENCY` environment variable:
-
-```python
-from ray.serve.llm import LLMConfig
-
-llm_config = LLMConfig(
-    model_loading_config={
-        "model_id": "my-model",
-        "model_source": "/path/to/model",
-    },
-    engine_kwargs={
-        "tensor_parallel_size": 16,
-        "load_format": "runai_streamer",
-    },
-    runtime_env={"env_vars": {"RUNAI_STREAMER_CONCURRENCY": "16"}},
-)
-```
-
-### Model Sharding
-Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
-
-Once the sharded weights have been saved, upload them to S3 and use RunAI streamer with a new flag to load the sharded weights
-
-```python
-llm_config = LLMConfig(
-    ...
-    engine_kwargs={
-        "tensor_parallel_size": 4,
-        "load_format": "runai_streamer_sharded",
-    },
-    ...
-)
-```
-
-### Azure Blob streaming with RunAI Streamer
+````{tab-item} Azure
 
 RunAI Streamer reads Azure Blob Storage natively through the `az://` scheme, streaming weights into GPU memory without staging them on disk first. This requires versions of `runai-model-streamer` and vLLM that support `az://`, so confirm the versions bundled in your image.
 
@@ -411,6 +381,48 @@ llm_config = LLMConfig(
 Unlike the `abfss://` and `azure://` schemes, which download the model to disk before loading, the `az://` scheme streams directly from Blob into GPU memory.
 
 For an end-to-end AKS walkthrough that provisions the cluster, workload identity, and Blob storage, and benchmarks streaming against download-then-load, see [Stream models from Azure Blob Storage into vLLM with the RunAI Model Streamer](https://blog.aks.azure.com/2026/07/13/runai-streamer-vllm).
+
+````
+
+````{tab-item} Local path
+
+When `load_format` is `runai_streamer`, Ray Serve LLM doesn't download the model. It passes `model_source` to the streamer, which reads it directly. The streamer supports a local path on each node in addition to remote object stores, and the set of supported remote schemes depends on your `runai-model-streamer` and vLLM versions. Use a local path when the weights are already staged on a volume mounted on every node or copied to local disk, such as weights pulled from another source before serving. Point `model_source` at the path, set `load_format` to `runai_streamer`, and tune the number of concurrent read streams with the `RUNAI_STREAMER_CONCURRENCY` environment variable:
+
+```python
+from ray.serve.llm import LLMConfig
+
+llm_config = LLMConfig(
+    model_loading_config={
+        "model_id": "my-model",
+        "model_source": "/path/to/model",
+    },
+    engine_kwargs={
+        "tensor_parallel_size": 16,
+        "load_format": "runai_streamer",
+    },
+    runtime_env={"env_vars": {"RUNAI_STREAMER_CONCURRENCY": "16"}},
+)
+```
+
+````
+
+`````
+
+### Model Sharding
+Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
+
+Once the sharded weights have been saved, upload them to S3 and use RunAI streamer with a new flag to load the sharded weights
+
+```python
+llm_config = LLMConfig(
+    ...
+    engine_kwargs={
+        "tensor_parallel_size": 4,
+        "load_format": "runai_streamer_sharded",
+    },
+    ...
+)
+```
 
 ## Additional Optimizations
 
