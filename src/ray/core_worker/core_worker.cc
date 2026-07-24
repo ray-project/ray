@@ -4898,13 +4898,11 @@ void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
       absl::MutexLock lock(&free_batch_mu_);
       auto &queue = free_pending_[node_id];
       queue.push_back(object_id);
-      if (queue.size() == warn_backlog) {
-        // Node isn't draining (in-flight RPC stuck or unreachable). Warn but keep
-        // buffering: this is the only path that unpins the raylet's copy, so
-        // dropping would leak it on a live node. A dead node is cleared by the
-        // reply's failure path below.
-        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " reached "
-                         << warn_backlog
+      // Warn on first crossing the threshold, then every 1024 objects. Keep
+      // buffering; never drop.
+      if (queue.size() >= warn_backlog && (queue.size() - warn_backlog) % 1024 == 0) {
+        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " is "
+                         << queue.size()
                          << " objects; it is draining slowly or is unreachable.";
       }
     }

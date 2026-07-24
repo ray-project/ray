@@ -1564,10 +1564,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
-  /// Send a FreeLocalObjects batch from free_pending_ to the node. We only allow
-  /// 1 in-flight request per node for backpressure; ids that arrive meanwhile
-  /// batch into the next request. A null client or failed reply drops the node's
-  /// queue so a flaky raylet cannot wedge it.
+  /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
+  /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
+  /// it.
   void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,

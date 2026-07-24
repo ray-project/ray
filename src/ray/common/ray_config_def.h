@@ -189,14 +189,10 @@ RAY_CONFIG(bool, lineage_pinning_enabled, true)
 /// The maximum batch size for coalesced FreeLocalObjects RPCs.
 RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
 
-/// Warn (once per upward crossing) when a node's buffered FreeLocalObjects backlog
-/// reaches this many bytes, converted to an object count via sizeof(ObjectID). A
-/// large backlog means the node is not draining (in-flight RPC stuck, or the node
-/// is unreachable). This is observability only -- we do NOT drop, because owner-
-/// driven FreeLocalObjects is the sole path that unpins the raylet's copy (the
-/// ObjectEviction pubsub was removed), so dropping would leak the object on a live
-/// node. A dead node's backlog is instead cleared by the in-flight reply's failure
-/// path.
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many bytes
+/// (converted to an object count via sizeof(ObjectID)), then again every 1024
+/// objects. A large backlog means the node is not draining (in-flight RPC stuck
+/// or unreachable).
 RAY_CONFIG(int64_t, free_local_objects_backlog_warn_bytes_per_node, 16L * 1024 * 1024)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
