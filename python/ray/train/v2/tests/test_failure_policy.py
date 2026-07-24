@@ -1,12 +1,42 @@
 import pytest
 
+from ray.exceptions import RayActorError
 from ray.train import FailureConfig
-from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
+from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupTimeoutError,
+    WorkerHealthCheckFailedError,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     create_failure_policy,
 )
-from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
+from ray.train.v2.api.exceptions import (
+    ControllerError,
+    PreemptionError,
+    WorkerGroupError,
+)
+
+
+def _preemption_error():
+    return PreemptionError(
+        preemption_info=PreemptionInfo(
+            deadline_ms=None, preempted_node_to_ranks={"node-a": [0, 1]}
+        )
+    )
+
+
+def _preempted_death_worker_group_error():
+    """A worker group error where a worker was killed by a node reclaim."""
+    return WorkerGroupError(
+        "Worker group failed",
+        {
+            0: WorkerHealthCheckFailedError(
+                "worker died", failure=RayActorError(preempted=True)
+            ),
+            1: RuntimeError("collective communication aborted"),
+        },
+    )
 
 
 def _controller_error(retryable):
@@ -95,6 +125,91 @@ def test_infinite_controller_failure_retry():
             policy.make_decision(training_failed_error=controller_error)
             == FailureDecision.RETRY
         )
+
+
+@pytest.mark.parametrize("max_preemption_failures", [0, 1, 10])
+def test_max_preemption_failures(max_preemption_failures):
+    policy = create_failure_policy(
+        FailureConfig(max_preemption_failures=max_preemption_failures)
+    )
+    for _ in range(max_preemption_failures):
+        assert (
+            policy.make_decision(training_failed_error=_preemption_error())
+            == FailureDecision.RETRY
+        )
+    assert (
+        policy.make_decision(training_failed_error=_preemption_error())
+        == FailureDecision.RAISE
+    )
+
+
+def test_infinite_preemption_retry_by_default():
+    # max_preemption_failures defaults to -1 (unlimited).
+    policy = create_failure_policy(FailureConfig())
+    for _ in range(10):
+        assert (
+            policy.make_decision(training_failed_error=_preemption_error())
+            == FailureDecision.RETRY
+        )
+
+
+@pytest.mark.parametrize("max_preemption_failures", [0, 1, 10])
+def test_preempted_worker_death_charged_to_preemption_budget(max_preemption_failures):
+    """A WorkerGroupError containing a reclaim kill (RayActorError.preempted) is
+    charged against max_preemption_failures, not max_failures."""
+    policy = create_failure_policy(
+        FailureConfig(max_failures=0, max_preemption_failures=max_preemption_failures)
+    )
+    for _ in range(max_preemption_failures):
+        assert (
+            policy.make_decision(
+                training_failed_error=_preempted_death_worker_group_error()
+            )
+            == FailureDecision.RETRY
+        )
+    assert (
+        policy.make_decision(
+            training_failed_error=_preempted_death_worker_group_error()
+        )
+        == FailureDecision.RAISE
+    )
+
+
+def test_non_preempted_actor_death_charged_to_max_failures():
+    """An actor death that was NOT caused by preemption stays on max_failures."""
+    policy = create_failure_policy(
+        FailureConfig(max_failures=0, max_preemption_failures=-1)
+    )
+    error = WorkerGroupError(
+        "Worker group failed",
+        {
+            0: WorkerHealthCheckFailedError(
+                "worker died", failure=RayActorError(preempted=False)
+            )
+        },
+    )
+    assert policy.make_decision(training_failed_error=error) == FailureDecision.RAISE
+
+
+def test_preemption_budget_is_separate_from_max_failures():
+    # Preemptions should not be charged against `max_failures`: with no worker
+    # failure budget, preemptions still retry while a real worker error raises.
+    policy = create_failure_policy(
+        FailureConfig(max_failures=0, max_preemption_failures=-1)
+    )
+    for _ in range(5):
+        assert (
+            policy.make_decision(training_failed_error=_preemption_error())
+            == FailureDecision.RETRY
+        )
+    assert (
+        policy.make_decision(
+            training_failed_error=_worker_group_error_from_errors(
+                [RuntimeError("boom")]
+            )
+        )
+        == FailureDecision.RAISE
+    )
 
 
 if __name__ == "__main__":
