@@ -151,9 +151,9 @@ anyio==4.13.0 \
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   httpx
     #   jupyter-server
-anyscale==0.26.102 \
-    --hash=sha256:12cbe08c37a0f15ef88d432bb60c9cd9d32a4fbf5742ec3303e1cbc0da571f25 \
-    --hash=sha256:3b7c3e342c183cb9a26f2fd9722aba59f903c0e097119c4af2ece8ececa8d333
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   -r docker/base-extra/requirements.in
