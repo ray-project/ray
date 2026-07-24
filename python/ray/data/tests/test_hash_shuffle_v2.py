@@ -1,8 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -230,6 +232,62 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     assert [r.levelname for r in caplog.records].count("ERROR") == 1
     assert "partition 7" in caplog.records[0].message
     ray.cancel(ref, force=True)
+
+
+def test_shuffle_map_task_uses_operator_name():
+    ctx = DataContext.get_current()
+    name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
+    op = ShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+        pre_map_merge_threshold=0,
+        name=name,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_map_operator._shuffle_map_task"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = [
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        ]
+        op._submit_shuffle_map_task([], [])
+
+    assert shuffle_map_task.options.call_args.kwargs["name"] == name
+
+
+def test_shuffle_reduce_task_uses_operator_name():
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    name = "JoinShuffleReduce(num_partitions=1)"
+    op = ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        reduce_ray_remote_args={"name": "caller-supplied-name"},
+        name=name,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_reduce_operator._shuffle_reduce_task"
+    ) as shuffle_reduce_task:
+        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+    assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
 # --- Multi-input reduce -------------------------------------------------------
