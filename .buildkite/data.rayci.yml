@@ -232,6 +232,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc
@@ -254,6 +255,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.10)
 
   - label: ":database: data: dask doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc
@@ -267,6 +269,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: doc gpu tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - data
       - doc

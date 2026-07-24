@@ -1,0 +1,10 @@
+# uv override file for the data-test deplocks (ray.data.read_lerobot).
+#
+# lerobot 0.5.x caps wandb<0.25 and packaging<26.0, but Ray pins wandb==0.26.0
+# and packaging==26.1. The read_lerobot datasource only uses lerobot's dataset
+# metadata + torchcodec video decoding, which import neither wandb nor depend on
+# packaging <26 behaviour, so we override those two caps and let Ray's pinned
+# versions win (resolved via the compiled-requirements constraint). This keeps
+# the rest of the data stack on Ray's versions while allowing lerobot to install.
+wandb
+packaging
