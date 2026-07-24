@@ -22,7 +22,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
@@ -92,19 +92,15 @@ struct GcsServerMocker {
 
     void GetWorkerFailureCause(
         const LeaseID &lease_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
-        override {
-      ray::rpc::GetWorkerFailureCauseReply reply;
+        const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
+      rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
-        const rpc::LeaseSpec &spec,
-        bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size,
-        const bool is_selected_based_on_locality) override {
+        rpc::RequestWorkerLeaseRequest &&request,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
@@ -222,12 +218,14 @@ struct GcsServerMocker {
       commit_callbacks.push_back(callback);
     }
 
-    void CancelResourceReserve(
-        const BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-        override {
-      num_return_requested += 1;
-      return_callbacks.push_back(callback);
+    void RemovePlacementGroupBundles(
+        const PlacementGroupID &placement_group_id,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+        const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+            &callback) override {
+      num_remove_pg_bundles_requested += 1;
+      num_bundles_removed += bundle_specs.size();
+      remove_pg_bundles_callbacks.push_back(callback);
     }
 
     void ReleaseUnusedBundles(
@@ -262,15 +260,15 @@ struct GcsServerMocker {
       }
     }
 
-    bool GrantCancelResourceReserve(bool success = true) {
+    bool GrantRemovePlacementGroupBundles(bool success = true) {
       Status status = Status::OK();
-      rpc::CancelResourceReserveReply reply;
-      if (return_callbacks.size() == 0) {
+      rpc::RemovePlacementGroupBundlesReply reply;
+      if (remove_pg_bundles_callbacks.size() == 0) {
         return false;
       } else {
-        auto callback = return_callbacks.front();
+        auto callback = remove_pg_bundles_callbacks.front();
         callback(status, std::move(reply));
-        return_callbacks.pop_front();
+        remove_pg_bundles_callbacks.pop_front();
         return true;
       }
     }
@@ -300,13 +298,15 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply>>
         release_callbacks = {};
     int num_lease_requested = 0;
-    int num_return_requested = 0;
+    int num_remove_pg_bundles_requested = 0;
+    int num_bundles_removed = 0;
     int num_commit_requested = 0;
 
     int num_release_unused_bundles_requested = 0;
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::RemovePlacementGroupBundlesReply>>
+        remove_pg_bundles_callbacks = {};
   };
 
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
@@ -341,8 +341,6 @@ struct GcsServerMocker {
   class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
-
-    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
 
     using gcs::GcsPlacementGroupScheduler::ScheduleUnplacedBundles;
     // Extra conveinence overload for the mock tests to keep using the old interface.

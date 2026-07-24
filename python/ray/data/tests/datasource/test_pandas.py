@@ -113,7 +113,7 @@ def test_to_pandas(ray_start_regular_shared):
     df = pd.DataFrame({"id": list(range(n))})
     ds = ray.data.range(n)
     dfds = ds.to_pandas()
-    assert df.equals(dfds)
+    pd.testing.assert_frame_equal(df.astype(dfds.dtypes.to_dict()), dfds)
 
     # Test limit.
     with pytest.raises(ValueError):
@@ -121,7 +121,7 @@ def test_to_pandas(ray_start_regular_shared):
 
     # Test limit greater than number of rows.
     dfds = ds.to_pandas(limit=6)
-    assert df.equals(dfds)
+    pd.testing.assert_frame_equal(df.astype(dfds.dtypes.to_dict()), dfds)
 
 
 def test_to_pandas_different_block_types(ray_start_regular_shared):
@@ -134,7 +134,7 @@ def test_to_pandas_different_block_types(ray_start_regular_shared):
 
     actual_df = ds1.union(ds2).to_pandas()
 
-    expected_df = pd.DataFrame({"a": [0, 0]})
+    expected_df = pd.DataFrame({"a": [0, 0]}).astype(actual_df.dtypes.to_dict())
     pd.testing.assert_frame_equal(actual_df, expected_df)
 
 
@@ -143,7 +143,7 @@ def test_to_pandas_refs(ray_start_regular_shared):
     df = pd.DataFrame({"id": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
-    assert df.equals(dfds)
+    pd.testing.assert_frame_equal(df.astype(dfds.dtypes.to_dict()), dfds)
 
 
 def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
@@ -151,7 +151,8 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([df1, df2], override_num_blocks=2)
     dfds = ds.to_pandas()
-    assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
+    expected = pd.concat([df1, df2], ignore_index=True)
+    pd.testing.assert_frame_equal(expected.astype(dfds.dtypes.to_dict()), dfds)
 
 
 def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):

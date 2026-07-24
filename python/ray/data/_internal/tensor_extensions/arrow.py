@@ -344,8 +344,12 @@ def convert_to_pyarrow_array(
             enable_fallback_config is None or not object_ext_type_fallback_allowed
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
             logger.warning(
-                f"Failed to convert column '{column_name}' into pyarrow "
-                f"array due to: {ace}; {object_ext_type_detail}",
+                f"Failed to convert column '{column_name}' into pyarrow array "
+                f"({type(ace).__name__}); {object_ext_type_detail}. "
+                f"To see the full error, set logging level to DEBUG.",
+            )
+            logger.debug(
+                f"Full details for Arrow conversion error on column '{column_name}':",
                 exc_info=ace,
             )
 
@@ -1527,12 +1531,27 @@ def unify_tensor_types(
     if len(shapes) == 1:
         return next(iter(types))
 
-    return ArrowVariableShapedTensorType(
+    # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
+    #       derived as the max length of the shapes that are making it up
+    return _get_variable_shaped_tensor_type(
         dtype=value_types.pop(),
-        # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
-        #       derived as the max length of the shapes that are making it up
         ndim=max(len(s) for s in shapes),
     )
+
+
+@functools.lru_cache(maxsize=ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE)
+def _get_variable_shaped_tensor_type(
+    dtype: pa.DataType, ndim: int
+) -> "ArrowVariableShapedTensorType":
+    """Construct (and cache) a variable-shaped tensor type.
+
+    ``ArrowVariableShapedTensorType`` is an immutable value type fully keyed by
+    ``(dtype, ndim)``, but constructing one is expensive: pyarrow's ext-type
+    registration serializes the metadata on every instantiation. Schema
+    unification builds the same handful of types over and over (once per
+    diverging column, per call), so we memoize construction here.
+    """
+    return ArrowVariableShapedTensorType(dtype=dtype, ndim=ndim)
 
 
 @DeveloperAPI(stability="alpha")

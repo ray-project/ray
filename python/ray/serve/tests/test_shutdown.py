@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import format_actor_name
 from ray.serve.config import DeploymentActorConfig
 from ray.util.state import list_actors
@@ -130,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -171,7 +172,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -212,7 +213,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -255,7 +256,7 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -429,6 +430,49 @@ async def test_shutdown_async_after_driver_reconnect(ray_shutdown):
         await serve.shutdown_async()
 
 
+def test_shutdown_after_reconnect_shuts_down_live_serve(ray_cluster):
+    """serve.shutdown() must shut down a still-running Serve after the driver
+    reconnects to a long-lived cluster.
+
+    Regression test for https://github.com/ray-project/ray/issues/64647.
+    Unlike test_shutdown_after_driver_reconnect (which starts a fresh in-process
+    cluster on each ray.init(), so no controller ever survives), this uses a
+    persistent cluster. The detached controller survives the driver's
+    ray.shutdown(), so a stale cached _global_client left over from the first
+    session must not make serve.shutdown() skip shutting the live controller down.
+    """
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=8)
+
+    @serve.deployment
+    class First:
+        def __call__(self):
+            return "first"
+
+    # Session 1: start Serve. The detached controller survives disconnect.
+    ray.init(head_node.address, namespace=SERVE_NAMESPACE)
+    serve.start()
+    serve.run(First.bind())
+    ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)  # sanity: exists
+    # Intentionally do NOT clear serve.context._global_client: the stale cached
+    # client left behind here is exactly what triggers the bug.
+    ray.shutdown()
+
+    # Session 2: reconnect to the same cluster and shut Serve down.
+    ray.init(head_node.address, namespace=SERVE_NAMESPACE)
+    serve.shutdown()
+
+    # The live controller must actually be gone now.
+    def controller_gone():
+        try:
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(controller_gone, timeout=20)
+
+
 def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     """serve.shutdown() kills all deployment actors.
 
@@ -478,6 +522,44 @@ def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     serve.shutdown()
 
     wait_for_condition(lambda: _check_deployment_actor_count(0), timeout=15)
+
+
+def test_crash_during_shutdown_no_orphaned_actors(ray_shutdown):
+    """Controller crash mid-shutdown should not orphan replica actors."""
+    address = ray.init(num_cpus=4)["address"]
+    serve.start()
+
+    @serve.deployment(num_replicas=2)
+    class MyModel:
+        def __call__(self, request):
+            return "hello"
+
+    serve.run(MyModel.bind(), name="my_app")
+
+    def replicas_running():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        replicas = [a for a in actors if "ServeReplica" in a.get("class_name", "")]
+        return len(replicas) == 2
+
+    wait_for_condition(replicas_running, timeout=30)
+
+    # Start shutdown, then immediately kill controller to simulate crash.
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    ray.get(controller.graceful_shutdown.remote(wait=False), timeout=10)
+    ray.kill(controller, no_restart=False)
+
+    # Restarted controller should recover and clean up all actors.
+    def check_dead():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_dead, timeout=60)
 
 
 if __name__ == "__main__":

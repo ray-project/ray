@@ -106,6 +106,7 @@ LightGBM
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+    ~train.lightgbm.normalize_pandas_for_lightgbm
 
 JAX
 ~~~
@@ -129,6 +130,7 @@ Ray Train Configuration
     ~train.CheckpointConfig
     ~train.DataConfig
     ~train.FailureConfig
+    ~train.LoggingConfig
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.ValidationConfig
@@ -151,6 +153,13 @@ Ray Train Utilities
     ~train.ValidationFn
     ~train.ValidationTaskConfig
 
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.PreemptionInfo
+
 **Functions**
 
 .. autosummary::
@@ -161,6 +170,7 @@ Ray Train Utilities
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
+    ~train.get_preemption_info
     ~train.report
 
 **Collective**
@@ -193,6 +203,7 @@ Ray Train Errors
     :toctree: doc/
 
     ~train.ControllerError
+    ~train.PreemptionError
     ~train.WorkerGroupError
     ~train.TrainingFailedError
 

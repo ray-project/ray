@@ -15,7 +15,8 @@ Ray Data loads data from various sources. This guide shows you how to:
 Reading files
 =============
 
-Ray Data reads files from local disk or cloud storage in a variety of file formats.
+Ray Data reads files from shared local storage or cloud storage in a variety of
+file formats.
 To view the full list of supported file formats, see the
 :ref:`Loading Data API <loading-data-api>`.
 
@@ -150,26 +151,38 @@ To view the full list of supported file formats, see the
             petal.width   float
             sepal.length  float
 
+    .. tab-item:: Zarr
 
-Reading files from local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        To read a Zarr v2 store, call :func:`~ray.data.read_zarr`.
 
-To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
-specify paths with the ``local://`` schema. Paths can point to files or directories.
+        .. code-block:: python
+
+            import ray
+
+            ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
+
+
+Reading files from shared local storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read files from a shared local filesystem, put the files on storage such as
+NFS, and mount that storage at the same path on every Ray node. Then, call a
+function like :func:`~ray.data.read_parquet` with the mounted path. Paths can
+point to files or directories.
+
+.. warning::
+
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
-
-.. tip::
-
-    If your files are accessible on every node, exclude ``local://`` to parallelize the
-    read tasks across the cluster.
 
 .. testcode::
     :skipif: True
 
     import ray
 
-    ds = ray.data.read_parquet("local:///tmp/iris.parquet")
+    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
 
     print(ds.schema())
 
@@ -296,33 +309,6 @@ To read formats other than Parquet, see the :ref:`Loading Data API <loading-data
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
-Reading files from NFS
-~~~~~~~~~~~~~~~~~~~~~~
-
-To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
-and specify files on the mounted filesystem. Paths can point to files or directories.
-
-To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
-
-.. testcode::
-    :skipif: True
-
-    import ray
-
-    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
-
-    print(ds.schema())
-
-.. testoutput::
-
-    Column        Type
-    ------        ----
-    sepal.length  double
-    sepal.width   double
-    petal.length  double
-    petal.width   double
-    variety       string
-
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -350,6 +336,8 @@ The following example shows how to download a batch of images from URLs listed i
 
 .. testcode::
 
+    import pyarrow.fs
+
     import ray
     from ray.data.expressions import download
 
@@ -360,7 +348,10 @@ The following example shows how to download a batch of images from URLs listed i
     # This creates a new column 'bytes' with the downloaded file contents.
     ds = ds.with_column(
         "bytes",
-        download("image_url"),
+        download(
+            "image_url",
+            filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
+        ),
     )
 
     ds.take(1)
@@ -532,7 +523,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.daft.ai>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -545,13 +536,9 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_, call
         :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
         by your Daft query.
-
-        .. warning::
-            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
-            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
 
         .. testcode::
             :skipif: True
@@ -809,7 +796,10 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
         To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
+        .. The mirror for CIFAR10 has historically been unreliable, so we skip the test.
+
         .. testcode::
+            :skipif: True
 
             import ray
             from torch.utils.data import Dataset
@@ -839,6 +829,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
             function with small datasets like MNIST or CIFAR.
 
         .. testcode::
+            :skipif: True
 
             import ray
             import tensorflow_datasets as tfds

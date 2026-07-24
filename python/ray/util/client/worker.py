@@ -442,8 +442,13 @@ class Worker:
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
+
         Args:
             metadata: the gRPC metadata to append the IDs to
+
+        Returns:
+            The metadata with the thread id and request id appended, or the
+            original metadata unchanged if reconnects are disabled.
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -558,7 +563,6 @@ class Worker:
         val,
         *,
         client_ref_id: bytes = None,
-        _owner: Optional[ClientActorHandle] = None,
     ):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
@@ -569,16 +573,12 @@ class Worker:
                 "call 'put' on it (or return it)."
             )
         data = dumps_from_client(val, self._client_id)
-        return self._put_pickled(data, client_ref_id, _owner)
+        return self._put_pickled(data, client_ref_id)
 
-    def _put_pickled(
-        self, data, client_ref_id: bytes, owner: Optional[ClientActorHandle] = None
-    ):
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
-        if owner is not None:
-            req.owner_id = owner.actor_ref.id
 
         resp = self.data_client.PutObject(req)
         if not resp.valid:

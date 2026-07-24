@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import pandas as pd
 
@@ -12,8 +12,11 @@ import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
+    DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    DEFAULT_PREEMPTION_DEADLINE_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
@@ -39,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -51,6 +55,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.execution.preemption import merge_preemption_info
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -58,16 +63,19 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
+    WorkerGroupContext,
     WorkerGroupPollStatus,
 )
-from ray.train.v2._internal.execution.worker_group.worker_group import (
-    WorkerGroupContext,
-)
 from ray.train.v2._internal.logging import LoggingManager
-from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
+from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
+    time_monotonic,
+    time_seconds,
+)
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    PreemptionError,
     TrainingFailedError,
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
@@ -75,6 +83,7 @@ from ray.train.v2.api.result import Result
 from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 from ray.util.tpu import get_tpu_num_slices_for_workers
@@ -184,8 +193,37 @@ class TrainController:
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
+        self._manages_replica_groups = (
+            train_run_context.backend_config.backend_cls.has_replica_groups
+            if train_run_context.backend_config
+            else False
+        )
+
+        # Register the preemption-observability callback when not in TorchFT
+        # mode (replica groups handle peer loss via their own quorum).
+        enable_preemption_watcher = ray_constants.env_bool(
+            ENABLE_PREEMPTION_WATCHER_ENV_VAR,
+            DEFAULT_ENABLE_PREEMPTION_WATCHER,
+        )
+        if self._manages_replica_groups:
+            if enable_preemption_watcher and ray_constants.env_set_by_user(
+                ENABLE_PREEMPTION_WATCHER_ENV_VAR
+            ):
+                logger.info(
+                    "The preemption watcher is not compatible with replica "
+                    "groups (e.g. TorchFT), which handle peer loss via their "
+                    "own quorum; skipping it."
+                )
+        elif enable_preemption_watcher:
+            from ray.train.v2._internal.callbacks.preemption_callback import (
+                PreemptionCallback,
+            )
+
+            self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
+        self._return_value: Optional[Any] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -249,14 +287,34 @@ class TrainController:
         )
         if failure_result:
             return failure_result
-
-        if self._worker_group:
-            self._shutdown_worker_group()
-
-        self._start_worker_group(
-            num_workers=decision.num_workers,
-            resources_per_worker=decision.resources_per_worker,
+        current_num_workers = (
+            len(self._worker_group.get_workers()) if self._worker_group else 0
         )
+        poll_status = (
+            self._worker_group.get_latest_poll_status() if self._worker_group else None
+        )
+        failing_rgs = (
+            poll_status.failing_replica_group_indices if poll_status else set()
+        )
+        all_rgs = poll_status.all_replica_group_indices if poll_status else set()
+        if (
+            self._manages_replica_groups
+            and bool(failing_rgs)
+            and failing_rgs != all_rgs
+            and self._worker_group
+            # TODO: relax this after integrating replica groups with elastic training.
+            and decision.num_workers == current_num_workers
+        ):
+            # Torchft: replace only failing replica groups.
+            self._replace_bad_workers(poll_status)
+        else:
+            # Standard: full restart.
+            if self._worker_group:
+                self._shutdown_worker_group()
+            self._start_worker_group(
+                num_workers=decision.num_workers,
+                resources_per_worker=decision.resources_per_worker,
+            )
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -264,12 +322,36 @@ class TrainController:
             next_state=RunningState(),
         )
 
+    def _replace_bad_workers(self, poll_status: WorkerGroupPollStatus):
+        """Replace failing replica groups in the worker group.
+
+        Args:
+            poll_status: The poll status containing error information.
+
+        Returns:
+            None
+        """
+        failing_rg_indices = poll_status.failing_replica_group_indices
+
+        if not failing_rg_indices:
+            logger.warning("No failing replica groups found in poll status.")
+            return
+
+        logger.info(f"Replacing failing replica groups: {failing_rg_indices}")
+
+        for rg_index in failing_rg_indices:
+            # TODO: parallelize this.
+            # TODO: also ensure that if earlier replacements succeed and later replacements fail,
+            # we don't redo the earlier replacements.
+            # See https://github.com/ray-project/ray/pull/61475#discussion_r3055217289
+            self._worker_group.replace_replica_group(rg_index)
+
     def _get_retry_state(
         self,
         controller_state: TrainControllerState,
         training_failed_error: TrainingFailedError,
     ) -> TrainControllerState:
-        if isinstance(controller_state, RunningState):
+        if isinstance(controller_state, (RunningState, PreemptingState)):
             return RestartingState(training_failed_error=training_failed_error)
         elif isinstance(controller_state, SchedulingState):
             return ReschedulingState(training_failed_error=training_failed_error)
@@ -369,13 +451,7 @@ class TrainController:
         scaling_config = self._train_run_context.scaling_config
 
         # Check for `label_selector` to influence WorkerGroup scheduling.
-        label_selector = None
-        if isinstance(scaling_config.label_selector, list):
-            label_selector = scaling_config.label_selector[:num_workers]
-        elif isinstance(scaling_config.label_selector, dict):
-            label_selector = [
-                scaling_config.label_selector.copy() for _ in range(num_workers)
-            ]
+        label_selector = scaling_config._label_selector_per_worker(num_workers)
         for callback in self._controller_callbacks:
             selector = callback.on_controller_start_worker_group(
                 scaling_config=scaling_config, num_workers=num_workers
@@ -577,7 +653,8 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-            if worker_group_status.finished and not worker_group_status.errors:
+            if self._is_training_succeeded(worker_group_status):
+                self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -585,6 +662,20 @@ class TrainController:
                         next_state=FinishedState(),
                     ),
                 )
+
+            # A node hosting one of the workers is being preempted: move to
+            # PreemptingState to wait out the grace window before restarting.
+            preemption_info = worker_group_status.get_preemption_info()
+            if preemption_info is not None:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=PreemptingState(
+                        preemption_info=preemption_info,
+                        detected_at_s=time_seconds(),
+                    ),
+                )
+
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
                 failure_decision = self._failure_policy.make_decision(
@@ -615,6 +706,8 @@ class TrainController:
                 previous_state=controller_state,
                 next_state=next_state,
             )
+        elif isinstance(controller_state, PreemptingState):
+            return await self._handle_preempting_state(controller_state)
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -627,6 +720,93 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    @staticmethod
+    def _is_training_succeeded(
+        worker_group_status: WorkerGroupPollStatus,
+    ) -> bool:
+        """Whether every rank exited successfully."""
+        return worker_group_status.finished and not worker_group_status.errors
+
+    @staticmethod
+    def _is_preemption_deadline_exceeded(
+        preemption_info: "PreemptionInfo",
+        detected_at_s: float,
+    ) -> bool:
+        """Whether the preemption deadline has passed.
+
+        `deadline_ms` is when the preempted node will be taken away (epoch ms),
+        used as-is. When it is unknown (None), fall back to
+        `DEFAULT_PREEMPTION_DEADLINE_S` after the preemption was first detected
+        so we don't wait forever.
+        """
+        deadline_ms = preemption_info.deadline_ms
+        if deadline_ms is None:
+            deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
+        return time_seconds() * 1000 >= deadline_ms
+
+    async def _handle_preempting_state(
+        self, controller_state: PreemptingState
+    ) -> TrainControllerLoopIterationResult:
+        worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+
+        # Training finished successfully before the preemption.
+        if self._is_training_succeeded(worker_group_status):
+            self._return_value = worker_group_status.worker_statuses[0].return_value
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ShuttingDownState(
+                    next_state=FinishedState(),
+                ),
+            )
+
+        # A worker failed for a reason other than the preemption should fail fast.
+        if (
+            worker_group_status.errors
+            and not worker_group_status.has_preempted_worker()
+        ):
+            worker_group_error = worker_group_status.get_worker_group_error()
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=worker_group_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=worker_group_error
+            )
+
+        # Merge any new preemption info so the info covers every preempted node.
+        new_preemption_info = worker_group_status.get_preemption_info()
+        preemption_info = (
+            merge_preemption_info(controller_state.preemption_info, new_preemption_info)
+            if new_preemption_info is not None
+            else controller_state.preemption_info
+        )
+
+        deadline_exceeded = self._is_preemption_deadline_exceeded(
+            preemption_info, controller_state.detected_at_s
+        )
+        if worker_group_status.finished or deadline_exceeded:
+            preemption_error = PreemptionError(
+                preemption_info=preemption_info,
+                drain_timed_out=not worker_group_status.finished,
+            )
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=preemption_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=preemption_error
+            )
+
+        # Otherwise the preemption is still in progress: keep the healthy ranks
+        # running until every rank exits or the deadline passes.
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=PreemptingState(
+                preemption_info=preemption_info,
+                detected_at_s=controller_state.detected_at_s,
+            ),
+        )
 
     def _generate_run_attempt_id(self):
         self._run_attempt_id = uuid.uuid4().hex
@@ -759,6 +939,7 @@ class TrainController:
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
+            return_value=self._return_value,
         )
 
     def get_result(self) -> Result:
@@ -789,7 +970,8 @@ class TrainController:
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index, consistency_mode
+            current_report_index, consistency_mode, timeout_s
         )

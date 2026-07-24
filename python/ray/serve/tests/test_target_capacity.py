@@ -44,11 +44,14 @@ START_AT_10_DEPLOYMENT_MAX_REPLICAS = 20
 def shutdown_ray_and_serve():
     serve.shutdown()
     if ray.is_initialized():
-        ray.shutdown()
+        # wait_for_processes=True blocks until the raylet/GCS/etc. subprocesses
+        # have fully exited, so the next test's serve.start() (which calls
+        # ray.init()) doesn't race a still-terminating raylet.
+        ray.shutdown(wait_for_processes=True)
     yield
     serve.shutdown()
     if ray.is_initialized():
-        ray.shutdown()
+        ray.shutdown(wait_for_processes=True)
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -448,7 +451,7 @@ def create_controlled_app(config: ControllerAppConfig) -> Application:
 
 class AutoscalingControllerAppConfig(BaseModel):
     min_replicas: int
-    initial_replicas: Optional[int]
+    initial_replicas: Optional[int] = None
     max_replicas: int
 
 
@@ -481,7 +484,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name: str,
         deployment_name: str,
         replica_state: ReplicaState = ReplicaState.RUNNING,
-        controller_handle=None,
+        controller_handle: Optional[ray.actor.ActorHandle] = None,
     ) -> bool:
         """Checks that the number of replicas are as expected.
 
@@ -493,6 +496,9 @@ class TestTargetCapacityUpdateAndServeStatus:
             controller_handle: this is an optional argument. If provided, the
                 controller handle is used to get the current autoscaling
                 metrics and print them if the assertion fails.
+
+        Returns:
+            True when the replica count matches (raises ``AssertionError`` otherwise).
         """
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)
@@ -670,8 +676,8 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
-        initial_replicas = 30
-        max_replicas = 70
+        initial_replicas = 12
+        max_replicas = 20
 
         lifecycle_signal = SignalActor.options(
             name="lifecycle_signal", namespace=SERVE_NAMESPACE

@@ -18,9 +18,13 @@ from ray_release.custom_byod_build_init_helper import (
     get_prerequisite_step,
 )
 from ray_release.test import Test
-from ray_release.util import AZURE_REGISTRY_NAME
+
+# AZURE_REGISTRY_NAME import temporarily commented out: the Azure ACR login
+# step it was used to verify is disabled due to CI issues.
+# from ray_release.util import AZURE_REGISTRY_NAME
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+_GPU_MAP = build_short_gpu_map(bazel_runfile("ray-images.json"))
 
 
 @mock.patch.dict(os.environ, {"RAY_WANT_COMMIT_IN_IMAGE": "abc123"})
@@ -133,7 +137,9 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
     ]
     with tempfile.TemporaryDirectory() as tmpdir:
         create_custom_build_yaml(
-            os.path.join(tmpdir, "custom_byod_build.rayci.yml"), tests
+            os.path.join(tmpdir, "custom_byod_build.rayci.yml"),
+            tests,
+            _GPU_MAP,
         )
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f:
             content = yaml.safe_load(f)
@@ -159,29 +165,34 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 content["steps"][0]["commands"][1]
                 == f"bash release/gcloud_docker_login.sh {config['aws2gce_credentials']}"
             )
-            assert content["steps"][0]["commands"][4].startswith(
-                "az acr login"
-            ) and content["steps"][0]["commands"][4].endswith(AZURE_REGISTRY_NAME)
+            # Azure ACR login step is replaced by a placeholder echo while
+            # Azure image push is disabled due to CI issues. Verify the
+            # placeholder is present at the expected index instead of an
+            # `az acr login --name <AZURE_REGISTRY_NAME>` command.
+            assert "Skipping Azure ACR login" in content["steps"][0]["commands"][3]
             assert (
                 f"--region {config['byod_ecr_region']}"
-                in content["steps"][0]["commands"][5]
+                in content["steps"][0]["commands"][4]
             )
-            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][5]
+            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][4]
             assert (
                 f"--image-name {custom_byod_images[0][0]}"
-                in content["steps"][0]["commands"][6]
+                in content["steps"][0]["commands"][5]
             )
             assert (
                 f"--image-name {custom_byod_images[2][0]}"
-                in content["steps"][1]["commands"][6]
+                in content["steps"][1]["commands"][5]
             )
             assert (
                 f"--image-name {custom_byod_images[3][0]}"
-                in content["steps"][2]["commands"][6]
+                in content["steps"][2]["commands"][5]
             )
             assert content["steps"][3]["depends_on"] == "forge"
-            # Verify env-only image step has --env flags
-            env_only_cmd = content["steps"][4]["commands"][6]
+            # Verify env-only image step has --env flags. Command index
+            # decremented from 6 to 5 because the Azure ACR login command was
+            # collapsed into a single placeholder echo while Azure image push
+            # is disabled due to CI issues.
+            env_only_cmd = content["steps"][4]["commands"][5]
             assert f"--image-name {custom_byod_images[5][0]}" in env_only_cmd
             assert "--env MY_ENV=my_value" in env_only_cmd
             assert "--env OTHER_ENV=other_value" in env_only_cmd
@@ -190,30 +201,101 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             assert "--python-depset" not in env_only_cmd
 
 
-def test_get_prerequisite_step():
-    config = get_global_config()
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base"
-        )
-        == config["release_image_step_ray_ml"]
-    )
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray-llm:abc123-custom", "ray-project/ray-llm:abc123-base"
-        )
-        == config["release_image_step_ray_llm"]
-    )
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray:abc123-custom", "ray-project/ray:abc123-base"
-        )
-        == config["release_image_step_ray"]
-    )
-    assert (
-        get_prerequisite_step("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base")
-        == "forge"
-    )
+_ECR = get_global_config()["byod_ecr"]
+
+
+@pytest.mark.parametrize(
+    ("image", "base_image", "expected"),
+    [
+        # Anyscale-prefixed base images → "forge"
+        ("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base", "forge"),
+        ("custom_ecr/ray-ml:abc123-custom", "anyscale/ray:2.50.0-py310-cpu", "forge"),
+        # ray-ml: python dimension only
+        (
+            "ray-project/ray-ml:a-c",
+            "ray-project/ray-ml:a-py310-gpu",
+            "anyscalemlbuild--python310",
+        ),
+        (
+            "ray-project/ray-ml:a-c",
+            "ray-project/ray-ml:a-py311-gpu",
+            "anyscalemlbuild--python311",
+        ),
+        # ray cpu → anyscalecpubuild (python only)
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py310-cpu",
+            "anyscalecpubuild--python310",
+        ),
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py313-cpu",
+            "anyscalecpubuild--python313",
+        ),
+        # ray cuda → anyscalecudabuild (platform + python)
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py311-cu123",
+            "anyscalecudabuild--gpucu1232cudnn9-python311",
+        ),
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py312-cu130",
+            "anyscalecudabuild--gpucu1300cudnn-python312",
+        ),
+        # ray-llm
+        (
+            "ray-project/ray-llm:a-c",
+            "ray-project/ray-llm:a-py311-cu128",
+            "anyscalellmbuild--gpucu1281cudnn-python311",
+        ),
+        (
+            "ray-project/ray-llm:a-c",
+            "ray-project/ray-llm:a-py312-cu130",
+            "anyscalellmbuild--gpucu1300cudnn-python312",
+        ),
+        # ECR-prefixed base_image (production format)
+        (
+            f"{_ECR}/anyscale/ray:bid-py310-cpu-hash",
+            f"{_ECR}/anyscale/ray:bid-py310-cpu",
+            "anyscalecpubuild--python310",
+        ),
+        # Build ID with dashes
+        (
+            "ray-project/ray:a-b-c-x",
+            "ray-project/ray:a-b-c-py312-cpu",
+            "anyscalecpubuild--python312",
+        ),
+        # Unknown platform falls back to raw value
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py310-cu999",
+            "anyscalecudabuild--gpucu999-python310",
+        ),
+        # No python version → bare config key (cuda is default for ray without suffix)
+        ("ray-project/ray:a-c", "ray-project/ray:a-base", "anyscalecudabuild"),
+        ("ray-project/ray-ml:a-c", "ray-project/ray-ml:a-base", "anyscalemlbuild"),
+    ],
+    ids=[
+        "forge-bare",
+        "forge-versioned",
+        "ray-ml-py310",
+        "ray-ml-py311",
+        "ray-cpu-py310",
+        "ray-cpu-py313",
+        "ray-cuda-cu123",
+        "ray-cuda-cu130",
+        "ray-llm-cu128",
+        "ray-llm-cu130",
+        "ecr-prefix",
+        "dashed-build-id",
+        "unknown-platform",
+        "no-python-ray",
+        "no-python-ray-ml",
+    ],
+)
+def test_get_prerequisite_step(image, base_image, expected):
+    assert get_prerequisite_step(image, base_image, _GPU_MAP) == expected
 
 
 @pytest.mark.parametrize(

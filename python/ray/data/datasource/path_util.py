@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import sys
+import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
@@ -9,6 +10,7 @@ from ray.data._internal.util import (
     _normalize_paths_to_strings,
     _resolve_custom_scheme,
 )
+from ray.util.annotations import RayDeprecationWarning
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,10 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         path: The path to check.
         extensions: A list of extensions to check against. If `None`, any extension is
             considered valid.
+
+    Returns:
+        ``True`` if ``path`` ends with one of the provided extensions (or
+        ``extensions`` is ``None``), otherwise ``False``.
     """
     assert extensions is None or isinstance(extensions, list), type(extensions)
 
@@ -197,10 +203,42 @@ def _is_filesystem_compatible_with_scheme(
     # Get the actual filesystem type
     fs_type = unwrapped.type_name
 
-    # For PyFileSystem (fsspec wrappers), also check if it's HTTP
-    if fs_type == "py" and scheme in ("http", "https"):
-        return _is_http_filesystem(unwrapped)
+    # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
+    # rather than relying on type_name alone, since all fsspec wrappers
+    # share type_name "py" regardless of the underlying protocol.
+    if fs_type in ("py", "RetryingPyFileSystem") or fs_type.startswith("py::"):
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
 
+        actual_fs = filesystem
+        if isinstance(actual_fs, RetryingPyFileSystem):
+            actual_fs = actual_fs.unwrap()
+
+        # After unwrapping, the inner filesystem may be a native PyArrow
+        # filesystem (e.g., S3FileSystem) rather than a PyFileSystem wrapper.
+        # Fall back to direct type_name matching in that case.
+        if not isinstance(actual_fs, PyFileSystem):
+            return actual_fs.type_name in expected_types
+
+        if isinstance(actual_fs.handler, FSSpecHandler):
+            inner_fs = actual_fs.handler.fs
+            protocol = getattr(inner_fs, "protocol", None)
+            if protocol is not None:
+                if isinstance(protocol, str):
+                    protocol = (protocol,)
+                # Match scheme against fsspec protocol(s)
+                if scheme in protocol:
+                    return True
+                # For bare paths (empty scheme), trust user-provided filesystem
+                if scheme == "":
+                    return True
+
+        # Fallback: check HTTP
+        if scheme in ("http", "https"):
+            return _is_http_filesystem(filesystem)
+
+        return False
+
+    # Direct match for native PyArrow filesystems (s3, gcs, local, hdfs, etc.)
     return fs_type in expected_types
 
 
@@ -325,6 +363,13 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
+    if any(path.lower().startswith("local:") for path in paths):
+        warnings.warn(
+            "`local://` paths in Ray Data are deprecated and will be removed after "
+            "January 2027. Use shared or cloud storage for distributed execution.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)

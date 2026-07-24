@@ -8,11 +8,18 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
-from ray.serve._private.test_utils import check_running
+from ray.serve._private.test_utils import check_running, skip_if_haproxy
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
+)
+
+# Every test sets a custom ingress request router, rejected under HAProxy per #64211.
+pytestmark = skip_if_haproxy(
+    "HAProxy load-balances ingress itself and never calls the Serve request "
+    "router, so a custom request_router_class on the ingress deployment cannot "
+    "take effect and is rejected at serve.run()"
 )
 
 
@@ -32,8 +39,6 @@ def _deploy_capacity_queue_app(
                 init_kwargs={
                     "acquire_timeout_s": acquire_timeout_s,
                     "token_ttl_s": token_ttl_s,
-                    "deployment_id_name": "App",
-                    "deployment_id_app": "default",
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -81,8 +86,6 @@ def _deploy_blocking_capacity_queue_app(
                 init_kwargs={
                     "acquire_timeout_s": 0.5,
                     "token_ttl_s": 5,
-                    "deployment_id_name": "BlockingApp",
-                    "deployment_id_app": "default",
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -325,8 +328,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
-                        "deployment_id_name": "TtlApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -392,8 +393,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "CrashApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -594,8 +593,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
-                        "deployment_id_name": "ConvergeApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -720,8 +717,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "DepletedApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -803,8 +798,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "RejectApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),

@@ -79,7 +79,7 @@ std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
   buffer << local_resources_.DebugString();
   buffer << " is_draining: " << IsLocalNodeDraining();
-  buffer << " is_idle: " << IsLocalNodeIdle();
+  buffer << " is_idle: " << WasLastRecordedNodeStateIdle();
   return buffer.str();
 }
 
@@ -127,19 +127,12 @@ void LocalResourceManager::FreeTaskResourceInstances(
 }
 void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
   auto prev = idle_time_states_.find(item);
-  if (prev != idle_time_states_.end() && !prev->second.current.has_value()) {
+  if (prev != idle_time_states_.end() && !prev->second.current.has_value() &&
+      !prev->second.saved.has_value()) {
     return;
   }
   idle_time_states_[item].current = absl::nullopt;
-  // Clear all saved idle times for work footprints. When actual work starts,
-  // any speculative busy states from MaybeMarkFootprintAsBusy() should be
-  // invalidated so that MarkFootprintAsIdle() will use Now() rather than
-  // restoring old idle times.
-  for (auto &[key, state] : idle_time_states_) {
-    if (std::holds_alternative<WorkFootprint>(key)) {
-      state.saved = absl::nullopt;
-    }
-  }
+  idle_time_states_[item].saved = absl::nullopt;
   OnResourceOrStateChanged();
 }
 
@@ -452,7 +445,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
-  if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
+  if (IsLocalNodeDraining() && WasLastRecordedNodeStateIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
     rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
     shutdown_raylet_gracefully_(std::move(node_death_info));

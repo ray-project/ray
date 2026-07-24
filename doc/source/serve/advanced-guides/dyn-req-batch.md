@@ -3,10 +3,7 @@
 
 Serve offers a request batching feature that can improve your service throughput without sacrificing latency. This improvement is possible because ML models can utilize efficient vectorized computation to process a batch of requests at a time. Batching is also necessary when your model is expensive to use and you want to maximize the utilization of hardware.
 
-Machine Learning (ML) frameworks such as Tensorflow, PyTorch, and Scikit-Learn support evaluating multiple samples at the same time.
-Ray Serve allows you to take advantage of this feature with dynamic request batching.
-When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, Ray Serve
-splits up the resulting batch, and returns each response individually.
+Machine Learning (ML) frameworks such as Tensorflow, PyTorch, and Scikit-Learn support evaluating multiple samples at the same time. Ray Serve allows you to take advantage of this feature with dynamic request batching. When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, Ray Serve splits up the resulting batch, and returns each response individually.
 
 ## Enable batching for your deployment
 You can enable batching by using the {mod}`ray.serve.batch` decorator. The following simple example modifies the `Model` class to accept a batch:

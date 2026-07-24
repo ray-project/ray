@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
         choices=["image", "parquet", "tfrecords"],
         required=True,
     )
+    parser.add_argument(
+        "--memory",
+        type=int,
+        default=None,
+        help="Logical memory in bytes to pass to the read.",
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
@@ -64,7 +70,7 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
     else:
         assert False, f"Invalid data format argument: {args}"
 
-    return read_fn
+    return functools.partial(read_fn, memory=args.memory)
 
 
 def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], None]:

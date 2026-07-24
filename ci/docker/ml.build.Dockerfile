@@ -4,10 +4,9 @@ ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG RAYCI_IS_GPU_BUILD=false
-ARG RAYCI_LIGHTNING_2=false
 ARG PYTHON
-ARG BUILD_VARIANT=build
-ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
+ARG IMAGE_TYPE=build
+ARG PYTHON_DEPSET=python/deplocks/ci/ml-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
 ARG THIRDPARTY_DEPSET=python/deplocks/ci/ci_ml_thirdparty_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]

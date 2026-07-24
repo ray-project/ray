@@ -177,6 +177,34 @@ def ray_start_cpu():
 
 
 @pytest.fixture
+def ray_single_host_tpu_cluster(ray_start_cluster):
+    """
+    Simulates a Ray cluster with two single-host v7x (Ironwood) TPU nodes.
+    """
+    pod_type = "tpu7x"
+    topology = "2x2x1"
+
+    cluster = ray_start_cluster
+
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+    )
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+    )
+
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_tpu_cluster(ray_start_cluster):
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
@@ -250,6 +278,41 @@ def ray_tpu_cluster(ray_start_cluster):
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_v6e_tpu_cluster(ray_start_cluster):
+    """
+    Simulates a Ray cluster with two v6e-8 slices (2x4 topology).
+
+    """
+    pod_type = "v6e-8"
+    topology = "2x4"
+    cluster = ray_start_cluster
+
+    for i in range(2):
+        env_common = {
+            "TPU_NAME": f"test-v6e-slice-{i}",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        head_labels = {
+            "ray.io/tpu-slice-name": f"test-v6e-slice-{i}",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
+        # A single-host v6e-8 has 8 chips on one node
+        cluster.add_node(
+            num_cpus=4,
+            resources={"TPU": 8, f"TPU-{pod_type}-head": 1},
+            env_vars={**env_common, "TPU_WORKER_ID": "0"},
+            labels=head_labels,
+        )
+
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
+
+
 def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
     """Tests that the slice name can be fetched from a PG."""
     tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-16-head": 1}])
@@ -316,6 +379,78 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
         {"TPU": 4, "CPU": 1.0},  # slice 2, host 1
         {"TPU": 4, "CPU": 1.0},  # slice 2, host 2
     ]
+
+
+def test_pg_per_slice(ray_tpu_cluster):
+    """Test that pg_per_slice=True returns a list of per-slice PlacementGroups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+    assert len(multi_slice_placement_group.slice_placement_groups) == 2
+    for pg in multi_slice_placement_group.slice_placement_groups:
+        assert pg.bundle_count == 2
+        assert pg.bundle_specs == [
+            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 1.0},
+        ]
+    with pytest.raises(
+        ValueError,
+        match="pg_per_slice=True, use `slice_placement_groups` instead.",
+    ):
+        _ = multi_slice_placement_group.slice_placement_group
+
+
+def test_pg_per_slice_false_raises(ray_tpu_cluster):
+    """Test that pg_per_slice=False raises an error when accessing slice_placement_groups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=False,
+    )
+    with pytest.raises(
+        ValueError, match="pg_per_slice=False, use `slice_placement_group` instead."
+    ):
+        _ = multi_slice_placement_group.slice_placement_groups
+
+
+def test_single_host_slice_placement_group(ray_tpu_cluster):
+    """Test that a single-host TPU bypasses gang scheduling logic."""
+    with patch("ray.util.tpu.reserve_tpu_slice") as mock_reserve:
+        slice_placement_group = ray.util.tpu.slice_placement_group(
+            topology="2x2x1",
+            accelerator_version="v7x",
+            num_slices=2,
+        )
+        # Util should skip `reserve_tpu_slice because it is single host
+        mock_reserve.assert_not_called()
+
+        assert slice_placement_group.num_hosts == 2
+        assert slice_placement_group.placement_group.bundle_count == 2
+        assert slice_placement_group.placement_group.bundle_specs == [
+            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 1.0},
+        ]
+
+
+def test_single_host_slice_placement_group_integration(ray_single_host_tpu_cluster):
+    """
+    Test that a single-host SlicePlacementGroup actually schedules without hanging
+    on v7x (ironwood) topology.
+    """
+    slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x1",
+        accelerator_version="v7x",
+        num_slices=2,
+    )
+
+    # Wait for the placement group to be ready.
+    ray.get(slice_placement_group.placement_group.ready(), timeout=10)
+
+    assert slice_placement_group.placement_group.bundle_count == 2
 
 
 @patch("ray.util.tpu.placement_group")
@@ -764,6 +899,685 @@ def test_get_tpu_nodes_for_slice(mock_nodes_call, mock_is_initialized):
 def test_get_tpu_nodes_for_slice_uninitialized(mock_is_initialized):
     """Test that the utility gracefully handles an uninitialized Ray context."""
     assert ray.util.tpu.get_tpu_nodes_for_slice("slice-A") == []
+
+
+def test_get_tpu_worker_resources_chips_per_vm_override():
+    """Test that chips_per_vm correctly overrides the default resource calculations."""
+
+    # Default behavior: v6e 2x4 defaults to a single 8-chip host
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e"
+    )
+    assert num_workers == 1
+    assert resources["TPU"] == 8
+
+    # Override behavior: v6e 2x4 forced to 4 chips per VM (2 hosts)
+    num_workers_override, resources_override = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e", chips_per_vm=4
+    )
+    assert num_workers_override == 2
+    assert resources_override["TPU"] == 4
+
+
+def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
+    """Test that SlicePlacementGroup respects chips_per_vm for host calculation."""
+
+    # Default behavior (1 VM with 8 chips)
+    default_pg = SlicePlacementGroup(topology="2x4", accelerator_version="v6e")
+    assert default_pg.chips_per_host == 8
+    assert default_pg.num_hosts == 1
+    assert default_pg.num_bundles == 1
+    assert default_pg.bundle_resources["TPU"] == 8
+
+    # User-specified override behavior (2 VMs with 4 chips each)
+    override_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", chips_per_vm=4
+    )
+    assert override_pg.chips_per_host == 4
+    assert override_pg.num_hosts == 2
+    assert override_pg.num_bundles == 2
+    assert override_pg.bundle_resources["TPU"] == 4
+
+
+def test_user_bundle_label_selector_merged(ray_tpu_cluster):
+    """Verifies that user-passed bundle_label_selector is merged with dynamic TPU labels."""
+    user_selectors = [{"env": "prod"}, {"env": "test"}]
+
+    # 2x2x2 v4 = 2 hosts = 2 bundles
+    slice_pg = SlicePlacementGroup(
+        topology="2x2x2", accelerator_version="v4", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 2
+
+    # Verify slice 0
+    assert slice_pg._bundle_label_selector[0]["env"] == "prod"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[0]
+
+    # Verify slice 1
+    assert slice_pg._bundle_label_selector[1]["env"] == "test"
+    assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[1]
+
+
+def test_user_specified_bundle_label_selector(ray_tpu_cluster):
+    """Verifies that user-provided TPU slice labels take precedence and bypass dynamic reservation."""
+    user_selectors = [
+        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"},
+        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"},
+    ]
+
+    # v4 2x2x2 is multi-host (2 bundles)
+    slice_pg = SlicePlacementGroup(
+        topology="2x2x2", accelerator_version="v4", bundle_label_selector=user_selectors
+    )
+
+    assert len(slice_pg._bundle_label_selector) == 2
+    # The user value should win and bypass the dynamic test-v4-slice-N generation
+    actual_val = slice_pg._bundle_label_selector[0][
+        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+    ]
+    assert actual_val == "user-requested-slice"
+
+
+def test_user_bundle_label_selector_length_mismatch_raises():
+    """Verifies that providing wrong length of selector list raises ValueError."""
+    user_selectors = [{"env": "prod"}]  # Only 1 provided but 2x2x2 v4 has 2 hosts
+
+    with pytest.raises(ValueError, match="bundle_label_selector length"):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            bundle_label_selector=user_selectors,
+        )
+
+
+def test_release_head_pgs_idempotent(ray_tpu_cluster):
+    """Verifies that release_head_pgs() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    assert len(slice_pg.head_placement_groups) == 1
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+
+def test_pg_per_slice_release_head_pgs(ray_tpu_cluster):
+    """Test that release_head_pgs(slice_index) releases the head PG for a specific slice."""
+    multi_slice_pg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+
+    assert len(multi_slice_pg.head_placement_groups) == 2
+
+    # Release head PG for slice 0
+    multi_slice_pg.release_head_pgs(slice_index=0)
+    assert len(multi_slice_pg.head_placement_groups) == 1
+
+    # Release head PG for slice 1
+    multi_slice_pg.release_head_pgs(slice_index=1)
+    assert len(multi_slice_pg.head_placement_groups) == 0
+
+    # Ensure idempotence
+    multi_slice_pg.release_head_pgs(slice_index=1)
+    assert len(multi_slice_pg.head_placement_groups) == 0
+
+
+def test_shutdown_idempotent(ray_tpu_cluster):
+    """Verifies that shutdown() is idempotent."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+    assert len(slice_pg.head_placement_groups) == 0
+
+    # Call again, should not raise
+    slice_pg.shutdown()
+
+
+def test_shutdown_safe_after_construction_failure():
+    """Verifies that shutdown() is safe to call on a partially-constructed instance."""
+    with patch(
+        "ray.util.tpu.SlicePlacementGroup._reserve_slice",
+        side_effect=RuntimeError("Test failure"),
+    ):
+        with pytest.raises(RuntimeError, match="Test failure"):
+            SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # If the above didn't crash or leak resources, we are good.
+    # We can also manually construct a partial instance and call shutdown.
+    partial_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    partial_pg._head_pgs = []
+    partial_pg._placement_group = None
+
+    # Should not raise even though it's missing attributes
+    partial_pg.shutdown()
+
+
+def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
+    """Validates Slice PG lifecycle: wait until ready, release head PGs, then shutdown."""
+    slice_pg = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+
+    # Wait for ready
+    ray.get(slice_pg.placement_group.ready())
+
+    slice_pg.release_head_pgs()
+    assert len(slice_pg.head_placement_groups) == 0
+
+    slice_pg.shutdown()
+    assert slice_pg.placement_group is None
+
+
+def test_chips_per_vm_zero_raises_value_error():
+    """Verifies that passing chips_per_vm=0 explicitly raises a ValueError instead of silently using the topology default."""
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            chips_per_vm=0,
+        )
+
+    # Also verify when custom resources already include a "TPU" key
+    with pytest.raises(ValueError):
+        SlicePlacementGroup(
+            topology="2x2x2",
+            accelerator_version="v4",
+            resources_per_bundle={"TPU": 4},
+            chips_per_vm=0,
+        )
+
+
+def _make_mock_slice_handle(
+    num_bundles=2, chips_per_host=4, tpu_per_bundle=4, num_slices=1
+):
+    """Return a MagicMock that looks like a SlicePlacementGroup."""
+    mock_handle = MagicMock(spec=SlicePlacementGroup)
+    mock_handle._pg_per_slice = False
+    mock_handle.num_slices = num_slices
+    mock_handle.num_bundles = num_bundles
+    mock_handle.chips_per_host = chips_per_host
+    mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
+    mock_pg = MagicMock()
+    mock_handle.slice_placement_group = mock_pg
+    mock_handle.placement_group = mock_pg
+    return mock_handle
+
+
+def _make_mock_fn():
+    """Return a MagicMock that behaves like a @ray.remote function."""
+    fn = MagicMock()
+    fn.options.return_value = fn  # .options() returns itself for chaining
+    fn.remote.return_value = MagicMock()  # each .remote() returns a fake ObjectRef
+    return fn
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_creates_internal_slice(mock_spg_cls):
+    """When tpu_slice=None a SlicePlacementGroup is constructed with the
+    correct forwarded arguments."""
+    mock_handle = _make_mock_slice_handle()
+    mock_spg_cls.return_value = mock_handle
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                num_slices=2,
+                chips_per_vm=4,
+                head_reservation_timeout_s=30.0,
+            )
+
+    mock_spg_cls.assert_called_once_with(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        chips_per_vm=4,
+        head_reservation_timeout_s=30.0,
+    )
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_uses_provided_slice(mock_spg_cls):
+    """When tpu_slice= is provided, SlicePlacementGroup is never constructed
+    and topology/accelerator_version are not required."""
+    existing_handle = _make_mock_slice_handle()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(),
+                tpu_slice=existing_handle,
+            )
+
+    mock_spg_cls.assert_not_called()
+
+
+def test_dispatch_missing_topology_raises():
+    """ValueError is raised when tpu_slice=None and topology or
+    accelerator_version are omitted."""
+    with pytest.raises(
+        ValueError, match="topology and accelerator_version are required"
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), accelerator_version="v4")
+
+    with pytest.raises(
+        ValueError, match="topology and accelerator_version are required"
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), topology="2x2x2")
+
+
+def test_dispatch_raises_value_error_if_slice_index_without_tpu_slice():
+    with pytest.raises(
+        ValueError,
+        match="slice_index can only be used when an existing tpu_slice is provided.",
+    ):
+        ray.util.tpu.dispatch(
+            _make_mock_fn(), topology="2x2x2", accelerator_version="v4", slice_index=0
+        )
+
+
+def test_dispatch_raises_value_error_if_slice_index_but_not_pg_per_slice():
+    mock_slice = _make_mock_slice_handle()
+    mock_slice._pg_per_slice = False
+    with pytest.raises(
+        ValueError,
+        match="slice_index can only be used when tpu_slice was created with pg_per_slice=True.",
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=0)
+
+
+def test_dispatch_raises_value_error_if_invalid_slice_index():
+    mock_slice = _make_mock_slice_handle()
+    mock_slice._pg_per_slice = True
+    mock_slice.num_slices = 2
+    with pytest.raises(
+        ValueError, match="Invalid slice_index 2. Must be between 0 and 1."
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=2)
+    with pytest.raises(
+        ValueError, match="Invalid slice_index -1. Must be between 0 and 1."
+    ):
+        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=-1)
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_dispatches_one_task_per_bundle(mock_spg_cls):
+    """dispatch returns exactly num_bundles ObjectRefs."""
+    num_bundles = 3
+    mock_handle = _make_mock_slice_handle(num_bundles=num_bundles)
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            refs = ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+
+    assert len(refs) == num_bundles
+    assert fn.options.call_count == num_bundles
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_applies_unique_bundle_index_per_task(mock_spg_cls):
+    """Each dispatched task uses a distinct, sequential placement_group_bundle_index."""
+    num_bundles = 4
+    mock_handle = _make_mock_slice_handle(num_bundles=num_bundles)
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+
+    bundle_indices = [
+        call.kwargs["scheduling_strategy"].placement_group_bundle_index
+        for call in fn.options.call_args_list
+    ]
+    assert bundle_indices == list(range(num_bundles))
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_scheduling_strategy_references_correct_pg(mock_spg_cls):
+    """The scheduling_strategy in every .options() call references the
+    slice's placement group object."""
+    mock_handle = _make_mock_slice_handle(num_bundles=2)
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+
+    for call in fn.options.call_args_list:
+        assert (
+            call.kwargs["scheduling_strategy"].placement_group
+            is mock_handle.placement_group
+        )
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
+    """Every task is dispatched with num_cpus=0 and resources={"TPU": N}."""
+    tpu_per_bundle = 8
+    mock_handle = _make_mock_slice_handle(tpu_per_bundle=tpu_per_bundle)
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+
+    for call in fn.options.call_args_list:
+        assert call.kwargs["num_cpus"] == 0
+        assert call.kwargs["resources"] == {"TPU": tpu_per_bundle}
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_tpu_count_falls_back_to_chips_per_host(mock_spg_cls):
+    """When bundle_resources has no 'TPU' key, the TPU resource count
+    falls back to chips_per_host."""
+    chips_per_host = 4
+    mock_handle = _make_mock_slice_handle(chips_per_host=chips_per_host)
+    # Remove the 'TPU' key so the fallback path is exercised.
+    mock_handle.bundle_resources = {"CPU": 1.0}
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+
+    for call in fn.options.call_args_list:
+        assert call.kwargs["resources"] == {"TPU": chips_per_host}
+
+
+def test_dispatch_non_remote_fn_raises_type_error():
+    """A plain (non-remote) function raises TypeError with a clear message."""
+
+    def plain_fn():
+        pass
+
+    with pytest.raises(TypeError, match="@ray.remote"):
+        ray.util.tpu.dispatch(plain_fn, topology="2x2x2", accelerator_version="v4")
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_forwards_args_and_kwargs(mock_spg_cls):
+    """Positional and keyword arguments are forwarded unchanged to every task."""
+    mock_handle = _make_mock_slice_handle(num_bundles=2)
+    mock_spg_cls.return_value = mock_handle
+    fn = _make_mock_fn()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(
+                fn,
+                "pos_arg",
+                topology="2x2x2",
+                accelerator_version="v4",
+                my_kwarg="hello",
+            )
+
+    # fn.options() returns fn itself (chained mock), so .remote() calls land on fn
+    assert fn.remote.call_count == 2
+    for call in fn.remote.call_args_list:
+        assert call.args == ("pos_arg",)
+        assert call.kwargs == {"my_kwarg": "hello"}
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_releases_head_pgs_when_owns_slice(mock_spg_cls):
+    """When dispatch creates the slice internally it releases head PGs
+    after the placement group becomes ready."""
+    mock_handle = _make_mock_slice_handle()
+    mock_spg_cls.return_value = mock_handle
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(), topology="2x2x2", accelerator_version="v4"
+            )
+
+    mock_handle.release_head_pgs.assert_called_once()
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_does_not_release_head_pgs_when_provided(mock_spg_cls):
+    """When the caller owns the SlicePlacementGroup, dispatch must not
+    release its head PGs."""
+    existing_handle = _make_mock_slice_handle()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                tpu_slice=existing_handle,
+            )
+
+    existing_handle.release_head_pgs.assert_not_called()
+
+
+@pytest.mark.parametrize("pg_per_slice, slice_index", [(False, None), (True, 0)])
+def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_index):
+    """A ValueError is raised when tpu_slice has already been shut down."""
+    shut_down_handle = _make_mock_slice_handle(num_slices=2)
+    shut_down_handle._pg_per_slice = pg_per_slice
+    if pg_per_slice:
+        shut_down_handle.slice_placement_groups = []
+    else:
+        shut_down_handle.slice_placement_group = None
+        shut_down_handle.placement_group = None
+
+    with pytest.raises(ValueError, match="already been shut down"):
+        ray.util.tpu.dispatch(
+            _make_mock_fn(),
+            tpu_slice=shut_down_handle,
+            slice_index=slice_index,
+        )
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
+    """If pg.ready() resolves with an exception (e.g. PG was removed),
+    ray.wait still returns it as ready. ray.get then surfaces the error;
+    the internally-created slice must be shut down before re-raising."""
+    mock_handle = _make_mock_slice_handle()
+    mock_spg_cls.return_value = mock_handle
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
+            with pytest.raises(RuntimeError, match="PG failed"):
+                ray.util.tpu.dispatch(
+                    _make_mock_fn(),
+                    topology="2x2x2",
+                    accelerator_version="v4",
+                )
+
+    mock_handle.shutdown.assert_called_once()
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_cls):
+    """If pg.ready() resolves with an exception and the slice was provided
+    by the caller, shutdown() must not be called."""
+    existing_handle = _make_mock_slice_handle()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
+            with pytest.raises(RuntimeError):
+                ray.util.tpu.dispatch(
+                    _make_mock_fn(),
+                    tpu_slice=existing_handle,
+                )
+
+    existing_handle.shutdown.assert_not_called()
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_timeout_shuts_down_owned_slice(mock_spg_cls):
+    """On a pg_ready timeout, the internally-created slice is shut down
+    before the TimeoutError is raised."""
+    mock_handle = _make_mock_slice_handle()
+    mock_spg_cls.return_value = mock_handle
+
+    with patch.object(ray, "wait", return_value=([], [MagicMock()])):
+        with pytest.raises(TimeoutError, match="was not ready within"):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                pg_ready_timeout_s=5.0,
+            )
+
+    mock_handle.shutdown.assert_called_once()
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_dispatch_timeout_does_not_shutdown_provided_slice(mock_spg_cls):
+    """On a pg_ready timeout, a caller-provided slice is never shut down."""
+    existing_handle = _make_mock_slice_handle()
+
+    with patch.object(ray, "wait", return_value=([], [MagicMock()])):
+        with pytest.raises(TimeoutError):
+            ray.util.tpu.dispatch(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                tpu_slice=existing_handle,
+                pg_ready_timeout_s=5.0,
+            )
+
+    existing_handle.shutdown.assert_not_called()
+
+
+def test_dispatch_integration_basic(ray_tpu_cluster):
+    """End-to-end: dispatch dispatches one task per host and all tasks
+    complete successfully. Uses the two-host v4-16 (2x2x2) fixture."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    refs = ray.util.tpu.dispatch(
+        tpu_work,
+        topology="2x2x2",
+        accelerator_version="v4",
+    )
+
+    # 2x2x2 v4 has 2 hosts => 2 refs
+    assert len(refs) == 2
+    node_ids = ray.get(refs)
+    # Each task ran on a distinct node
+    assert len(set(node_ids)) == 2
+
+
+def test_dispatch_integration_with_provided_slice(ray_tpu_cluster):
+    """When a SlicePlacementGroup is supplied, dispatch uses it without
+    creating or tearing down any extra placement groups."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    slice_handle = ray.util.tpu.slice_placement_group(
+        topology="2x2x2", accelerator_version="v4"
+    )
+    ray.get(slice_handle.placement_group.ready())
+
+    refs = ray.util.tpu.dispatch(tpu_work, tpu_slice=slice_handle)
+    assert len(refs) == 2
+    ray.get(refs)
+
+    # The slice handle is intact: caller can still use and shut it down.
+    assert slice_handle.placement_group is not None
+    slice_handle.shutdown()
+
+
+def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
+    """Test dispatching to specific slices when pg_per_slice=True."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    slice_handle = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+    ray.get([pg.ready() for pg in slice_handle.slice_placement_groups])
+
+    # Dispatch to slice 0
+    refs_0 = ray.util.tpu.dispatch(
+        tpu_work,
+        tpu_slice=slice_handle,
+        slice_index=0,
+    )
+    assert len(refs_0) == 2
+
+    # Dispatch to slice 1
+    refs_1 = ray.util.tpu.dispatch(
+        tpu_work,
+        tpu_slice=slice_handle,
+        slice_index=1,
+    )
+    assert len(refs_1) == 2
+
+    node_ids_0 = set(ray.get(refs_0))
+    node_ids_1 = set(ray.get(refs_1))
+
+    assert len(node_ids_0) == 2
+    assert len(node_ids_1) == 2
+    assert node_ids_0.isdisjoint(node_ids_1)
+
+    slice_handle.shutdown()
+
+
+def test_dispatch_integration_multi_slice(ray_tpu_cluster):
+    """With num_slices=2 the function reserves both slices and dispatches
+    one task per host across both (2 hosts * 2 slices = 4 tasks)."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    refs = ray.util.tpu.dispatch(
+        tpu_work,
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+    )
+
+    assert len(refs) == 4
+    node_ids = ray.get(refs)
+    assert len(set(node_ids)) == 4
+
+
+def test_dispatch_integration_v6e_single_host(ray_v6e_tpu_cluster):
+    """A single-host v6e-8 slice produces exactly one ref."""
+
+    @ray.remote
+    def tpu_work():
+        return ray.get_runtime_context().get_node_id()
+
+    refs = ray.util.tpu.dispatch(
+        tpu_work,
+        topology="2x4",
+        accelerator_version="v6e",
+    )
+
+    assert len(refs) == 1
+    ray.get(refs)
 
 
 if __name__ == "__main__":

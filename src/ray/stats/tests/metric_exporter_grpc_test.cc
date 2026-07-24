@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #ifdef _WIN32
-// Prevent inclusion of winsock.h
-#define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
@@ -325,8 +323,3 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

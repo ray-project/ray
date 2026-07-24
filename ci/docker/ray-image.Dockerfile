@@ -17,6 +17,8 @@ FROM ${RAY_WHEEL_IMAGE} AS wheel-source
 FROM ${BASE_IMAGE}
 
 ARG IMAGE_TYPE=ray
+ARG PLATFORM=cpu
+ARG PYTHON_VERSION=3.10
 ARG RAY_COMMIT=unknown-commit
 ARG RAY_VERSION=3.0.0.dev0
 
@@ -47,9 +49,33 @@ else
   RAY_EXTRAS="all"
 fi
 
+# TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install
+# always pulls the CUDA-12 build even on cu130 images (no PEP 508 marker exists
+# to select cupy by CUDA version). Until the cgraph extra can resolve cupy per
+# CUDA runtime (or cupy ships a unified package), we patch it up with the
+# uninstall/reinstall swap below. Drop that swap once this install can pick the
+# right cupy directly.
 $HOME/anaconda3/bin/pip --no-cache-dir install \
     -c /home/ray/requirements_compiled.txt \
     "${WHEEL_FILE}[${RAY_EXTRAS}]"
+
+# ray[all]'s cgraph extra hard-pins cupy-cuda12x (a CUDA-12 build), but cu130
+# images ship a CUDA-13 runtime where that build is broken. Swap it for the
+# matching CUDA-13 build. cupy-cuda12x and cupy-cuda13x both own the top-level
+# `cupy` package and cannot coexist, so this is an uninstall-then-install.
+# Scoped to IMAGE_TYPE=ray (covers ray + ray-extra); ray-llm flows through this
+# same Dockerfile but manages cupy via its own llm locks, so leave it untouched.
+if [[ "${IMAGE_TYPE}" == "ray" && "${PLATFORM}" == cu13* ]]; then
+    # cupy-cuda13x 13.6.0 ships wheels only up to cp313, so py3.14 needs 14.0.1
+    # (the first cu13 build with a cp314 wheel). Keep py3.10-3.13 on 13.6.0.
+    if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
+        CUPY_CUDA13X_VERSION="14.0.1"
+    else
+        CUPY_CUDA13X_VERSION="13.6.0"
+    fi
+    $HOME/anaconda3/bin/pip --no-cache-dir uninstall -y cupy-cuda12x
+    $HOME/anaconda3/bin/pip --no-cache-dir install "cupy-cuda13x==${CUPY_CUDA13X_VERSION}"
+fi
 
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 

@@ -21,8 +21,8 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/io_service_pool.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/io_service_pool.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -174,8 +174,8 @@ class IntegrationTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*clock=*/clock_,
+        /*subscriber_timeout_ms=*/absl::ToInt64Milliseconds(absl::Seconds(30)),
         /*batch_size=*/100);
     subscriber_service_ = std::make_unique<SubscriberServiceImpl>(std::move(publisher));
 
@@ -208,6 +208,9 @@ class IntegrationTest : public ::testing::Test {
   rpc::Address address_proto_;
   IOServicePool io_service_ = IOServicePool(3);
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  // Declared before subscriber_service_ so it outlives the Publisher it owns, which
+  // holds a ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<SubscriberServiceImpl> subscriber_service_;
   std::unique_ptr<grpc::Server> server_;
 };
