@@ -57,7 +57,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // For topology-aware PGs: if ALL bundles are unplaced (total failure), clear
+  // For topology strategy PGs: if ALL bundles are unplaced (total failure), clear
   // the topology assignments so new values can be selected. If only some bundles
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.
@@ -105,10 +105,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
-  // TODO(#64370) rename this to fit topology strategy
-  if (scheduling_result.selected_label_domain.has_value()) {
+  if (scheduling_result.selected_topology_assignment.has_value()) {
     const auto &[topology_label_key, topology_label_value] =
-        *scheduling_result.selected_label_domain;
+        *scheduling_result.selected_topology_assignment;
     placement_group->SetTopologyAssignment(topology_label_key, topology_label_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
                   << " assigned to topology label " << topology_label_key << ": "
