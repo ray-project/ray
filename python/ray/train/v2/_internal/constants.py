@@ -139,6 +139,34 @@ ENV_VARS_TO_PROPAGATE = {
 # The environment variable to enable the Ray Train Metrics.
 METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
+# ------------------------------------------------------------
+# NCCL RAS hang detection.
+# ------------------------------------------------------------
+
+# Feature flag for the NCCL RAS hang detector callback. Default-on.
+ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
+# NCCL's standard RAS listen address (``host:port``, default localhost:28028).
+NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
+# Path to the `ncclras` client binary (looked up on PATH by default).
+NCCLRAS_BINARY_PATH_ENV_VAR = "RAY_TRAIN_NCCLRAS_PATH"
+DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
+
+# How often (seconds) to query the NCCL RAS subsystem on a worker
+NCCL_RAS_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S"
+DEFAULT_NCCL_RAS_POLL_INTERVAL_S: float = 15.0
+# Number of consecutive RAS reports that must agree a hang is occurring before
+# the detector acts. Default settings means ~10 minutes before fully confirmed.
+NCCL_RAS_CONFIRM_COUNT_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_COUNT"
+DEFAULT_NCCL_RAS_CONFIRM_COUNT: int = 40
+
+# Action to take on a confirmed hang. "fail" captures stack traces then raises
+# a terminal (non-retryable) NCCLHangError, failing the run. "observe" only
+# emits metrics and captures stacks without failing the run.
+NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
+NCCL_RAS_ACTION_FAIL = "fail"
+NCCL_RAS_ACTION_OBSERVE = "observe"
+DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE
+
 
 def is_v2_enabled() -> bool:
     return env_bool(V2_ENABLED_ENV_VAR, True)
