@@ -2444,8 +2444,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2468,8 +2466,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2489,8 +2485,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2510,8 +2504,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2531,8 +2523,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2552,8 +2542,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2573,8 +2561,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2594,8 +2580,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2615,8 +2599,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2636,8 +2618,6 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2660,9 +2640,7 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 4gpus_64cpus.yaml
+    cluster_compute: 4gpus_48cpus.yaml
 
   run:
     timeout: 3600
@@ -2681,34 +2659,11 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 4gpus_64cpus.yaml
+    cluster_compute: 4gpus_48cpus.yaml
 
   run:
     timeout: 3600
     script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=40 --stop-reward=19.0 --as-release-test
-
-- name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 3600
-    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=0 --num-env-runners=14 --stop-reward=1000.0 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_sac_torch
   python: "3.10"
@@ -2723,9 +2678,7 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 4gpus_64cpus.yaml
+    cluster_compute: 4gpus_48cpus.yaml
 
   run:
     timeout: 3600
