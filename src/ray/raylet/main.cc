@@ -795,8 +795,8 @@ int main(int argc, char *argv[]) {
 
     // Catch up: if SIGTERM arrived before this callback ran,
     // shutdown_raylet_gracefully skipped MarkShuttingDown() because
-    // object_directory was still null. Set it now so teardown-caused
-    // subscription failures are not misclassified as OWNER_DIED.
+    // object_directory was still null. Set it now so teardown-induced
+    // subscription failures are not misclassified as remote owner deaths.
     if (shutting_down.load()) {
       object_directory->MarkShuttingDown();
     }

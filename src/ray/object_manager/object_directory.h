@@ -42,9 +42,10 @@ class IObjectDirectory {
   virtual ~IObjectDirectory() {}
 
   /// Signal that the owning node is shutting down. After this call,
-  /// object-location subscription failures are no longer marked as
-  /// OWNER_DIED, since such failures are caused by our own client
-  /// teardown rather than a genuine remote owner death.
+  /// object-location subscription failures caused by local client
+  /// teardown are no longer surfaced as fatal remote-owner failures
+  /// to dependent tasks. Genuine owner deaths are still detected via
+  /// the GCS worker/node-death path.
   virtual void MarkShuttingDown() {}
 
   /// Handle the removal of an object manager node. This updates the

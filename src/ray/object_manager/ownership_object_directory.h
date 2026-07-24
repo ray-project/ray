@@ -82,10 +82,10 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::string DebugString() const override;
 
   /// Signal that the owning node is shutting down. After this call,
-  /// object-location subscription failures are no longer marked as
-  /// OWNER_DIED, since such failures are caused by our own client
-  /// teardown rather than a genuine remote owner death. Other signals
-  /// (e.g. OBJECT_DELETED) and location updates still flow.
+  /// object-location subscription failures caused by local client
+  /// teardown are no longer surfaced as fatal remote-owner failures
+  /// to dependent tasks. Other signals (e.g. object deletion) and
+  /// location updates still flow.
   void MarkShuttingDown() override { is_shutting_down_ = true; }
 
  private:
@@ -143,10 +143,11 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   absl::flat_hash_set<WorkerID> in_flight_requests_;
 
   /// Whether this node is shutting down. When true, object-location
-  /// subscription failures are not marked as OWNER_DIED, to avoid
-  /// misclassifying local client teardown as remote owner death. Atomic
-  /// because it can be set from the shutdown path (e.g. agent-monitor thread)
-  /// while the pubsub failure callback reads it on the main service thread.
+  /// subscription failures are no longer surfaced as fatal remote-owner
+  /// failures, to avoid misclassifying local client teardown as remote
+  /// owner death. Atomic because it can be set from the shutdown path
+  /// (e.g. agent-monitor thread) while the pubsub failure callback
+  /// reads it on the main service thread.
   std::atomic<bool> is_shutting_down_ = false;
 
   /// Get or create the rpc client in the worker_rpc_clients.
