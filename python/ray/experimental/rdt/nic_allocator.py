@@ -137,12 +137,16 @@ def _get_or_create_allocator() -> "ray.actor.ActorHandle":
         return ray.get_actor(NIC_ALLOCATOR_NAME, namespace=NIC_ALLOCATOR_NAMESPACE)
     except ValueError:
         # get_if_exists resolves concurrent creation races atomically.
-        return _get_nic_allocator_actor_cls().options(
-            name=NIC_ALLOCATOR_NAME,
-            namespace=NIC_ALLOCATOR_NAMESPACE,
-            lifetime="detached",
-            get_if_exists=True,
-        ).remote()
+        return (
+            _get_nic_allocator_actor_cls()
+            .options(
+                name=NIC_ALLOCATOR_NAME,
+                namespace=NIC_ALLOCATOR_NAMESPACE,
+                lifetime="detached",
+                get_if_exists=True,
+            )
+            .remote()
+        )
 
 
 def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
