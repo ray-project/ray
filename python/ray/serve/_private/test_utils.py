@@ -13,7 +13,6 @@ from unittest.mock import Mock
 
 import grpc
 import httpx
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -78,6 +77,8 @@ def skip_if_haproxy(reason: str):
     directly. Mark those with this decorator instead of maintaining a separate
     test allowlist. The test still runs in the non-HAProxy steps.
     """
+    import pytest
+
     return pytest.mark.skipif(
         RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
     )
@@ -679,6 +680,7 @@ class MockReplicaActorWrapper:
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,
+        target_node_id=None,
     ):
         self.started = True
         self._gang_context = gang_context
@@ -702,6 +704,7 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
+            target_node_id=target_node_id,
         )
 
     @property
