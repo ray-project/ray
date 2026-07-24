@@ -181,12 +181,12 @@ def _make_vectorized_aggregating_transformer(
         for agg in aggs:
             agg._validate(block_schema)
 
-        if block.num_rows == 0 and not all(c in block.schema.names for c in needed):
+        if block.num_rows == 0 and not all(c in block_schema.names for c in needed):
             return block
 
         # Some aggregations aggregate a derived column: col**2 for std, and a
         # null/zero indicator for the percentages.  Append those first.
-        for i, (kind, _out, col, _skip, _ddof) in enumerate(meta):
+        for i, (kind, _out, col, _ignore_nulls, _ddof) in enumerate(meta):
             if kind == "std":
                 block = block.append_column(
                     f"__d{i}_sq", pc.multiply(block[col], block[col])
@@ -205,9 +205,9 @@ def _make_vectorized_aggregating_transformer(
         # all-null group yield null (not 0), matching the Python path.
         specs: List[tuple] = []
         names: List[str] = []
-        for i, (kind, _out, col, skip, _ddof) in enumerate(meta):
-            sopts = pc.ScalarAggregateOptions(skip_nulls=skip, min_count=1)
-            copts = pc.CountOptions(mode="only_valid" if skip else "all")
+        for i, (kind, _out, col, ignore_nulls, _ddof) in enumerate(meta):
+            sopts = pc.ScalarAggregateOptions(skip_nulls=ignore_nulls, min_count=1)
+            copts = pc.CountOptions(mode="only_valid" if ignore_nulls else "all")
             cnt0 = pc.ScalarAggregateOptions(min_count=0)
             names += _component_names(i, kind)
             if kind == "count":
@@ -230,7 +230,7 @@ def _make_vectorized_aggregating_transformer(
                 # numerator = #(null or nan), denominator = #rows
                 specs += [(f"__d{i}_miss", "sum", cnt0), ([], "count_all")]
             else:  # zero_pct: numerator = #zeros, denom = #non-null (or #rows)
-                den = (col, "count", copts) if skip else ([], "count_all")
+                den = (col, "count", copts) if ignore_nulls else ([], "count_all")
                 specs += [(f"__d{i}_zero", "sum", cnt0), den]
 
         # use_threads=False: each shuffle task is allocated a single CPU, so
@@ -259,14 +259,20 @@ def _make_vectorized_aggregating_reduce_fn(
 
     keys = list(key_columns)
     all_list = all(m[0] in _LIST_AGG_KINDS for m in meta)
+    _fallback_map = _fallback_aggregating_transformer(key_columns, aggregation_fns)
+    _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
 
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
     ) -> Iterable[Block]:
         # Drop empty shards: a fully-empty map task emits a 0-row (possibly
         # schema-less) shard that must not perturb the concat/group-by below.
-        tables = [t for t in tables_by_input[0] if t.num_rows > 0]
+        shards = tables_by_input[0]
+        tables = [t for t in shards if t.num_rows > 0]
         if not tables:
+            # Fallback when a global aggregation over an empty input because we need to build identical empty row.
+            if shards and not keys:
+                yield from _fallback_reduce(partition_id, [[_fallback_map(shards[0])]])
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
 
@@ -275,9 +281,9 @@ def _make_vectorized_aggregating_reduce_fn(
             # kernels aren't available with empty group keys, so compute each
             # column directly.
             cols = {}
-            for i, (kind, out, col, skip, _ddof) in enumerate(meta):
+            for i, (kind, out, col, ignore_nulls, _ddof) in enumerate(meta):
                 arr = combined[col].combine_chunks()
-                if skip:
+                if ignore_nulls:
                     arr = arr.drop_null()
                 if kind == "count_distinct":
                     cols[out] = pa.array([len(pc.unique(arr))], pa.int64())
@@ -293,8 +299,8 @@ def _make_vectorized_aggregating_reduce_fn(
             # mode "only_valid"/"all" carries ignore_nulls into the kernel.
             specs: List[tuple] = []
             names: List[str] = []
-            for i, (kind, _out, col, skip, _ddof) in enumerate(meta):
-                mode = "only_valid" if skip else "all"
+            for i, (kind, _out, col, ignore_nulls, _ddof) in enumerate(meta):
+                mode = "only_valid" if ignore_nulls else "all"
                 names.append(f"__agg{i}")
                 if kind == "count_distinct":
                     specs.append((col, "count_distinct", pc.CountOptions(mode=mode)))
@@ -305,7 +311,7 @@ def _make_vectorized_aggregating_reduce_fn(
             merged = combined.group_by(keys, use_threads=False).aggregate(specs)
             merged = merged.rename_columns(keys + names)
             cols = {k: merged[k] for k in keys}
-            for i, (kind, out, _col, _skip, _ddof) in enumerate(meta):
+            for i, (kind, out, _col, _ignore_nulls, _ddof) in enumerate(meta):
                 col = merged[f"__agg{i}"]
                 # count_distinct returns the count; unique/list return the list.
                 cols[out] = (
@@ -317,8 +323,8 @@ def _make_vectorized_aggregating_reduce_fn(
         # Merge partial components across shards (sum sums/counts, min mins, ...).
         specs: List[tuple] = []
         names: List[str] = []
-        for i, (kind, _out, _col, skip, _ddof) in enumerate(meta):
-            sopts = pc.ScalarAggregateOptions(skip_nulls=skip, min_count=1)
+        for i, (kind, _out, _col, ignore_nulls, _ddof) in enumerate(meta):
+            sopts = pc.ScalarAggregateOptions(skip_nulls=ignore_nulls, min_count=1)
             cnt_opts = pc.ScalarAggregateOptions(min_count=0)
             comp = _component_names(i, kind)
             names += comp
@@ -354,7 +360,7 @@ def _make_vectorized_aggregating_reduce_fn(
         null_f = pa.scalar(None, pa.float64())
         one = pa.scalar(1.0)
         cols = {k: merged[k] for k in keys}
-        for i, (kind, out, _col, _skip, ddof) in enumerate(meta):
+        for i, (kind, out, _col, _ignore_nulls, ddof) in enumerate(meta):
             comp = _component_names(i, kind)
             if kind == "count":
                 (cnt,) = comp
