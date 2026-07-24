@@ -516,6 +516,11 @@ class RAY_EXPORT Status {
 
   template <typename... T>
   Status &operator<<(T &&...msg) {
+    // An OK status has no state_ and no message to append to; appending context
+    // only makes sense on an error status.
+    if (state_ == nullptr) {
+      return *this;
+    }
     absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
     return *this;
   }

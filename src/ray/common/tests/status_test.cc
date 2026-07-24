@@ -81,6 +81,20 @@ TEST(StatusTest, CopyAndMoveErrorStatus) {
   }
 }
 
+TEST(StatusTest, StreamAppend) {
+  // Appending to an error status adds context to its message.
+  Status invalid = Status::Invalid("bad") << " because of " << 42;
+  EXPECT_TRUE(invalid.IsInvalid());
+  EXPECT_EQ(invalid.message(), "bad because of 42");
+
+  // Appending to an OK status is a no-op and must not dereference the null
+  // state; it stays OK.
+  Status ok = Status::OK();
+  ok << "ignored";
+  EXPECT_TRUE(ok.ok());
+  EXPECT_EQ(ok.message(), "");
+}
+
 TEST(StatusTest, StringToCode) {
   auto ok = Status::OK();
   StatusCode status = Status::StringToCode(ok.CodeAsString());
