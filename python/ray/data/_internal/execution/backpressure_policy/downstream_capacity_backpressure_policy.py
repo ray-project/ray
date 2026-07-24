@@ -186,6 +186,43 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
         output_ratio = self._get_output_to_downstream_input_ratio(op)
+
+        # Temporary: measure C (BRC GC lag).
+        # BRC = internal_outqueue + topology_outqueue + downstream_inqueue
+        #       + downstream_pending + C
+        # So: C = BRC - all_known_locations
+        try:
+            import time
+
+            now = time.monotonic()
+            if not hasattr(self, "_last_c_log"):
+                self._last_c_log = 0
+                self._c_log_count = 0
+            if now - self._last_c_log >= 1.0:
+                self._last_c_log = now
+                self._c_log_count += 1
+                mem_op = self._resource_manager.get_mem_op_outputs(
+                    op, include_ineligible_downstream=True
+                )
+                internal_out = op.metrics.obj_store_mem_internal_outqueue
+                topo_queue = self._topology[op].output_queue_bytes()
+                downstream_inqueue = sum(
+                    dep.metrics.obj_store_mem_internal_inqueue
+                    for dep in op.output_dependencies
+                )
+                pending = self._get_downstream_input_size_bytes(op)
+                known = internal_out + topo_queue + downstream_inqueue + pending
+                c_bytes = mem_op - known
+                logger.warning(
+                    f"C-MEASURE {op.name}: C={c_bytes}B, "
+                    f"brc={mem_op}, internal_out={internal_out}, "
+                    f"topo_queue={topo_queue}, ds_inqueue={downstream_inqueue}, "
+                    f"pending={pending}, "
+                    f"output_ratio={output_ratio:.2f}, "
+                    f"sample={self._c_log_count}"
+                )
+        except (TypeError, AttributeError):
+            pass
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
