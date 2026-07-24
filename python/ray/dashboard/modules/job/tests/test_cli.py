@@ -354,8 +354,8 @@ class TestSubmit:
             )
 
     def test_submit_error_shows_concise_message(self, mock_sdk_client):
-        """A duplicate-submission_id style RuntimeError should surface only the
-        innermost error, not the full nested traceback chain."""
+        """A duplicate-submission_id style RuntimeError should drop the outer
+        HTTP-forwarding hop but keep the last stack in full."""
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
         nested_error = (
@@ -377,8 +377,12 @@ class TestSubmit:
                 "ValueError: Job with submission_id my_job_id already exists."
                 in result.output
             )
-            assert "Traceback (most recent call last)" not in result.output
-            assert "job_manager.py" not in result.output
+            # The last stack is kept in full (frames + root-cause line)...
+            assert "job_manager.py" in result.output
+            # ...but the outer forwarding hop (status 500 + its job_head frames)
+            # is dropped.
+            assert "status code 500" not in result.output
+            assert "job_head.py" not in result.output
 
     def test_submit_error_with_braces_does_not_crash(self, mock_sdk_client):
         """A message containing literal '{...}' (e.g. a dict repr) must not be
