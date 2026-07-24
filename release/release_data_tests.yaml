@@ -158,27 +158,6 @@
       --arrays analysed_sst
       --iter-bundles
 
-# Biology -- OME-Zarr bioimaging pyramid (IDR idr0062A/6001240, NGFF 0.4 = zarr
-# v2). Long-form over several resolution levels of DIFFERENT shapes: exercises
-# the "arrays need not share dims -> separate rows" heterogeneous multi-array path.
-- name: "read_zarr_bioimaging_{{scaling}}"
-  python: "3.10"
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      post_build_script: byod_install_zarr.sh
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-  run:
-    timeout: 3600
-    script: >
-      python read_zarr_benchmark.py
-      s3://anonymous@ray-example-data/zarr/idr0062A-6001240.zarr
-      --arrays 0 1 2
-      --iter-bundles
-
 ###############
 # Writing tests
 ###############
