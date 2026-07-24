@@ -10,6 +10,7 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 
 import copy
 import json
+import logging
 import signal
 import time
 import uuid
@@ -44,6 +45,8 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _add_openai_models_retrieve_route,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SGLangPauseConfig(BaseModel):
@@ -101,6 +104,34 @@ class SGLangServer:
                 "Please run `pip install sglang[all, ray]` to install required "
                 "dependencies."
             ) from e
+
+        # Route SGLang engine metrics through Ray's metric agent (Ray's
+        # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
+        # actors and auto-wires the Ray-backed stat_loggers when enable_metrics
+        # is set.
+        if self._llm_config.log_engine_metrics:
+            self.engine_kwargs["enable_metrics"] = True
+            # Tag engine metrics with the Serve deployment/replica so the
+            # out-of-process scheduler series can be grouped per deployment
+            # (they can't be joined to the Serve counter on WorkerId).
+            from ray import serve
+            from ray.serve.exceptions import RayServeException
+
+            try:
+                rid = serve.get_replica_context().replica_id
+                self.engine_kwargs.setdefault(
+                    "extra_metric_labels",
+                    {
+                        "application": rid.deployment_id.app_name,
+                        "deployment": rid.deployment_id.name,
+                        "replica": rid.unique_id,
+                    },
+                )
+            except RayServeException:
+                logger.warning(
+                    "No Serve replica context; SGLang metrics will not carry "
+                    "deployment/replica labels."
+                )
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.

@@ -10,6 +10,7 @@ import {
 } from "./authentication/authentication";
 import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
 import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
+import { API_REFRESH_INTERVAL_MS } from "./common/constants";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import PlatformEventsPage from "./pages/events/PlatformEventsPage";
@@ -132,6 +133,10 @@ export type GlobalContextType = {
    * Function to toggle between light and dark mode
    */
   toggleTheme: () => void;
+  /**
+   * Whether accelerators (GPU/TPU) are present on any node.
+   */
+  showAcceleratorColumns: boolean;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -151,6 +156,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   themeMode: "light",
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   toggleTheme: () => {},
+  showAcceleratorColumns: true,
 });
 
 const App = () => {
@@ -192,6 +198,7 @@ const App = () => {
     sessionName: undefined,
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
+    showAcceleratorColumns: true,
   });
 
   const toggleTheme = () => {
@@ -228,22 +235,45 @@ const App = () => {
     useState<string | undefined>();
 
   useEffect(() => {
-    getNodeList().then((res) => {
-      if (res?.data?.data?.summary) {
+    let cancelled = false;
+    const fetchNodeList = async () => {
+      try {
+        const res = await getNodeList();
+        if (cancelled || !res?.data?.data?.summary) {
+          return;
+        }
         const nodeMap = {} as { [key: string]: string };
         const nodeMapByIp = {} as { [key: string]: string };
-        res.data.data.summary.forEach(({ hostname, raylet, ip }) => {
-          nodeMap[hostname] = raylet.nodeId;
-          nodeMapByIp[ip] = raylet.nodeId;
-        });
+        let hasAccelerators = false;
+        res.data.data.summary.forEach(
+          ({ hostname, raylet, ip, gpus, tpus }) => {
+            nodeMap[hostname] = raylet.nodeId;
+            nodeMapByIp[ip] = raylet.nodeId;
+            if (
+              !hasAccelerators &&
+              ((gpus && gpus.length > 0) || (tpus && tpus.length > 0))
+            ) {
+              hasAccelerators = true;
+            }
+          },
+        );
         setContext((existingContext) => ({
           ...existingContext,
           nodeMap,
           nodeMapByIp,
           namespaceMap: {},
+          showAcceleratorColumns: hasAccelerators,
         }));
+      } catch {
+        // Poll will retry on next interval
       }
-    });
+    };
+    fetchNodeList();
+    const intervalId = setInterval(fetchNodeList, API_REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Detect if grafana is running
