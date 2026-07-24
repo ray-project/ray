@@ -472,6 +472,14 @@ class ProjectionPushdown(Rule):
                 else {name: name for name in required_columns}
             )
             projected_input_op = input_op.apply_projection(projection_map)
+            # Mirror the pruned columns onto an upstream ``ListFiles`` (if any)
+            # so a footer-based indexer sizes only projected columns. No-op for
+            # datasources without a ``ListFiles`` / column-pruning support.
+            from ray.data._internal.datasource_v2.logical_optimizers import (
+                sync_list_files_pushdown,
+            )
+
+            projected_input_op = sync_list_files_pushdown(projected_input_op)
 
             # If the ``Project`` is a pure-prune (only ``col()`` refs,
             # no renames, no computed expressions), the projection

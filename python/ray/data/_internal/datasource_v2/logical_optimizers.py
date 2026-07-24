@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 from ray.data.expressions import Expr
@@ -6,6 +7,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data._internal.logical.interfaces import LogicalOperator
 
 
 @DeveloperAPI
@@ -120,3 +122,56 @@ class SupportsPartitionPruning(ABC):
             New Scanner instance with partition pruning applied.
         """
         ...
+
+
+def sync_list_files_pushdown(read_files: "LogicalOperator") -> "LogicalOperator":
+    """Mirror a ``ReadFiles`` scanner's pushed-down state onto its ``ListFiles``.
+
+    Called by the predicate / projection / limit pushdown rules after they push
+    onto the ``ReadFiles`` scanner. A metadata-aware indexer (e.g. the
+    footer-based Parquet indexer) reads ``predicate`` / ``projected_columns`` /
+    ``limit`` off ``ListFiles`` at planning time to prune row groups, size only
+    projected columns, and stop listing early.
+
+    Reads the pushed state straight from the scanner, so it is inherently gated
+    on the datasource supporting each pushdown -- the scanner only carries state
+    it actually accepted (via the ``Supports*`` mixins here). No-op unless
+    ``read_files`` is a ``ReadFiles`` whose immediate input is a ``ListFiles``.
+    """
+    from ray.data._internal.logical.operators.read_operator import (
+        ListFiles,
+        ReadFiles,
+    )
+
+    if not isinstance(read_files, ReadFiles):
+        return read_files
+    if not read_files.input_dependencies:
+        return read_files
+    upstream = read_files.input_dependencies[0]
+    if not isinstance(upstream, ListFiles):
+        return read_files
+
+    scanner = read_files.scanner
+    predicate = (
+        getattr(scanner, "predicate", None)
+        if isinstance(scanner, SupportsFilterPushdown)
+        else None
+    )
+    if isinstance(scanner, SupportsColumnPruning):
+        pruned = scanner.pruned_column_names()
+        projected_columns = list(pruned) if pruned is not None else None
+    else:
+        projected_columns = None
+    limit = (
+        getattr(scanner, "limit", None)
+        if isinstance(scanner, SupportsLimitPushdown)
+        else None
+    )
+
+    new_list_files = replace(
+        upstream,
+        predicate=predicate,
+        projected_columns=projected_columns,
+        limit=limit,
+    )
+    return replace(read_files, input_dependencies=[new_list_files])

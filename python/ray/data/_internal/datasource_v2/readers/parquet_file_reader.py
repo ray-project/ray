@@ -18,7 +18,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     _check_for_pickle_object_columns,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _fragments_from_chunk_metadata,
+    _fragments_from_row_group_ids,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
@@ -279,29 +279,28 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         dataset: pds.Dataset,
         manifest: FileManifest,
     ) -> List[Tuple[pds.Fragment, int]]:
-        """Fan file fragments into chunk-level sub-fragments per manifest row.
+        """Fan file fragments into read-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0. This matches
-          ``ParquetFileChunker``'s behavior for files at or below
-          ``target_chunk_size`` and the default ``WholeFileChunker`` for
-          non-chunking callers.
-        - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
+          fragment is yielded as-is with a row offset of 0 (the default
+          ``WholeFileChunker`` for non-chunking callers).
+        - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
+          naming the exact physical row groups the bin assigned to this file
+          (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via
-          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
-          which returns one sub-fragment per row group in the chunk's
-          row-group range, paired with the cumulative pre-filter row
-          offset of that row group within the file. The downstream
-          ``_compute_row_hashes`` call uses this offset so row hashes
-          remain unique across sub-fragments that share ``fragment.path``.
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_row_group_ids`.
+          When ``include_row_hash`` is on it fans out one sub-fragment per row
+          group, each paired with its cumulative pre-filter row offset, so the
+          downstream ``_compute_row_hashes`` call keeps hashes unique across
+          sub-fragments that share ``fragment.path``.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
         itself — multiple manifest rows can share a single path with
-        different chunk indices.
+        different row-group sets.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
@@ -313,7 +312,11 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 fragments.append((fragment, 0))
             else:
                 fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                    _fragments_from_row_group_ids(
+                        fragment,
+                        chunk_metadata["row_group_ids"],
+                        per_row_group_offsets=self._include_row_hash,
+                    )
                 )
         return fragments
 
