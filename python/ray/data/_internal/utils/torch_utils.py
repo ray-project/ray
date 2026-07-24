@@ -27,7 +27,7 @@ class FinalizeFn(ABC):
 class DefaultFinalizeFn(FinalizeFn):
     """Default finalize_fn for ``iter_torch_batches``.
 
-    Synchronously move tensor batches to the target device on the current stream.
+    Move tensor batches to the target device on the current stream (can be non-blocking).
     """
 
     def __init__(self, device: torch.device):
