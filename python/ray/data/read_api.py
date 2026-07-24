@@ -391,6 +391,7 @@ def _resolve_read_remote_args(
     num_gpus: Optional[float],
     memory: Optional[float],
     ctx: DataContext,
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Common ``ray_remote_args`` setup shared between ``read_datasource`` and
     ``_read_datasource_v2``.
@@ -409,12 +410,18 @@ def _resolve_read_remote_args(
     """
     if ray_remote_args is None:
         ray_remote_args = {}
+
+    if label_selector is not None:
+        current_selector = ray_remote_args.get("label_selector", {})
+        current_selector.update(label_selector)
+        ray_remote_args["label_selector"] = current_selector
+
     if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
+        resolved_selector = ray_remote_args.get("label_selector", {})
+        resolved_selector[
             ray._raylet.RAY_NODE_ID_KEY
         ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args["label_selector"] = resolved_selector
         ray_remote_args.pop("scheduling_strategy", None)
     if (
         "scheduling_strategy" not in ray_remote_args
@@ -674,7 +681,6 @@ def read_datasource(
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
         ctx,
         label_selector=label_selector,
     )
