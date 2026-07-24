@@ -35,7 +35,7 @@ class AutoscalingCoordinator(abc.ABC):
                 The requester is responsible for periodically sending new requests
                 to avoid the request being purged.
             request_remaining: If true, after reserving requested resources to each
-                requester, remaining resources will also be allocated to this requester.
+                requester, remaining resources will also be reserved to this requester.
             priority: The priority of the request. Higher value means higher priority.
             label_selectors: Optional per-bundle label selectors, one per entry in
                 ``resources``. Forwarded to the autoscaler as
@@ -50,9 +50,9 @@ class AutoscalingCoordinator(abc.ABC):
 
     @abc.abstractmethod
     def get_reserved_resources(self) -> List[ResourceDict]:
-        """Get the allocated resources for the requester.
+        """Get the reserved resources for the requester.
 
         Returns:
-            A list of dictionaries representing the allocated resources bundles.
+            A list of dictionaries representing the reserved resources bundles.
         """
         ...

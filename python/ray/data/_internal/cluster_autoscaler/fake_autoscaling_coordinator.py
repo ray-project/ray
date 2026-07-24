@@ -72,7 +72,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self._allocation = None
 
     def get_reserved_resources(self) -> List[ResourceDict]:
-        """Return the allocated resources if they haven't expired."""
+        """Return the reserved resources if they haven't expired."""
         if self._allocation is None:
             return []
 
