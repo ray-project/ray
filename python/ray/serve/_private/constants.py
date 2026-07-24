@@ -714,6 +714,11 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Ingress request router replicas pinned to each proxy node.
+RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
+    "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (

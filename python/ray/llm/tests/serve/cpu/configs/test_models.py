@@ -556,5 +556,60 @@ class TestCheckpointInfo:
         assert llm_config._model_architecture == "LlavaForCausalLM"
 
 
+class TestApplyCheckpointInfo:
+    """Test that apply_checkpoint_info derives capabilities from the HF config."""
+
+    @pytest.fixture
+    def mock_hf_config(self):
+        hf_config = MagicMock()
+        hf_config.architectures = ["Qwen2ForCausalLM"]
+        del hf_config.vision_config
+        return hf_config
+
+    def _make_llm_config(self, model_id="org/model"):
+        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id=model_id))
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_uses_provided_hf_config_without_reloading(
+        self, mock_from_pretrained, mock_hf_config
+    ):
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo:Q5_K_M", hf_config=mock_hf_config)
+
+        mock_from_pretrained.assert_not_called()
+        assert config._model_architecture == "Qwen2ForCausalLM"
+        assert config._supports_vision is False
+
+    def test_detects_vision_from_provided_hf_config(self, mock_hf_config):
+        mock_hf_config.vision_config = MagicMock()
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo", hf_config=mock_hf_config)
+
+        assert config._supports_vision is True
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_falls_back_to_loading_from_path(
+        self, mock_from_pretrained, mock_hf_config
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/plain-model")
+
+        mock_from_pretrained.assert_called_once()
+        assert mock_from_pretrained.call_args.args[0] == "org/plain-model"
+        assert config._model_architecture == "Qwen2ForCausalLM"
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_load_failure_raises_value_error(self, mock_from_pretrained):
+        mock_from_pretrained.side_effect = OSError("no config.json")
+        config = self._make_llm_config()
+
+        with pytest.raises(ValueError, match="Failed to load Hugging Face config"):
+            config.apply_checkpoint_info("org/missing-model")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
