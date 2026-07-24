@@ -481,15 +481,16 @@ class DataIterator(abc.ABC):
                 with ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: [Alpha] A function to customize how data batches are collated
                 before being passed to the model. This is useful for last-mile data
                 formatting such as padding, masking, or packaging tensors into custom
                 data structures. If not provided, `iter_torch_batches` automatically
-                converts batches to `torch.Tensor`s and moves them to the device
-                assigned to the current worker. The input to `collate_fn` may be:
+                converts batches to `torch.Tensor`s and moves them to the target
+                device (see ``device``). The input to `collate_fn` may be:
 
                 1. pyarrow.Table, where you should provide a callable class that
                    subclasses `ArrowBatchCollateFn` (recommended for best performance).
@@ -503,7 +504,7 @@ class DataIterator(abc.ABC):
 
                 The output can be any type. Return a non-pinned `TensorBatchType` to
                 get managed memory pinning (see ``pin_memory``) and transfer to the
-                current worker's device. Any other output type means you must
+                target device (see ``device``). Any other output type means you must
                 handle device transfer manually in your training loop (consider using
                 :meth:`~ray.data.DataIterator.iter_batches` instead).
                 Note: This function is called in a multi-threaded context; avoid using
@@ -530,11 +531,11 @@ class DataIterator(abc.ABC):
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
 
-        if collate_fn is not None and (dtypes is not None or device != "auto"):
+        if collate_fn is not None and dtypes is not None:
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device."
-                "You should manually move the output Torch tensors to the"
-                "desired dtype and device outside of collate_fn."
+                "collate_fn cannot be used with dtypes. You should manually "
+                "convert the output Torch tensors to the desired dtype "
+                "inside collate_fn."
             )
 
         if device == "auto":
@@ -555,7 +556,7 @@ class DataIterator(abc.ABC):
         ) -> Union[TensorBatchReturnType, Any]:
             """Default finalize function for moving PyTorch tensors to device. If
             batch is of type `TensorBatchType`, it will be automatically moved to the
-            current worker's device. For other types, you must handle device transfer
+            target device. For other types, you must handle device transfer
             manually in your training loop.
 
             Args:
