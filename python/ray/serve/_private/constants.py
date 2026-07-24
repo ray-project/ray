@@ -575,6 +575,15 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
     "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
 )
 
+# Columnar encoding only pays off once a handle report is wide enough that the
+# native array decode/merge amortizes its fixed per-report overhead. Below this
+# many replica keys in a report the producer keeps the cloudpickle path, so
+# small/thin deployments never regress. Producer-side gate; the controller
+# wire-detects either format, so a mixed fleet stays correct.
+RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS = get_env_int(
+    "RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS", 64
+)
+
 RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
