@@ -80,15 +80,13 @@ def main(args):
             right_on=("n_regionkey",),
         ).select_columns(["n_nationkey", "n_name"])
 
-        # Materialize to avoid recomputing the region->nation->supplier chain
-        # in both Branch B and the main pipeline (Ray Data has no CSE).
         regional_suppliers = nation_region.join(
             supplier,
             num_partitions=16,
             join_type="inner",
             on=("n_nationkey",),
             right_on=("s_nationkey",),
-        ).materialize()
+        )
 
         # ── Branch B: min supply cost per part from regional suppliers ──
         regional_partsupp = partsupp.join(

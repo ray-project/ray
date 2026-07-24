@@ -24,10 +24,9 @@ def main(args):
         #
         # Note:
         # The correlated subquery is decorrelated by joining lineitem with
-        # the filtered parts first, materializing the small result, then
-        # computing AVG(l_quantity) per partkey from that intermediate.
-        # This avoids a double S3 read of lineitem and scopes the groupby
-        # to only the matching rows.
+        # the filtered parts first, then computing AVG(l_quantity) per
+        # partkey from that intermediate. This scopes the groupby to only
+        # the matching rows.
 
         # Load tables with early projection.
         part = load_table("part", args.sf).select_columns(
@@ -46,21 +45,16 @@ def main(args):
             expr=(col("p_brand") == brand) & (col("p_container") == container)
         ).select_columns(["p_partkey"])
 
-        # Join lineitem with filtered parts first, then materialize the small
-        # result for dual consumption (avg_qty groupby + filter pipeline).
-        # This avoids a double S3 read of lineitem and reduces the groupby
-        # from the full lineitem table to only matching rows.
-        joined = (
-            part_filtered.join(
-                lineitem,
-                join_type="inner",
-                num_partitions=16,
-                on=("p_partkey",),
-                right_on=("l_partkey",),
-            )
-            .select_columns(["p_partkey", "l_quantity", "l_extendedprice"])
-            .materialize()
-        )
+        # Join lineitem with filtered parts first, then reuse the result for
+        # both the avg_qty groupby and the filter pipeline. This reduces the
+        # groupby from the full lineitem table to only matching rows.
+        joined = part_filtered.join(
+            lineitem,
+            join_type="inner",
+            num_partitions=16,
+            on=("p_partkey",),
+            right_on=("l_partkey",),
+        ).select_columns(["p_partkey", "l_quantity", "l_extendedprice"])
 
         # Decorrelate: compute average quantity per part (only matching parts).
         avg_qty = (

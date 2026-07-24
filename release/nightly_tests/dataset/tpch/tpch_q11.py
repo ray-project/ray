@@ -28,8 +28,8 @@ def main(args):
         #
         # Note:
         # Outer query and subquery share the nation -> supplier -> partsupp
-        # chain. Materialize the intermediate (partsupp_germany) once and
-        # derive both the per-part aggregate and the scalar threshold from it.
+        # chain. Build partsupp_germany once and derive both the per-part
+        # aggregate and the scalar threshold from it.
 
         # Q11 parameters. Per the TPC-H spec, FRACTION is defined as
         # 0.0001 / SF so the threshold tracks per-part stock values
@@ -57,8 +57,6 @@ def main(args):
         ).select_columns(["s_suppkey"])
 
         # partsupp restricted to national suppliers, with stock value.
-        # Materialize so the scalar total and the per-part aggregate both
-        # read from the same intermediate (Ray Data has no CSE).
         partsupp_germany = (
             partsupp.join(
                 nation_supplier,
@@ -71,7 +69,6 @@ def main(args):
                 "value", to_f64(col("ps_supplycost")) * to_f64(col("ps_availqty"))
             )
             .select_columns(["ps_partkey", "value"])
-            .materialize()
         )
 
         # Scalar threshold = SUM(value) * fraction. aggregate() returns a dict.

@@ -28,7 +28,7 @@ def main(args):
         #   ORDER BY s_suppkey;
         #
         # Note:
-        # Materialize the revenue view and derive the scalar max from it,
+        # Build the revenue view once and derive the scalar max from it,
         # mirroring the Q2 min-cost decorrelation. Float equality is safe:
         # max_revenue comes from the same Sum output column, so comparing
         # the groupwise sums to it is bit-exact.
@@ -50,10 +50,8 @@ def main(args):
             "rev", to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount")))
         )
 
-        revenue = (
-            lineitem.groupby("l_suppkey")
-            .aggregate(Sum(on="rev", alias_name="total_revenue"))
-            .materialize()
+        revenue = lineitem.groupby("l_suppkey").aggregate(
+            Sum(on="rev", alias_name="total_revenue")
         )
 
         max_revenue = revenue.aggregate(Max(on="total_revenue", alias_name="max_rev"))[

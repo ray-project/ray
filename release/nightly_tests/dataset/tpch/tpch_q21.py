@@ -73,14 +73,9 @@ def main(args):
 
         # ── Pre-aggregate: distinct LATE suppliers per order (NOT EXISTS) ─
         # Late lineitem: l_receiptdate > l_commitdate.
-        # Materialize to avoid recomputing the filter in both the
-        # late_suppliers_per_order branch and the main pipeline
-        # (Ray Data has no CSE).
-        late_lineitem = (
-            lineitem.filter(expr=col("l_receiptdate") > col("l_commitdate"))
-            .select_columns(["l_orderkey", "l_suppkey"])
-            .materialize()
-        )
+        late_lineitem = lineitem.filter(
+            expr=col("l_receiptdate") > col("l_commitdate")
+        ).select_columns(["l_orderkey", "l_suppkey"])
 
         late_suppliers_per_order = (
             late_lineitem.groupby("l_orderkey")
