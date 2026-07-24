@@ -24,14 +24,22 @@ class TestCreateChunkMetadata:
                 ParquetRowGroupChunkMetadata,
                 row_group_ids=(0,),
                 num_rows=1,
+                uncompressed_size=10,
                 extra_field="boom",
             )
 
     def test_returns_dict_with_keys(self):
         md = create_chunk_metadata(
-            ParquetRowGroupChunkMetadata, row_group_ids=(0, 1), num_rows=5
+            ParquetRowGroupChunkMetadata,
+            row_group_ids=(0, 1),
+            num_rows=5,
+            uncompressed_size=10,
         )
-        assert md == {"row_group_ids": (0, 1), "num_rows": 5}
+        assert md == {
+            "row_group_ids": (0, 1),
+            "num_rows": 5,
+            "uncompressed_size": 10,
+        }
 
 
 class TestWholeFileChunker:
@@ -65,14 +73,17 @@ class TestLineDelimitedFileChunker:
 def test_chunk_metadata_subclasses_are_typeddicts():
     # Ensures the subclasses don't accidentally inherit unrelated keys.
     pmd: ChunkMetadata = create_chunk_metadata(
-        ParquetRowGroupChunkMetadata, row_group_ids=(0,), num_rows=1
+        ParquetRowGroupChunkMetadata,
+        row_group_ids=(0,),
+        num_rows=1,
+        uncompressed_size=10,
     )
     lmd: ChunkMetadata = create_chunk_metadata(
         LineDelimitedFileChunkMetadata,
         chunk_byte_start_idx=0,
         chunk_byte_end_idx=10,
     )
-    assert set(pmd.keys()) == {"row_group_ids", "num_rows"}
+    assert set(pmd.keys()) == {"row_group_ids", "num_rows", "uncompressed_size"}
     assert set(lmd.keys()) == {"chunk_byte_start_idx", "chunk_byte_end_idx"}
 
 

@@ -1,19 +1,3 @@
-"""``FooterReader`` Ray actor for the footer-based Parquet chunking path.
-
-Reads Parquet footers on a pool of actors (spread across the cluster) and turns
-each file into a small :class:`FileChunks` descriptor of its row groups, applying
-predicate-based row-group pruning and projection-aware byte accounting close to
-the footer read. Reading *and* chunking happen in the same place so the large
-``FileMetaData`` (tens of KB to several MB) never crosses a process boundary --
-only the tiny ``FileChunks`` result is serialized back to the driver.
-
-Ported from the ``reader_bin_packing`` prototype
-(``worktree-binpacker-split`` branch, ``list_files.py``), adapted to Ray Data:
-takes a resolved PyArrow filesystem (instead of an S3 region), uses stdlib
-logging, and exposes ``read_footers`` as a plain synchronous streaming generator
-(IO concurrency comes from an internal thread pool, not asyncio).
-"""
-
 from __future__ import annotations
 
 import logging

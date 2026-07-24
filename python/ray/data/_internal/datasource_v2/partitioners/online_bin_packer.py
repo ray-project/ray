@@ -272,6 +272,7 @@ class OnlineBinPacker:
                     ParquetRowGroupChunkMetadata,
                     row_group_ids=tuple(sorted(ids)),
                     num_rows=rows_by_path[path],
+                    uncompressed_size=size_by_path[path],
                 )
             )
         return FileManifest.construct_manifest(paths, sizes, chunk_metadatas)

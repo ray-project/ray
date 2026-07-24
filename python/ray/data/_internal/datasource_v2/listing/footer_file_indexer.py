@@ -36,6 +36,12 @@ _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
 _DEFAULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", 10)
+# Max in-flight footer batches. ``0`` -> auto (``num_actors * 2``). A smaller
+# window reads fewer footers before an early ``limit`` stop cancels the pool, at
+# the cost of less pipelining on full reads.
+_DEFAULT_MAX_INFLIGHT_BATCHES = env_integer(
+    "RAY_DATA_PARQUET_FOOTER_MAX_INFLIGHT_BATCHES", 0
+)
 # Fallback bin budget (uncompressed bytes per read task) when
 # ``target_max_block_size`` is unset.
 _DEFAULT_BIN_BYTES = env_integer("RAY_DATA_PARQUET_FOOTER_BIN_BYTES", 1 * GiB)
@@ -60,6 +66,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         num_actors: Optional[int] = None,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
+        max_inflight_batches: Optional[int] = None,
         max_shared_open_bins: int = 16,
     ):
         super().__init__(
@@ -76,6 +83,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._footer_batch_size = (
             footer_batch_size if footer_batch_size is not None else _DEFAULT_BATCH_SIZE
         )
+        # In-flight footer-batch window; 0/None -> auto (``num_actors * 2``).
+        _inflight = (
+            max_inflight_batches
+            if max_inflight_batches is not None
+            else _DEFAULT_MAX_INFLIGHT_BATCHES
+        )
+        self._max_inflight_batches = _inflight if _inflight else self._num_actors * 2
         self._max_shared_open_bins = max_shared_open_bins
 
     @property
@@ -95,11 +109,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
-        from ray.data.context import DataContext
-
-        max_bin_bytes = (
-            DataContext.get_current().target_max_block_size or _DEFAULT_BIN_BYTES
-        )
+        max_bin_bytes = _DEFAULT_BIN_BYTES
         file_infos = self.list_file_infos(
             paths,
             filesystem=filesystem,
@@ -141,7 +151,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
-        window = max(1, self._num_actors * 2)
+        window = max(1, self._max_inflight_batches)
         batches = self._batches(file_infos)
         # FIFO of in-flight streaming generators, one per dispatched footer batch.
         pending: Deque[ray.ObjectRefGenerator] = deque()

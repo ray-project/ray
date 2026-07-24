@@ -230,6 +230,9 @@ def _row_group_manifest(path, row_group_ids, num_rows):
                 ParquetRowGroupChunkMetadata,
                 row_group_ids=tuple(row_group_ids),
                 num_rows=num_rows,
+                # Nominal projected uncompressed size (8-byte int64 ids); only
+                # used for footer-free batch sizing, not row selection.
+                uncompressed_size=num_rows * 8,
             )
         ],
     )

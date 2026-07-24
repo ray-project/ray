@@ -65,11 +65,14 @@ class ParquetRowGroupChunkMetadata(ChunkMetadata):
     ``row_group_ids`` are physical row-group indices into the file; any
     coalescing/splitting the bin packer applied is already expanded away here.
     ``num_rows`` is the summed footer row count of those groups (for sizing /
-    limit accounting).
+    limit accounting). ``uncompressed_size`` is their summed, projection-scoped
+    uncompressed byte size, carried so the reader can size batches without
+    re-reading the footer ``ListFiles`` already read.
     """
 
     row_group_ids: Tuple[int, ...]
     num_rows: int
+    uncompressed_size: int
 
 
 @DeveloperAPI
