@@ -10309,6 +10309,20 @@ class TestShutdownDeletionTiers:
         assert set(tiers[0]) == {a1, a2}
         assert set(tiers[1]) == {b1, b2}
 
+    def test_cross_app_chain(self, mock_deployment_state_manager):
+        """A caller in app1 orders before its callee in app2."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress1 = _dep("ingress", app="app1")
+        ingress2 = _dep("ingress", app="app2")
+        leaf2 = _dep("leaf", app="app2")
+        _deploy_running(dsm, ingress1, outbound=[ingress2])
+        _deploy_running(dsm, ingress2, outbound=[leaf2])
+        _deploy_running(dsm, leaf2, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[ingress1], [ingress2], [leaf2]]
+
     def test_no_deployments(self, mock_deployment_state_manager):
         """No deployments produces no tiers."""
         create_dsm, _, _, _ = mock_deployment_state_manager
@@ -10395,6 +10409,21 @@ class TestDependencyOrderedShutdown:
         assert dsm.is_ready_for_shutdown()
         assert order.index(b1) > order.index(a1)
         assert order.index(b2) > order.index(a2)
+
+    def test_cross_app_chain_delete_order(self, mock_deployment_state_manager):
+        """App 1 calling App 2 tears the app1 caller down before the app2 callee."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress1 = _dep("ingress", app="app1")
+        ingress2 = _dep("ingress", app="app2")
+        leaf2 = _dep("leaf", app="app2")
+        _deploy_running(dsm, ingress1, outbound=[ingress2])
+        _deploy_running(dsm, ingress2, outbound=[leaf2])
+        _deploy_running(dsm, leaf2, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [ingress1, ingress2, leaf2]
 
     def test_wedged_tier_still_completes(self, mock_deployment_state_manager):
         """A tier that never drains is force-advanced past after the timeout."""
@@ -10483,6 +10512,74 @@ def test_shutdown_tiers_survive_application_reconcile(mock_deployment_state_mana
 
     dsm.update()
     for r in ds_b._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+
+def test_cross_app_shutdown_survives_application_reconcile(
+    mock_deployment_state_manager,
+):
+    """Cross app tier order holds when each app delete wipes its target list."""
+    create_dsm, _, _, autoscaling_state_manager = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    def _make_app(name):
+        return ApplicationState(
+            name=name,
+            deployment_state_manager=dsm,
+            autoscaling_state_manager=autoscaling_state_manager,
+            endpoint_state=EndpointState(MockKVStore(), Mock()),
+            logging_config=LoggingConfig(),
+            external_scaler_enabled=False,
+        )
+
+    app1 = _make_app("app1")
+    app2 = _make_app("app2")
+    info1, _ = deployment_info(num_replicas=1)
+    info2, _ = deployment_info(num_replicas=1)
+    app1.deploy_app({"ingress": info1}, external_scaler_enabled=False)
+    app2.deploy_app({"backend": info2}, external_scaler_enabled=False)
+    app1.update()
+    app2.update()
+
+    ingress = _dep("ingress", app="app1")
+    backend = _dep("backend", app="app2")
+    ds_ingress = dsm._get_deployment_state_for_testing(ingress)
+    ds_backend = dsm._get_deployment_state_for_testing(backend)
+
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    for r in ds_backend._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = [backend]
+    for r in ds_backend._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = []
+
+    dsm.shutdown()
+    assert ds_ingress._target_state.deleting
+    assert not ds_backend._target_state.deleting
+
+    app1.delete()
+    app2.delete()
+    app1.update()
+    app2.update()
+    assert not ds_backend._target_state.deleting
+
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    dsm.shutdown()
+    app1.update()
+    app2.update()
+    assert ds_backend._target_state.deleting
+
+    dsm.update()
+    for r in ds_backend._replicas.get([ReplicaState.STOPPING]):
         r._actor.set_done_stopping()
     dsm.update()
     assert dsm.is_ready_for_shutdown()
