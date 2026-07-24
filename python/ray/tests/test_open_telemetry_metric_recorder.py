@@ -514,10 +514,26 @@ def test_init_metrics_sets_service_name_resource(
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
 
 
+@pytest.mark.parametrize(
+    "register_method,register_args",
+    [
+        ("register_gauge_metric", ("test_deadlock_gauge", "description")),
+        ("register_counter_metric", ("test_deadlock_counter", "description")),
+        ("register_sum_metric", ("test_deadlock_sum", "description")),
+        # Histogram registration does not go through the measurement-consumer
+        # lock today (synchronous instruments are not registered with the
+        # consumer), so it could not deadlock pre-fix; included as a tripwire
+        # in case that ever changes.
+        (
+            "register_histogram_metric",
+            ("test_deadlock_histogram", "description", [1.0, 10.0]),
+        ),
+    ],
+)
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_register_does_not_deadlock_with_concurrent_collect(
-    mock_get_meter, mock_set_meter_provider
+    mock_get_meter, mock_set_meter_provider, register_method, register_args
 ):
     """Regression test for an AB/BA deadlock between instrument registration and
     metric collection.
@@ -534,7 +550,7 @@ def test_register_does_not_deadlock_with_concurrent_collect(
 
     This test parks a real SDK collect() inside an instrument callback that
     contends on ``recorder._lock`` (exactly like the recorder's own callbacks
-    do) while another thread registers a new gauge, and asserts that both
+    do) while another thread registers a new instrument, and asserts that both
     complete.
     """
     mock_get_meter.return_value = MagicMock()
@@ -566,8 +582,8 @@ def test_register_does_not_deadlock_with_concurrent_collect(
     assert in_callback.wait(timeout=10), "collect() never invoked the callback"
 
     register_thread = threading.Thread(
-        target=recorder.register_gauge_metric,
-        args=("test_deadlock_gauge", "gauge registered during a collect()"),
+        target=getattr(recorder, register_method),
+        args=register_args,
         daemon=True,
     )
     register_thread.start()
@@ -590,12 +606,12 @@ def test_register_does_not_deadlock_with_concurrent_collect(
     registration_deadlocked = register_thread.is_alive()
     collect_thread.join(timeout=10)
     assert not registration_deadlocked, (
-        "register_gauge_metric() deadlocked against a concurrent collect(); "
+        f"{register_method}() deadlocked against a concurrent collect(); "
         "instrument creation must not run while holding recorder._lock."
     )
     assert not collect_thread.is_alive(), "collect() did not complete"
     with recorder._lock:
-        assert "test_deadlock_gauge" in recorder._registered_instruments
+        assert register_args[0] in recorder._registered_instruments
 
 
 def test_get_service_name_decodes_otel_resource_attributes():

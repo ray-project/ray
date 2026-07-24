@@ -53,13 +53,23 @@ class OpenTelemetryMetricRecorder:
         #   SDK measurement-consumer lock -> _lock (the SDK holds its own lock
         #       while invoking our observable callbacks during collect(), and the
         #       callbacks acquire _lock)
-        # _lock is therefore a leaf lock and must NEVER be held across any SDK
-        # call. In particular, holding _lock across meter.create_* deadlocks with
-        # a concurrent scrape: registration holds _lock and waits on the SDK lock
-        # inside create_*, while collect() holds the SDK lock and waits on _lock
+        # _lock must therefore never be held across an SDK call that can acquire
+        # the measurement-consumer lock — i.e. observable-instrument creation
+        # (meter.create_observable_*, which registers the instrument with the
+        # consumer). Holding _lock there deadlocks with a concurrent scrape:
+        # registration holds _lock and waits on the consumer lock inside
+        # create_*, while collect() holds the consumer lock and waits on _lock
         # inside a callback. _registration_lock exists so that instrument
         # registration stays serialized (no duplicate instruments on a race)
-        # without _lock being held across the SDK entry points.
+        # without _lock being held across those SDK entry points.
+        #
+        # Note: the synchronous histogram paths (set_metric_value,
+        # record_histogram_aggregated_batch) do call instrument.record() while
+        # holding _lock. That is safe from this deadlock: record() only takes
+        # per-reader-storage locks, never the measurement-consumer lock, and
+        # reader-storage code never calls back into this recorder, so no lock
+        # cycle can form. Keep any new SDK call out of _lock unless it has the
+        # same property.
         self._lock = threading.Lock()
         self._registration_lock = threading.Lock()
         self._registered_instruments = {}
