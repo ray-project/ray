@@ -169,6 +169,15 @@ class OnlineBinPacker:
         else:
             self._place_heavy(item)
 
+    def _seal_if_full(self, bin_: _OpenBin) -> None:
+        # A shared bin at (or over) cap can never take another positive-size item:
+        # ``_best_open_bin`` gives it end == start and the whole-item fast path
+        # fails its ``used_bytes + total <= cap`` test. Leaving it in the pool just
+        # burns one of the ``_max_shared_open_bins`` slots, so seal and evict it.
+        if bin_.used_bytes >= self._cap:
+            self._shared_bins.remove(bin_)
+            self._output.append(bin_.seal())
+
     def _place_light(self, item: BinItem) -> None:
         # LIGHT colour -> shared First-Fit bins. First try to place the WHOLE item
         # in the first bin it fits. If it fits nowhere, cut it at unit boundaries
@@ -184,6 +193,7 @@ class OnlineBinPacker:
         )
         if target is not None:
             target.add(item)
+            self._seal_if_full(target)
             return
         start = 0
         while start < len(units):
@@ -198,6 +208,7 @@ class OnlineBinPacker:
                 # A lone unit larger than a whole bin gets its own (over-sized) bin.
                 end = max(_largest_prefix_fit(prefix, start, cap), start + 1)
             target.add(_subitem(item, len(units), start, end))
+            self._seal_if_full(target)
             start = end
 
     def _place_heavy(self, item: BinItem) -> None:
