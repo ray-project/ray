@@ -5,6 +5,10 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    _make_aggregating_reduce_fn,
+    _make_aggregating_transformer,
+)
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
@@ -58,7 +62,7 @@ def _plan_gpu_shuffle_repartition(
     )
 
 
-def _plan_hash_shuffle_repartition(
+def _plan_hash_shuffle_repartition_v2(
     data_context: DataContext,
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
@@ -100,11 +104,88 @@ def _plan_hash_shuffle_repartition(
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
-        streaming_reduce=False,
         disallow_block_splitting=True,
         name=(
             f"HashShuffleReduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
+        ),
+    )
+    return reduce_op
+
+
+def _plan_hash_shuffle_repartition(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.execution.operators.hash_shuffle import (
+        HashShuffleOperator,
+    )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
+
+    return HashShuffleOperator(
+        input_physical_op,
+        data_context,
+        key_columns=tuple(normalized_key_columns),
+        num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
+    )
+
+
+def _plan_hash_shuffle_aggregate_v2(
+    data_context: DataContext,
+    logical_op: Aggregate,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.key).get_columns()
+    key_columns = tuple(normalized_key_columns)
+    key_list = list(key_columns)
+    aggs = tuple(logical_op.aggs)
+
+    if key_list:
+        input_logical_op = input_physical_op._logical_operators[0]
+        estimated_input_blocks = input_logical_op.estimated_num_outputs()
+        num_partitions = (
+            logical_op.num_partitions
+            or estimated_input_blocks
+            or data_context.default_hash_shuffle_parallelism
+        )
+    else:
+        # Global aggregation reduces the whole dataset to a single row.
+        num_partitions = 1
+
+    partition_fn = _make_hash_partition_fn(key_list, num_partitions)
+    block_transformer = _make_aggregating_transformer(key_columns, aggs)
+    reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
+
+    map_op = ShuffleMapOp(
+        input_physical_op,
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=partition_fn,
+        block_transformer=block_transformer,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=(
+            f"HashAggregateMap(key_columns={key_columns}, "
+            f"num_partitions={num_partitions})"
+        ),
+    )
+    reduce_op = ShuffleReduceOp(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        # Empty partitions (groups absent from a partition) produce no output
+        # block; a placeholder would carry the map's pre-finalize schema and
+        # conflict with finalized non-empty partitions.
+        should_emit_empty_partitions=False,
+        name=(
+            f"HashAggregateReduce(key_columns={key_columns}, "
+            f"num_partitions={num_partitions})"
         ),
     )
     return reduce_op
@@ -170,6 +251,10 @@ def _plan_gpu_shuffle_aggregate(
             logical_op.aggs,
             fallback_reason,
         )
+        if data_context.use_hash_shuffle_v2:
+            return _plan_hash_shuffle_aggregate_v2(
+                data_context, logical_op, input_physical_op
+            )
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
     return GPUHashAggregateOperator(
@@ -218,6 +303,10 @@ def plan_all_to_all_op(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+                if data_context.use_hash_shuffle_v2:
+                    return _plan_hash_shuffle_repartition_v2(
+                        data_context, op, input_physical_dag
+                    )
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
@@ -257,6 +346,10 @@ def plan_all_to_all_op(
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            if data_context.use_hash_shuffle_v2:
+                return _plan_hash_shuffle_aggregate_v2(
+                    data_context, op, input_physical_dag
+                )
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(

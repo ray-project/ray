@@ -19,7 +19,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "actor_submit_queue",
-    hdrs = ["actor_submit_queue.h"],
+    hdrs = ["actor_submit_queue_interface.h"],
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:id",
@@ -90,6 +90,7 @@ ray_cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

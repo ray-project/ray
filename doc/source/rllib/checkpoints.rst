@@ -413,7 +413,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 config.algo_class,
                 param_space=config,
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000})
             ).fit()
 
     .. tab-item:: Swap out one RLModule and continue multi-agent training
@@ -453,7 +453,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 multi_agent_config.algo_class,
                 param_space=multi_agent_config,
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000})
             ).fit()
 
         .. testcode::
