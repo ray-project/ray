@@ -1,5 +1,6 @@
 import os
 import random
+from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
 
 import numpy as np
@@ -15,14 +16,21 @@ from pyiceberg import (
 )
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
+from pyiceberg.manifest import FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.table import Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
 from ray.data import read_iceberg
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
-from ray.data._internal.logical.operators import Filter, Project
+from ray.data._internal.datasource.iceberg_datasource import (
+    IcebergDatasource,
+    _estimate_inmemory_file_size,
+)
+from ray.data._internal.datasource.parquet_datasource import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
+from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -203,6 +211,115 @@ def test_get_read_tasks():
     read_tasks = iceberg_ds.get_read_tasks(5)
     assert len(read_tasks) == 5
     assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
+
+
+@pytest.mark.parametrize(
+    "file_format,column_sizes,projected_field_ids,expected_size",
+    [
+        (
+            FileFormat.PARQUET,
+            {1: 10, 2: 20},
+            {1, 2},
+            30 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        ),
+        (
+            FileFormat.PARQUET,
+            {1: 10},
+            {1, 2},
+            100 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        ),
+        (FileFormat.PARQUET, {1: 10}, set(), 0),
+        (FileFormat.AVRO, {1: 10, 2: 20}, {1, 2}, 100),
+    ],
+)
+def test_estimate_inmemory_file_size(
+    file_format, column_sizes, projected_field_ids, expected_size
+):
+    data_file = SimpleNamespace(
+        file_format=file_format,
+        file_size_in_bytes=100,
+        column_sizes=column_sizes,
+    )
+
+    assert _estimate_inmemory_file_size(data_file, projected_field_ids) == expected_size
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_size_estimate_matches_read_task_metadata():
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        selected_fields=("col_a",),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    read_tasks = iceberg_ds.get_read_tasks(3)
+    expected_size = sum(
+        task.file.column_sizes[1] * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        for task in iceberg_ds.plan_files
+    )
+
+    assert iceberg_ds.estimate_inmemory_data_size() == expected_size
+    assert sum(task.metadata.size_bytes for task in read_tasks) == expected_size
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_default_size_estimate_uses_full_parquet_file_size():
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    assert iceberg_ds.estimate_inmemory_data_size() == sum(
+        task.file.file_size_in_bytes * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        for task in iceberg_ds.plan_files
+    )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
+    from ray._private import auto_init_hook
+
+    monkeypatch.setattr(auto_init_hook, "enable_auto_connect", False)
+    monkeypatch.setattr(ray.util, "get_current_placement_group", lambda: None)
+    projected_ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        override_num_blocks=1,
+    ).select_columns(["col_a"])
+
+    optimized_plan = LogicalOptimizer().optimize(projected_ds._logical_plan)
+    read_op = optimized_plan.dag
+    assert isinstance(read_op, Read)
+
+    expected_size = sum(
+        task.file.column_sizes[1] * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        for task in read_op.datasource.plan_files
+    )
+    assert read_op.infer_metadata().size_bytes == expected_size
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_empty_projection_has_zero_size_estimate():
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        selected_fields=(),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    assert iceberg_ds.estimate_inmemory_data_size() == 0
+    assert all(task.metadata.size_bytes == 0 for task in iceberg_ds.get_read_tasks(3))
 
 
 @pytest.mark.skipif(
