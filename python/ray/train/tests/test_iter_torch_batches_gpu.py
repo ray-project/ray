@@ -7,7 +7,6 @@ import pytest
 import torch
 
 import ray
-import ray.train.torch
 from ray.data.iterator import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
@@ -244,7 +243,6 @@ def collate_fn_map():
 @pytest.mark.parametrize("pin_memory", [True, False])
 def test_custom_batch_collate_fn(
     ray_start_4_cpus_1_gpu,
-    monkeypatch,
     collate_batch_type,
     return_type,
     device,
@@ -255,7 +253,8 @@ def test_custom_batch_collate_fn(
     the batch before it is converted to a PyTorch tensor.
 
     Note that the collate_fn doesn't move the tensors to the device --
-    that happens in the iterator (finalize_fn).
+    that happens in the iterator (finalize_fn), which moves the collated
+    batch to the device passed to `iter_torch_batches`.
     """
     # Skip GPU tests if CUDA is not available
     if device == "cuda:0" and not torch.cuda.is_available():
@@ -265,31 +264,22 @@ def test_custom_batch_collate_fn(
     if pin_memory and not torch.cuda.is_available():
         pytest.skip("pin_memory is set to True, but CUDA is not available.")
 
-    # Skip tests if pin_memory is set to True and the collate function is not the
-    # DefaultCollateFn.
-    if pin_memory and not (collate_batch_type == "arrow" and return_type == "default"):
-        pytest.skip(
-            "pin_memory is set to True, but the collate function is not the DefaultCollateFn."
-        )
-
     collate_fn = collate_fn_map[collate_batch_type].get(return_type)
     if collate_fn is None:
         pytest.skip(
             f"Collate function not found for ({collate_batch_type}, {return_type})"
         )
 
-    # Set the device that's returned by device="auto" -> get_device()
-    # This is used in `finalize_fn` to move the tensors to the correct device.
     device = torch.device(device)
-    monkeypatch.setattr(ray.train.utils, "_in_ray_train_worker", lambda: True)
-    monkeypatch.setattr(ray.train.torch, "get_device", lambda: device)
 
     ds = ray.data.from_items(
         [{"id": i + 5, "value": i} for i in range(5)],
     )
     it = ds.iterator()
 
-    for batch in it.iter_torch_batches(collate_fn=collate_fn, pin_memory=pin_memory):
+    for batch in it.iter_torch_batches(
+        collate_fn=collate_fn, pin_memory=pin_memory, device=device
+    ):
         if return_type == "single":
             assert isinstance(batch, torch.Tensor)
             assert sorted(batch.tolist()) == list(range(5, 10))
@@ -304,7 +294,9 @@ def test_custom_batch_collate_fn(
             assert sorted(batch["value"].tolist()) == list(range(5))
             assert batch["id"].device == device
             assert batch["value"].device == device
-            if pin_memory and device.type == "cpu":
+            # Chunked tensors are concatenated into freshly-allocated tensors
+            # during finalize, so the concatenated result isn't pinned.
+            if pin_memory and device.type == "cpu" and return_type == "dict":
                 assert batch["id"].is_pinned()
                 assert batch["value"].is_pinned()
         else:  # tuple or list

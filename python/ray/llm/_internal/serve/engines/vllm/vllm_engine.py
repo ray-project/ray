@@ -77,7 +77,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
     from vllm.entrypoints.pooling.scoring.serving import ServingScores
-    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
+    from vllm.entrypoints.serve.tokenize.serving import ServingTokenization
     from vllm.entrypoints.speech_to_text.transcription.serving import (
         OpenAIServingTranscription,
     )
@@ -182,14 +182,20 @@ def _get_vllm_engine_config(
             engine_config.hf_model_id = local_path
             logger.info(f"Resolved model from mirror to local path: {local_path}")
 
-    async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-        **engine_config.get_initialization_kwargs()
-    )
     from vllm.usage.usage_lib import UsageContext
 
-    vllm_engine_config = async_engine_args.create_engine_config(
-        usage_context=UsageContext.OPENAI_API_SERVER
-    )
+    try:
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
+            **engine_config.get_initialization_kwargs()
+        )
+        vllm_engine_config = async_engine_args.create_engine_config(
+            usage_context=UsageContext.OPENAI_API_SERVER
+        )
+    except Exception as e:
+        # vLLM's ModelConfig is a pydantic dataclass; its ValidationError holds an
+        # unpicklable ArgsKwargs and cannot cross the Ray task boundary. Re-raise as
+        # a plain error so the real message propagates instead of a pickling failure.
+        raise RuntimeError(f"Failed to create vLLM engine config: {e}") from None
     return async_engine_args, vllm_engine_config
 
 
@@ -308,7 +314,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
-        self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
+        self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
     async def build_asgi_app(self):
         from vllm.entrypoints.openai.api_server import build_app, init_app_state
@@ -317,7 +323,14 @@ class VLLMEngine(LLMEngine):
         if hasattr(self._engine_client, "get_supported_tasks"):
             supported_tasks = await self._engine_client.get_supported_tasks()
 
-        app = build_app(self._vllm_args, supported_tasks=supported_tasks)
+        # Pass model_config so vLLM mounts the pooling routers (/pooling, /classify,
+        # /embed, /score) on the native ASGI app to enable direct streaming for pooling
+        # classify, embed, and score.
+        app = build_app(
+            self._vllm_args,
+            supported_tasks=supported_tasks,
+            model_config=self._engine_client.model_config,
+        )
         await init_app_state(
             self._engine_client,
             app.state,
@@ -358,6 +371,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config.apply_checkpoint_info(
             vllm_engine_config.model_config.model,
             trust_remote_code=config.trust_remote_code,
+            hf_config=vllm_engine_config.model_config.hf_config,
         )
 
         self._engine_client = self._start_async_llm_engine(

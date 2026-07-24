@@ -1,3 +1,6 @@
+.. meta::
+   :description: How to connect RL environments to RLlib, covering single-agent, multi-agent, hierarchical, and external environment setups with the EnvRunner API.
+
 .. _rllib-environments-doc:
 
 Environments

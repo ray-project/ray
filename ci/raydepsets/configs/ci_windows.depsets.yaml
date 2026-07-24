@@ -2,6 +2,11 @@
 # TODO(elliot-barn): Remove this depset once the Windows CI system Python is upgraded
 # to 3.10; the driver deps can then be bundled via Bazel like other platforms.
 # See //bazel:ci_require.bzl for the full removal checklist.
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+
 depsets:
   - name: ci_windows_depset
     operation: compile
@@ -11,3 +16,59 @@ depsets:
     append_flags:
       - --python-version=3.8
       - --python-platform=windows
+
+  # Test deps for the windowsbuild image (installed into the image's conda env
+  # by ci/ray_ci/windows/build_base.sh). Mirrors the requirement files that
+  # script used to pip-install against requirements_compiled.txt directly.
+  - name: windows_tests_ci_depset_${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - python/requirements/test-requirements.txt
+      - python/requirements/ml/dl-cpu-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    output: python/deplocks/ci/windows-tests-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=windows
+      - --unsafe-package ray
+      - --prerelease=allow
+    build_arg_sets:
+      - py310
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+
+  # torch is relaxed so the torch2.7 depset below can downgrade it. torch
+  # 2.8/2.9 Windows wheels lack libuv and cannot init the gloo backend
+  # (pytorch/pytorch#150381); see python/requirements/windows-requirements.txt.
+  - name: relaxed_windows_tests_ci_depset_${PYTHON_SHORT}
+    operation: relax
+    source_depset: windows_tests_ci_depset_${PYTHON_SHORT}
+    packages:
+      - torch
+      - torchvision
+      # ABI-coupled PyG binaries; re-pinned as +pt27cpu builds in
+      # windows-requirements.txt.
+      - torch-scatter
+      - torch-sparse
+      - torch-cluster
+      - torch-spline-conv
+    output: python/deplocks/ci/relaxed_windows-tests-ci_depset_py${PYTHON_VERSION}.lock
+    build_arg_sets:
+      - py310
+
+  - name: windows_tests_torch27_ci_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_windows_tests_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/windows-requirements.txt
+    output: python/deplocks/ci/windows-tests-torch27-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=windows
+      - --unsafe-package ray
+      - --prerelease=allow
+    build_arg_sets:
+      - py310

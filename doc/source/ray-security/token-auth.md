@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure token-based authentication for Ray clusters with RAY_AUTH_MODE=token and ray get-auth-token, including token storage and TLS."
+---
+
 (token-auth)=
 
 # Ray token authentication
@@ -249,8 +255,7 @@ Make sure you've set the `RAY_AUTH_MODE=token` environment variable in the envir
 
 ### Authentication token not found
 
-If running locally, run `ray get-auth-token --generate` to create a token on your local machine.
-If running a remote cluster, make sure you've followed instructions to copy your token into the cluster.
+If running locally, run `ray get-auth-token --generate` to create a token on your local machine. If running a remote cluster, make sure you've followed instructions to copy your token into the cluster.
 
 ### Invalid authentication token
 

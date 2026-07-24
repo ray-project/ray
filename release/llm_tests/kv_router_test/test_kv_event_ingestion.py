@@ -77,6 +77,28 @@ class _TestKVRouterActor(KVRouterActor):
         )
         return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
 
+    async def get_potential_loads(self, token_ids: List[int]) -> Dict[int, dict]:
+        """(Test only) Per-worker projected load for routing ``token_ids``."""
+        if self._svc is None:
+            return {}
+        loads = await self._svc.potential_loads(
+            {
+                "model_name": _MODEL_NAME,
+                "tenant_id": _TENANT_ID,
+                "token_ids": list(token_ids),
+            }
+        )
+        return {load["worker_id"]: load for load in loads}
+
+    def get_loads(self) -> Dict[int, dict]:
+        """(Test only) Current per-worker active load."""
+        if self._svc is None:
+            return {}
+        model_loads = self._svc.loads(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        if not model_loads:
+            return {}
+        return {load["worker_id"]: load for load in model_loads[0]["loads"]}
+
 
 @ray.remote(num_cpus=0)
 class LocalKVRouterActor(_TestKVRouterActor):
@@ -195,6 +217,50 @@ async def wait_for_overlap(actor, token_ids, predicate, publish=None, timeout=30
         return predicate(overlap)
 
     await async_wait_for_condition(condition, timeout=timeout, retry_interval_ms=500)
+
+
+async def book_uncached_load(actor, worker_id, count, base):
+    """Book ``count`` reservations of distinct, uncached tokens onto ``worker_id``
+    so each adds full prefill load to it; returns their reservation ids."""
+    reservation_ids = []
+    for i in range(count):
+        reservation_id = f"load-{base}-{i}"
+        start = base + i * 4 * BLOCK_SIZE
+        token_ids = list(range(start, start + 4 * BLOCK_SIZE))
+        selection = await actor.select_worker.remote(
+            reservation_id, token_ids, [worker_id]
+        )
+        assert selection["worker_id"] == worker_id
+        assert selection["effective_prefill_tokens"] == len(token_ids)
+        await actor.on_request_added.remote(
+            reservation_id,
+            worker_id,
+            token_ids,
+        )
+        reservation_ids.append(reservation_id)
+    return reservation_ids
+
+
+async def book_decode_load(
+    actor,
+    worker_id,
+    reservation_id,
+    token_ids,
+    output_tokens,
+    expected_output_tokens=None,
+):
+    """Book a request, move it to decode, and add output blocks."""
+    selection = await actor.select_worker.remote(reservation_id, token_ids, [worker_id])
+    assert selection["worker_id"] == worker_id
+    await actor.on_request_added.remote(
+        reservation_id,
+        worker_id,
+        list(token_ids),
+        expected_output_tokens=expected_output_tokens,
+    )
+    await actor.on_prefill_complete.remote(reservation_id)
+    await actor.on_decode_progress.remote(reservation_id, output_tokens)
+    return reservation_id
 
 
 class TestKvEventIngestion:
@@ -361,6 +427,224 @@ class TestKvEventIngestion:
             )
             assert selection["worker_id"] == worker_a
             assert selection["overlap_tokens"] >= BLOCK_SIZE
+        finally:
+            await a.close.remote()
+            await b.close.remote()
+            for x in (a, b, actor):
+                ray.kill(x, no_restart=True)
+
+    @pytest.mark.asyncio
+    async def test_select_worker_prefers_lower_load(self, ray_instance):
+        """With equal KV overlap on both workers, select_worker routes to the
+        worker carrying less active load. Booking heavy load onto one worker
+        sends the next equally-overlapping request to the other."""
+        actor = LocalKVRouterActor.remote()
+        a = FakeReplica.remote(23907)
+        b = FakeReplica.remote(23908)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        try:
+            await actor._on_deployment_targets.remote(
+                targets(
+                    running_replica(
+                        "replica-A",
+                        await a.endpoint.remote(),
+                        await a.replay_endpoint.remote(),
+                    ),
+                    running_replica(
+                        "replica-B",
+                        await b.endpoint.remote(),
+                        await b.replay_endpoint.remote(),
+                    ),
+                )
+            )
+            await wait_registered(actor, [worker_a, worker_b])
+
+            # Both replicas cache the same prompt blocks: overlap is equal, so the
+            # selection turns purely on each worker's active load.
+            token_ids = list(range(2 * BLOCK_SIZE))
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_a) == 2,
+                publish=lambda: a.publish_stored.remote([601, 602], token_ids),
+            )
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_b) == 2,
+                publish=lambda: b.publish_stored.remote([601, 602], token_ids),
+            )
+
+            # Heavy active load on A (uncached prompts -> full prefill load): the
+            # equally-overlapping request is routed to the idle worker B.
+            load_a = await book_uncached_load(actor, worker_a, count=8, base=100_000)
+            loads = await actor.get_potential_loads.remote(token_ids)
+            assert (
+                loads[worker_a]["potential_prefill_tokens"]
+                > loads[worker_b]["potential_prefill_tokens"]
+            )
+            selection = await actor.select_worker.remote(
+                "probe-1", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_b
+
+            # Free A and load B instead: the choice flips to A.
+            for reservation_id in load_a:
+                await actor.on_request_completed.remote(reservation_id)
+            await book_uncached_load(actor, worker_b, count=8, base=500_000)
+            loads = await actor.get_potential_loads.remote(token_ids)
+            assert (
+                loads[worker_b]["potential_prefill_tokens"]
+                > loads[worker_a]["potential_prefill_tokens"]
+            )
+            selection = await actor.select_worker.remote(
+                "probe-2", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_a
+        finally:
+            await a.close.remote()
+            await b.close.remote()
+            for x in (a, b, actor):
+                ray.kill(x, no_restart=True)
+
+    @pytest.mark.asyncio
+    async def test_select_worker_prefers_lower_decode_load(self, ray_instance):
+        """With equal KV overlap and no active prefill, a long decode on one
+        worker makes the selector choose the lower decode-load worker."""
+        actor = LocalKVRouterActor.remote()
+        a = FakeReplica.remote(23909)
+        b = FakeReplica.remote(23910)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        try:
+            await actor._on_deployment_targets.remote(
+                targets(
+                    running_replica(
+                        "replica-A",
+                        await a.endpoint.remote(),
+                        await a.replay_endpoint.remote(),
+                    ),
+                    running_replica(
+                        "replica-B",
+                        await b.endpoint.remote(),
+                        await b.replay_endpoint.remote(),
+                    ),
+                )
+            )
+            await wait_registered(actor, [worker_a, worker_b])
+
+            token_ids = list(range(2 * BLOCK_SIZE))
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_a) == 2,
+                publish=lambda: a.publish_stored.remote([701, 702], token_ids),
+            )
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_b) == 2,
+                publish=lambda: b.publish_stored.remote([701, 702], token_ids),
+            )
+
+            await book_decode_load(
+                actor,
+                worker_a,
+                "decode-load-a",
+                token_ids,
+                output_tokens=8 * BLOCK_SIZE,
+            )
+
+            loads = await actor.get_potential_loads.remote(token_ids)
+            assert (
+                loads[worker_a]["potential_prefill_tokens"]
+                == loads[worker_b]["potential_prefill_tokens"]
+            )
+            assert (
+                loads[worker_a]["potential_decode_blocks"]
+                > loads[worker_b]["potential_decode_blocks"]
+            )
+
+            selection = await actor.select_worker.remote(
+                "probe-decode", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_b
+        finally:
+            await a.close.remote()
+            await b.close.remote()
+            for x in (a, b, actor):
+                ray.kill(x, no_restart=True)
+
+    @pytest.mark.asyncio
+    async def test_decode_load_uses_expected_output_decay(self, ray_instance):
+        """Expected output length decays decode load as generation nears the
+        estimate, so the selector prefers the lower remaining-load worker."""
+        actor = LocalKVRouterActor.remote()
+        a = FakeReplica.remote(23911)
+        b = FakeReplica.remote(23912)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        try:
+            await actor._on_deployment_targets.remote(
+                targets(
+                    running_replica(
+                        "replica-A",
+                        await a.endpoint.remote(),
+                        await a.replay_endpoint.remote(),
+                    ),
+                    running_replica(
+                        "replica-B",
+                        await b.endpoint.remote(),
+                        await b.replay_endpoint.remote(),
+                    ),
+                )
+            )
+            await wait_registered(actor, [worker_a, worker_b])
+
+            token_ids = list(range(2 * BLOCK_SIZE))
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_a) == 2,
+                publish=lambda: a.publish_stored.remote([801, 802], token_ids),
+            )
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_b) == 2,
+                publish=lambda: b.publish_stored.remote([801, 802], token_ids),
+            )
+
+            output_tokens = 4 * BLOCK_SIZE - 1
+            await book_decode_load(
+                actor,
+                worker_a,
+                "decayed-decode-a",
+                token_ids,
+                output_tokens=output_tokens,
+                expected_output_tokens=4 * BLOCK_SIZE,
+            )
+            await book_decode_load(
+                actor,
+                worker_b,
+                "full-decode-b",
+                token_ids,
+                output_tokens=output_tokens,
+            )
+
+            active_loads = await actor.get_loads.remote()
+            assert active_loads[worker_a]["potential_prefill_tokens"] == 0
+            assert active_loads[worker_b]["potential_prefill_tokens"] == 0
+            assert (
+                active_loads[worker_a]["potential_decode_blocks"]
+                < active_loads[worker_b]["potential_decode_blocks"]
+            )
+
+            selection = await actor.select_worker.remote(
+                "probe-decay", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_a
         finally:
             await a.close.remote()
             await b.close.remote()
