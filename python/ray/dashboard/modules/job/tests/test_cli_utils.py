@@ -21,12 +21,17 @@ ValueError: Job with submission_id pytorch-mnist-job already exists."""
 
 class TestExtractConciseErrorMessage:
     def test_deeply_nested_traceback(self):
-        # The output includes the enclosing HTTP status for context, plus the
-        # innermost exception — matching the maintainer request to keep the
-        # "Request failed with status code 400" part visible.
+        # The outer HTTP-forwarding hop (status code 500 + its job_head frames)
+        # is dropped, but the last stack is kept in full — its frames and the
+        # root-cause exception — per the maintainer request to keep the last
+        # frame visible.
         assert extract_concise_error_message(NESTED_JOB_SUBMIT_ERROR) == (
-            "Request failed with status code 400: "
-            "ValueError: Job with submission_id pytorch-mnist-job already exists."
+            """RuntimeError: Request failed with status code 400: Traceback (most recent call last):
+  File ".../ray/dashboard/modules/job/job_agent.py", line 45, in submit_job
+    submission_id = await self.get_job_manager().submit_job(
+  File ".../ray/dashboard/modules/job/job_manager.py", line 555, in submit_job
+    raise ValueError(
+ValueError: Job with submission_id pytorch-mnist-job already exists."""
         )
 
     def test_single_level_no_nesting(self):
