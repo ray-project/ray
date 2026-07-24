@@ -72,6 +72,13 @@ void ReferenceCounter::UpdateOwnedObjectCounters(const ObjectID &object_id,
     return;
   }
 
+  // Relaxed order is good enough for metrics logging.
+  // Skip the store after the first transition to avoid cache-line
+  // bouncing on the hot path; this counter update runs per ref change.
+  if (!has_ever_owned_objects_.load(std::memory_order_relaxed)) {
+    has_ever_owned_objects_.store(true, std::memory_order_relaxed);
+  }
+
   int delta = decrement ? -1 : 1;
   int64_t size_delta = decrement ? -ref.object_size_ : ref.object_size_;
 
@@ -836,6 +843,20 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  // Only the owner is allowed to broadcast a free for an object. Borrowers
+  // also reach this code path when their local refs drop to zero, but they
+  // must not tell the cluster to evict an object that is still owned
+  // elsewhere.
+  if (it->second.owned_by_us_) {
+    absl::flat_hash_set<NodeID> locations_set = it->second.locations;
+    if (it->second.pinned_at_node_id_.has_value()) {
+      locations_set.insert(*it->second.pinned_at_node_id_);
+    }
+    if (!locations_set.empty()) {
+      free_object_on_nodes_async_(it->first, locations_set);
+    }
+  }
+
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
@@ -982,7 +1003,15 @@ size_t ReferenceCounter::NumActorsOwnedByUs() const {
   return num_actors_owned_by_us_;
 }
 
-void ReferenceCounter::RecordMetrics() {
+void ReferenceCounter::RecordOwnerMetrics() {
+  // All metrics below pertain only to owner workers. Skip emission for
+  // workers that have never been an owner of any non-actor object, so we
+  // don't pollute per-worker metric cardinality with zero-valued series.
+  // Relaxed order is good enough for metrics logging.
+  if (!has_ever_owned_objects_.load(std::memory_order_relaxed)) {
+    return;
+  }
+
   // N.B. Metric reporting can interleave with counter updates, and may have an inaccurate
   // accounting at certain critical sections of counter updates.
   owned_object_count_by_state_.Record(owned_objects_spilled_, {{"State", "Spilled"}});

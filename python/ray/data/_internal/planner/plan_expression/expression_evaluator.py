@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, List, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -32,6 +32,7 @@ from ray.data.expressions import (
     UUIDExpr,
     _ExprVisitor,
     col,
+    is_rename_expr,
 )
 
 logger = logging.getLogger(__name__)
@@ -337,12 +338,16 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ds.Expression:
         """Handle case where comparator is UnaryOP (e.g., a == -1).
+
         AST for this expression will be Compare(left=Name(id='a'), ops=[Eq()],
         comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
 
         Args:
-            node: The constant value."""
+            node: The constant value.
 
+        Returns:
+            A PyArrow scalar expression representing the unary operation result.
+        """
         op = node.op
         if isinstance(op, ast.USub):
             return pc.scalar(-node.operand.value)
@@ -816,7 +821,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     return evaluator.visit(expr)
 
 
-def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
+def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
 
@@ -847,7 +852,10 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Expand star expr (if any)
+    # Expand star expr (if any). ``Project.__post_init__`` eagerly expands
+    # ``StarExpr`` to explicit ``col()`` refs whenever the
+    # input schema is known, so this runtime branch is hit only on the
+    # UDF-fallback path (Project on top of an opaque-schema input).
     if isinstance(projection_exprs[0], StarExpr):
         # Bucket the trailing exprs: rename ``AliasExpr``s of an input
         # column get placed into the original column's position (so the
@@ -858,12 +866,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         for expr in projection_exprs[1:]:
             # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
             # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
-            if (
-                isinstance(expr, AliasExpr)
-                and expr._is_rename
-                and isinstance(expr.expr, ColumnExpr)
-                and expr.expr.name in input_column_rename_map
-            ):
+            if is_rename_expr(expr) and expr.expr.name in input_column_rename_map:
                 rename_exprs_by_source[expr.expr.name] = expr
             else:
                 extra_exprs.append(expr)
@@ -896,3 +899,42 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
     return BlockAccessor.for_block(new_block).drop(["__stub__"])
+
+
+def _drop_cse_temp_columns(block: Block, temp_columns: List[str]) -> Block:
+    block_accessor = BlockAccessor.for_block(block)
+    drop_columns = [
+        name for name in temp_columns if name in block_accessor.column_names()
+    ]
+    if not drop_columns:
+        return block
+    return block_accessor.drop(drop_columns)
+
+
+def eval_projection(
+    projection_exprs: List[Expr],
+    block: Block,
+    *,
+    common_sub_exprs: Optional[List[Expr]] = None,
+) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    If CSE common expressions are provided, they are evaluated first into
+    temporary columns on a working block. Visible projection expressions are
+    then evaluated against that working block.
+    """
+    if not common_sub_exprs:
+        return _eval_projection_without_cse(projection_exprs, block)
+
+    working_block = block
+    for common_expr in common_sub_exprs:
+        assert common_expr.name is not None
+        working_block = BlockAccessor.for_block(working_block).fill_column(
+            common_expr.name,
+            eval_expr(common_expr, working_block),
+        )
+
+    output_block = _eval_projection_without_cse(projection_exprs, working_block)
+    temp_columns = [expr.name for expr in common_sub_exprs]
+    return _drop_cse_temp_columns(output_block, temp_columns)

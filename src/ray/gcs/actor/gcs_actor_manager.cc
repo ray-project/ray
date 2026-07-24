@@ -259,15 +259,14 @@ GcsActorManager::GcsActorManager(
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
+  // On change, only retract keys that dropped to zero (emit their final 0). Live
+  // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+  // emitting them here too would double-record. Keeps each key recorded once/tick.
   actor_state_counter_->SetOnChangeCallback(
-      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
-        int64_t num_actors = actor_state_counter_->Get(key);
-        actor_by_state_gauge_.Record(
-            num_actors,
-            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
-             {"Name", key.second},
-             {"Source", "gcs"},
-             {"JobId", ""}});
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key) mutable {
+        if (actor_state_counter_->Get(key) == 0) {
+          RecordActorState(key, /*value=*/0);
+        }
       });
 }
 
@@ -1762,6 +1761,24 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       } else if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE) {
         created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
                                                     actor->GetActorID());
+        // Restore local raylet address for ALIVE actors after GCS restart.
+        // This is necessary because local_raylet_address_ is not persisted with GCS FT,
+        // but is required to send KillLocalActorRequest when destroying the actor.
+        // Without this, GCS will log "Actor has not been assigned a lease" and
+        // the worker process will not be killed, leaving a zombie process.
+        if (!actor->GetNodeID().IsNil()) {
+          const auto &node_id = actor->GetNodeID();
+          const auto &nodes = gcs_init_data.Nodes();
+          auto node_it = nodes.find(node_id);
+          if (node_it != nodes.end()) {
+            const auto &node_info = node_it->second;
+            rpc::Address actor_local_raylet_address;
+            actor_local_raylet_address.set_node_id(node_info.node_id());
+            actor_local_raylet_address.set_ip_address(node_info.node_manager_address());
+            actor_local_raylet_address.set_port(node_info.node_manager_port());
+            actor->UpdateLocalRayletAddress(actor_local_raylet_address);
+          }
+        }
       }
 
       if (!actor->IsDetached()) {
@@ -1940,9 +1957,18 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
 void GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) {
   if (destroyed_actor_observability_data_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    const auto &actor_id = sorted_destroyed_actor_observability_list_.front().first;
-    gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
-    destroyed_actor_observability_data_.erase(actor_id);
+    const auto &evict_id = sorted_destroyed_actor_observability_list_.front().first;
+
+    // Mirror GcsActor::~GcsActor: decrement the counter for non-DEAD states on eviction.
+    auto evict_it = destroyed_actor_observability_data_.find(evict_id);
+    RAY_CHECK(evict_it != destroyed_actor_observability_data_.end());
+    if (evict_it->second.state() != rpc::ActorTableData::DEAD) {
+      actor_state_counter_->Decrement(
+          {evict_it->second.state(), evict_it->second.class_name()});
+    }
+
+    gcs_table_storage_->ActorTable().Delete(evict_id, {[](auto) {}, io_context_});
+    destroyed_actor_observability_data_.erase(evict_it);
     sorted_destroyed_actor_observability_list_.pop_front();
   }
 
@@ -2071,7 +2097,26 @@ void GcsActorManager::RecordMetrics() const {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  lifetime_num_created_actors_);
   }
+  // Re-assert every live actor state each tick, not just transitions: the metrics
+  // backend clears gauge observations after each export (#56405), so these gauge
+  // values would otherwise drop out between transitions. FlushOnChangeCallbacks
+  // still emits the final 0 for keys that just dropped to zero (erased from the
+  // counter, so ForEachEntry won't visit them).
   actor_state_counter_->FlushOnChangeCallbacks();
+  actor_state_counter_->ForEachEntry(
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+             int64_t value) { RecordActorState(key, value); });
+}
+
+void GcsActorManager::RecordActorState(
+    const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+    int64_t value) const {
+  actor_by_state_gauge_.Record(
+      value,
+      {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
+       {"Name", key.second},
+       {"Source", "gcs"},
+       {"JobId", ""}});
 }
 
 }  // namespace gcs

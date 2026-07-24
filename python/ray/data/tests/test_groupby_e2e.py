@@ -32,13 +32,20 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import ShuffleStrategy
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
 
 RANDOM_SEED = 123
+
+
+@pytest.fixture(autouse=True, params=[False, True], ids=["shufflev1", "shufflev2"])
+def hash_shuffle_version(request, restore_data_context):
+    """Run every groupby test on both v1 (old actor-based) & v2 shuffle."""
+    DataContext.get_current().use_hash_shuffle_v2 = request.param
+    return request.param
 
 
 def _sort_series_of_lists_elements(s: pd.Series):
@@ -66,7 +73,7 @@ def test_groupby_arrow(
     target_max_block_size_infinite_or_default,
 ):
     # Test empty dataset.
-    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
+    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("id").count()
     assert agg_ds.count() == 0
 
 

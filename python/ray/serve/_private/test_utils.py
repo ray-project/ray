@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import glob
 import os
 import random
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -34,6 +36,8 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_SOCKET_PATH,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -45,6 +49,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
 )
+from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
@@ -61,6 +66,22 @@ from ray.util.state import list_actors
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def skip_if_haproxy(reason: str):
+    """Skip a test when the HAProxy ingress is enabled.
+
+    The HAProxy ingress runs as a separate premerge step with
+    RAY_SERVE_ENABLE_HA_PROXY=1. Some tests exercise behavior HAProxy does not
+    support yet (e.g. gRPC ingress) or that probes the native Serve proxy
+    directly. Mark those with this decorator instead of maintaining a separate
+    test allowlist. The test still runs in the non-HAProxy steps.
+    """
+    import pytest
+
+    return pytest.mark.skipif(
+        RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
+    )
 
 
 # Global variable that is fetched during controller recovery that
@@ -501,6 +522,7 @@ class MockReplicaActorWrapper:
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
+        self._log_file_path = None
         self._actor_id = None
         self._internal_grpc_port = None
         self._http_port = None
@@ -517,6 +539,12 @@ class MockReplicaActorWrapper:
     @property
     def is_cross_language(self) -> bool:
         return self._is_cross_language
+
+    @property
+    def has_in_flight_health_or_routing_probe(self) -> bool:
+        # The mock's health/routing checks are synchronous (no in-flight ObjectRef), so
+        # nothing is ever in flight -- matches the real wrapper reporting no pending ref.
+        return False
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -580,7 +608,7 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
-        return None
+        return self._log_file_path
 
     @property
     def grpc_port(self) -> Optional[int]:
@@ -618,6 +646,8 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: DeploymentVersion = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        # Mirror the real actor: a started replica has allocated a log file.
+        self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
@@ -650,6 +680,7 @@ class MockReplicaActorWrapper:
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,
+        target_node_id=None,
     ):
         self.started = True
         self._gang_context = gang_context
@@ -673,6 +704,7 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
+            target_node_id=target_node_id,
         )
 
     @property
@@ -818,6 +850,66 @@ def get_num_alive_replicas(
     return len(actors)
 
 
+def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
+    """Proxy actors expected ALIVE by class name for the given number of proxy nodes.
+
+    Natively each proxy node runs one ProxyActor. Under HAProxy each proxy node runs an
+    HAProxyManager and the head node also runs a single fallback ProxyActor. Set-based
+    callers can take the keys, count-based callers use the counts directly.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"HAProxyManager": num_proxy_nodes, "ProxyActor": 1}
+    return {"ProxyActor": num_proxy_nodes}
+
+
+def wait_for_haproxy_routing_to_replica(timeout: int = 30):
+    """Block until HAProxy marks a replica's primary backend server UP.
+
+    serve.run returns once replicas are RUNNING, but until a replica's
+    direct-ingress server passes HAProxy's health check, HAProxy serves requests
+    from the head-node backup fallback proxy. That path adds proxy and router
+    spans, so trace-topology assertions must wait for direct routing first. No-op
+    without HAProxy, which has no fallback to race.
+    """
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        return
+
+    socket_glob = os.path.join(
+        os.path.dirname(RAY_SERVE_HAPROXY_SOCKET_PATH), "*", "admin.sock"
+    )
+
+    def replica_backend_up():
+        for sock_path in glob.glob(socket_glob):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.settimeout(5.0)
+                    client.connect(sock_path)
+                    client.sendall(b"show stat\n")
+                    data = b""
+                    while chunk := client.recv(65536):
+                        data += chunk
+            except OSError:
+                continue  # stale socket from a prior run
+            stats = HAProxyApi._parse_haproxy_csv_stats(data.decode(errors="replace"))
+            if any(
+                name.startswith("SERVE_REPLICA") and server.is_up
+                for servers in stats.values()
+                for name, server in servers.items()
+            ):
+                return True
+        return False
+
+    wait_for_condition(replica_backend_up, timeout=timeout)
+
+
+def alive_actor_counts() -> Dict[str, int]:
+    """Count of ALIVE actors by class name in the current Ray session."""
+    counts: Dict[str, int] = {}
+    for actor in list_actors(filters=[("STATE", "=", "ALIVE")]):
+        counts[actor["class_name"]] = counts.get(actor["class_name"], 0) + 1
+    return counts
+
+
 def check_num_replicas_gte(
     name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
@@ -878,6 +970,9 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -998,7 +1093,9 @@ def ping_grpc_healthz(channel, test_draining=False):
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            assert response.message == "success"
+    return True
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
@@ -1602,13 +1699,16 @@ def get_metric_dictionaries(
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
+        prom_timeseries = fetch_prometheus_metric_timeseries(
             [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
             timeseries,
             # pass timeout to fetch_prometheus_metric_timeseries
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:

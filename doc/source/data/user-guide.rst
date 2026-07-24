@@ -1,3 +1,6 @@
+.. meta::
+   :description: How-to guides for Ray Data tasks: loading, transforming, joining, shuffling, and iterating over data, and working with images, text, tensors, and LLMs.
+
 .. _data_user_guide:
 
 ===========
@@ -26,8 +29,10 @@ shows you how to achieve several tasks.
     working-with-tensors
     working-with-pytorch
     working-with-llms
+    how-to-avoid-ooms
     monitoring-your-workload
     execution-configurations
+    concurrent-dataset-execution
     batch_inference
     performance-tips
     scaling-collation-functions

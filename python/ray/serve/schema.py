@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
-from ray._private.runtime_env.packaging import parse_uri
+from ray._common.runtime_env_uri import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -1392,6 +1392,13 @@ class DeploymentDetails(BaseModel):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
+    recent_dead_replicas: List[ReplicaDetails] = Field(
+        default_factory=list,
+        description=(
+            "Recently-stopped replicas, retained so their logs stay accessible in "
+            "the dashboard after they die. Not part of `replicas` or the live count."
+        ),
+    )
 
     autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
         default=None,
@@ -1573,6 +1580,12 @@ class TargetGroup(BaseModel):
             "List of HTTP ingress request router targets for Lua-based routing "
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
+    )
+    # Name of the application's ingress deployment (the deployment that serves
+    # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
+    ingress_deployment_name: str = Field(
+        "",
+        description="Name of the application's ingress deployment.",
     )
 
 

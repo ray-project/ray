@@ -126,6 +126,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
+    ClockInterface &clock,
     bool reference_counting_enabled,
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
@@ -133,6 +134,7 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
+      clock_(clock),
       reference_counting_enabled_(reference_counting_enabled),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       check_signals_(std::move(check_signals)),
@@ -500,7 +502,7 @@ void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
 
 void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
   absl::MutexLock lock(&mu_);
-  int64_t threshold = absl::GetCurrentTimeNanos() - kUnhandledErrorGracePeriodNanos;
+  int64_t threshold = clock_.NowUnixNanos() - kUnhandledErrorGracePeriodNanos;
   auto it = objects_.begin();
   int count = 0;
   while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {

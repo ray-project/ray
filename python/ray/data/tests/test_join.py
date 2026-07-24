@@ -15,6 +15,13 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture(autouse=True, params=[False, True], ids=["shufflev1", "shufflev2"])
+def hash_shuffle_version(request, restore_data_context):
+    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
+    DataContext.get_current().use_hash_shuffle_v2 = request.param
+    return request.param
+
+
 @pytest.mark.parametrize(
     "num_rows_left,num_rows_right,partition_size_hint",
     [
@@ -528,6 +535,26 @@ def _assert_scalar_values(result_by_id, expected_values):
     for row_id, column_values in expected_values.items():
         for column, expected_value in column_values.items():
             assert result_by_id[row_id][column] == expected_value
+
+
+def test_should_not_index_empty_schema_tables():
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import _should_index_side
+
+    supported_table = pa.table({"id": pa.array([1])})
+    unsupported_table = pa.table({"unsupported": pa.array([[1]])})
+    empty_schema_table = pa.table({})
+
+    assert not _should_index_side(
+        "left", empty_schema_table, unsupported_table, JoinType.LEFT_OUTER
+    )
+    assert not _should_index_side(
+        "left", supported_table, empty_schema_table, JoinType.LEFT_OUTER
+    )
+    assert _should_index_side(
+        "left", supported_table, unsupported_table, JoinType.LEFT_OUTER
+    )
 
 
 @pytest.mark.skipif(

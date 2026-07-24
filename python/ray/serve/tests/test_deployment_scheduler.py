@@ -412,6 +412,36 @@ class TestPackScheduling:
         app_status = serve.status().applications["default"]
         assert app_status.status == "DEPLOYING"
 
+        # Add a second node: pack logs should show a new schedule-order batch
+        # and one cpu_* replica placed on the new node while memory_hog stays up.
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+
+        def check_one_cpu_replica_after_scale_out():
+            app_status = serve.status().applications["default"]
+            if app_status.status == "DEPLOY_FAILED":
+                raise AssertionError(f"App failed: {app_status.message}")
+
+            deployments_status = app_status.deployments
+            assert (
+                deployments_status["memory_hog"].replica_states.get("RUNNING", 0) == 1
+            )
+
+            cpu_running = sum(
+                deployments_status[f"cpu_{i}"].replica_states.get("RUNNING", 0)
+                for i in range(9)
+            )
+            assert cpu_running == 1, {
+                f"cpu_{i}": deployments_status[f"cpu_{i}"].replica_states
+                for i in range(9)
+            }
+            return True
+
+        wait_for_condition(check_one_cpu_replica_after_scale_out, timeout=60)
+
+        app_status = serve.status().applications["default"]
+        assert app_status.status == "DEPLOYING"
+
         serve.shutdown()
 
     @pytest.mark.asyncio

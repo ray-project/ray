@@ -35,8 +35,8 @@ using ray::PeriodicalRunner;
 class LocalNode : public ray::syncer::ReporterInterface {
  public:
   LocalNode(instrumented_io_context &io_context, ray::NodeID node_id)
-      : node_id_(node_id), timer_(PeriodicalRunner::Create(io_context)) {
-    timer_->RunFnPeriodically(
+      : node_id_(node_id), periodical_runner_(PeriodicalRunner::Create(io_context)) {
+    periodical_runner_->RunFnPeriodically(
         [this]() {
           auto v = static_cast<double>(std::rand()) / RAND_MAX;
           if (v < 0.3) {
@@ -70,7 +70,7 @@ class LocalNode : public ray::syncer::ReporterInterface {
   int64_t version_ = 0;
   int state_ = 0;
   ray::NodeID node_id_;
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 };
 
 class RemoteNodes : public ray::syncer::ReceiverInterface {
@@ -101,7 +101,8 @@ int main(int argc, char *argv[]) {
   auto leader_port = std::string(argv[2]);
   auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  ray::syncer::RaySyncer syncer(io_context, node_id.Binary(), 1, 0);
+  ray::syncer::RaySyncer syncer(
+      io_context, PeriodicalRunner::Create(io_context), node_id.Binary(), 1, 0);
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<ray::syncer::RaySyncerService> service;

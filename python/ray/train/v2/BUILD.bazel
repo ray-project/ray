@@ -14,7 +14,6 @@ doctest(
             "tests/**",
             "horovod/**",
             "jax/**",
-            # TODO(tseah): enable this after CI has torchft dependencies
             "examples/pytorch/torchft_linear_example.py",
         ],
     ),
@@ -30,6 +29,22 @@ py_test(
     name = "test_accelerator_utils",
     size = "small",
     srcs = ["tests/test_accelerator_utils.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_autoscaling_coordinator_client",
+    size = "small",
+    srcs = ["tests/test_autoscaling_coordinator_client.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -140,7 +155,7 @@ py_test(
 
 py_test(
     name = "test_collective",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_collective.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -530,6 +545,22 @@ py_test(
 )
 
 py_test(
+    name = "test_preemption_watcher",
+    size = "small",
+    srcs = ["tests/test_preemption_watcher.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_result",
     size = "medium",
     srcs = ["tests/test_result.py"],
@@ -716,6 +747,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "torchft",
         "train_v2",
     ],
     deps = [
