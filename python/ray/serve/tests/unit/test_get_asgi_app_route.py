@@ -1,8 +1,10 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
+from ray.serve._private.replica import Replica
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 
 
@@ -140,6 +142,70 @@ def test_mounted_app():
     )
 
 
+def test_included_router():
+    """Routes registered via `include_router` must resolve their route name.
+
+    On FastAPI >= 0.137 these routes are nested under an `_IncludedRouter` node
+    instead of being flattened into `app.routes` (see #64475).
+    """
+    app = FastAPI()
+
+    @app.get("/direct")
+    def direct():
+        pass
+
+    # Router with its own prefix, included without an include-time prefix.
+    router = APIRouter(prefix="/prefix")
+
+    @router.get("/routed/{user_id}")
+    def routed():
+        pass
+
+    @router.websocket("/ws")
+    async def ws():
+        pass
+
+    # Router included with an include-time prefix.
+    other = APIRouter()
+
+    @other.post("/create")
+    def create():
+        pass
+
+    app.include_router(router)
+    app.include_router(other, prefix="/other")
+
+    # Directly decorated route still resolves.
+    assert (
+        get_asgi_route_name(app, {"type": "http", "method": "GET", "path": "/direct"})
+        == "/direct"
+    )
+    # Route from an included router (with dynamic segment).
+    assert (
+        get_asgi_route_name(
+            app, {"type": "http", "method": "GET", "path": "/prefix/routed/abc123"}
+        )
+        == "/prefix/routed/{user_id}"
+    )
+    # WebSocket route from an included router.
+    assert (
+        get_asgi_route_name(app, {"type": "websocket", "path": "/prefix/ws"})
+        == "/prefix/ws"
+    )
+    # Route from a router included with an include-time prefix.
+    assert (
+        get_asgi_route_name(
+            app, {"type": "http", "method": "POST", "path": "/other/create"}
+        )
+        == "/other/create"
+    )
+    # Unknown path still returns None.
+    assert (
+        get_asgi_route_name(app, {"type": "http", "method": "GET", "path": "/nope"})
+        is None
+    )
+
+
 def test_root_path():
     app = FastAPI(root_path="/some/root")
 
@@ -216,6 +282,35 @@ def test_redirect_slashes(redirect_slashes: bool):
             )
             is None
         )
+
+
+@pytest.mark.parametrize(
+    ("route_prefix", "method", "path", "expected"),
+    [
+        # A matched ASGI route resolves to its name regardless of prefix.
+        (None, "POST", "/internal/route", "/internal/route"),
+        # A real route prefix passes through unchanged for unmatched paths.
+        ("/", "GET", "/nope", "/"),
+        # The ingress request router has no prefix. Unmatched paths fall back to
+        # "" so the route stays a string for metric tags.
+        (None, "GET", "/nope", ""),
+    ],
+)
+def test_determine_http_route(route_prefix, method, path, expected):
+    """`Replica._determine_http_route` wraps `get_asgi_route_name` with a
+    route-prefix fallback, coercing a missing prefix to "" so the route stays a
+    string."""
+    app = FastAPI()
+
+    @app.post("/internal/route")
+    def route():
+        pass
+
+    fake = MagicMock()
+    fake._route_prefix = route_prefix
+    fake._user_callable_asgi_app = app
+    scope = {"type": "http", "method": method, "path": path}
+    assert Replica._determine_http_route(fake, scope) == expected
 
 
 if __name__ == "__main__":

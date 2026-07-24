@@ -1,3 +1,6 @@
+.. meta::
+   :description: Implementation internals of Ray Data — the execution model, blocks, and scheduling — for advanced users and contributors.
+
 .. _datasets_scheduling:
 
 ==================
@@ -268,21 +271,9 @@ Scheduling
 Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
 * The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
-* Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 * Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50 MB; otherwise, they use the ``DEFAULT`` scheduling strategy.
 * Read operations use the ``SPREAD`` scheduling strategy.
 * All other operations, such as split, sort, and shuffle, use the ``DEFAULT`` scheduling strategy.
-
-.. _datasets_pg:
-
-Ray Data and placement groups
------------------------------
-
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
-:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
-placement group. To use current placement group resources specifically for Ray Data, set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
-
-Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
 .. _datasets_tune:
 
@@ -309,6 +300,8 @@ Ray divides each node's memory into three pools. By default, it reserves 30% for
 object store and 10% for system overhead, and treats the remaining as logical memory.
 
 .. image:: ./data-memory-model-1.svg
+   :width: 300
+   :align: center
 
 Each pool serves a different purpose:
 
@@ -325,6 +318,8 @@ Each pool serves a different purpose:
   working memory.
 
 .. image:: ./data-memory-model-2.svg
+   :width: 360
+   :align: center
 
 When a UDF processes data, it uses heap memory to do the work. For example, a UDF that
 calls a Torch preprocessor holds the tensors on the heap. As the UDF produces output 
@@ -332,6 +327,8 @@ rows or batches, Ray Data serializes them into PyArrow tables and stores them in
 shared object store.
 
 .. image:: ./data-memory-model-3.svg
+   :width: 550
+   :align: center
 
 To limit object store use, Ray Data applies backpressure and stops launching tasks once
 enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills* 
