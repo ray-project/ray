@@ -2,7 +2,7 @@
 
 Each test deliberately induces one class of NCCL desync inside a real
 ``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
-:class:`NCCLRASCallback` registered, and asserts the callback's whole-job
+:class:`NvHangDetectorCallback` registered, and asserts the callback's whole-job
 behavior: query RAS on a worker -> parse -> classify per communicator -> capture
 stacks + raise :class:`NCCLHangError`.
 """
@@ -30,10 +30,12 @@ if shutil.which(os.environ.get("RAY_TRAIN_NCCLRAS_PATH", "ncclras")) is None:
     )
 
 
-# Fast detection so a hang is confirmed in seconds instead of the ~10 min default.
+# Enable the opt-in detector, with fast detection so a hang is confirmed in
+# seconds instead of the ~10 min default.
 RAS_ENV = {
+    "RAY_TRAIN_ENABLE_NV_HANG_DETECTOR": "1",
     "RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S": "2",
-    "RAY_TRAIN_NCCL_RAS_CONFIRM_COUNT": "2",
+    "RAY_TRAIN_NCCL_RAS_CONFIRM_WINDOW_S": "4",
 }
 
 # Step at which each scenario diverges, and a short loop so the non-hanging
@@ -45,10 +47,10 @@ STEP_SLEEP_S = 1.0
 
 @pytest.fixture(scope="module", autouse=True)
 def nccl_ras_env():
-    """Speed up hang detection for this module only, then restore.
+    """Enable and speed up hang detection for this module only, then restore.
 
-    These knobs are read by ``NCCLRASCallback`` on the driver (the callback is
-    registered by default), so they only need to be present in this process.
+    These knobs are read on the driver (the enable flag at trainer construction,
+    the rest by ``NvHangDetectorCallback``), so they only need to be in this process.
     Only keys not already set by the caller are added (and only those removed),
     preserving any explicit override.
     """

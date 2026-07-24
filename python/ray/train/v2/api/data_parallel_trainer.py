@@ -35,7 +35,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.callbacks.nccl_ras import NCCLRASCallback
+from ray.train.v2._internal.callbacks.nv_hang_detector import NvHangDetectorCallback
 from ray.train.v2._internal.callbacks.placement_group_callback import (
     PlacementGroupCleanerCallback,
 )
@@ -43,7 +43,7 @@ from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
-    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
+    ENABLE_NV_HANG_DETECTOR_ENV_VAR,
     METRICS_ENABLED_ENV_VAR,
     V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
@@ -231,9 +231,10 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # The NCCL RAS hang detector builds on NCCL's RAS subsystem, enabled by default
-        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, True):
-            callbacks.append(NCCLRASCallback())
+        # The NCCL RAS hang detector builds on NCCL's RAS subsystem, which only
+        # exists for NCCL -- opt-in, to be enabled just for NCCL (GPU) jobs.
+        if env_bool(ENABLE_NV_HANG_DETECTOR_ENV_VAR, False):
+            callbacks.append(NvHangDetectorCallback())
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback(datasets=self.datasets))
