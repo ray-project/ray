@@ -848,6 +848,23 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_device_manager_v2",
+    size = "medium",
+    srcs = ["tests/test_torch_device_manager.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    main = "tests/test_torch_device_manager.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2_gpu",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_torch_trainer",
     size = "large",
     srcs = ["tests/test_torch_trainer.py"],

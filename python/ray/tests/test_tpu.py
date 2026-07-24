@@ -177,6 +177,34 @@ def ray_start_cpu():
 
 
 @pytest.fixture
+def ray_single_host_tpu_cluster(ray_start_cluster):
+    """
+    Simulates a Ray cluster with two single-host v7x (Ironwood) TPU nodes.
+    """
+    pod_type = "tpu7x"
+    topology = "2x2x1"
+
+    cluster = ray_start_cluster
+
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+    )
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 4},
+        env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+    )
+
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_tpu_cluster(ray_start_cluster):
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
@@ -387,6 +415,42 @@ def test_pg_per_slice_false_raises(ray_tpu_cluster):
         ValueError, match="pg_per_slice=False, use `slice_placement_group` instead."
     ):
         _ = multi_slice_placement_group.slice_placement_groups
+
+
+def test_single_host_slice_placement_group(ray_tpu_cluster):
+    """Test that a single-host TPU bypasses gang scheduling logic."""
+    with patch("ray.util.tpu.reserve_tpu_slice") as mock_reserve:
+        slice_placement_group = ray.util.tpu.slice_placement_group(
+            topology="2x2x1",
+            accelerator_version="v7x",
+            num_slices=2,
+        )
+        # Util should skip `reserve_tpu_slice because it is single host
+        mock_reserve.assert_not_called()
+
+        assert slice_placement_group.num_hosts == 2
+        assert slice_placement_group.placement_group.bundle_count == 2
+        assert slice_placement_group.placement_group.bundle_specs == [
+            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 1.0},
+        ]
+
+
+def test_single_host_slice_placement_group_integration(ray_single_host_tpu_cluster):
+    """
+    Test that a single-host SlicePlacementGroup actually schedules without hanging
+    on v7x (ironwood) topology.
+    """
+    slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x1",
+        accelerator_version="v7x",
+        num_slices=2,
+    )
+
+    # Wait for the placement group to be ready.
+    ray.get(slice_placement_group.placement_group.ready(), timeout=10)
+
+    assert slice_placement_group.placement_group.bundle_count == 2
 
 
 @patch("ray.util.tpu.placement_group")
@@ -895,22 +959,24 @@ def test_user_bundle_label_selector_merged(ray_tpu_cluster):
     assert ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in slice_pg._bundle_label_selector[1]
 
 
-def test_user_bundle_label_selector_collision_dynamic_wins(ray_v6e_tpu_cluster):
-    """Verifies that dynamic TPU labels take precedence on collision."""
-    user_selectors = [{ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"}]
+def test_user_specified_bundle_label_selector(ray_tpu_cluster):
+    """Verifies that user-provided TPU slice labels take precedence and bypass dynamic reservation."""
+    user_selectors = [
+        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"},
+        {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "user-requested-slice"},
+    ]
 
-    # v6e-8 is single host (1 bundle)
+    # v4 2x2x2 is multi-host (2 bundles)
     slice_pg = SlicePlacementGroup(
-        topology="2x4", accelerator_version="v6e", bundle_label_selector=user_selectors
+        topology="2x2x2", accelerator_version="v4", bundle_label_selector=user_selectors
     )
 
-    assert len(slice_pg._bundle_label_selector) == 1
-    # The dynamic value should win (it generates test-v6e-slice-N)
+    assert len(slice_pg._bundle_label_selector) == 2
+    # The user value should win and bypass the dynamic test-v4-slice-N generation
     actual_val = slice_pg._bundle_label_selector[0][
         ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
     ]
-    assert actual_val != "user-requested-slice"
-    assert "test-v6e-slice-" in actual_val
+    assert actual_val == "user-requested-slice"
 
 
 def test_user_bundle_label_selector_length_mismatch_raises():
