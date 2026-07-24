@@ -421,6 +421,10 @@ class TestAmdGpuProvider(unittest.TestCase):
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_initialize_success(self, mock_pyamdsmi):
         """Test successful initialization."""
+        import sys
+
+        sys.modules["ray._private.thirdparty.pyamdsmi"] = mock_pyamdsmi
+
         mock_pyamdsmi.smi_initialize.return_value = None
 
         self.assertTrue(self.provider._initialize())

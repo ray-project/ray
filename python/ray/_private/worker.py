@@ -61,6 +61,7 @@ from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
+from ray._private.accelerators import get_accelerator_manager_for_resource
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
@@ -462,12 +463,6 @@ class Worker:
         # tensor_transport, to avoid circular import and because it imports
         # third-party dependencies like PyTorch.
         self._rdt_manager = None
-        # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
-        self.original_visible_accelerator_ids = (
-            ray._private.utils.get_visible_accelerator_ids()
-        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -1144,16 +1139,24 @@ class Worker:
                 for resource_id, _ in assignment:
                     assigned_ids.add(resource_id)
 
-        # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
-        # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
-        # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # should be returned.
-        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
-            original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
-        return list(assigned_ids)
+        assigned_ids = list(assigned_ids)
+        if not assigned_ids:
+            return []
+
+        # starting in Ray v2.57, the runtime env agent injects env variables for
+        # accelerator IDs (e.g. CUDA_VISIBLE_DEVICES). If they're present, return
+        # them as the accelerator IDs.
+        manager = get_accelerator_manager_for_resource(resource_name)
+        if manager is not None:
+            visible_ids = manager.get_current_process_visible_accelerator_ids()
+            if visible_ids is not None:
+                try:
+                    return [int(i) for i in visible_ids]
+                except ValueError:
+                    # user defined accelerator IDs can be UUIDs.
+                    return visible_ids
+
+        return assigned_ids
 
     def shutdown_rdt_manager(self):
         if self._rdt_manager:

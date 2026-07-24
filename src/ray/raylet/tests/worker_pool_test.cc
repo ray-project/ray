@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
@@ -34,6 +35,7 @@
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -54,7 +56,7 @@ int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 3;
-int WORKER_REGISTER_TIMEOUT_SECONDS = 1;
+int WORKER_REGISTER_TIMEOUT_SECONDS = 5;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID_2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
@@ -111,12 +113,17 @@ static int GetReferenceCount(const std::string &serialized_runtime_env) {
 
 class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  void GetOrCreateRuntimeEnv(const JobID &job_id,
-                             const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+  void GetOrCreateRuntimeEnv(
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
       callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
+    } else if (serialized_runtime_env == "{}" || serialized_runtime_env.empty()) {
+      callback(true, "{}", "");
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -276,7 +283,9 @@ class WorkerPoolMock : public WorkerPool {
       const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int runtime_env_hash = 0,
+      const ResourceSet &resource_requirements =
+          ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}})) {
     auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
@@ -306,6 +315,7 @@ class WorkerPoolMock : public WorkerPool {
     }
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
+    worker->SetResourceRequirements(resource_requirements);
     std::shared_ptr<MockWorkerClient> rpc_client = std::make_shared<MockWorkerClient>();
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
@@ -379,10 +389,12 @@ class WorkerPoolMock : public WorkerPool {
       bool push_workers = true,
       PopWorkerStatus *worker_status = nullptr,
       int timeout_worker_number = 0,
-      std::string *runtime_env_error_msg = nullptr) {
+      std::string *runtime_env_error_msg = nullptr,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
     this->PopWorker(lease_spec,
+                    allocated_instances,
                     [&popped_worker, worker_status, &promise, runtime_env_error_msg](
                         const std::shared_ptr<WorkerInterface> worker,
                         PopWorkerStatus status,
@@ -580,7 +592,7 @@ static inline LeaseSpecification ExampleLeaseSpec(
     const std::vector<std::string> &dynamic_worker_options = {},
     const LeaseID &lease_id = LeaseID::Nil(),
     const rpc::RuntimeEnvInfo runtime_env_info = rpc::RuntimeEnvInfo(),
-    std::unordered_map<std::string, double> resources = {{"CPU", 1}}) {
+    absl::flat_hash_map<std::string, double> resources = {{"CPU", 1.0}}) {
   rpc::LeaseSpec message;
   message.set_job_id(job_id.Binary());
   message.set_language(language);
@@ -1578,9 +1590,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
   for (int i = 0; i < num_workers; i++) {
-    PopWorkerStatus status;
+    PopWorkerStatus status = PopWorkerStatus::OK;
     auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+        Language::PYTHON,
+        rpc::WorkerType::WORKER,
+        job_id,
+        &status,
+        /*dynamic_options=*/{},
+        /*runtime_env_hash=*/0,
+        /*serialized_runtime_env_context=*/"{}",
+        /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+        /*worker_startup_keep_alive_duration=*/std::nullopt,
+        /*resource_requirements=*/
+        ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
     pid_t pid = proc.GetId();
     auto worker =
         worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
@@ -1798,9 +1820,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   JobID job_id = JOB_ID;
 
   /// Add worker to the pool.
-  PopWorkerStatus status;
+  PopWorkerStatus status = PopWorkerStatus::OK;
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      job_id,
+      &status,
+      /*dynamic_options=*/{},
+      /*runtime_env_hash=*/0,
+      /*serialized_runtime_env_context=*/"{}",
+      /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+      /*worker_startup_keep_alive_duration=*/std::nullopt,
+      /*resource_requirements=*/
+      ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
   pid_t pid = proc.GetId();
   auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
@@ -1881,9 +1913,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   JobID job_id = JOB_ID;
 
   /// Add worker to the pool.
-  PopWorkerStatus status;
+  PopWorkerStatus status = PopWorkerStatus::OK;
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      job_id,
+      &status,
+      /*dynamic_options=*/{},
+      /*runtime_env_hash=*/0,
+      /*serialized_runtime_env_context=*/"{}",
+      /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
+      /*worker_startup_keep_alive_duration=*/std::nullopt,
+      /*resource_requirements=*/
+      ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 1.0}}));
   pid_t pid = proc.GetId();
   auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
@@ -2495,6 +2537,78 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
       worker_pool_->PopWorkerSync(lease_spec1);
   ASSERT_NE(popped_worker1, nullptr);
   ASSERT_NE(popped_worker1, popped_worker);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseResourceRequirementsMismatch) {
+  absl::flat_hash_map<std::string, double> resources1{{"CPU", 1.0}};
+  const LeaseSpecification lease_spec1 = ExampleLeaseSpec(ActorID::Nil(),
+                                                          Language::PYTHON,
+                                                          JOB_ID,
+                                                          {},
+                                                          LeaseID::Nil(),
+                                                          rpc::RuntimeEnvInfo(),
+                                                          resources1);
+
+  std::shared_ptr<WorkerInterface> worker1 = worker_pool_->PopWorkerSync(lease_spec1);
+  ASSERT_NE(worker1, nullptr);
+  ASSERT_EQ(worker1->GetResourceRequirements(), ResourceSet(resources1));
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(worker1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  absl::flat_hash_map<std::string, double> resources2{{"CPU", 2.0}};
+  const LeaseSpecification lease_spec2 = ExampleLeaseSpec(ActorID::Nil(),
+                                                          Language::PYTHON,
+                                                          JOB_ID,
+                                                          {},
+                                                          LeaseID::Nil(),
+                                                          rpc::RuntimeEnvInfo(),
+                                                          resources2);
+
+  std::shared_ptr<WorkerInterface> worker2 = worker_pool_->PopWorkerSync(lease_spec2);
+  ASSERT_NE(worker2, nullptr);
+  ASSERT_NE(worker1, worker2);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseAllocatedInstancesMismatch) {
+  const LeaseSpecification lease_spec = ExampleLeaseSpec();
+
+  auto gpu_id = ResourceID::GPU();
+
+  auto instances1 = std::make_shared<TaskResourceInstances>(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>{{gpu_id, {1.0, 0.0}}});
+
+  std::shared_ptr<WorkerInterface> worker1 =
+      worker_pool_->PopWorkerSync(lease_spec,
+                                  /*push_workers=*/true,
+                                  /*worker_status=*/nullptr,
+                                  /*timeout_worker_number=*/0,
+                                  /*runtime_env_error_msg=*/nullptr,
+                                  instances1);
+  ASSERT_NE(worker1, nullptr);
+  ASSERT_EQ(worker1->GetStartupAllocatedInstances(), instances1);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(worker1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto instances2 = std::make_shared<TaskResourceInstances>(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>{{gpu_id, {0.0, 1.0}}});
+
+  std::shared_ptr<WorkerInterface> worker2 =
+      worker_pool_->PopWorkerSync(lease_spec,
+                                  /*push_workers=*/true,
+                                  /*worker_status=*/nullptr,
+                                  /*timeout_worker_number=*/0,
+                                  /*runtime_env_error_msg=*/nullptr,
+                                  instances2);
+  ASSERT_NE(worker2, nullptr);
+  ASSERT_NE(worker1, worker2);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }

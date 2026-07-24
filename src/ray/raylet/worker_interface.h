@@ -29,6 +29,7 @@ namespace ray {
 class ClientConnection;
 class RayLease;
 class TaskResourceInstances;
+class ResourceSet;
 
 namespace rpc {
 class Address;
@@ -107,6 +108,10 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
+  virtual void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+  virtual std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const = 0;
+
   virtual void GrantLease(const RayLease &granted_lease) = 0;
 
   virtual bool IsRegistered() = 0;
@@ -122,6 +127,9 @@ class WorkerInterface {
   virtual void SetJobId(const JobID &job_id) = 0;
 
   virtual const ActorID &GetRootDetachedActorId() const = 0;
+
+  virtual const ResourceSet &GetResourceRequirements() const = 0;
+  virtual void SetResourceRequirements(const ResourceSet &resource_requirements) = 0;
 
  protected:
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy);
