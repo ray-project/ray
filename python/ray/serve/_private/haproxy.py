@@ -93,6 +93,7 @@ from ray.serve._private.proxy import (
     ProxyActorInterface,
     apply_per_node_port_overrides,
 )
+from ray.serve._private.response_channel import internal_port
 from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
@@ -126,8 +127,8 @@ def _haproxy_fmt_literal(value: Any) -> str:
     return '"' + s + '"'
 
 
-def _load_lua_template() -> string.Template:
-    path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
+def _load_lua_template(name: str) -> string.Template:
+    path = Path(__file__).parent / name
     try:
         return string.Template(path.read_text())
     except FileNotFoundError as e:
@@ -517,6 +518,10 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+
+    # Whether this app opted into the ResponseChannel. When True, the frontend
+    # serves this backend's requests through the channel stream service.
+    response_channel: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -1256,7 +1261,7 @@ class HAProxyApi(ProxyApi):
             metrics_post = ""
             metrics_set_truncated = ""
 
-        content = _load_lua_template().substitute(
+        content = _load_lua_template("ingress_request_router.lua.tmpl").substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             # HAProxy's req_get_headers() returns lowercase header keys,
@@ -1275,6 +1280,22 @@ class HAProxyApi(ProxyApi):
         )
         if _write_if_changed(lua_path, content):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
+        return lua_path
+
+    def _write_response_channel_lua(self) -> str:
+        """Write the ResponseChannel Lua and return its path.
+
+        The Lua re-injects the client request as a loopback kickoff, so it needs
+        the frontend port to reach HAProxy itself.
+        """
+        content = _load_lua_template("response_channel.lua.tmpl").substitute(
+            FRONTEND_PORT=self.cfg.frontend_port
+        )
+        lua_path = os.path.join(
+            os.path.dirname(self.config_file_path), "response_channel.lua"
+        )
+        if _write_if_changed(lua_path, content):
+            logger.debug(f"Wrote ResponseChannel Lua script to {lua_path}")
         return lua_path
 
     def _generate_config_file_internal(self) -> bool:
@@ -1306,6 +1327,11 @@ class HAProxyApi(ProxyApi):
                 http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+
+            has_response_channel = any(b.response_channel for b in http_backends)
+            response_channel_lua_path = (
+                self._write_response_channel_lua() if has_response_channel else None
+            )
 
             # Enrich HTTP backends with precomputed health check configuration strings
             http_backends_with_health_config = [
@@ -1378,6 +1404,16 @@ class HAProxyApi(ProxyApi):
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
+                    "has_response_channel": has_response_channel,
+                    "response_channel_lua_path": response_channel_lua_path,
+                    # One internal ingest port per thread; the leaf posts to the
+                    # one for its request's thread. Derived from the same formula
+                    # the leaf uses (internal_port in _private.response_channel),
+                    # so the two cannot drift.
+                    "response_channel_internal_ports": [
+                        internal_port(self.cfg.frontend_port, t)
+                        for t in range(1, self.cfg.nbthread + 1)
+                    ],
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
                     ),
@@ -2072,6 +2108,7 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            response_channel=target_group.response_channel,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,

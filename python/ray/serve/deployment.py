@@ -61,6 +61,8 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
+        # Opt every response from this app into the ResponseChannel.
+        self._response_channel: bool = False
 
     def _with_ingress_request_router(
         self, ingress_request_router: "Application"
@@ -68,6 +70,13 @@ class Application:
         # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
         # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
+        return self
+
+    def _with_response_channel(self) -> "Application":
+        # Internal-only, unstable hook: opt every response from this app into the
+        # ResponseChannel, so a leaf streams its response straight to HAProxy and
+        # the ingress stays off the response path. Not a stable public Serve API.
+        self._response_channel = True
         return self
 
 

@@ -64,6 +64,10 @@ from ray.llm._internal.serve.core.ingress.utils import (
     _sanitize_chat_completion_request,
 )
 from ray.llm._internal.serve.core.protocol import DeploymentProtocol, RawRequestInfo
+from ray.llm._internal.serve.core.server.response_channel import (
+    RESPONSE_ID_HEADER,
+    haproxy_base_for_leaf,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -275,6 +279,8 @@ class OpenAiIngress(DeploymentProtocol):
         self._get_lora_model_metadata_func = (
             _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
         )
+        # In-flight ResponseChannel drives, kept referenced so they are not GC'd.
+        self._response_channel_tasks: set = set()
 
     async def _default_get_lora_model_metadata_func(
         self, model_id: str, base_path: str
@@ -403,6 +409,29 @@ class OpenAiIngress(DeploymentProtocol):
         ):
             yield response
 
+    async def _kickoff_response_channel(
+        self, body, response_id: str, raw_request: Request
+    ) -> Response:
+        """ResponseChannel drive: do the request-side work, kick off the leaf to
+        stream its response straight to HAProxy (keyed by ``response_id``), and
+        return an empty 202. The ingress is off the response path; the response
+        bytes never traverse it. See ``core.server.response_channel``.
+        """
+        model_id = await self._get_model_id(body.model)
+        model_handle = self._get_configured_serve_handle(model_id)
+        if raw_request is not None:
+            session_id = session_id_from_headers(raw_request.headers)
+            if session_id:
+                model_handle = model_handle.options(session_id=session_id)
+        task = asyncio.ensure_future(
+            model_handle.produce_to_channel.remote(
+                body, response_id, haproxy_base_for_leaf()
+            )
+        )
+        self._response_channel_tasks.add(task)
+        task.add_done_callback(self._response_channel_tasks.discard)
+        return Response(status_code=202)
+
     async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._model_cards:
             return self._model_cards[model_id]
@@ -475,6 +504,16 @@ class OpenAiIngress(DeploymentProtocol):
         call_method: str,
         raw_request: Optional[Request] = None,
     ) -> Response:
+
+        # HAProxy mints x-response-id only for apps that opted into the
+        # ResponseChannel (and strips any client-forged value), so its presence is
+        # the signal to stream the response back through the channel.
+        if raw_request is not None:
+            response_id = raw_request.headers.get(RESPONSE_ID_HEADER)
+            if response_id:
+                return await self._kickoff_response_channel(
+                    body, response_id, raw_request
+                )
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 

@@ -273,6 +273,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._response_channel: bool = False
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -346,6 +347,10 @@ class ApplicationState:
         return self._ingress_request_router_deployment_name
 
     @property
+    def response_channel(self) -> bool:
+        return self._response_channel
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -413,6 +418,7 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        response_channel = False
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
@@ -420,6 +426,8 @@ class ApplicationState:
                     ingress_deployment_name = name
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
+                if info.response_channel:
+                    response_channel = True
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -447,6 +455,7 @@ class ApplicationState:
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name
         )
+        self._response_channel = response_channel
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -1424,6 +1433,12 @@ class ApplicationStateManager:
             return None
 
         return self._application_states[name].ingress_request_router_deployment
+
+    def get_response_channel(self, name: str) -> bool:
+        if name not in self._application_states:
+            return False
+
+        return self._application_states[name].response_channel
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type

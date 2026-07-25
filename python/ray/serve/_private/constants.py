@@ -714,6 +714,13 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# The ResponseChannel binds one internal ingest port per HAProxy thread, at this
+# offset above the frontend port, each pinned to its thread. A leaf posts its
+# response to the port for its request's thread so the push and the client stream
+# stay on one thread (per-thread queue, no shared Lua lock). Both HAProxy config
+# generation and the leaf derive the port from ``response_channel.internal_port``.
+RAY_SERVE_RESPONSE_CHANNEL_INTERNAL_PORT_OFFSET = 200
+
 # Ingress request router replicas pinned to each proxy node.
 RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
     "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1

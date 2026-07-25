@@ -26,6 +26,7 @@ def get_deploy_args(
     replica_config: ReplicaConfig,
     ingress: bool = False,
     ingress_request_router: bool = False,
+    response_channel: bool = False,
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
@@ -56,6 +57,7 @@ def get_deploy_args(
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
         "ingress_request_router": ingress_request_router,
+        "response_channel": response_channel,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
@@ -73,6 +75,7 @@ def deploy_args_to_deployment_info(
     app_name: Optional[str] = None,
     ingress: bool = False,
     ingress_request_router: bool = False,
+    response_channel: bool = False,
     route_prefix: Optional[str] = None,
     uses_multiplexing: bool = False,
     **kwargs,
@@ -163,6 +166,7 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         ingress=ingress,
         ingress_request_router=ingress_request_router,
+        response_channel=response_channel,
     )
 
 

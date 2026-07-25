@@ -1,0 +1,106 @@
+-- ResponseChannel: leaf-to-HAProxy streaming that bypasses parent deployments
+-- on the response path. Orthogonal to request routing.
+--
+-- Two services correlated by a per-request response id via a shared queue:
+--   stream_completion : owns the client connection. Mints a response id, re-injects
+--                       the request as a loopback "kickoff" (same path, so normal
+--                       routing delivers it to the ingress) carrying the id, then
+--                       parks on the queue and streams chunks to the client.
+--   push_chunk        : /internal/response/{id}. The leaf POSTs its token stream
+--                       here; each line is enqueued, waking the client handler.
+--
+-- The kickoff request carries x-serve-response-channel:kickoff so it does NOT
+-- re-enter stream_completion (the frontend guards on the header's absence); it
+-- routes to the ingress backend by the ordinary use_backend rules. The ingress
+-- runs request-side work and kicks off the leaf; the leaf streams here. The
+-- ingress never sees the response bytes.
+
+local queues = {}
+local EOF = "\1EOF\1"
+local SEQ = 0
+local LOOPBACK = "http://127.0.0.1:${FRONTEND_PORT}"
+
+local function get_queue(id)
+  local q = queues[id]
+  if q == nil then
+    q = core.queue()
+    queues[id] = q
+  end
+  return q
+end
+
+-- Leaf -> HAProxy: read one streamed POST body line-by-line (newline-delimited,
+-- one chunk per line) and enqueue each as it arrives. getline yields while
+-- waiting, so chunks stream incrementally. End of body -> EOF.
+core.register_service("response_channel_push", "http", function(applet)
+  local id = string.match(applet.path, "/internal/response/([^/%?]+)")
+  if id == nil then
+    applet:set_status(400)
+    applet:add_header("content-length", "0")
+    applet:start_response()
+    return
+  end
+  local q = get_queue(id)
+  while true do
+    local line = applet:getline()
+    if line == nil or line == "" then
+      break
+    end
+    line = string.gsub(line, "[\r\n]+$$", "")
+    if #line > 0 then
+      q:push(line)
+    end
+  end
+  q:push(EOF)
+  applet:set_status(200)
+  applet:add_header("content-length", "0")
+  applet:start_response()
+end)
+
+-- Client <-> HAProxy: mint a response id, kick off generation via loopback, then
+-- stream chunks from the queue as Server-Sent Events.
+core.register_service("response_channel_stream", "http", function(applet)
+  local reqbody = applet:receive() or ""
+  SEQ = SEQ + 1
+  local now = core.now()
+  -- Encode this client's thread in the id. The leaf posts back to the internal
+  -- port pinned to this thread, so the push runs on the same thread and finds
+  -- this per-thread queue -- no shared state, no global lock.
+  local id = string.format("t%d-%d-%d-%d", core.thread, now.sec, now.usec, SEQ)
+  local q = get_queue(id)  -- create BEFORE kickoff so early leaf POSTs land here
+
+  local ctype = applet.headers["content-type"]
+  ctype = (ctype and ctype[0]) or "application/json"
+
+  -- Send the client its SSE headers now: nothing about them depends on the
+  -- kickoff's response, and the queue already exists, so flushing here overlaps
+  -- with the kickoff hop instead of waiting a round-trip behind it.
+  applet:set_status(200)
+  applet:add_header("content-type", "text/event-stream")
+  applet:add_header("cache-control", "no-cache")
+  applet:start_response()
+
+  -- Re-inject the request to the ingress via the ordinary routing path. The
+  -- kickoff header makes the frontend route it to the backend (not back here).
+  local hc = core.httpclient()
+  hc:post{
+    url = LOOPBACK .. applet.path,
+    headers = {
+      ["content-type"] = { ctype },
+      ["x-response-id"] = { id },
+      ["x-serve-response-channel"] = { "kickoff" },
+    },
+    body = reqbody,
+  }
+
+  while true do
+    local item = q:pop_wait()
+    if item == EOF then
+      applet:send("data: [DONE]\n\n")
+      break
+    else
+      applet:send("data: " .. item .. "\n\n")
+    end
+  end
+  queues[id] = nil
+end)

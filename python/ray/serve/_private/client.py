@@ -359,6 +359,7 @@ class ServeControllerClient:
                     deployment.name,
                     ingress=is_ingress,
                     ingress_request_router=is_ingress_request_router,
+                    response_channel=app.response_channel and is_ingress,
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -386,6 +387,9 @@ class ServeControllerClient:
                 deployment_args_proto.ingress = deployment_args["ingress"]
                 deployment_args_proto.ingress_request_router = deployment_args[
                     "ingress_request_router"
+                ]
+                deployment_args_proto.response_channel = deployment_args[
+                    "response_channel"
                 ]
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"

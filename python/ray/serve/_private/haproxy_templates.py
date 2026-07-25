@@ -69,6 +69,13 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
     {%- endif %}
+    {%- if has_response_channel %}
+    # Per-thread: the push and stream for one request are pinned to the same thread
+    # (the response id carries the client's thread, and the leaf posts to that
+    # thread's internal port), so each thread owns an independent queue table with
+    # no shared lock. See the response_channel_internal frontend below.
+    lua-load-per-thread {{ response_channel_lua_path }}
+    {%- endif %}
     {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- else %}
@@ -138,6 +145,21 @@ frontend prometheus
     mode http
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log
+{%- if has_response_channel %}
+# ResponseChannel internal ingest. One loopback bind per thread, each pinned to
+# its thread, so a leaf posting to the port for thread N is handled on thread N.
+# The client's stream applet ran on that same thread and created the per-thread
+# queue there, so the push finds it with no cross-thread shared state.
+frontend response_channel_internal
+{%- for port in response_channel_internal_ports %}
+    bind 127.0.0.1:{{ port }} thread {{ loop.index }}
+{%- endfor %}
+    mode http
+    option http-no-delay
+    no log
+    http-request use-service lua.response_channel_push if { path_beg /internal/response/ }
+    http-request return status 404
+{%- endif %}
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
     {%- if config.metrics_enabled %}
@@ -181,12 +203,33 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
+    {%- if has_response_channel %}
+    # ResponseChannel (response-path only, orthogonal to routing). Strip the
+    # channel headers from client requests; only the loopback kickoff HAProxy
+    # itself issues may carry them. The per-backend stream service below serves
+    # client requests to opted-in apps; the leaf's chunk stream lands on the
+    # thread-pinned response_channel_internal frontend.
+    http-request del-header x-serve-response-channel if !{ src 127.0.0.0/8 }
+    http-request del-header x-response-id if !{ src 127.0.0.0/8 }
+    {%- endif %}
     # Per-backend path ACLs (used for both ingress-request-router dispatch
     # and static use_backend selection below).
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
+    {%- if has_response_channel %}
+    # A client request to an opted-in app is served by response_channel_stream:
+    # it mints a response id, re-injects the request as a loopback kickoff (with
+    # x-serve-response-channel, so it routes to the ingress instead of re-entering
+    # here), and drains the per-id queue to the client. Scoped per-backend, so
+    # plain apps behind the same HAProxy are untouched.
+{%- for backend in backends %}
+    {%- if backend.response_channel %}
+    http-request use-service lua.response_channel_stream if is_{{ backend.name or 'unknown' }} !{ hdr(x-serve-response-channel) -m found }
+    {%- endif %}
+{%- endfor %}
+    {%- endif %}
     {%- if config.metrics_enabled %}
     # Per-request HTTP metric vars (app / route / ingress deployment), set on the
     # first matching backend. Backends are sorted longest-prefix-first and the

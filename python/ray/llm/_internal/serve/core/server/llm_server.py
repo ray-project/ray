@@ -13,6 +13,7 @@ from typing import (
     Union,
 )
 
+import httpx
 from fastapi import HTTPException
 
 import ray
@@ -47,6 +48,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.serve._private.response_channel import ResponseChannel
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -184,6 +186,8 @@ class LLMServer(LLMServerProtocol):
         self._llm_config = llm_config
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
+        # Lazily built on first ResponseChannel drive; reused across requests.
+        self._response_channel_client: Optional[httpx.AsyncClient] = None
         self._init_multiplex_loader(model_downloader)
 
     @classmethod
@@ -426,6 +430,36 @@ class LLMServer(LLMServerProtocol):
             batch_output_stream=True,
             raw_request_info=raw_request_info,
         )
+
+    async def produce_to_channel(
+        self, body: "CompletionRequest", response_id: str, haproxy_base: str
+    ) -> None:
+        """Stream this completion straight to HAProxy's ResponseChannel.
+
+        Called by a request-side ingress (via a handle) instead of relaying the
+        stream back up the DAG: the leaf drives the engine and streams each chunk
+        to HAProxy keyed by ``response_id``, so the ingress is off the response
+        path. See ``core.server.response_channel``.
+        """
+        body.stream = True
+        if self._response_channel_client is None:
+            self._response_channel_client = httpx.AsyncClient(timeout=None)
+        # The queue + background sender decouples generation from the network POST:
+        # the engine generates into a bounded buffer while the sender drains it, so
+        # slow reads never back-pressure and stall the engine under load.
+        channel = ResponseChannel(
+            response_id, haproxy_base, self._response_channel_client
+        )
+        gen = await self._run_request(body, engine_method="completions")
+        try:
+            async for chunk in gen:
+                await channel.write(chunk)
+        finally:
+            try:
+                await gen.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+            await channel.close()
 
     async def embeddings(
         self,

@@ -354,6 +354,7 @@ message DeploymentInfo {
   double target_capacity = 8;
   TargetCapacityDirection target_capacity_direction = 9;
   bool ingress_request_router = 10;
+  bool response_channel = 11;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -515,6 +516,7 @@ message DeploymentArgs {
   optional string docs_path = 7;
   bool ingress_request_router = 8;
   bool uses_multiplexing = 9;
+  bool response_channel = 10;
 }
 
 message ApplicationArgs {

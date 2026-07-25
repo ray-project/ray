@@ -273,9 +273,15 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    return serve.deployment(ingress_cls, **ingress_options).bind(
+    app = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments,
         model_cards=model_cards,
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
     )
+    # Opt the app into the ResponseChannel (leaf streams its response straight to
+    # HAProxy, off the ingress's response path). A general Serve marker; the LLM
+    # builder just sets it from the config.
+    if any(c.experimental_configs.get("response_channel") for c in llm_configs):
+        app = app._with_response_channel()
+    return app

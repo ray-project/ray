@@ -1142,6 +1142,7 @@ class ServeController:
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
+                        "response_channel": args.response_channel,
                         "uses_multiplexing": args.uses_multiplexing,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
@@ -1596,6 +1597,7 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        response_channel = self.application_state_manager.get_response_channel(app_name)
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1630,6 +1632,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
                     ingress_deployment_name=ingress_deployment_name,
+                    response_channel=response_channel,
                 )
             )
 

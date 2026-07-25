@@ -1587,6 +1587,12 @@ class TargetGroup(BaseModel):
         "",
         description="Name of the application's ingress deployment.",
     )
+    # Whether the app opted into the ResponseChannel, so HAProxy serves this
+    # backend's responses off the ingress path. Only set on HTTP target groups.
+    response_channel: bool = Field(
+        False,
+        description="Whether the app's responses use the HAProxy ResponseChannel.",
+    )
 
 
 @PublicAPI(stability="alpha")

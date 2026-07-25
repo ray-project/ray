@@ -78,6 +78,9 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    # Whether the app opted into the ResponseChannel: the leaf streams its
+    # response straight to HAProxy, off the ingress response path.
+    response_channel: bool = False
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -211,6 +214,7 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        response_channel=app._response_channel,
     )
 
 
