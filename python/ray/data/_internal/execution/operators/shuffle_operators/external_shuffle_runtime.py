@@ -107,12 +107,7 @@ _WF_HEADER = struct.Struct("<Q")
 
 
 def _codec_for(compression: Optional[str]) -> Optional["pa.Codec"]:
-    """Resolve a codec name to a pa.Codec, or None for no compression.
-
-    Single source of truth: callers pass ``data_context.hash_shuffle_compression``
-    (the same field v2 uses), so map and reduce always agree on the codec without
-    relying on per-process env. ``None``/``"none"`` -> store the raw IPC stream.
-    """
+    """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
     if not compression or compression == "none":
         return None
     return pa.Codec(compression)
