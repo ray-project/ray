@@ -11,7 +11,6 @@ from ci.ray_ci.docker_container import (
     RayType,
 )
 
-
 INDEX_IMAGE_CONFIGS = {
     RayType.RAY: (
         PYTHON_VERSIONS_RAY,
