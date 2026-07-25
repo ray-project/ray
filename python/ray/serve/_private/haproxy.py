@@ -77,6 +77,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
+    RAY_SERVE_RESPONSE_CHANNEL_MULTINODE,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -1282,14 +1283,30 @@ class HAProxyApi(ProxyApi):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
+    @property
+    def _response_channel_host(self) -> str:
+        """Host a leaf posts response chunks to (and the internal frontend binds).
+
+        Loopback keeps single-node delivery (leaf co-located with the HAProxy
+        holding the client). Multi-node advertises this node's routable IP so a
+        leaf on another node can reach this HAProxy.
+        """
+        if RAY_SERVE_RESPONSE_CHANNEL_MULTINODE:
+            return ray.util.get_node_ip_address()
+        return "127.0.0.1"
+
     def _write_response_channel_lua(self) -> str:
         """Write the ResponseChannel Lua and return its path.
 
-        The Lua re-injects the client request as a loopback kickoff, so it needs
-        the frontend port to reach HAProxy itself.
+        The Lua re-injects the client request as a loopback kickoff (needing the
+        frontend port to reach HAProxy) and advertises the ingest base a leaf
+        posts its response to.
         """
         content = _load_lua_template("response_channel.lua.tmpl").substitute(
-            FRONTEND_PORT=self.cfg.frontend_port
+            FRONTEND_PORT=self.cfg.frontend_port,
+            CHANNEL_ADVERTISE_BASE=(
+                f"http://{self._response_channel_host}:{self.cfg.frontend_port}"
+            ),
         )
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "response_channel.lua"
@@ -1418,6 +1435,7 @@ class HAProxyApi(ProxyApi):
                         if has_response_channel
                         else []
                     ),
+                    "response_channel_bind_host": self._response_channel_host,
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
                     ),

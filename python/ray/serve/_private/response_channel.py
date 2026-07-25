@@ -23,6 +23,10 @@ from ray.serve._private.constants import (
 )
 
 RESPONSE_ID_HEADER = "x-response-id"
+# The ingest base a leaf posts its response to, advertised by the HAProxy that
+# holds the client connection (loopback for single-node, its routable IP for
+# multi-node).
+RESPONSE_CHANNEL_BASE_HEADER = "x-response-channel-base"
 
 # HAProxy fronts the Serve HTTP port on the local node, so a co-located leaf
 # reaches it on loopback.

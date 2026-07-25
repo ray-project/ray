@@ -66,6 +66,7 @@ from ray.llm._internal.serve.core.ingress.utils import (
 )
 from ray.llm._internal.serve.core.protocol import DeploymentProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.response_channel import (
+    RESPONSE_CHANNEL_BASE_HEADER,
     RESPONSE_ID_HEADER,
     haproxy_base_for_leaf,
 )
@@ -435,11 +436,17 @@ class OpenAiIngress(DeploymentProtocol):
         model_handle, body, raw_request_info = await self._prepare_request(
             body, raw_request
         )
+        # HAProxy advertises the ingest base to post the response to: this node's
+        # HAProxy for single-node, the client-holding node's for multi-node.
+        haproxy_base = (
+            raw_request.headers.get(RESPONSE_CHANNEL_BASE_HEADER)
+            or haproxy_base_for_leaf()
+        )
         task = asyncio.ensure_future(
             model_handle.produce_to_channel.remote(
                 body,
                 response_id,
-                haproxy_base_for_leaf(),
+                haproxy_base,
                 call_method,
                 raw_request_info,
             )

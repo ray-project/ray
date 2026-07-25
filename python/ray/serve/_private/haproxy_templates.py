@@ -146,13 +146,14 @@ frontend prometheus
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log
 {%- if has_response_channel %}
-# ResponseChannel internal ingest. One loopback bind per thread, each pinned to
-# its thread, so a leaf posting to the port for thread N is handled on thread N.
-# The client's stream applet ran on that same thread and created the per-thread
-# queue there, so the push finds it with no cross-thread shared state.
+# ResponseChannel internal ingest. One bind per thread, each pinned to its
+# thread, so a leaf posting to the port for thread N is handled on thread N. The
+# client's stream applet ran on that same thread and created the per-thread queue
+# there, so the push finds it with no cross-thread shared state. The bind host is
+# loopback for single-node and this node's routable IP under multi-node.
 frontend response_channel_internal
 {%- for port in response_channel_internal_ports %}
-    bind 127.0.0.1:{{ port }} thread {{ loop.index }}
+    bind {{ response_channel_bind_host }}:{{ port }} thread {{ loop.index }}
 {%- endfor %}
     mode http
     option http-no-delay
@@ -211,6 +212,7 @@ frontend http_frontend
     # thread-pinned response_channel_internal frontend.
     http-request del-header x-serve-response-channel if !{ src 127.0.0.0/8 }
     http-request del-header x-response-id if !{ src 127.0.0.0/8 }
+    http-request del-header x-response-channel-base if !{ src 127.0.0.0/8 }
     {%- endif %}
     # Per-backend path ACLs (used for both ingress-request-router dispatch
     # and static use_backend selection below).

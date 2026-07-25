@@ -19,6 +19,9 @@ local queues = {}
 local EOF = "\1EOF\1"
 local SEQ = 0
 local LOOPBACK = "http://127.0.0.1:${FRONTEND_PORT}"
+-- Ingest base a leaf posts its response to. Loopback for single-node; this
+-- node's routable IP under multi-node so a leaf elsewhere reaches this HAProxy.
+local ADVERTISE_BASE = "${CHANNEL_ADVERTISE_BASE}"
 
 local function get_queue(id)
   local q = queues[id]
@@ -88,6 +91,7 @@ core.register_service("response_channel_stream", "http", function(applet)
     headers = {
       ["content-type"] = { ctype },
       ["x-response-id"] = { id },
+      ["x-response-channel-base"] = { ADVERTISE_BASE },
       ["x-serve-response-channel"] = { "kickoff" },
     },
     body = reqbody,

@@ -721,6 +721,17 @@ RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == 
 # generation and the leaf derive the port from ``response_channel.internal_port``.
 RAY_SERVE_RESPONSE_CHANNEL_INTERNAL_PORT_OFFSET = 200
 
+# Multi-node ResponseChannel delivery. When off (default), HAProxy advertises a
+# loopback ingest base and binds the internal ingest ports on loopback, so a leaf
+# reaches HAProxy only when co-located (single node). When on, HAProxy advertises
+# this node's routable IP and binds the internal ingest ports on it, so a leaf on
+# another node can post responses to the HAProxy holding the client connection.
+# The routable ingest port is reachable cluster-wide, so it needs a network policy
+# restricting it to cluster nodes.
+RAY_SERVE_RESPONSE_CHANNEL_MULTINODE = (
+    os.environ.get("RAY_SERVE_RESPONSE_CHANNEL_MULTINODE", "0") == "1"
+)
+
 # Ingress request router replicas pinned to each proxy node.
 RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
     "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1

@@ -6,6 +6,7 @@ core; this module re-exports it for the LLM serving code.
 """
 
 from ray.serve._private.response_channel import (  # noqa: F401
+    RESPONSE_CHANNEL_BASE_HEADER,
     RESPONSE_ID_HEADER,
     ResponseChannel,
     _to_json_line,
