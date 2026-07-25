@@ -12,6 +12,7 @@ from ray import serve
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     KV_INDEXER_THREADS_KEY,
+    KV_SELECT_RESERVE_KEY,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.serve._private.common import DeploymentTargetInfo
@@ -108,10 +109,12 @@ class KVTokenTracker:
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
+        select_reserve: bool = False,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
+        self._select_reserve = select_reserve
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
@@ -321,6 +324,7 @@ class KVTokenTracker:
         request_id: str,
         token_ids: List[int],
         allowed_worker_ids: List[int],
+        expected_output_tokens: Optional[int] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
@@ -329,6 +333,9 @@ class KVTokenTracker:
             request_id: Unique identifier for the request being routed.
             token_ids: Prompt token ids used to compute KV-cache overlap.
             allowed_worker_ids: Candidate worker ids the router may select from.
+            expected_output_tokens: The request's output-token cap. With
+                select-time reservation this lets Dynamo decay decode load
+                without per-token progress events.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -343,24 +350,54 @@ class KVTokenTracker:
                 "KV-aware routing is unavailable because ai-dynamo is not "
                 "installed in the deployment's environment."
             )
-        selection = await self._svc.select(
-            {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
-                "selection_id": request_id,
-                "token_ids": token_ids,
-                "allowed_worker_ids": allowed_worker_ids,
-            }
-        )
-        self._effective_prefill_tokens_by_request[request_id] = selection[
-            "effective_prefill_tokens"
-        ]
+        await self._evict_stale_requests()
+        request = {
+            "model_name": _MODEL_NAME,
+            "tenant_id": _TENANT_ID,
+            "selection_id": request_id,
+            "token_ids": token_ids,
+            "allowed_worker_ids": allowed_worker_ids,
+            "expected_output_tokens": expected_output_tokens,
+        }
+        if self._select_reserve:
+            request["reservation_id"] = request_id
+            selection = await self._svc.select_and_reserve(request)
+            self._track_request_state(
+                request_id,
+                selection["worker_id"],
+                len(token_ids),
+                expected_output_tokens,
+            )
+        else:
+            selection = await self._svc.select(request)
+            self._effective_prefill_tokens_by_request[request_id] = selection[
+                "effective_prefill_tokens"
+            ]
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    def _track_request_state(
+        self,
+        request_id: str,
+        worker_id: int,
+        prompt_tokens: int,
+        expected_output_tokens: Optional[int],
+    ) -> None:
+        old = self._requests.pop(request_id, None)
+        if old is not None:
+            self._untrack_worker_request(request_id, old.worker_id)
+        block_size = self._block_size or 1
+        self._requests[request_id] = RequestLifecycle(
+            worker_id=worker_id,
+            prompt_tokens=prompt_tokens,
+            expected_output_tokens=expected_output_tokens,
+            total_blocks=math.ceil(prompt_tokens / block_size),
+        )
+        self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
@@ -397,6 +434,8 @@ class KVTokenTracker:
         The engine broadcasts this event to every ingress replica, so it must
         book correctly both on the replica that routed the request (which has
         the ``select()`` result stashed) and on replicas that did not."""
+        if self._select_reserve:
+            return
         await self._evict_stale_requests()
         prompt_tokens = len(token_ids)
         self._requests[request_id] = RequestLifecycle(
@@ -452,6 +491,8 @@ class KVTokenTracker:
         """Advance ``request_id`` to an exact cumulative output-token count,
         booking one decode block in the selection service per crossed boundary.
         """
+        if self._select_reserve:
+            return
         state = self._requests.get(request_id)
         if state is None:
             return
@@ -543,11 +584,18 @@ def build_kv_token_tracker(
     so the same-process ``KVAwareRouter`` can reach it. Must be called from the
     ingress replica's event loop (the tracker binds a LongPollClient to it).
     """
+    select_reserve = llm_config.experimental_configs.get(KV_SELECT_RESERVE_KEY)
+    if isinstance(select_reserve, str):
+        select_reserve = select_reserve.lower() not in ("", "0", "false", "no")
+    else:
+        select_reserve = bool(select_reserve)
+
     tracker = KVTokenTracker(
         indexer_threads=llm_config.experimental_configs.get(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),
         serve_deployment_id=serve_deployment_id,
+        select_reserve=select_reserve,
     )
     set_kv_token_tracker(tracker)
     return tracker

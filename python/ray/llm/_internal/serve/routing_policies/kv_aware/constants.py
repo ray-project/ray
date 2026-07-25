@@ -9,6 +9,11 @@ DEFAULT_KV_EVENTS_PORT_BASE = 5557
 KV_INDEXER_THREADS_KEY = "KV_INDEXER_THREADS"
 DEFAULT_KV_INDEXER_THREADS = 4
 
+# experimental_configs key enabling select-time reservation. When enabled, the
+# router uses Dynamo's select_and_reserve path and the engine reports only
+# prefill-complete / request-complete lifecycle events.
+KV_SELECT_RESERVE_KEY = "KV_SELECT_RESERVE"
+
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover

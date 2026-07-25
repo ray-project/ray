@@ -53,6 +53,9 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_SELECT_RESERVE_KEY,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -575,7 +578,21 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(AsyncLLM)
+            select_reserve = self.llm_config.experimental_configs.get(
+                KV_SELECT_RESERVE_KEY
+            )
+            if isinstance(select_reserve, str):
+                select_reserve = select_reserve.lower() not in (
+                    "",
+                    "0",
+                    "false",
+                    "no",
+                )
+            else:
+                select_reserve = bool(select_reserve)
+            engine_cls = enable_token_tracking(
+                AsyncLLM, select_reserve=select_reserve
+            )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

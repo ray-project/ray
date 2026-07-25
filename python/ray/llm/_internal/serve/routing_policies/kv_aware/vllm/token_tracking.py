@@ -103,21 +103,26 @@ class RequestTokenTracker:
         self,
         forwarder: LifecycleEventForwarder,
         request_id: str,
-        prompt_token_ids: List[int],
+        prompt_token_ids: Optional[List[int]],
         expected_output_tokens: Optional[int],
+        select_reserve: bool = False,
     ):
         self._forwarder = forwarder
         self._request_id = request_id
         self._cumulative = 0
         self._prefill_marked = False
         self._finished = False
-        forwarder.report(
-            "on_request_added",
-            request_id,
-            forwarder.worker_id,
-            prompt_token_ids,
-            expected_output_tokens,
-        )
+        self._select_reserve = select_reserve
+        if not self._select_reserve:
+            if prompt_token_ids is None:
+                raise ValueError("prompt_token_ids are required without reserve mode")
+            forwarder.report(
+                "on_request_added",
+                request_id,
+                forwarder.worker_id,
+                prompt_token_ids,
+                expected_output_tokens,
+            )
 
     def on_output(self, output: RequestOutput) -> None:
         """Observe one engine ``RequestOutput`` (forwarded to the caller as-is).
@@ -134,6 +139,8 @@ class RequestTokenTracker:
             # The first output token signals prefill completion.
             self._prefill_marked = True
             self._forwarder.report("on_prefill_complete", self._request_id)
+        if self._select_reserve:
+            return
         self._forwarder.report("on_decode_progress", self._request_id, self._cumulative)
 
     def finish(self) -> None:
@@ -143,12 +150,15 @@ class RequestTokenTracker:
             self._forwarder.report("on_request_completed", self._request_id)
 
 
-def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
+def enable_token_tracking(
+    engine_cls: Type[AsyncLLM], select_reserve: bool = False
+) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
+        _select_reserve: bool = select_reserve
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
@@ -194,12 +204,13 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
             tracker = RequestTokenTracker(
                 forwarder,
                 lifecycle_request_id,
-                _get_prompt_token_ids(prompt),
+                None if self._select_reserve else _get_prompt_token_ids(prompt),
                 # The request's own output cap is its expected length; weights
                 # the selection service's decode-block decay.
                 # TODO(jeffreywang): Use an agent-provided expected-OSL hint for
                 # more accurate decode-load estimation.
                 sampling_params.max_tokens,
+                select_reserve=self._select_reserve,
             )
             try:
                 async for output in stream:
