@@ -398,7 +398,7 @@ class ActorPool:
         is_alive = True
         try:
             return ray.get(future)
-        except ray.exceptions.RayActorError:
+        except ray.exceptions.ActorDiedError:
             is_alive = False
             raise
         finally:

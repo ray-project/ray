@@ -323,6 +323,25 @@ def test_task_error_keeps_actor(init):
     assert pool.get_next() == 1
 
 
+def test_unavailable_actor_is_kept(init, monkeypatch):
+    @ray.remote
+    class MyActor:
+        def run(self):
+            return 1
+
+    actor = MyActor.remote()
+    pool = ActorPool([actor])
+    pool.submit(lambda a, _: a.run.remote(), None)
+
+    def raise_unavailable(_):
+        raise ray.exceptions.ActorUnavailableError("temporarily unavailable", None)
+
+    monkeypatch.setattr(ray, "get", raise_unavailable)
+    with pytest.raises(ray.exceptions.ActorUnavailableError):
+        pool.get_next()
+    assert pool._idle_actors == [actor]
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))
