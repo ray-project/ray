@@ -420,8 +420,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   }
 }
 
-bool ObjectManager::PushFromPlasma(const ObjectID &object_id,
-                                        const NodeID &node_id) {
+bool ObjectManager::PushFromPlasma(const ObjectID &object_id, const NodeID &node_id) {
   const ObjectInfo &object_info = local_objects_[object_id].object_info;
   uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
