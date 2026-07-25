@@ -1,7 +1,10 @@
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.preemption import PreemptionInfo
 
 
 @PublicAPI(stability="alpha")
@@ -52,3 +55,42 @@ class ControllerError(TrainingFailedError):
 
     def __reduce__(self):
         return (self.__class__, (self.controller_failure,))
+
+
+@PublicAPI(stability="alpha")
+class PreemptionError(TrainingFailedError):
+    """Exception raised when training is interrupted by node preemption.
+
+    Distinct from :class:`WorkerGroupError` so that a planned preemption
+    consumes a separate retry budget (``FailureConfig.max_preemption_failures``,
+    default -1 = unlimited) rather than ``max_failures``, which is reserved for
+    real failures (OOM, hardware faults, user-code bugs).
+
+    Args:
+        preemption_info: Which nodes / world ranks were preempted and the
+            reclaim deadline, for logging and debugging which preemption caused
+            the restart.
+        drain_timed_out: True when Ray Train stopped waiting because the reclaim
+            deadline passed while workers were still running (and tore them down
+            itself); False when every worker had already exited. Distinguishes
+            a forced teardown from an observed one when debugging.
+    """
+
+    def __init__(
+        self,
+        preemption_info: "PreemptionInfo",
+        drain_timed_out: bool = False,
+    ):
+        self.preemption_info = preemption_info
+        self.drain_timed_out = drain_timed_out
+        super().__init__(
+            "Training was interrupted by node preemption "
+            f"(preempted_ranks={preemption_info.preempted_ranks}, "
+            f"drain_timed_out={drain_timed_out})."
+        )
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (self.preemption_info, self.drain_timed_out),
+        )
