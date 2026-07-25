@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 import pytest
 
 from ray.dashboard.modules.job.common import JobSubmitRequest
+from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.utils import (
     fast_tail_last_n_lines,
     file_tail_iterator,
@@ -261,6 +262,74 @@ class TestIterLine:
         assert await anext(it) is None
 
 
+class TestJobLogStorageClientRotation:
+    """Tests for JobLogStorageClient's handling of rotated backup log
+    files, added alongside job driver log rotation support. Uses a
+    real JobLogStorageClient instance with get_log_file_path patched to
+    point at a plain tmp_path, avoiding the need for a running Ray
+    cluster to exercise this pure file I/O logic."""
+
+    @pytest.fixture
+    def log_client(self, tmp_path, monkeypatch):
+        client = JobLogStorageClient()
+        log_path = str(tmp_path / "job-driver-test_job.log")
+        monkeypatch.setattr(client, "get_log_file_path", lambda job_id: log_path)
+        return client, log_path
+
+    def test_get_rotated_backup_paths_none_exist(self, log_client):
+        client, log_path = log_client
+        assert client._get_rotated_backup_paths(log_path) == []
+
+    def test_get_rotated_backup_paths_ordering(self, log_client):
+        client, log_path = log_client
+        # Create backups out of numeric order to make sure the method
+        # sorts by the actual .N suffix, not creation/discovery order.
+        with open(f"{log_path}.2", "w") as f:
+            f.write("older\n")
+        with open(f"{log_path}.1", "w") as f:
+            f.write("newer\n")
+
+        result = client._get_rotated_backup_paths(log_path)
+        assert result == [f"{log_path}.2", f"{log_path}.1"], (
+            "Expected oldest-to-newest order (.2 before .1), got: " f"{result!r}"
+        )
+
+    def test_get_logs_with_no_rotation(self, log_client):
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("line1\nline2\n")
+
+        assert client.get_logs("test_job") == "line1\nline2\n"
+
+    def test_get_logs_concatenates_backups_and_active_file(self, log_client):
+        client, log_path = log_client
+        with open(f"{log_path}.2", "w") as f:
+            f.write("oldest content\n")
+        with open(f"{log_path}.1", "w") as f:
+            f.write("middle content\n")
+        with open(log_path, "w") as f:
+            f.write("newest content\n")
+
+        result = client.get_logs("test_job")
+        assert result == "oldest content\nmiddle content\nnewest content\n", (
+            "Expected backups concatenated oldest first, then the "
+            f"active file last. Got: {result!r}"
+        )
+
+    def test_get_logs_missing_active_file_still_returns_backups(self, log_client):
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("backup only\n")
+        # Active file was never created (e.g. driver hasn't started
+        # writing yet, or was cleaned up), get_logs should not raise.
+        result = client.get_logs("test_job")
+        assert result == "backup only\n"
+
+    def test_get_logs_no_files_at_all_returns_empty_string(self, log_client):
+        client, _ = log_client
+        assert client.get_logs("test_job") == ""
+
+
 class TestFastTailLastNLines:
     def test_nonexistent_path(self, tmp):
         missing = tmp + ".missing"
@@ -339,7 +408,7 @@ class TestFastTailLastNLines:
         print("Finish reading sparse file tail.")
         assert len(out) == 20000
         assert out.endswith("\n")
-        assert "R" * 100 in out  # sampling check for last line conten
+        assert "R" * 100 in out  # sampling check for last line content
 
 
 if __name__ == "__main__":

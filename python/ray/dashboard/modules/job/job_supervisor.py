@@ -309,11 +309,28 @@ class JobSupervisor:
         if max_bytes <= 0:
             # Rotation disabled, matches convention used elsewhere in Ray.
             return
+        check_period_s = float(
+            os.environ.get(
+                "RAY_JOB_LOG_ROTATION_CHECK_PERIOD_S",
+                self.LOG_ROTATION_CHECK_PERIOD_S,
+            )
+        )
+        loop = asyncio.get_running_loop()
         while True:
-            await asyncio.sleep(self.LOG_ROTATION_CHECK_PERIOD_S)
+            await asyncio.sleep(check_period_s)
             try:
                 if os.path.getsize(log_path) >= max_bytes:
-                    self._log_client.rotate_log_file(log_path, backup_count)
+                    # rotate_log_file does synchronous file copy/truncate
+                    # that can take real time for large log files. Run it
+                    # in the default executor so it doesn't block the
+                    # event loop JobSupervisor shares with subprocess
+                    # polling, stop handling, and status updates.
+                    await loop.run_in_executor(
+                        None,
+                        self._log_client.rotate_log_file,
+                        log_path,
+                        backup_count,
+                    )
             except FileNotFoundError:
                 # Job finished and log file was already cleaned up.
                 return

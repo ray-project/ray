@@ -378,7 +378,11 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     "call_ray_start",
     [
         {
-            "env": {"RAY_ROTATION_MAX_BYTES": "1000", "RAY_ROTATION_BACKUP_COUNT": "1"},
+            "env": {
+                "RAY_ROTATION_MAX_BYTES": "1000",
+                "RAY_ROTATION_BACKUP_COUNT": "1",
+                "RAY_JOB_LOG_ROTATION_CHECK_PERIOD_S": "0.5",
+            },
             "cmd": "ray start --head",
         }
     ],
