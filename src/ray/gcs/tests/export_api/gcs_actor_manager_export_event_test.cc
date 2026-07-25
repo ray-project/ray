@@ -186,7 +186,8 @@ class GcsActorManagerTest : public ::testing::Test {
         actor_by_state_gauge_,
         gcs_actor_by_state_gauge_,
         observability_publisher_.get(),
-        clock_);
+        clock_,
+        [](const NodeID &, const WorkerID &) { return false; });
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -199,6 +200,25 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.stop();
     thread_io_service_->join();
     std::filesystem::remove_all(log_dir_.c_str());
+  }
+
+  void ReportActorRefDeleted(const ActorID &actor_id) {
+    // The actor manager's state is modified on the io_service thread, so run the
+    // handler there, like the real RPC would.
+    std::promise<bool> promise;
+    io_service_.post(
+        [this, actor_id, &promise]() {
+          rpc::ReportActorRefDeletedRequest request;
+          request.set_actor_id(actor_id.Binary());
+          // The reply is written from the ActorTable().Put completion after this
+          // task returns; keep it alive until the reply callback has run.
+          auto reply = std::make_shared<rpc::ReportActorRefDeletedReply>();
+          gcs_actor_manager_->HandleReportActorRefDeleted(
+              request, reply.get(), [reply](auto status, auto success, auto failure) {});
+          promise.set_value(true);
+        },
+        "test");
+    promise.get_future().get();
   }
 
   void WaitActorCreated(const ActorID &actor_id) {
@@ -327,7 +347,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
-  ASSERT_TRUE(worker_client_->Reply());
+  ReportActorRefDeleted(actor->GetActorID());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);

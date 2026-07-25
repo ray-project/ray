@@ -255,6 +255,21 @@ void ActorInfoAccessor::AsyncReportActorOutOfScope(
       timeout_ms);
 }
 
+void ActorInfoAccessor::AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                                   const rpc::StatusCallback &callback,
+                                                   int64_t timeout_ms) {
+  rpc::ReportActorRefDeletedRequest request;
+  request.set_actor_id(actor_id.Binary());
+  context_->GetGcsRpcClient().ReportActorRefDeleted(
+      std::move(request),
+      [callback](const Status &status, rpc::ReportActorRefDeletedReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
+}
+
 void ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,

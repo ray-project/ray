@@ -128,6 +128,9 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
                                   const rpc::StatusCallback &callback,
                                   int64_t timeout_ms = -1) override {}
+  void AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                  const rpc::StatusCallback &callback,
+                                  int64_t timeout_ms = -1) override {}
   void AsyncRegisterActor(const TaskSpecification &task_spec,
                           const rpc::StatusCallback &callback,
                           int64_t timeout_ms = -1) override {}

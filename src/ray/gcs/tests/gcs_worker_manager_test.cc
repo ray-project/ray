@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -72,6 +73,29 @@ class GcsWorkerManagerTest : public Test {
   }
 
   std::shared_ptr<gcs::GcsWorkerManager> GetWorkerManager() { return worker_manager_; }
+
+  // The manager's dead-worker state is only valid on io_service_, so reach it the
+  // way production does instead of from the test thread.
+  bool IsWorkerDead(const WorkerID &worker_id) {
+    std::promise<bool> promise;
+    io_service_.post(
+        [this, &promise, worker_id] {
+          promise.set_value(worker_manager_->IsWorkerDead(worker_id));
+        },
+        "test.IsWorkerDead");
+    return promise.get_future().get();
+  }
+
+  void RestoreDeadWorkerIdsQueue(const gcs::GcsInitData &gcs_init_data) {
+    std::promise<void> promise;
+    io_service_.post(
+        [this, &promise, &gcs_init_data] {
+          worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
+          promise.set_value();
+        },
+        "test.RestoreDeadWorkerIdsQueue");
+    promise.get_future().get();
+  }
 
   gcs::GcsInitData LoadInitData() {
     gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
@@ -376,7 +400,7 @@ TEST_F(GcsWorkerManagerTest, TestRestoreDeadWorkerIdsQueue) {
   // Rebuild the queue from the startup snapshot (as GCS does before serving); it
   // bulk-trims the table to the cap, keeping the newest by death time
   gcs::GcsInitData gcs_init_data = LoadInitData();
-  worker_manager->RestoreDeadWorkerIdsQueue(gcs_init_data);
+  RestoreDeadWorkerIdsQueue(gcs_init_data);
 
   auto remaining = get_all_worker_ids();
   ASSERT_EQ(remaining.size(), 3);
@@ -385,6 +409,48 @@ TEST_F(GcsWorkerManagerTest, TestRestoreDeadWorkerIdsQueue) {
   EXPECT_TRUE(contains(remaining, worker_ids[2]));
   EXPECT_TRUE(contains(remaining, worker_ids[3]));
   EXPECT_TRUE(contains(remaining, worker_ids[4]));
+
+  // The liveness index is in memory only, so a restart must reseed it from the
+  // table that survived, and must not remember the rows it just evicted.
+  EXPECT_TRUE(IsWorkerDead(worker_ids[2]));
+  EXPECT_FALSE(IsWorkerDead(worker_ids[0]));
+}
+
+TEST_F(GcsWorkerManagerTest, TestIsWorkerDead) {
+  // The liveness index must answer as soon as a death is reported, since callers
+  // such as actor registration ask on the same io_context turn, and it must not
+  // claim a worker is dead on no evidence.
+  auto worker_manager = GetWorkerManager();
+  const auto dead_worker_id = WorkerID::FromRandom();
+  const auto unknown_worker_id = WorkerID::FromRandom();
+
+  ASSERT_FALSE(IsWorkerDead(dead_worker_id));
+  ASSERT_FALSE(IsWorkerDead(unknown_worker_id));
+
+  // A listener runs before the table write completes, so it is the cheapest
+  // proxy for "recorded before anything else can observe the death".
+  bool dead_when_listener_ran = false;
+  worker_manager->AddWorkerDeadListener(
+      [&](const std::shared_ptr<rpc::WorkerTableData> &data) {
+        dead_when_listener_ran = worker_manager->IsWorkerDead(dead_worker_id);
+      });
+
+  rpc::ReportWorkerFailureRequest request;
+  request.mutable_worker_failure()->mutable_worker_address()->set_worker_id(
+      dead_worker_id.Binary());
+  request.mutable_worker_failure()->set_exit_type(rpc::WorkerExitType::SYSTEM_ERROR);
+  rpc::ReportWorkerFailureReply reply;
+  std::promise<void> promise;
+  worker_manager->HandleReportWorkerFailure(
+      request,
+      &reply,
+      [&promise](Status status, std::function<void()>, std::function<void()>) {
+        promise.set_value();
+      });
+  promise.get_future().get();
+
+  ASSERT_TRUE(dead_when_listener_ran);
+  ASSERT_TRUE(IsWorkerDead(dead_worker_id));
 }
 
 TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
@@ -463,7 +529,7 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
     add_dead_worker(
         idle.back(), /*end_ms=*/(i + 1) * 10, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
   }
-  worker_manager->RestoreDeadWorkerIdsQueue(LoadInitData());
+  RestoreDeadWorkerIdsQueue(LoadInitData());
 
   auto after_restore = get_all_worker_ids();
   ASSERT_EQ(after_restore.size(), 3);
@@ -485,4 +551,22 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
   EXPECT_TRUE(contains(after_deaths, idle3));
   EXPECT_FALSE(contains(after_deaths, idle[1]));
   EXPECT_FALSE(contains(after_deaths, idle[2]));
+  EXPECT_FALSE(IsWorkerDead(idle[1]));
+  EXPECT_FALSE(IsWorkerDead(idle[2]));
+
+  // Phase 3: a failure drains the intentional-exit tier, so the next intentional
+  // exit is the only entry in the lowest tier and evicts itself. Its row must
+  // still not survive: the eviction is issued after its own row is written.
+  WorkerID failure3 = WorkerID::FromRandom();
+  report_worker_dead(failure3, rpc::WorkerExitType::USER_ERROR);
+  WorkerID idle4 = WorkerID::FromRandom();
+  report_worker_dead(idle4, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+
+  auto after_self_eviction = get_all_worker_ids();
+  ASSERT_EQ(after_self_eviction.size(), 3);
+  EXPECT_TRUE(contains(after_self_eviction, failure1));
+  EXPECT_TRUE(contains(after_self_eviction, failure2));
+  EXPECT_TRUE(contains(after_self_eviction, failure3));
+  EXPECT_FALSE(contains(after_self_eviction, idle4));
+  EXPECT_FALSE(IsWorkerDead(idle4));
 }

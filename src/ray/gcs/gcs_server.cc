@@ -347,9 +347,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       metrics_.placement_group_creation_latency_in_ms_histogram,
       metrics_.placement_group_scheduling_latency_in_ms_histogram,
       metrics_.placement_group_count_gauge);
+  // Before the actor manager: it asks the worker manager whether an actor's owner
+  // is already known to be dead.
+  InitGcsWorkerManager(gcs_init_data);
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
-  InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
@@ -644,7 +646,13 @@ void GcsServer::InitGcsActorManager(
       actor_by_state_gauge,
       gcs_actor_by_state_gauge,
       observability_publisher_.get(),
-      clock_);
+      clock_,
+      // The RPC server is shut down before either manager is destroyed, so this
+      // cannot run after they are gone.
+      [this](const NodeID &node_id, const WorkerID &worker_id) {
+        return gcs_worker_manager_->IsWorkerDead(worker_id) ||
+               gcs_node_manager_->IsNodeDead(node_id);
+      });
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(

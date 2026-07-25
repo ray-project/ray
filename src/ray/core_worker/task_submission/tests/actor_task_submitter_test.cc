@@ -1011,6 +1011,51 @@ TEST_P(ActorTaskSubmitterTest, TestPerConcurrencyGroupSequencing) {
   ASSERT_EQ(worker_client_->received_seq_nos.size(), 4);
 }
 
+// When the ref count hits zero, the notification should fire so the GCS learns
+// there are no references and destroys the actor.
+TEST_P(ActorTaskSubmitterTest, TestNotifyGCSWhenActorRefDeletedReportsOnRefDeletion) {
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  const ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  rpc::Address addr;
+  reference_counter_->AddOwnedObject(actor_handle_id,
+                                     {},
+                                     addr,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true);
+
+  submitter_.NotifyGCSWhenActorRefDeleted(actor_id);
+  ASSERT_TRUE(actor_creator_.ref_deleted_reports.empty())
+      << "The report must not be sent while a reference is still held.";
+
+  reference_counter_->RemoveLocalReference(actor_handle_id, nullptr);
+  ASSERT_EQ(actor_creator_.ref_deleted_reports, std::vector<ActorID>{actor_id});
+}
+
+// An anonymous actor registers asynchronously, but the notification is only
+// installed after the registration resolves, or the notification could race
+// ahead of the inflight RegisterActor and be dropped as unknown. So it is
+// possible that the user deletes the actor handle first and the notification
+// is installed later; in this case, it should fire immediately.
+TEST_P(ActorTaskSubmitterTest,
+       TestNotifyGCSWhenActorRefDeletedReportsIfRefAlreadyDeleted) {
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  const ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  rpc::Address addr;
+  reference_counter_->AddOwnedObject(actor_handle_id,
+                                     {},
+                                     addr,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(actor_handle_id, nullptr);
+
+  submitter_.NotifyGCSWhenActorRefDeleted(actor_id);
+  ASSERT_EQ(actor_creator_.ref_deleted_reports, std::vector<ActorID>{actor_id});
+}
+
 INSTANTIATE_TEST_SUITE_P(AllowOutOfOrderExecution,
                          ActorTaskSubmitterTest,
                          ::testing::Values(true, false));

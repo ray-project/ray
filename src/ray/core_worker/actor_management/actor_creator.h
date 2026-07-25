@@ -50,6 +50,15 @@ class ActorCreatorInterface {
       uint64_t num_restarts_due_to_lineage_reconstructions,
       rpc::StatusCallback callback) = 0;
 
+  /// Asynchronously report to the GCS that all references to the actor
+  /// (including lineage refs) have been deleted, so the GCS can permanently
+  /// destroy the actor.
+  ///
+  /// \param actor_id The ID of the actor.
+  /// \param callback Callback that will be called after the report completes.
+  virtual void AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                          rpc::StatusCallback callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -89,6 +98,9 @@ class ActorCreator : public ActorCreatorInterface {
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
+                                  rpc::StatusCallback callback) override;
+
+  void AsyncReportActorRefDeleted(const ActorID &actor_id,
                                   rpc::StatusCallback callback) override;
 
   bool IsActorInRegistering(const ActorID &actor_id) const override;

@@ -65,6 +65,11 @@ void ActorCreator::AsyncReportActorOutOfScope(
       actor_id, num_restarts_due_to_lineage_reconstruction, callback);
 }
 
+void ActorCreator::AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                              rpc::StatusCallback callback) {
+  actor_client_.AsyncReportActorRefDeleted(actor_id, callback);
+}
+
 bool ActorCreator::IsActorInRegistering(const ActorID &actor_id) const {
   return registering_actors_->find(actor_id) != registering_actors_->end();
 }
