@@ -318,15 +318,7 @@ class ActorPool:
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
 
-        is_alive = True
-        try:
-            result = ray.get(future)
-        except ray.exceptions.RayActorError:
-            is_alive = False
-            raise
-        finally:
-            self._return_actor(a, is_alive=is_alive)
-        return result
+        return self._get_result(future, a)
 
     def get_next_unordered(
         self,
@@ -400,15 +392,17 @@ class ActorPool:
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
 
+        return self._get_result(future, a)
+
+    def _get_result(self, future, actor):
         is_alive = True
         try:
-            result = ray.get(future)
+            return ray.get(future)
         except ray.exceptions.RayActorError:
             is_alive = False
             raise
         finally:
-            self._return_actor(a, is_alive=is_alive)
-        return result
+            self._return_actor(actor, is_alive=is_alive)
 
     def _return_actor(self, actor, is_alive=True):
         # A dead actor stays out of the idle set, otherwise submit() would keep
