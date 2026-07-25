@@ -98,6 +98,16 @@ class MockSelectionService:
             "effective_prefill_tokens": len(request["token_ids"]),
         }
 
+    async def select_and_reserve(self, request):
+        self.calls.append(
+            (
+                "select_and_reserve",
+                request["reservation_id"],
+                request.get("expected_output_tokens"),
+            )
+        )
+        return await self.select(request)
+
     async def create_reservation(self, request):
         self.reservations.append(dict(request))
         self.calls.append(
@@ -127,8 +137,9 @@ class MockSelectionService:
 class RecordingKVTokenTracker(KVTokenTracker):
     """KVTokenTracker that records the lifecycle events it receives for tests."""
 
-    def __init__(self, block_size):
+    def __init__(self, block_size, select_reserve=False):
         self._block_size = block_size
+        self._select_reserve = select_reserve
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
@@ -177,8 +188,9 @@ class RaisingActor:
 class LocalKVTokenTracker(KVTokenTracker):
     """Router-local KVTokenTracker with the event plane + Serve LongPoll stripped."""
 
-    def __init__(self, block_size):
+    def __init__(self, block_size, select_reserve=False):
         self._block_size = block_size
+        self._select_reserve = select_reserve
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
@@ -236,7 +248,7 @@ class _BroadcastHandle:
 
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
-    def _build(script, *targets, **engine_kwargs):
+    def _build(script, *targets, select_reserve=False, **engine_kwargs):
         monkeypatch.setattr(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
             "token_tracking.get_llm_router_handle",
@@ -249,7 +261,9 @@ def build_token_tracking_engine(monkeypatch):
                 replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
             ),
         )
-        return enable_token_tracking(MockAsyncLLM)(script, **engine_kwargs)
+        return enable_token_tracking(
+            MockAsyncLLM, select_reserve=select_reserve
+        )(script, **engine_kwargs)
 
     return _build
 
@@ -300,6 +314,35 @@ async def test_basic_lifecycle(build_token_tracking_engine):
         ("on_decode_progress", ("req-1", 2)),
         ("on_decode_progress", ("req-1", 3)),
         ("on_request_completed", ("req-1",)),
+    ]
+    assert outputs == engine.script
+
+
+@pytest.mark.asyncio
+async def test_reserve_lifecycle_reports_prefill_and_completion_only(
+    build_token_tracking_engine,
+):
+    """Reserve mode relies on select_and_reserve for admission and Dynamo decay
+    for decode load, so the engine should not send add/decode events."""
+    actor = RecordingKVTokenTracker.remote(block_size=16, select_reserve=True)
+    engine = build_token_tracking_engine(
+        delta_steps(3, prompt_len=10),
+        actor,
+        select_reserve=True,
+    )
+
+    outputs = await consume(
+        engine.generate(
+            "already-routed",
+            SamplingParams(output_kind=RequestOutputKind.DELTA, max_tokens=MAX_TOKENS),
+            "req-reserve",
+        )
+    )
+    await drain(engine)
+
+    assert ray.get(actor.get_event_log.remote()) == [
+        ("on_prefill_complete", ("req-reserve",)),
+        ("on_request_completed", ("req-reserve",)),
     ]
     assert outputs == engine.script
 

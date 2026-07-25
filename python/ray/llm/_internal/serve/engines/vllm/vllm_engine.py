@@ -1,7 +1,12 @@
 import argparse
+import asyncio
+from collections import OrderedDict
 import dataclasses
+import functools
 import inspect
 import json
+import os
+import time
 import typing
 from typing import (
     TYPE_CHECKING,
@@ -14,7 +19,11 @@ from typing import (
     Tuple,
     Union,
 )
+import zlib
 
+from fastapi import HTTPException as FastAPIHTTPException
+from fastapi import Response
+import numpy as np
 from pydantic import BaseModel, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
@@ -53,6 +62,13 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_PROMPT_TOKEN_CRC32_HEADER,
+    KV_PROMPT_TOKEN_KEY_HEADER,
+    KV_PROMPT_TOKEN_LEN_HEADER,
+    KV_PROMPT_TOKEN_SIDE_CHANNEL_PATH,
+    KV_SELECT_RESERVE_KEY,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -84,6 +100,315 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+_PROMPT_TOKEN_SIDE_CHANNEL_TTL_S = float(
+    os.environ.get("RAY_SERVE_KV_PROMPT_TOKEN_STAGING_TTL_S", "60")
+)
+_PROMPT_TOKEN_SIDE_CHANNEL_MAX_ENTRIES = int(
+    os.environ.get("RAY_SERVE_KV_PROMPT_TOKEN_STAGING_MAX_ENTRIES", "8192")
+)
+_PROMPT_TOKEN_SIDE_CHANNEL_MAX_BYTES = int(
+    os.environ.get("RAY_SERVE_KV_PROMPT_TOKEN_STAGING_MAX_BYTES", str(1024**3))
+)
+_PROMPT_TOKEN_SIDE_CHANNEL_WAIT_S = float(
+    os.environ.get("RAY_SERVE_KV_PROMPT_TOKEN_WAIT_TIMEOUT_S", "0.25")
+)
+_PROMPT_TOKEN_SIDE_CHANNEL_CONSUMED = 0
+_PROMPT_TOKEN_SIDE_CHANNEL_MISSED = 0
+_PROMPT_TOKEN_SIDE_CHANNEL_LOGGED = False
+
+
+@dataclasses.dataclass
+class _StagedPromptTokens:
+    payload: bytes
+    token_count: int
+    crc32: str
+    created_at_s: float
+
+
+class _PromptTokenSideChannelStore:
+    """Replica-local staging area for binary prompt token vectors."""
+
+    def __init__(
+        self,
+        *,
+        ttl_s: float = _PROMPT_TOKEN_SIDE_CHANNEL_TTL_S,
+        max_entries: int = _PROMPT_TOKEN_SIDE_CHANNEL_MAX_ENTRIES,
+        max_bytes: int = _PROMPT_TOKEN_SIDE_CHANNEL_MAX_BYTES,
+    ):
+        self._ttl_s = ttl_s
+        self._max_entries = max_entries
+        self._max_bytes = max_bytes
+        self._entries: "OrderedDict[str, _StagedPromptTokens]" = OrderedDict()
+        self._total_bytes = 0
+        self._lock = asyncio.Lock()
+
+    async def put(
+        self,
+        key: str,
+        *,
+        payload: bytes,
+        token_count: int,
+        crc32: str,
+    ) -> None:
+        if self._max_bytes > 0 and len(payload) > self._max_bytes:
+            raise ValueError(
+                "prompt token payload exceeds staging byte cap "
+                f"({len(payload)} > {self._max_bytes})"
+            )
+
+        now = time.monotonic()
+        async with self._lock:
+            self._sweep_locked(now)
+            old = self._entries.pop(key, None)
+            if old is not None:
+                self._total_bytes -= len(old.payload)
+            entry = _StagedPromptTokens(
+                payload=payload,
+                token_count=token_count,
+                crc32=crc32,
+                created_at_s=now,
+            )
+            self._entries[key] = entry
+            self._total_bytes += len(payload)
+            self._evict_to_limits_locked()
+
+    async def pop(
+        self, key: str, *, wait_s: float = 0.0
+    ) -> Optional[_StagedPromptTokens]:
+        deadline = time.monotonic() + max(0.0, wait_s)
+        while True:
+            now = time.monotonic()
+            async with self._lock:
+                self._sweep_locked(now)
+                entry = self._entries.pop(key, None)
+                if entry is not None:
+                    self._total_bytes -= len(entry.payload)
+                    return entry
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            await asyncio.sleep(min(0.001, remaining))
+
+    def _sweep_locked(self, now: float) -> None:
+        if self._ttl_s <= 0:
+            return
+        while self._entries:
+            _, entry = next(iter(self._entries.items()))
+            if now - entry.created_at_s <= self._ttl_s:
+                return
+            _, expired = self._entries.popitem(last=False)
+            self._total_bytes -= len(expired.payload)
+
+    def _evict_to_limits_locked(self) -> None:
+        while self._max_entries > 0 and len(self._entries) > self._max_entries:
+            _, evicted = self._entries.popitem(last=False)
+            self._total_bytes -= len(evicted.payload)
+        while self._max_bytes > 0 and self._total_bytes > self._max_bytes:
+            _, evicted = self._entries.popitem(last=False)
+            self._total_bytes -= len(evicted.payload)
+
+
+def _parse_required_int_header(headers: Any, name: str) -> int:
+    value = headers.get(name)
+    if value is None:
+        raise FastAPIHTTPException(status_code=400, detail=f"missing {name}")
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise FastAPIHTTPException(status_code=400, detail=f"invalid {name}") from None
+    if parsed < 0:
+        raise FastAPIHTTPException(status_code=400, detail=f"invalid {name}")
+    return parsed
+
+
+def _parse_required_crc32_header(headers: Any) -> str:
+    value = headers.get(KV_PROMPT_TOKEN_CRC32_HEADER)
+    if value is None:
+        raise FastAPIHTTPException(
+            status_code=400, detail=f"missing {KV_PROMPT_TOKEN_CRC32_HEADER}"
+        )
+    value = value.lower()
+    if len(value) != 8 or any(ch not in "0123456789abcdef" for ch in value):
+        raise FastAPIHTTPException(
+            status_code=400, detail=f"invalid {KV_PROMPT_TOKEN_CRC32_HEADER}"
+        )
+    return value
+
+
+def _prompt_token_ids_from_entry(entry: _StagedPromptTokens):
+    expected_bytes = entry.token_count * 4
+    if len(entry.payload) != expected_bytes:
+        raise ValueError(
+            "prompt token payload byte length mismatch "
+            f"({len(entry.payload)} != {expected_bytes})"
+        )
+    crc32 = f"{zlib.crc32(entry.payload) & 0xFFFFFFFF:08x}"
+    if crc32 != entry.crc32:
+        raise ValueError(
+            f"prompt token payload checksum mismatch ({crc32} != {entry.crc32})"
+        )
+    return np.frombuffer(entry.payload, dtype="<u4").tolist()
+
+
+def _write_prompt_token_side_channel_marker(kind: str, value: int) -> None:
+    try:
+        with open(f"/tmp/kv_prompt_sidechannel_{kind}_{os.getpid()}", "w") as f:
+            f.write(str(value))
+    except OSError:
+        pass
+
+
+def _note_prompt_token_side_channel_consumed() -> None:
+    global _PROMPT_TOKEN_SIDE_CHANNEL_CONSUMED, _PROMPT_TOKEN_SIDE_CHANNEL_LOGGED
+    _PROMPT_TOKEN_SIDE_CHANNEL_CONSUMED += 1
+    _write_prompt_token_side_channel_marker(
+        "consumed", _PROMPT_TOKEN_SIDE_CHANNEL_CONSUMED
+    )
+    if not _PROMPT_TOKEN_SIDE_CHANNEL_LOGGED:
+        _PROMPT_TOKEN_SIDE_CHANNEL_LOGGED = True
+        logger.info(
+            "KV prompt token side-channel consumed staged prompt IDs; "
+            "vLLM renderer will skip tokenization."
+        )
+
+
+def _note_prompt_token_side_channel_missed(token_key: str) -> None:
+    global _PROMPT_TOKEN_SIDE_CHANNEL_MISSED
+    _PROMPT_TOKEN_SIDE_CHANNEL_MISSED += 1
+    _write_prompt_token_side_channel_marker("missed", _PROMPT_TOKEN_SIDE_CHANNEL_MISSED)
+    logger.warning(
+        "KV prompt token side-channel key %s was not found on this replica; "
+        "falling back to vLLM tokenization.",
+        token_key,
+    )
+
+
+async def _inject_prompt_ids_from_side_channel(
+    request: Any,
+    raw_request: Optional[Request],
+    store: _PromptTokenSideChannelStore,
+) -> None:
+    if raw_request is None:
+        return
+    token_key = raw_request.headers.get(KV_PROMPT_TOKEN_KEY_HEADER)
+    if not token_key:
+        return
+
+    entry = await store.pop(token_key, wait_s=_PROMPT_TOKEN_SIDE_CHANNEL_WAIT_S)
+    if entry is None:
+        _note_prompt_token_side_channel_missed(token_key)
+        return
+
+    header_count = _parse_required_int_header(
+        raw_request.headers, KV_PROMPT_TOKEN_LEN_HEADER
+    )
+    header_crc32 = _parse_required_crc32_header(raw_request.headers)
+    if header_count != entry.token_count:
+        raise ValueError(
+            "prompt token side-channel token count mismatch "
+            f"({header_count} != {entry.token_count})"
+        )
+    if header_crc32 != entry.crc32:
+        raise ValueError(
+            "prompt token side-channel checksum metadata mismatch "
+            f"({header_crc32} != {entry.crc32})"
+        )
+
+    prompt_token_ids = _prompt_token_ids_from_entry(entry)
+    kv_transfer_params = getattr(request, "kv_transfer_params", None)
+    if not isinstance(kv_transfer_params, dict):
+        kv_transfer_params = {}
+        request.kv_transfer_params = kv_transfer_params
+    kv_transfer_params["prompt_token_ids"] = prompt_token_ids
+    _note_prompt_token_side_channel_consumed()
+
+
+def _install_prompt_ids_forwarding(
+    serving: Any,
+    method_name: str,
+    store: _PromptTokenSideChannelStore,
+) -> None:
+    if serving is None:
+        return
+    orig = getattr(serving, method_name, None)
+    if orig is None or getattr(orig, "_kv_prompt_side_channel_wrapped", False):
+        return
+
+    @functools.wraps(orig)
+    async def wrapped(request: Any, raw_request: Optional[Request] = None, *args, **kw):
+        effective_raw_request = kw.get("raw_request", raw_request)
+        await _inject_prompt_ids_from_side_channel(
+            request, effective_raw_request, store
+        )
+        if "raw_request" in kw and raw_request is None:
+            return await orig(request, *args, **kw)
+        return await orig(request, raw_request, *args, **kw)
+
+    wrapped._kv_prompt_side_channel_wrapped = True  # type: ignore[attr-defined]
+    setattr(serving, method_name, wrapped)
+
+
+def _install_prompt_token_side_channel(
+    app: Any,
+    store: _PromptTokenSideChannelStore,
+) -> None:
+    if getattr(app.state, "_kv_prompt_token_side_channel_installed", False):
+        return
+    app.state.kv_prompt_token_side_channel_store = store
+
+    @app.put(KV_PROMPT_TOKEN_SIDE_CHANNEL_PATH + "/{token_key}")
+    async def _stage_prompt_token_ids(token_key: str, request: Request):
+        token_count = _parse_required_int_header(
+            request.headers, KV_PROMPT_TOKEN_LEN_HEADER
+        )
+        crc32 = _parse_required_crc32_header(request.headers)
+        payload = await request.body()
+        if len(payload) != token_count * 4:
+            raise FastAPIHTTPException(
+                status_code=400,
+                detail=(
+                    "prompt token payload byte length mismatch "
+                    f"({len(payload)} != {token_count * 4})"
+                ),
+            )
+        actual_crc32 = f"{zlib.crc32(payload) & 0xFFFFFFFF:08x}"
+        if actual_crc32 != crc32:
+            raise FastAPIHTTPException(
+                status_code=400,
+                detail=(
+                    "prompt token payload checksum mismatch "
+                    f"({actual_crc32} != {crc32})"
+                ),
+            )
+        try:
+            await store.put(
+                token_key,
+                payload=payload,
+                token_count=token_count,
+                crc32=crc32,
+            )
+        except ValueError as e:
+            raise FastAPIHTTPException(status_code=413, detail=str(e)) from e
+        return Response(status_code=204)
+
+    app.state._kv_prompt_token_side_channel_installed = True
+
+
+def _install_prompt_ids_forwarding_on_state(
+    state: Any,
+    store: _PromptTokenSideChannelStore,
+) -> None:
+    _install_prompt_ids_forwarding(
+        getattr(state, "openai_serving_chat", None),
+        "create_chat_completion",
+        store,
+    )
+    _install_prompt_ids_forwarding(
+        getattr(state, "openai_serving_completion", None),
+        "create_completion",
+        store,
+    )
 
 
 def _canonicalize_request_id_header(
@@ -305,6 +630,7 @@ class VLLMEngine(LLMEngine):
         # Routing stats advertised to Serve's request router; populated in
         # start() once the engine's KV-events endpoint is bound.
         self._routing_stats: Dict[str, Any] = {}
+        self._prompt_token_side_channel_store = _PromptTokenSideChannelStore()
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -336,6 +662,12 @@ class VLLMEngine(LLMEngine):
             app.state,
             self._vllm_args,
             supported_tasks=supported_tasks,
+        )
+        _install_prompt_token_side_channel(
+            app, self._prompt_token_side_channel_store
+        )
+        _install_prompt_ids_forwarding_on_state(
+            app.state, self._prompt_token_side_channel_store
         )
         return app
 
@@ -416,6 +748,9 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_scores = getattr(state, "serving_scores", None)
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
+        )
+        _install_prompt_ids_forwarding_on_state(
+            state, self._prompt_token_side_channel_store
         )
 
         self._validate_openai_serving_models()
@@ -575,7 +910,21 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(AsyncLLM)
+            select_reserve = self.llm_config.experimental_configs.get(
+                KV_SELECT_RESERVE_KEY
+            )
+            if isinstance(select_reserve, str):
+                select_reserve = select_reserve.lower() not in (
+                    "",
+                    "0",
+                    "false",
+                    "no",
+                )
+            else:
+                select_reserve = bool(select_reserve)
+            engine_cls = enable_token_tracking(
+                AsyncLLM, select_reserve=select_reserve
+            )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

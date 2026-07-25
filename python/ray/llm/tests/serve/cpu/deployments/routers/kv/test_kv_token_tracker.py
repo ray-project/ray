@@ -34,9 +34,10 @@ def reset_process_global():
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id):
+    def __init__(self, *, indexer_threads, serve_deployment_id, select_reserve=False):
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
+        self.select_reserve = select_reserve
 
 
 def _llm_config(experimental_configs=None) -> LLMConfig:
@@ -64,6 +65,13 @@ def test_indexer_threads_from_config(monkeypatch):
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config({"KV_INDEXER_THREADS": 8}), "dep-id")
     assert tracker.indexer_threads == 8
+
+
+def test_select_reserve_from_config(monkeypatch):
+    """The KV_SELECT_RESERVE experimental config reaches the router-local tracker."""
+    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
+    tracker = build_kv_token_tracker(_llm_config({"KV_SELECT_RESERVE": "1"}), "dep-id")
+    assert tracker.select_reserve is True
 
 
 def test_router_binds_tracker():

@@ -1006,13 +1006,23 @@ def _create_replica_server(port: int, replica_id_header: str):
     @app.post("/{path:path}")
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
+        for header in (
+            "x-kv-token-key",
+            "x-kv-token-len",
+            "x-kv-token-crc32",
+        ):
+            value = req.headers.get(header)
+            if value is not None:
+                res.headers[f"echo-{header}"] = value
         body = await req.body()
         return {"replica": replica_id_header, "echo": body.decode("utf-8")}
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
-def _create_router_server(port: int, replica_id_to_return: str):
+def _create_router_server(
+    port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
+):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
     forwards the buffered request body prefix to the router."""
     app = FastAPI()
@@ -1022,7 +1032,10 @@ def _create_router_server(port: int, replica_id_to_return: str):
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
-        return {"replica_id": replica_id_to_return}
+        response = {"replica_id": replica_id_to_return}
+        if extra_response:
+            response.update(extra_response)
+        return response
 
     def ready():
         return (
@@ -1194,6 +1207,86 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             _shutdown_fake_servers(
                 (replica_a, replica_b, router),
                 (replica_a_thread, replica_b_thread, router_thread),
+            )
+
+
+@pytest.mark.asyncio
+async def test_ingress_request_router_forwards_trusted_token_metadata(
+    haproxy_api_cleanup, monkeypatch
+):
+    """Token side-channel metadata must come from /internal/route, not the
+    original client request."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port,
+            replica_id_to_return=actor_name,
+            extra_response={
+                "kv_token_key": "trusted-key",
+                "kv_token_len": "3",
+                "kv_token_crc32": "12345678",
+            },
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json={"prompt": "hello"},
+                headers={
+                    "x-kv-token-key": "spoofed-key",
+                    "x-kv-token-len": "999",
+                    "x-kv-token-crc32": "ffffffff",
+                },
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("echo-x-kv-token-key") == "trusted-key"
+            assert resp.headers.get("echo-x-kv-token-len") == "3"
+            assert resp.headers.get("echo-x-kv-token-crc32") == "12345678"
+
+        finally:
+            _shutdown_fake_servers(
+                (replica, router),
+                (replica_thread, router_thread),
             )
 
 
