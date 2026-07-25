@@ -162,10 +162,6 @@ def test_npu_device_manager(ray_2_node_2_npus):
             trainer.fit()
 
 
-@pytest.mark.skipif(
-    not is_v2_enabled(),
-    reason="Requires Train V2 to be enabled with a V1 worker group.",
-)
 def test_torch_backend_with_v1_worker_group():
     worker_group = MagicMock(spec=WorkerGroup)
     worker_group.get_resources_per_worker.return_value = {}
