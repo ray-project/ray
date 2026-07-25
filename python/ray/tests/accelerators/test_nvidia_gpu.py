@@ -72,6 +72,8 @@ def test_gpu_info_parsing(patch_mock_pynvml):
         ("Tesla K80", "K80"),
         ("NVIDIA A100-SXM4-40GB", "A100"),
         ("NVIDIA H100 80GB HBM3", "H100"),
+        ("NVIDIA GB200", "GB200"),
+        ("NVIDIA GB300", "GB300"),
         # Consumer GPUs: the regex captures only "G" (stops at lowercase
         # 'e' in "GeForce"), so we fall back to a hyphen-joined product name.
         ("NVIDIA GeForce RTX 5090", "GeForce-RTX-5090"),
