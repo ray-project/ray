@@ -66,6 +66,7 @@ class JobSupervisor:
 
     DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    LOG_ROTATION_CHECK_PERIOD_S = 5.0
     VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
     def __init__(
@@ -296,6 +297,27 @@ class JobSupervisor:
                 # still running, yield control, 0.1s by default
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
+    async def _rotate_driver_log_if_needed(self, log_path: str) -> None:
+        """Periodically check the driver log file size and rotate if needed.
+
+        Runs for the lifetime of the driver subprocess, alongside _polling.
+        Uses copytruncate semantics since the driver subprocess holds this
+        file open directly; see JobLogStorageClient.rotate_log_file.
+        """
+        max_bytes = ray._private.worker._global_node.max_bytes
+        backup_count = ray._private.worker._global_node.backup_count
+        if max_bytes <= 0:
+            # Rotation disabled, matches convention used elsewhere in Ray.
+            return
+        while True:
+            await asyncio.sleep(self.LOG_ROTATION_CHECK_PERIOD_S)
+            try:
+                if os.path.getsize(log_path) >= max_bytes:
+                    self._log_client.rotate_log_file(log_path, backup_count)
+            except FileNotFoundError:
+                # Job finished and log file was already cleaned up.
+                return
+
     async def _poll_all(self, processes: List[psutil.Process]):
         """Poll processes until all are completed."""
         while True:
@@ -381,10 +403,12 @@ class JobSupervisor:
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
+            log_rotation_task = create_task(self._rotate_driver_log_if_needed(log_path))
             finished, _ = await asyncio.wait(
                 [polling_task, create_task(self._stop_event.wait())],
                 return_when=FIRST_COMPLETED,
             )
+            log_rotation_task.cancel()
 
             if self._stop_event.is_set():
                 polling_task.cancel()

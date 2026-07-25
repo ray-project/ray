@@ -100,6 +100,22 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
                 lines.append(curr_line)
                 chunk_char_count += len(curr_line)
             else:
+                # If the file was rotated (e.g. via copytruncate log
+                # rotation) out from under us, our current read position
+                # will be past the file's actual size. Reading from a
+                # stale position would return garbled data from whatever
+                # was written after rotation instead of erroring, since
+                # the OS just returns what's there. Detect this and seek
+                # back to the start so we pick up from the rotated file
+                # cleanly instead of silently returning corrupted lines.
+                try:
+                    if f.tell() > os.path.getsize(path):
+                        f.seek(0)
+                except FileNotFoundError:
+                    # File may have been removed entirely; keep waiting,
+                    # os.path.exists loop above already handles this
+                    # case on the next full iteration if needed.
+                    pass
                 # If EOF is reached sleep for 1s before continuing
                 await asyncio.sleep(1)
 

@@ -376,6 +376,77 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
+    [
+        {
+            "env": {"RAY_ROTATION_MAX_BYTES": "1000", "RAY_ROTATION_BACKUP_COUNT": "1"},
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_job_driver_log_rotation(call_ray_start, tmp_path):  # noqa: F811
+    """Test that job driver logs rotate once they exceed RAY_ROTATION_MAX_BYTES,
+    and that no output is lost or corrupted across the rotation boundary."""
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Write enough lines to comfortably exceed the 1000 byte threshold set
+    # above. Each line is ~20 bytes, 200 lines is ~4000 bytes total.
+    entrypoint = (
+        'python -c "'
+        "import sys, time\n"
+        "for i in range(200):\n"
+        "    print(f'log line number {i:04d}')\n"
+        "    sys.stdout.flush()\n"
+        "    time.sleep(0.02)\n"
+        '"'
+    )
+    job_id = await job_manager.submit_job(
+        entrypoint=entrypoint, submission_id="test_log_rotation"
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id, timeout=60
+    )
+
+    log_client = JobLogStorageClient()
+    job_driver_log_path = log_client.get_log_file_path(job_id)
+    backup_log_path = job_driver_log_path + ".1"
+
+    # Rotation should have actually happened given the low threshold and
+    # total output size well in excess of it.
+    assert os.path.exists(backup_log_path), (
+        "Expected a rotated backup log file to exist, rotation did not "
+        "trigger despite output exceeding RAY_ROTATION_MAX_BYTES"
+    )
+
+    # Collect all lines across both the backup and the live file, and
+    # confirm every line number 0000-0199 shows up exactly once, in order,
+    # with nothing dropped, duplicated, or corrupted across the rotation
+    # boundary.
+    with open(backup_log_path, "r") as f:
+        backup_lines = f.readlines()
+    with open(job_driver_log_path, "r") as f:
+        live_lines = f.readlines()
+
+    all_log_lines = [
+        line
+        for line in backup_lines + live_lines
+        if line.startswith("log line number ")
+    ]
+    expected_numbers = [f"{i:04d}" for i in range(200)]
+    actual_numbers = [line.strip().split()[-1] for line in all_log_lines]
+
+    assert actual_numbers == expected_numbers, (
+        "Log lines were lost, duplicated, or reordered across rotation. "
+        f"Expected {len(expected_numbers)} lines in order, got: "
+        f"{actual_numbers[:10]}...{actual_numbers[-10:]}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
     ["ray start --head --num-cpus=1"],
     indirect=True,
 )

@@ -136,6 +136,49 @@ class TestIterLine:
         assert await anext(it) is None
 
     @pytest.mark.asyncio
+    async def test_recovers_after_external_truncate(self, tmp):
+        """If the file is truncated externally (e.g. copytruncate log
+        rotation) while being tailed, the iterator should detect that its
+        read position is now past the file's actual size and seek back to
+        the start, rather than silently returning corrupted/truncated
+        lines read from a stale position.
+        """
+        it = file_tail_iterator(tmp)
+        assert await anext(it) is None
+
+        f = open(tmp, "a")
+        f.write("line0\n")
+        f.write("line1\n")
+        f.flush()
+        assert await anext(it) == ["line0\n", "line1\n"]
+
+        # Reader is now positioned at EOF, offset == len("line0\nline1\n").
+        # Trigger one more anext() call so the iterator's internal
+        # readline() hits EOF and its position is recorded relative to
+        # the file as it stood before truncation.
+        # (We don't await this one to completion since it would sleep on
+        # EOF; instead we truncate first, then write, then confirm the
+        # next real chunk read is correct.)
+
+        # Simulate external copytruncate rotation.
+        with open(tmp, "r+") as trunc_f:
+            trunc_f.truncate(0)
+
+        f.write("line2\n")
+        f.flush()
+
+        # The call immediately after truncation flushes the (now empty)
+        # in-flight chunk from before rotation, same as the natural EOF
+        # flush behavior exercised in test_multiple_lines.
+        assert await anext(it) is None
+
+        result = await anext(it)
+        assert result == ["line2\n"], (
+            "Expected clean recovery after truncation, got possibly "
+            f"corrupted result: {result!r}"
+        )
+
+    @pytest.mark.asyncio
     async def test_batching(self, tmp):
         it = file_tail_iterator(tmp)
         assert await anext(it) is None
@@ -296,7 +339,7 @@ class TestFastTailLastNLines:
         print("Finish reading sparse file tail.")
         assert len(out) == 20000
         assert out.endswith("\n")
-        assert "R" * 100 in out  # sampling check for last line content
+        assert "R" * 100 in out  # sampling check for last line conten
 
 
 if __name__ == "__main__":
