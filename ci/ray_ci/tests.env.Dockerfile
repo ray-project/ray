@@ -125,6 +125,7 @@ case "$BUILD_TYPE" in
     # import from ray.tests.conftest. Symlink the source tree's tests dir
     # into site-packages so these imports resolve.
     ln -s /rayci/python/ray/tests "${RAY_SITE_DIR}/tests"
+    ln -s /rayci/python/ray/llm/tests "${RAY_SITE_DIR}/llm/tests"
 
     apply_install_mask "${RAY_SITE_DIR}"
 
