@@ -74,6 +74,13 @@ class TestWandaImageName:
                 f"ray-llm-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
+                RayType.RAY_LLM,
+                "3.12",
+                "cu13.0.0-cudnn",
+                "aarch64",
+                "ray-llm-py3.12-cu13.0.0-cudnn-aarch64",
+            ),
+            (
                 RayType.RAY_LLM_EXTRA,
                 "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
