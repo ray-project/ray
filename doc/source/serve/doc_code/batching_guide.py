@@ -47,10 +47,11 @@ from typing import Dict
     user_config={
         "max_batch_size": 10,
         "batch_wait_timeout_s": 0.5,
+        "max_concurrent_batches": 2,
     }
 )
 class Model:
-    @serve.batch(max_batch_size=8, batch_wait_timeout_s=0.1)
+    @serve.batch(max_batch_size=8, batch_wait_timeout_s=0.1, max_concurrent_batches=1)
     async def __call__(self, multiple_samples: List[int]) -> List[int]:
         # Use numpy's vectorized computation to efficiently process a batch.
         return np.array(multiple_samples) * 2
@@ -58,6 +59,7 @@ class Model:
     def reconfigure(self, user_config: Dict):
         self.__call__.set_max_batch_size(user_config["max_batch_size"])
         self.__call__.set_batch_wait_timeout_s(user_config["batch_wait_timeout_s"])
+        self.__call__.set_max_concurrent_batches(user_config["max_concurrent_batches"])
 
 
 # __batch_params_update_end__
