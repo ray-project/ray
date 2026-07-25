@@ -156,6 +156,16 @@ steps:
     depends_on: ray-llmbase-aarch64($)
     instance_type: builder-arm64
 
+  - name: llmbuild-aarch64
+    label: "wanda: llmbuild (aarch64)"
+    wanda: ci/docker/llm.build.aarch64.wanda.yaml
+    depends_on: oss-ci-base_build-aarch64-py312
+    env:
+      PYTHON: "3.12"
+      RAY_CUDA_CODE: "cpu"
+    tags: cibase
+    instance_type: builder-arm64
+
   # NOTE(andrew-anyscale): dashboard is architecture agnostic, but wanda pulls
   # images for the architecture of the machine running the build. In the future,
   # we can remove the arch suffix and pull from the x86_64 image to avoid
@@ -601,4 +611,24 @@ steps:
       - oss-ci-base_build-aarch64
       - forge-aarch64
       - ray-wheel-build-aarch64(python=3.10)
+    job_env: forge-aarch64
+
+  - label: ":llm: llm: wheel-aarch64 tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
+    tags:
+      - llm
+      - linux_wheels
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
+        --build-type wheel-aarch64
+        --build-name llmbuild-aarch64
+        --parallelism-per-worker 3
+        --except-tags gpu
+        --python-version 3.12
+    depends_on:
+      - manylinux-aarch64
+      - llmbuild-aarch64
+      - forge-aarch64
+      - ray-wheel-build-aarch64(python=3.12)
     job_env: forge-aarch64
