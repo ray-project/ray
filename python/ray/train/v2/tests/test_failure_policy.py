@@ -13,8 +13,8 @@ from ray.train.v2._internal.execution.failure_handling import (
 from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2.api.exceptions import (
     ControllerError,
-    PreemptionError,
     NCCLHangError,
+    PreemptionError,
     WorkerGroupError,
 )
 
