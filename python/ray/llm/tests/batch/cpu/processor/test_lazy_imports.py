@@ -173,28 +173,14 @@ def test_dir_lists_lazy_attrs():
         assert name in dir(stages)
 
 
-# Modules that the PUBLIC ``ray.data.llm`` import must NOT pull in. Unlike
-# ``_HEAVY_MODULES`` above, the engine processor submodules themselves are
-# excluded: ``ray.data.llm`` subclasses every processor config at module
-# level, so those submodules are imported eagerly -- but they defer their
-# heavy dependencies into the builder functions, so importing them must not
-# load any of the modules below.
-_PUBLIC_API_HEAVY_MODULES = (
+# Stable external dependencies that the PUBLIC ``ray.data.llm`` import must NOT
+# pull in. Checked by prefix (so ``vllm.foo`` / ``starlette.routing`` also
+# count) rather than by exact keys, so the test does not couple to Ray's own
+# internal module layout.
+_PUBLIC_API_HEAVY_MODULE_PREFIXES = (
+    "vllm",
     "transformers",
-    "tokenizers",
-    "huggingface_hub",
-    "mistral_common",
-    "torch",
     "starlette",
-    "ray.serve",
-    "vllm.transformers_utils",
-    # Stage submodules that pull in the heavy deps above.
-    "ray.llm._internal.batch.stages.tokenize_stage",
-    "ray.llm._internal.batch.stages.chat_template_stage",
-    "ray.llm._internal.batch.stages.vllm_engine_stage",
-    "ray.llm._internal.batch.stages.sglang_engine_stage",
-    "ray.llm._internal.batch.stages.prepare_multimodal_stage",
-    "ray.llm._internal.batch.stages.serve_deployment_stage",
 )
 
 
@@ -214,8 +200,12 @@ def test_import_ray_data_llm_does_not_import_heavy_deps():
         import sys
         import ray.data.llm  # noqa: F401
 
-        heavy = {_PUBLIC_API_HEAVY_MODULES!r}
-        loaded = [m for m in heavy if m in sys.modules]
+        prefixes = {_PUBLIC_API_HEAVY_MODULE_PREFIXES!r}
+        loaded = sorted(
+            name
+            for name in sys.modules
+            if any(name == p or name.startswith(p + ".") for p in prefixes)
+        )
         print(','.join(loaded))
         """
     )

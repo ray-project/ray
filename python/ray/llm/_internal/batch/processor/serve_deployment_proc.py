@@ -71,12 +71,7 @@ def build_serve_deployment_processor(
     Returns:
         The constructed processor.
     """
-    # Deferred import: ``serve_deployment_stage`` imports ``ray.serve``, which
-    # requires the Ray Serve optional dependencies (starlette, fastapi, ...).
-    # Importing it lazily keeps `import ray.data.llm` lightweight for users
-    # that only need lightweight processors (e.g. HTTP). See
-    # ray-project/ray#62861 for the same pattern applied to the ``stages`` /
-    # ``processor`` package __init__ files.
+    # Defer Ray Serve imports until this processor is constructed.
     from ray.llm._internal.batch.stages import ServeDeploymentStage
 
     stages = [

@@ -102,11 +102,7 @@ def build_sglang_engine_processor(
     Returns:
         The constructed processor.
     """
-    # Deferred imports: these modules transitively pull in heavy optional
-    # dependencies (transformers, sglang, ...). Importing them lazily keeps
-    # `import ray.data.llm` lightweight for users that only need lightweight
-    # processors (e.g. HTTP). See ray-project/ray#62861 for the same pattern
-    # applied to the ``stages`` / ``processor`` package __init__ files.
+    # Defer SGLang and Transformers imports until this processor is constructed.
     import transformers
 
     from ray.llm._internal.batch.stages import (
