@@ -281,8 +281,6 @@ class OpenAiIngress(DeploymentProtocol):
         self._get_lora_model_metadata_func = (
             _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
         )
-        # In-flight ResponseChannel drives, kept referenced so they are not GC'd.
-        self._response_channel_tasks: set = set()
 
     async def _default_get_lora_model_metadata_func(
         self, model_id: str, base_path: str
@@ -426,11 +424,14 @@ class OpenAiIngress(DeploymentProtocol):
     async def _kickoff_response_channel(
         self, body, response_id: str, call_method: str, raw_request: Request
     ) -> Response:
-        """ResponseChannel drive: do the request-side work, kick off the leaf to
-        stream its response straight to HAProxy (keyed by ``response_id``), and
-        return an empty 202. The ingress is off the response path; the response
-        bytes never traverse it. ``call_method`` selects the streaming engine
-        method (chat/completions/transcriptions). See
+        """ResponseChannel drive: do the request-side work, then drive the leaf to
+        stream its response straight to HAProxy (keyed by ``response_id``). The
+        response bytes never traverse the ingress, but this call is awaited so the
+        request stays "ongoing" here for its whole lifetime: that keeps admission
+        I/O-bound rather than a burst of fast-returning kickoffs, and lets the
+        ingress autoscale on real load. HAProxy issues this kickoff as a background
+        task, so the client stream is served off this path. ``call_method`` selects
+        the streaming engine method (chat/completions/transcriptions). See
         ``core.server.response_channel``.
         """
         model_handle, body, raw_request_info = await self._prepare_request(
@@ -442,17 +443,9 @@ class OpenAiIngress(DeploymentProtocol):
             raw_request.headers.get(RESPONSE_CHANNEL_BASE_HEADER)
             or haproxy_base_for_leaf()
         )
-        task = asyncio.ensure_future(
-            model_handle.produce_to_channel.remote(
-                body,
-                response_id,
-                haproxy_base,
-                call_method,
-                raw_request_info,
-            )
+        await model_handle.produce_to_channel.remote(
+            body, response_id, haproxy_base, call_method, raw_request_info
         )
-        self._response_channel_tasks.add(task)
-        task.add_done_callback(self._response_channel_tasks.discard)
         return Response(status_code=202)
 
     async def model(self, model_id: str) -> Optional[ModelCard]:

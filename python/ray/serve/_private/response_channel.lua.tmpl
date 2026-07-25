@@ -83,19 +83,25 @@ core.register_service("response_channel_stream", "http", function(applet)
   applet:add_header("cache-control", "no-cache")
   applet:start_response()
 
-  -- Re-inject the request to the ingress via the ordinary routing path. The
+  -- Re-inject the request to the ingress via the ordinary routing path, in a
+  -- background task: the ingress holds this kickoff open for the whole response
+  -- (so its ongoing-request count reflects real load and autoscales), while this
+  -- applet drains the queue to the client below without waiting on it. The
   -- kickoff header makes the frontend route it to the backend (not back here).
-  local hc = core.httpclient()
-  hc:post{
-    url = LOOPBACK .. applet.path,
-    headers = {
-      ["content-type"] = { ctype },
-      ["x-response-id"] = { id },
-      ["x-response-channel-base"] = { ADVERTISE_BASE },
-      ["x-serve-response-channel"] = { "kickoff" },
-    },
-    body = reqbody,
-  }
+  local path = applet.path
+  core.register_task(function()
+    local hc = core.httpclient()
+    hc:post{
+      url = LOOPBACK .. path,
+      headers = {
+        ["content-type"] = { ctype },
+        ["x-response-id"] = { id },
+        ["x-response-channel-base"] = { ADVERTISE_BASE },
+        ["x-serve-response-channel"] = { "kickoff" },
+      },
+      body = reqbody,
+    }
+  end)
 
   while true do
     local item = q:pop_wait()
