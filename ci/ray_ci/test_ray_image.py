@@ -176,6 +176,7 @@ class TestValidateInvalid:
         with pytest.raises(RayImageError, match="Invalid platform cu99.9.9 for ray"):
             RayImage("ray", "3.10", "cu99.9.9").validate()
 
+
 class TestImageTypeConfig:
     def test_expected_types_covered(self):
         expected = {"ray", "ray-extra", "ray-llm", "ray-llm-extra"}

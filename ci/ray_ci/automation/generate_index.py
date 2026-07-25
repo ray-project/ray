@@ -36,9 +36,7 @@ INDEX_IMAGE_CONFIGS = {
 def main(prefix, image_type):
     ray_type = RayType(image_type)
     python_versions, platforms, architectures = INDEX_IMAGE_CONFIGS[ray_type]
-    tags = list_image_tags(
-        prefix, ray_type, python_versions, platforms, architectures
-    )
+    tags = list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
     tags = [f"rayproject/{ray_type.value}:{tag}" for tag in tags]
     indexes_to_publish = []
     for tag in tags:

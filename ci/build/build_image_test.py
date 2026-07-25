@@ -413,9 +413,7 @@ class TestFromArgs(unittest.TestCase):
                 mock.patch("build_image.find_ray_root", return_value=ray_root),
                 mock.patch("build_image.get_git_commit", return_value="abc1234"),
             ):
-                config = ImageBuildConfig.from_args(
-                    "ray-llm", "3.12", "cu13.0.0-cudnn"
-                )
+                config = ImageBuildConfig.from_args("ray-llm", "3.12", "cu13.0.0-cudnn")
 
         self.assertEqual(config.ray_image.architecture, "aarch64")
         self.assertEqual(
