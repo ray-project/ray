@@ -125,7 +125,7 @@ def _encode_shard(table: pa.Table) -> pa.Buffer:
 def _read_ipc(buf: Union[bytes, "pa.Buffer", memoryview]) -> pa.Table:
     """Decode a whole-frame shard: read the u64 size header, one zstd
     decompress of the rest, then read the (uncompressed) IPC stream."""
-    src = pa.py_buffer(buf) if isinstance(buf, (bytes, bytearray)) else buf
+    src = buf if isinstance(buf, pa.Buffer) else pa.py_buffer(buf)
     n = _WF_HEADER.unpack_from(memoryview(src))[0]
     raw = _SHARD_CODEC.decompress(src.slice(_WF_HEADER.size), decompressed_size=n)
     with pa.ipc.open_stream(raw) as r:
