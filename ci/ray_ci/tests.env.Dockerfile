@@ -126,6 +126,7 @@ case "$BUILD_TYPE" in
     # into site-packages so these imports resolve.
     ln -s /rayci/python/ray/tests "${RAY_SITE_DIR}/tests"
     ln -s /rayci/python/ray/llm/tests "${RAY_SITE_DIR}/llm/tests"
+    ln -s /rayci/python/ray/serve/tests "${RAY_SITE_DIR}/serve/tests"
 
     apply_install_mask "${RAY_SITE_DIR}"
 
