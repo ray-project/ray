@@ -12,6 +12,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
     Type,
     Union,
 )
@@ -376,28 +377,22 @@ class OpenAiIngress(DeploymentProtocol):
         None,
     ]:
         """Calls the model deployment and returns the stream."""
-        model_handle = await self._resolve_model_handle(body.model, raw_request)
-
-        # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
-        # for tool calling ValidatorIterator serialization issue.
-        if isinstance(body, ChatCompletionRequest):
-            body = _sanitize_chat_completion_request(body)
-
-        # Convert Starlette request to serializable RawRequestInfo
-        raw_request_info: Optional[RawRequestInfo] = None
-        if raw_request is not None:
-            raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
-
+        model_handle, body, raw_request_info = await self._prepare_request(
+            body, raw_request
+        )
         async for response in getattr(model_handle, call_method).remote(
             body, raw_request_info
         ):
             yield response
 
-    async def _resolve_model_handle(
-        self, model: str, raw_request: Optional[Request]
-    ) -> DeploymentHandle:
-        """Resolve the configured LLMServer handle for ``model``, carrying session
-        affinity from the client request.
+    async def _prepare_request(
+        self, body, raw_request: Optional[Request]
+    ) -> Tuple[DeploymentHandle, Any, Optional[RawRequestInfo]]:
+        """Resolve the model handle and serializable request info for ``body``.
+
+        Shared by the normal drive (``_get_response``) and the response-channel
+        drive so both apply the same session affinity, chat sanitization, and
+        request-info conversion.
 
         Propagate the session id from the client request to the downstream
         LLMServer handle. The Serve HTTP proxy attaches session_id to the
@@ -410,27 +405,43 @@ class OpenAiIngress(DeploymentProtocol):
         rewrite by an intermediate proxy doesn't silently drop session affinity on
         this second hop.
         """
-        model_id = await self._get_model_id(model)
+        model_id = await self._get_model_id(body.model)
         model_handle = self._get_configured_serve_handle(model_id)
         if raw_request is not None:
             session_id = session_id_from_headers(raw_request.headers)
             if session_id:
                 model_handle = model_handle.options(session_id=session_id)
-        return model_handle
+
+        # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
+        # for tool calling ValidatorIterator serialization issue.
+        if isinstance(body, ChatCompletionRequest):
+            body = _sanitize_chat_completion_request(body)
+
+        raw_request_info: Optional[RawRequestInfo] = None
+        if raw_request is not None:
+            raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
+        return model_handle, body, raw_request_info
 
     async def _kickoff_response_channel(
-        self, body, response_id: str, raw_request: Request
+        self, body, response_id: str, call_method: str, raw_request: Request
     ) -> Response:
         """ResponseChannel drive: do the request-side work, kick off the leaf to
         stream its response straight to HAProxy (keyed by ``response_id``), and
         return an empty 202. The ingress is off the response path; the response
-        bytes never traverse it. See ``core.server.response_channel``.
+        bytes never traverse it. ``call_method`` selects the streaming engine
+        method (chat/completions/transcriptions). See
+        ``core.server.response_channel``.
         """
-        model_handle = await self._resolve_model_handle(body.model, raw_request)
-        raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
+        model_handle, body, raw_request_info = await self._prepare_request(
+            body, raw_request
+        )
         task = asyncio.ensure_future(
             model_handle.produce_to_channel.remote(
-                body, response_id, haproxy_base_for_leaf(), raw_request_info
+                body,
+                response_id,
+                haproxy_base_for_leaf(),
+                call_method,
+                raw_request_info,
             )
         )
         self._response_channel_tasks.add(task)
@@ -517,7 +528,7 @@ class OpenAiIngress(DeploymentProtocol):
             response_id = raw_request.headers.get(RESPONSE_ID_HEADER)
             if response_id:
                 return await self._kickoff_response_channel(
-                    body, response_id, raw_request
+                    body, response_id, call_method, raw_request
                 )
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):

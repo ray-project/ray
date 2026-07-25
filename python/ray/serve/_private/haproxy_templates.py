@@ -219,14 +219,16 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
     {%- if has_response_channel %}
-    # A client request to an opted-in app is served by response_channel_stream:
+    # A streaming request to an opted-in app is served by response_channel_stream:
     # it mints a response id, re-injects the request as a loopback kickoff (with
     # x-serve-response-channel, so it routes to the ingress instead of re-entering
-    # here), and drains the per-id queue to the client. Scoped per-backend, so
-    # plain apps behind the same HAProxy are untouched.
+    # here), and drains the per-id queue to the client. Scoped per-backend (plain
+    # apps behind the same HAProxy are untouched) and to the streaming POST
+    # endpoints (completions, chat completions, transcriptions), so non-streaming
+    # endpoints (models, embeddings, score, tokenize) flow the normal path.
 {%- for backend in backends %}
     {%- if backend.response_channel %}
-    http-request use-service lua.response_channel_stream if is_{{ backend.name or 'unknown' }} !{ hdr(x-serve-response-channel) -m found }
+    http-request use-service lua.response_channel_stream if is_{{ backend.name or 'unknown' }} METH_POST { path_end /completions /transcriptions } !{ hdr(x-serve-response-channel) -m found }
     {%- endif %}
 {%- endfor %}
     {%- endif %}

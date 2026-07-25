@@ -433,17 +433,21 @@ class LLMServer(LLMServerProtocol):
 
     async def produce_to_channel(
         self,
-        body: "CompletionRequest",
+        body: Union[
+            "CompletionRequest", "ChatCompletionRequest", "TranscriptionRequest"
+        ],
         response_id: str,
         haproxy_base: str,
+        call_method: str = "completions",
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> None:
-        """Stream this completion straight to HAProxy's ResponseChannel.
+        """Stream this response straight to HAProxy's ResponseChannel.
 
         Called by a request-side ingress (via a handle) instead of relaying the
         stream back up the DAG: the leaf drives the engine and streams each chunk
         to HAProxy keyed by ``response_id``, so the ingress is off the response
-        path. See ``core.server.response_channel``.
+        path. ``call_method`` names the streaming engine method to drive
+        (chat/completions/transcriptions). See ``core.server.response_channel``.
         """
         body.stream = True
         if self._response_channel_client is None:
@@ -455,7 +459,7 @@ class LLMServer(LLMServerProtocol):
             response_id, haproxy_base, self._response_channel_client
         )
         gen = await self._run_request(
-            body, engine_method="completions", raw_request_info=raw_request_info
+            body, engine_method=call_method, raw_request_info=raw_request_info
         )
         try:
             async for chunk in gen:
