@@ -9,8 +9,10 @@ exposes the tracker's state as handle-callable methods.
 
 from contextlib import contextmanager
 from dataclasses import asdict
+import sys
 from unittest import mock
 
+import ray.cloudpickle
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
@@ -142,6 +144,17 @@ class LLMRouter(_LLMRouter):
 
 @contextmanager
 def patch_ingress():
-    """Deploy with the introspection ``LLMRouter`` subclass as the ingress."""
-    with mock.patch("ray.llm._internal.serve.core.ingress.router.LLMRouter", LLMRouter):
-        yield
+    """Deploy with the introspection ``LLMRouter`` subclass as the ingress.
+
+    This test-only module is available to the driver, not Serve replicas.
+    Pickle it by value so the patched ingress can deserialize there.
+    """
+    module = sys.modules[__name__]
+    ray.cloudpickle.register_pickle_by_value(module)
+    try:
+        with mock.patch(
+            "ray.llm._internal.serve.core.ingress.router.LLMRouter", LLMRouter
+        ):
+            yield
+    finally:
+        ray.cloudpickle.unregister_pickle_by_value(module)
