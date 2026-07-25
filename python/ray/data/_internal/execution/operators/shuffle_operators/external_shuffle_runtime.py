@@ -104,11 +104,24 @@ _MAX_RANGE_BYTES: int = (1 << 32) - 1
 # One decompress + one alloc per shard at the reducer; inner IPC is uncompressed
 # so buffers read zero-copy.
 _WF_HEADER = struct.Struct("<Q")
-_SHARD_CODEC = pa.Codec("zstd")
 
 
-def _encode_shard(table: pa.Table) -> pa.Buffer:
-    """Encode a partition shard as a whole-frame zstd blob."""
+def _codec_for(compression: Optional[str]) -> Optional["pa.Codec"]:
+    """Resolve a codec name to a pa.Codec, or None for no compression.
+
+    Single source of truth: callers pass ``data_context.hash_shuffle_compression``
+    (the same field v2 uses), so map and reduce always agree on the codec without
+    relying on per-process env. ``None``/``"none"`` -> store the raw IPC stream.
+    """
+    if not compression or compression == "none":
+        return None
+    return pa.Codec(compression)
+
+
+def _encode_shard(table: pa.Table, compression: Optional[str] = "zstd") -> pa.Buffer:
+    """Encode a partition shard as a whole-frame blob (one codec frame per shard,
+    vs Arrow's per-buffer IPC compression). ``compression`` comes from
+    ``data_context.hash_shuffle_compression``."""
     if table.num_columns > 0:
         table = table.combine_chunks()
     sink = pa.BufferOutputStream()
@@ -116,18 +129,24 @@ def _encode_shard(table: pa.Table) -> pa.Buffer:
         for batch in table.to_batches():
             w.write_batch(batch)
     raw = sink.getvalue()
+    codec = _codec_for(compression)
     out = pa.BufferOutputStream()
     out.write(_WF_HEADER.pack(raw.size))
-    out.write(_SHARD_CODEC.compress(raw))
+    out.write(raw if codec is None else codec.compress(raw))
     return out.getvalue()
 
 
-def _read_ipc(buf: Union[bytes, "pa.Buffer", memoryview]) -> pa.Table:
-    """Decode a whole-frame shard: read the u64 size header, one zstd
-    decompress of the rest, then read the (uncompressed) IPC stream."""
+def _read_ipc(
+    buf: Union[bytes, "pa.Buffer", memoryview], compression: Optional[str] = "zstd"
+) -> pa.Table:
+    """Decode a whole-frame shard: read the u64 size header, one decompress of
+    the rest (per ``compression``, same value the map encoded with), then read
+    the (uncompressed) inner IPC stream."""
     src = buf if isinstance(buf, pa.Buffer) else pa.py_buffer(buf)
     n = _WF_HEADER.unpack_from(memoryview(src))[0]
-    raw = _SHARD_CODEC.decompress(src.slice(_WF_HEADER.size), decompressed_size=n)
+    body = src.slice(_WF_HEADER.size)
+    codec = _codec_for(compression)
+    raw = body if codec is None else codec.decompress(body, decompressed_size=n)
     with pa.ipc.open_stream(raw) as r:
         return r.read_all()
 
