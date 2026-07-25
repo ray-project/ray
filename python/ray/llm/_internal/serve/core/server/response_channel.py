@@ -10,5 +10,4 @@ from ray.serve._private.response_channel import (  # noqa: F401
     ResponseChannel,
     _to_json_line,
     haproxy_base_for_leaf,
-    response_channel,
 )

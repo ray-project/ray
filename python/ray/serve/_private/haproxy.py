@@ -1410,10 +1410,14 @@ class HAProxyApi(ProxyApi):
                     # one for its request's thread. Derived from the same formula
                     # the leaf uses (internal_port in _private.response_channel),
                     # so the two cannot drift.
-                    "response_channel_internal_ports": [
-                        internal_port(self.cfg.frontend_port, t)
-                        for t in range(1, self.cfg.nbthread + 1)
-                    ],
+                    "response_channel_internal_ports": (
+                        [
+                            internal_port(self.cfg.frontend_port, t)
+                            for t in range(1, self.cfg.nbthread + 1)
+                        ]
+                        if has_response_channel
+                        else []
+                    ),
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
                     ),

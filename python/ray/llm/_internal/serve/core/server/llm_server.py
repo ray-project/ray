@@ -37,6 +37,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
+from ray.llm._internal.serve.core.server.response_channel import ResponseChannel
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -48,7 +49,6 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
-from ray.serve._private.response_channel import ResponseChannel
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -432,7 +432,11 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def produce_to_channel(
-        self, body: "CompletionRequest", response_id: str, haproxy_base: str
+        self,
+        body: "CompletionRequest",
+        response_id: str,
+        haproxy_base: str,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> None:
         """Stream this completion straight to HAProxy's ResponseChannel.
 
@@ -450,7 +454,9 @@ class LLMServer(LLMServerProtocol):
         channel = ResponseChannel(
             response_id, haproxy_base, self._response_channel_client
         )
-        gen = await self._run_request(body, engine_method="completions")
+        gen = await self._run_request(
+            body, engine_method="completions", raw_request_info=raw_request_info
+        )
         try:
             async for chunk in gen:
                 await channel.write(chunk)

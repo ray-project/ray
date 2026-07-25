@@ -376,23 +376,7 @@ class OpenAiIngress(DeploymentProtocol):
         None,
     ]:
         """Calls the model deployment and returns the stream."""
-        model_id = await self._get_model_id(body.model)
-        model_handle = self._get_configured_serve_handle(model_id)
-
-        # Propagate the session id from the client request to the downstream
-        # LLMServer handle. The Serve HTTP proxy attaches session_id to the
-        # *ingress* deployment handle (proxy.py:_setup_request_context), but
-        # that does NOT carry over to a second handle hop (here -> LLMServer).
-        # Re-read the configured session header from the raw request and apply
-        # it via .options(session_id=...) so session-aware request routers
-        # (e.g. ConsistentHashRouter) on the LLMServer deployment see it.
-        # Uses the same case-insensitive, separator-tolerant matcher as
-        # proxy.py so a `-`/`_` rewrite by an intermediate proxy doesn't
-        # silently drop session affinity on this second hop.
-        if raw_request is not None:
-            session_id = session_id_from_headers(raw_request.headers)
-            if session_id:
-                model_handle = model_handle.options(session_id=session_id)
+        model_handle = await self._resolve_model_handle(body.model, raw_request)
 
         # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
         # for tool calling ValidatorIterator serialization issue.
@@ -409,6 +393,31 @@ class OpenAiIngress(DeploymentProtocol):
         ):
             yield response
 
+    async def _resolve_model_handle(
+        self, model: str, raw_request: Optional[Request]
+    ) -> DeploymentHandle:
+        """Resolve the configured LLMServer handle for ``model``, carrying session
+        affinity from the client request.
+
+        Propagate the session id from the client request to the downstream
+        LLMServer handle. The Serve HTTP proxy attaches session_id to the
+        *ingress* deployment handle (proxy.py:_setup_request_context), but that
+        does NOT carry over to a second handle hop (here -> LLMServer). Re-read the
+        configured session header from the raw request and apply it via
+        .options(session_id=...) so session-aware request routers (e.g.
+        ConsistentHashRouter) on the LLMServer deployment see it. Uses the same
+        case-insensitive, separator-tolerant matcher as proxy.py so a ``-``/``_``
+        rewrite by an intermediate proxy doesn't silently drop session affinity on
+        this second hop.
+        """
+        model_id = await self._get_model_id(model)
+        model_handle = self._get_configured_serve_handle(model_id)
+        if raw_request is not None:
+            session_id = session_id_from_headers(raw_request.headers)
+            if session_id:
+                model_handle = model_handle.options(session_id=session_id)
+        return model_handle
+
     async def _kickoff_response_channel(
         self, body, response_id: str, raw_request: Request
     ) -> Response:
@@ -417,15 +426,11 @@ class OpenAiIngress(DeploymentProtocol):
         return an empty 202. The ingress is off the response path; the response
         bytes never traverse it. See ``core.server.response_channel``.
         """
-        model_id = await self._get_model_id(body.model)
-        model_handle = self._get_configured_serve_handle(model_id)
-        if raw_request is not None:
-            session_id = session_id_from_headers(raw_request.headers)
-            if session_id:
-                model_handle = model_handle.options(session_id=session_id)
+        model_handle = await self._resolve_model_handle(body.model, raw_request)
+        raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
         task = asyncio.ensure_future(
             model_handle.produce_to_channel.remote(
-                body, response_id, haproxy_base_for_leaf()
+                body, response_id, haproxy_base_for_leaf(), raw_request_info
             )
         )
         self._response_channel_tasks.add(task)

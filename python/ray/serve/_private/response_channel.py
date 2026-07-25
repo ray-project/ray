@@ -7,22 +7,26 @@ per-request id HAProxy minted and forwarded as the ``x-response-id`` header.
 HAProxy drains the per-id queue to the waiting client, so parent deployments stay
 on the request path only; the response bytes never traverse them.
 
-General to any Serve deployment: ``response_channel(request)`` returns a channel
-when the incoming request carries the header, else ``None``.
+General to any Serve deployment: construct a ``ResponseChannel`` with the
+``x-response-id`` HAProxy forwards and stream chunks to it with ``write``.
 """
 
 import asyncio
 import json
 import re
-from typing import Optional
 
 import httpx
 
 from ray.serve._private.constants import (
+    DEFAULT_HTTP_PORT,
     RAY_SERVE_RESPONSE_CHANNEL_INTERNAL_PORT_OFFSET,
 )
 
 RESPONSE_ID_HEADER = "x-response-id"
+
+# HAProxy fronts the Serve HTTP port on the local node, so a co-located leaf
+# reaches it on loopback.
+_LEAF_HAPROXY_BASE = f"http://127.0.0.1:{DEFAULT_HTTP_PORT}"
 
 # The response id HAProxy mints is "t<thread>-<sec>-<usec>-<seq>". The leaf posts
 # back to the internal ingest port pinned to that thread so the push and the
@@ -107,30 +111,11 @@ def _to_json_line(chunk) -> str:
     return json.dumps(chunk)
 
 
-def haproxy_base_for_leaf(port: Optional[int] = None) -> str:
+def haproxy_base_for_leaf() -> str:
     """The HAProxy frontend the leaf posts its response channel to.
 
     HAProxy fronts the Serve HTTP port on the local node, so a co-located leaf
     reaches it on loopback. Multi-node delivery (leaf and client-holding HAProxy
     on different nodes) is not yet handled.
     """
-    from ray.serve._private.constants import DEFAULT_HTTP_PORT
-
-    return f"http://127.0.0.1:{port or DEFAULT_HTTP_PORT}"
-
-
-def response_channel(
-    request, client: httpx.AsyncClient, port: Optional[int] = None
-) -> Optional[ResponseChannel]:
-    """Return a ResponseChannel for ``request`` if it carries the channel header.
-
-    A deployment reached over HAProxy for an opted-in app receives the
-    ``x-response-id`` header; it writes its response to the returned channel
-    instead of returning it up the DAG. Returns ``None`` for requests without the
-    header (the app did not opt in), so the caller falls back to a normal
-    response.
-    """
-    response_id = request.headers.get(RESPONSE_ID_HEADER)
-    if not response_id:
-        return None
-    return ResponseChannel(response_id, haproxy_base_for_leaf(port), client)
+    return _LEAF_HAPROXY_BASE
