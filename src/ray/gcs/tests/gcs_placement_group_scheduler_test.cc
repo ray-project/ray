@@ -1652,8 +1652,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFlatBundleTopology) {
 
   auto options = scheduler_->CreateSchedulingOptions(*pg, rpc::PlacementStrategy::PACK);
 
-  // Verify flat bundles with 1 layer skip the hierarchical grouping overhead
-  ASSERT_TRUE(options.bundle_group_indices_.empty());
+  // Verify flat bundles with custom topology label and SPREAD strategy
+  // are routed to the hierarchical scheduler so that the strategy is respected.
+  ASSERT_FALSE(options.bundle_group_indices_.empty());
 
   // The outer strategy should be set to SPREAD from the first topology layer.
   EXPECT_EQ(options.outer_strategy_, rpc::PlacementStrategy::SPREAD);
@@ -1668,7 +1669,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestLegacyFlatBundleCreateSchedulingOptio
   auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   auto options = scheduler_->CreateSchedulingOptions(*pg, rpc::PlacementStrategy::PACK);
 
-  EXPECT_TRUE(options.bundle_group_indices_.empty());
+  EXPECT_FALSE(options.bundle_group_indices_.empty());
   EXPECT_EQ(options.outer_strategy_, rpc::PlacementStrategy::PACK);
 }
 

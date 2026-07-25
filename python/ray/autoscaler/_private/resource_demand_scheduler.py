@@ -994,25 +994,48 @@ def placement_groups_to_resource_demands(
     unconverted = []
     for placement_group in pending_placement_groups:
         # Skip **placed** bundle (which has node id associated with it).
-        shapes = []
+        shapes_by_group = collections.defaultdict(list)
+        is_hierarchical = False
         for bundle in placement_group.bundles:
             if bundle.node_id != b"":
                 continue
-            shapes.append(dict(bundle.unit_resources))
+            if bundle.HasField("bundle_group_index"):
+                is_hierarchical = True
+                group_idx = bundle.bundle_group_index
+            else:
+                group_idx = 0
+            shapes_by_group[group_idx].append(dict(bundle.unit_resources))
 
         if (
             placement_group.strategy == PlacementStrategy.PACK
             or placement_group.strategy == PlacementStrategy.SPREAD
         ):
-            resource_demand_vector.extend(shapes)
+            for shapes in shapes_by_group.values():
+                resource_demand_vector.extend(shapes)
         elif placement_group.strategy == PlacementStrategy.STRICT_PACK:
-            combined = collections.defaultdict(float)
-            for shape in shapes:
-                for label, quantity in shape.items():
-                    combined[label] += quantity
-            resource_demand_vector.append(combined)
+            for shapes in shapes_by_group.values():
+                combined = collections.defaultdict(float)
+                for shape in shapes:
+                    for label, quantity in shape.items():
+                        combined[label] += quantity
+                resource_demand_vector.append(combined)
         elif placement_group.strategy == PlacementStrategy.STRICT_SPREAD:
-            unconverted.append(shapes)
+            if is_hierarchical:
+                combined_shapes = []
+                for shapes in shapes_by_group.values():
+                    combined = collections.defaultdict(float)
+                    for shape in shapes:
+                        for label, quantity in shape.items():
+                            combined[label] += quantity
+                    combined_shapes.append(combined)
+                unconverted.append(combined_shapes)
+            else:
+                shapes = []
+                for bundle in placement_group.bundles:
+                    if bundle.node_id != b"":
+                        continue
+                    shapes.append(dict(bundle.unit_resources))
+                unconverted.append(shapes)
         else:
             logger.error(
                 f"Unknown placement group request type: {placement_group}. "

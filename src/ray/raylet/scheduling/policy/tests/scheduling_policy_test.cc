@@ -1023,10 +1023,9 @@ TEST_F(SchedulingPolicyTest, HierarchicalBundleSchedulingSpreadTest) {
   int inner_schedule_calls = 0;
 
   NodeScheduleFn node_schedule_fn =
-      [&inner_schedule_calls, &cluster_resource_manager](
-          const std::vector<const ResourceRequest *> &reqs,
-          SchedulingOptions opts,
-          absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
+      [&inner_schedule_calls](const std::vector<const ResourceRequest *> &reqs,
+                              SchedulingOptions opts,
+                              absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
         inner_schedule_calls++;
 
         SchedulingResult result;

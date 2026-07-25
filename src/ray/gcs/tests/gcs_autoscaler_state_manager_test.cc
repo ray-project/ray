@@ -1503,24 +1503,28 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
-  ASSERT_EQ(requests.size(), 1);
+  // Should emit one GangResourceRequest per group
+  ASSERT_EQ(requests.size(), 2);
 
-  const auto &req = requests.Get(0);
-  ASSERT_EQ(req.bundle_selectors_size(), 1);
+  for (int g = 0; g < 2; g++) {
+    const auto &req = requests.Get(g);
+    ASSERT_EQ(req.bundle_selectors_size(), 1);
 
-  const auto &selector = req.bundle_selectors(0);
-  // Bundles sharing group indices are aggregated into 2 ResourceRequests of 4 CPUs each
-  ASSERT_EQ(selector.resource_requests_size(), 2);
-  for (int i = 0; i < 2; i++) {
-    const auto &bundle_req = selector.resource_requests(i);
-    ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 4.0);
+    const auto &selector = req.bundle_selectors(0);
+    // Since strategy is SPREAD, bundles in the group are NOT aggregated.
+    // Each group has 2 bundles of CPU 2.
+    ASSERT_EQ(selector.resource_requests_size(), 2);
+    for (int i = 0; i < 2; i++) {
+      const auto &bundle_req = selector.resource_requests(i);
+      ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 2.0);
+    }
+
+    ASSERT_TRUE(selector.has_locality_requirement());
+    EXPECT_EQ(selector.locality_requirement().locality_constraint().label_name(),
+              "ray.io/az");
+    EXPECT_EQ(selector.locality_requirement().locality_constraint().placement_strategy(),
+              rpc::PlacementStrategy::SPREAD);
   }
-
-  ASSERT_TRUE(selector.has_locality_requirement());
-  EXPECT_EQ(selector.locality_requirement().locality_constraint().label_name(),
-            "ray.io/az");
-  EXPECT_EQ(selector.locality_requirement().locality_constraint().placement_strategy(),
-            rpc::PlacementStrategy::SPREAD);
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
@@ -1530,6 +1534,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(5));
   pg_data->set_placement_group_id(pg_id.Binary());
+  // Set strategy to STRICT_PACK so that the group gets aggregated
+  pg_data->set_strategy(rpc::PlacementStrategy::STRICT_PACK);
 
   // 2 bundles grouped together in group 0 (2 CPUs each -> total 4 CPUs)
   for (int i = 0; i < 2; i++) {
@@ -1548,15 +1554,17 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
-  ASSERT_EQ(requests.size(), 1);
+  // We expect 3 GangResourceRequests:
+  // - 1 for group 0 (aggregated to 4 CPUs because strategy is STRICT_PACK)
+  // - 2 for the flat bundles (each flat bundle is assigned to a separate fake group since
+  // they have no group index, so they get their own GangResourceRequest)
+  ASSERT_EQ(requests.size(), 3);
 
-  const auto &req = requests.Get(0);
-  const auto &selector = req.bundle_selectors(0);
-  // Group 0 (aggregated to 4 CPUs) + 2 separate flat bundles (4 CPUs each) = 3
-  // ResourceRequests
-  ASSERT_EQ(selector.resource_requests_size(), 3);
   for (int i = 0; i < 3; i++) {
-    const auto &bundle_req = selector.resource_requests(i);
+    const auto &req = requests.Get(i);
+    const auto &selector = req.bundle_selectors(0);
+    ASSERT_EQ(selector.resource_requests_size(), 1);
+    const auto &bundle_req = selector.resource_requests(0);
     ASSERT_EQ(bundle_req.resources_bundle().at("CPU"), 4.0);
   }
 }
@@ -1568,6 +1576,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(6));
   pg_data->set_placement_group_id(pg_id.Binary());
+  // Need to set strategy to STRICT_PACK so that the group gets aggregated!
+  pg_data->set_strategy(rpc::PlacementStrategy::STRICT_PACK);
 
   // Add 2 bundles in group 0 with conflicting label selector values.
   auto *bundle_0 = pg_data->add_bundles();

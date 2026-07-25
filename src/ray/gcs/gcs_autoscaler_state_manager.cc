@@ -203,7 +203,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
   // Iterate through each placement group load.
   for (auto &&pg_data :
        std::move(*placement_group_load->mutable_placement_group_data())) {
-    auto *gang_resource_req = state->add_pending_gang_resource_requests();
     auto pg_state = pg_data.state();
     auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
@@ -215,13 +214,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
 
     const auto pg_constraint =
         GenPlacementConstraintForPlacementGroup(pg_id.Hex(), pg_data.strategy());
-
-    // Add the strategy as detail info for the gang resource request.
-    gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
-
-    // Create a BundleSelector. Only one BundleSelector will be created for now.
-    // Multiple will be added when we implement the fallback mechanism.
-    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
     // Copy the PG's bundles to the request. If the placement group has bundle group
     // indices (hierarchical placement group), aggregate resources for bundles sharing the
@@ -253,44 +245,108 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         groups[group_idx].push_back(&bundle);
       }
 
+      bool is_strict_pack = pg_data.strategy() == rpc::PlacementStrategy::STRICT_PACK;
       for (const auto &[group_idx, group_bundles] : groups) {
-        google::protobuf::Map<std::string, double> aggregated_resources;
-        std::map<std::string, std::string> aggregated_label_selectors;
-        for (const auto *bundle_ptr : group_bundles) {
-          for (const auto &[res_name, res_val] : bundle_ptr->unit_resources()) {
-            aggregated_resources[res_name] += res_val;
-          }
-          for (const auto &[key, val] : bundle_ptr->label_selector()) {
-            auto it = aggregated_label_selectors.find(key);
-            if (it != aggregated_label_selectors.end() && it->second != val) {
-              RAY_LOG(WARNING)
-                  << "Conflicting label selectors for key '" << key
-                  << "' within the same bundle group. The autoscaler may not provision "
-                     "correctly.";
+        auto *gang_resource_req = state->add_pending_gang_resource_requests();
+        gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
+        auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
+        if (is_strict_pack) {
+          google::protobuf::Map<std::string, double> aggregated_resources;
+          std::map<std::string, std::string> aggregated_label_selectors;
+          for (const auto *bundle_ptr : group_bundles) {
+            for (const auto &[res_name, res_val] : bundle_ptr->unit_resources()) {
+              aggregated_resources[res_name] += res_val;
             }
-            aggregated_label_selectors[key] = val;
+            for (const auto &[key, val] : bundle_ptr->label_selector()) {
+              auto it = aggregated_label_selectors.find(key);
+              if (it != aggregated_label_selectors.end() && it->second != val) {
+                RAY_LOG(WARNING)
+                    << "Conflicting label selectors for key '" << key
+                    << "' within the same bundle group. The autoscaler may not provision "
+                       "correctly.";
+              }
+              aggregated_label_selectors[key] = val;
+            }
+          }
+
+          auto legacy_resource_req = gang_resource_req->add_requests();
+          *legacy_resource_req->mutable_resources_bundle() = aggregated_resources;
+
+          auto *bundle_resource_req = bundle_selector->add_resource_requests();
+          *bundle_resource_req->mutable_resources_bundle() = aggregated_resources;
+
+          if (!aggregated_label_selectors.empty()) {
+            ray::LabelSelector selector(aggregated_label_selectors);
+            selector.ToProto(bundle_resource_req->add_label_selectors());
+          }
+
+          if (pg_constraint.has_value()) {
+            legacy_resource_req->add_placement_constraints()->CopyFrom(
+                pg_constraint.value());
+            bundle_resource_req->add_placement_constraints()->CopyFrom(
+                pg_constraint.value());
+          }
+        } else {
+          for (const auto *bundle_ptr : group_bundles) {
+            const auto &unit_resources = bundle_ptr->unit_resources();
+
+            auto legacy_resource_req = gang_resource_req->add_requests();
+            *legacy_resource_req->mutable_resources_bundle() = unit_resources;
+
+            auto *bundle_resource_req = bundle_selector->add_resource_requests();
+            *bundle_resource_req->mutable_resources_bundle() = unit_resources;
+
+            if (!bundle_ptr->label_selector().empty()) {
+              ray::LabelSelector selector(bundle_ptr->label_selector());
+              selector.ToProto(bundle_resource_req->add_label_selectors());
+            }
+
+            if (pg_constraint.has_value()) {
+              legacy_resource_req->add_placement_constraints()->CopyFrom(
+                  pg_constraint.value());
+              bundle_resource_req->add_placement_constraints()->CopyFrom(
+                  pg_constraint.value());
+            }
           }
         }
 
-        auto legacy_resource_req = gang_resource_req->add_requests();
-        *legacy_resource_req->mutable_resources_bundle() = aggregated_resources;
+        // Add topology strategy to this group's bundle_selector
+        const auto &topology_strategy = pg_data.topology_strategy();
+        if (!topology_strategy.empty()) {
+          std::string topology_label_key;
+          rpc::PlacementStrategy strategy = rpc::PlacementStrategy::PACK;
+          for (const auto &pair : topology_strategy[0].entries()) {
+            if (pair.first != kLabelKeyNodeID) {
+              topology_label_key = pair.first;
+              strategy = pair.second;
+              break;
+            }
+          }
 
-        auto *bundle_resource_req = bundle_selector->add_resource_requests();
-        *bundle_resource_req->mutable_resources_bundle() = aggregated_resources;
+          if (!topology_label_key.empty()) {
+            auto *locality_req = bundle_selector->mutable_locality_requirement();
+            auto *locality_constraint = locality_req->mutable_locality_constraint();
+            locality_constraint->set_label_name(topology_label_key);
+            locality_constraint->set_placement_strategy(strategy);
 
-        if (!aggregated_label_selectors.empty()) {
-          ray::LabelSelector selector(aggregated_label_selectors);
-          selector.ToProto(bundle_resource_req->add_label_selectors());
-        }
-
-        if (pg_constraint.has_value()) {
-          legacy_resource_req->add_placement_constraints()->CopyFrom(
-              pg_constraint.value());
-          bundle_resource_req->add_placement_constraints()->CopyFrom(
-              pg_constraint.value());
+            const auto &assignments = pg_data.topology_assignments();
+            if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
+              auto *label_constraint =
+                  locality_req->mutable_label_selector()->add_label_constraints();
+              label_constraint->set_label_key(topology_label_key);
+              label_constraint->set_operator_(
+                  rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+              label_constraint->add_label_values(it->second);
+            }
+          }
         }
       }
     } else {
+      auto *gang_resource_req = state->add_pending_gang_resource_requests();
+      gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
+      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
       for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
         if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
           RAY_CHECK(pg_state == rpc::PlacementGroupTableData::RESCHEDULING);
@@ -317,39 +373,41 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
               pg_constraint.value());
         }
       }
-    }
 
-    // TODO: Currently, the autoscaler only supports a single LocalityRequirement per
-    // BundleSelector. If the placement group defines multiple layers in its topology
-    // strategy, only the first layer is passed to the autoscaler. Future extensions
-    // should update GangResourceRequest to support a hierarchy of locality requirements.
-    const auto &topology_strategy = pg_data.topology_strategy();
-    if (!topology_strategy.empty()) {
-      std::string topology_label_key;
-      rpc::PlacementStrategy strategy = rpc::PlacementStrategy::PACK;
-      for (const auto &pair : topology_strategy[0].entries()) {
-        if (pair.first != kLabelKeyNodeID) {
-          topology_label_key = pair.first;
-          strategy = pair.second;
-          break;
+      // TODO: Currently, the autoscaler only supports a single LocalityRequirement per
+      // BundleSelector. If the placement group defines multiple layers in its topology
+      // strategy, only the first layer is passed to the autoscaler. Future extensions
+      // should update GangResourceRequest to support a hierarchy of locality
+      // requirements.
+      const auto &topology_strategy = pg_data.topology_strategy();
+      if (!topology_strategy.empty()) {
+        std::string topology_label_key;
+        rpc::PlacementStrategy strategy = rpc::PlacementStrategy::PACK;
+        for (const auto &pair : topology_strategy[0].entries()) {
+          if (pair.first != kLabelKeyNodeID) {
+            topology_label_key = pair.first;
+            strategy = pair.second;
+            break;
+          }
         }
-      }
 
-      if (!topology_label_key.empty()) {
-        auto *locality_req = bundle_selector->mutable_locality_requirement();
-        auto *locality_constraint = locality_req->mutable_locality_constraint();
-        locality_constraint->set_label_name(topology_label_key);
-        locality_constraint->set_placement_strategy(strategy);
+        if (!topology_label_key.empty()) {
+          auto *locality_req = bundle_selector->mutable_locality_requirement();
+          auto *locality_constraint = locality_req->mutable_locality_constraint();
+          locality_constraint->set_label_name(topology_label_key);
+          locality_constraint->set_placement_strategy(strategy);
 
-        // If the scheduler has already picked a value for this topology label
-        // (rescheduling case), pin the autoscaler request to that value.
-        const auto &assignments = pg_data.topology_assignments();
-        if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
-          auto *label_constraint =
-              locality_req->mutable_label_selector()->add_label_constraints();
-          label_constraint->set_label_key(topology_label_key);
-          label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-          label_constraint->add_label_values(it->second);
+          // If the scheduler has already picked a value for this topology label
+          // (rescheduling case), pin the autoscaler request to that value.
+          const auto &assignments = pg_data.topology_assignments();
+          if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
+            auto *label_constraint =
+                locality_req->mutable_label_selector()->add_label_constraints();
+            label_constraint->set_label_key(topology_label_key);
+            label_constraint->set_operator_(
+                rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+            label_constraint->add_label_values(it->second);
+          }
         }
       }
     }

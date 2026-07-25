@@ -26,6 +26,22 @@
 
 namespace ray {
 namespace gcs {
+namespace {
+
+// Group a PG's bundles by the node they were placed on.
+absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+GroupBundlesByNode(const BundleLocations &bundle_locations) {
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      bundles_per_node;
+  for (const auto &iter : bundle_locations) {
+    const auto &node_id = iter.second.first;
+    const auto &bundle_spec = iter.second.second;
+    bundles_per_node[node_id].emplace_back(bundle_spec);
+  }
+  return bundles_per_node;
+}
+
+}  // namespace
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
@@ -216,6 +232,40 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // GCS no longer locally restores the freed resources here; the next
     // ray-syncer broadcast from each raylet whose bundles were cancelled will
     // bring GCS's view back in line with the actual cluster state.
+  }
+}
+
+void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleIndices(
+    const PlacementGroupID &placement_group_id,
+    const std::vector<int64_t> &bundle_indices) {
+  absl::flat_hash_set<int64_t> indices_to_remove(bundle_indices.begin(),
+                                                 bundle_indices.end());
+
+  const auto &maybe_bundle_locations =
+      committed_bundle_location_index_.GetBundleLocations(placement_group_id);
+  if (maybe_bundle_locations.has_value()) {
+    const auto &committed_bundle_locations = maybe_bundle_locations.value();
+
+    auto bundles_to_remove = std::make_shared<BundleLocations>();
+    for (const auto &entry : *committed_bundle_locations) {
+      if (indices_to_remove.contains(entry.first.second)) {
+        bundles_to_remove->emplace(entry.first, entry.second);
+      }
+    }
+
+    for (auto &entry : GroupBundlesByNode(*bundles_to_remove)) {
+      RemovePlacementGroupBundles(placement_group_id,
+                                  entry.second,
+                                  gcs_node_manager_.GetAliveNode(entry.first),
+                                  /*max_retry*/ 5,
+                                  /*current_retry_count*/ 0);
+    }
+    for (const auto &bundle : *bundles_to_remove) {
+      committed_bundle_location_index_.EraseBundle(bundle.first);
+      cluster_resource_scheduler_.GetClusterResourceManager()
+          .GetBundleLocationIndex()
+          .EraseBundle(bundle.first);
+    }
   }
 }
 
@@ -526,15 +576,38 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
     // Update the state to be reschedule so that the failure handle will reschedule the
     // failed bundles.
-    bool requires_full_reschedule = placement_group->HasBundleGroups();
+    bool has_bundle_groups = placement_group->HasBundleGroups();
 
-    if (requires_full_reschedule) {
+    if (has_bundle_groups) {
       RAY_LOG(INFO) << "Placement group " << placement_group_id
-                    << " is topology-aware. Commit failure requires full reschedule.";
-      DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+                    << " is topology-aware. Commit failure requires partial reschedule.";
+      const auto &uncommitted_bundle_locations =
+          lease_status_tracker->GetUnCommittedBundleLocations();
+      absl::flat_hash_set<int> affected_groups;
+      for (const auto &bundle : *uncommitted_bundle_locations) {
+        int index = bundle.first.second;
+        if (placement_group->GetPlacementGroupTableData()
+                .bundles(index)
+                .has_bundle_group_index()) {
+          affected_groups.insert(placement_group->GetPlacementGroupTableData()
+                                     .bundles(index)
+                                     .bundle_group_index());
+        }
+      }
+
+      std::vector<int64_t> bundles_to_clear;
       for (int i = 0; i < placement_group->GetPlacementGroupTableData().bundles_size();
            i++) {
-        placement_group->GetMutableBundle(i)->clear_node_id();
+        const auto &bundle = placement_group->GetPlacementGroupTableData().bundles(i);
+        if (bundle.has_bundle_group_index() &&
+            affected_groups.contains(bundle.bundle_group_index())) {
+          bundles_to_clear.push_back(i);
+        }
+      }
+
+      DestroyPlacementGroupBundleIndices(placement_group_id, bundles_to_clear);
+      for (int64_t idx : bundles_to_clear) {
+        placement_group->GetMutableBundle(idx)->clear_node_id();
       }
     } else {
       const auto &uncommitted_bundle_locations =
@@ -633,6 +706,8 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
         break;
       }
     }
+  } else {
+    options.inner_strategy_ = strategy;
   }
 
   bool has_groups = placement_group.HasBundleGroups();
@@ -645,8 +720,21 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     }
   }
 
+  bool has_custom_topology_layer = false;
+  if (topology_layers.size() == 1) {
+    for (const auto &pair : topology_layers[0].entries()) {
+      if (pair.first != kLabelKeyNodeID) {
+        has_custom_topology_layer = true;
+        break;
+      }
+    }
+  }
+
   if (!has_groups && topology_layers.size() <= 1) {
-    return options;
+    if (!has_custom_topology_layer ||
+        options.outer_strategy_ == rpc::PlacementStrategy::STRICT_PACK) {
+      return options;
+    }
   }
 
   std::unordered_map<int, std::vector<int>> group_to_indices;
@@ -811,23 +899,6 @@ void GcsPlacementGroupScheduler::Initialize(
     CommitAllBundles(tracker, req.failure_callback, req.success_callback);
   }
 }
-
-namespace {
-
-// Group a PG's bundles by the node they were placed on.
-absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
-GroupBundlesByNode(const BundleLocations &bundle_locations) {
-  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
-      bundles_per_node;
-  for (const auto &iter : bundle_locations) {
-    const auto &node_id = iter.second.first;
-    const auto &bundle_spec = iter.second.second;
-    bundles_per_node[node_id].emplace_back(bundle_spec);
-  }
-  return bundles_per_node;
-}
-
-}  // namespace
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     const PlacementGroupID &placement_group_id) {

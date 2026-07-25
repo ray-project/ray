@@ -62,6 +62,12 @@ class BundleLocationIndex {
   /// \return True if succeed. False otherwise.
   bool Erase(const PlacementGroupID &placement_group_id);
 
+  /// Erase a specific bundle.
+  ///
+  /// \param bundle_id The id of the bundle.
+  /// \return True if succeed. False otherwise.
+  bool EraseBundle(const BundleID &bundle_id);
+
   /// Get BundleLocation of placement group id.
   ///
   /// \param placement_group_id Placement group id of this bundle locations.

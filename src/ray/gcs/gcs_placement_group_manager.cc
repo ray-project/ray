@@ -695,15 +695,34 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
     auto iter = registered_placement_groups_.find(bundle.first);
     if (iter != registered_placement_groups_.end()) {
       if (iter->second->HasBundleGroups()) {
-        gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
-            iter->second->GetPlacementGroupID());
-        for (size_t i = 0; i < iter->second->GetBundles().size(); i++) {
-          iter->second->GetMutableBundle(i)->clear_node_id();
+        absl::flat_hash_set<int> affected_groups;
+        for (const auto &bundle_index : bundle.second) {
+          if (iter->second->GetPlacementGroupTableData()
+                  .bundles(bundle_index)
+                  .has_bundle_group_index()) {
+            affected_groups.insert(iter->second->GetPlacementGroupTableData()
+                                       .bundles(bundle_index)
+                                       .bundle_group_index());
+          }
         }
-        RAY_LOG(INFO)
-            << "Rescheduling all bundles of hierarchical placement group when a "
-               "node dies, placement group id:"
-            << iter->second->GetPlacementGroupID();
+        std::vector<int64_t> bundles_to_clear;
+        for (int i = 0; i < iter->second->GetPlacementGroupTableData().bundles_size();
+             i++) {
+          const auto &b = iter->second->GetPlacementGroupTableData().bundles(i);
+          if (b.has_bundle_group_index() &&
+              affected_groups.contains(b.bundle_group_index())) {
+            bundles_to_clear.push_back(i);
+          }
+        }
+        gcs_placement_group_scheduler_->DestroyPlacementGroupBundleIndices(
+            iter->second->GetPlacementGroupID(), bundles_to_clear);
+        for (int64_t idx : bundles_to_clear) {
+          iter->second->GetMutableBundle(idx)->clear_node_id();
+        }
+        RAY_LOG(INFO) << "Rescheduling affected bundle groups of hierarchical placement "
+                         "group when a "
+                         "node dies, placement group id:"
+                      << iter->second->GetPlacementGroupID();
       } else {
         for (const auto &bundle_index : bundle.second) {
           iter->second->GetMutableBundle(bundle_index)->clear_node_id();

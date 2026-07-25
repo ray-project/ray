@@ -115,6 +115,24 @@ bool BundleLocationIndex::Erase(const PlacementGroupID &placement_group_id) {
   return true;
 }
 
+bool BundleLocationIndex::EraseBundle(const BundleID &bundle_id) {
+  const auto placement_group_id = bundle_id.first;
+  auto placement_group_it = placement_group_to_bundle_locations_.find(placement_group_id);
+  if (placement_group_it == placement_group_to_bundle_locations_.end()) {
+    return false;
+  }
+
+  auto &pg_bundle_locations = placement_group_it->second;
+  auto pg_bundle_it = pg_bundle_locations->find(bundle_id);
+  if (pg_bundle_it != pg_bundle_locations->end()) {
+    const auto node_id = pg_bundle_it->second.first;
+    EraseBundleInNodeMap(node_id, bundle_id);
+    pg_bundle_locations->erase(pg_bundle_it);
+    return true;
+  }
+  return false;
+}
+
 const std::optional<std::shared_ptr<BundleLocations> const>
 BundleLocationIndex::GetBundleLocations(
     const PlacementGroupID &placement_group_id) const {

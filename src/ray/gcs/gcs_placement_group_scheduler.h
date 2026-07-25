@@ -83,6 +83,14 @@ class GcsPlacementGroupSchedulerInterface {
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) = 0;
 
+  /// Destroy specific bundle indices for a placement group.
+  ///
+  /// \param placement_group_id The id of the placement group.
+  /// \param bundle_indices The indices of the bundles to be destroyed.
+  virtual void DestroyPlacementGroupBundleIndices(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<int64_t> &bundle_indices) = 0;
+
   /// Mark the placement group scheduling is cancelled.
   /// This method will incur check failure if scheduling
   /// is not actually going on to guarantee strong consistency.
@@ -314,6 +322,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// or locked resources.
   void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) override;
+
+  /// Destroy specific bundle indices for a placement group.
+  ///
+  /// \param placement_group_id The id of the placement group.
+  /// \param bundle_indices The indices of the bundles to be destroyed.
+  void DestroyPlacementGroupBundleIndices(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<int64_t> &bundle_indices) override;
 
   /// Mark the placement group scheduling is cancelled.
   /// This method will incur check failure if scheduling

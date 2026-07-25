@@ -797,6 +797,32 @@ class TestPlacementGroupValidation:
         with pytest.raises(ValueError, match="Invalid label selector provided"):
             _validate_bundle_label_selector([{"INVALID key!": "value"}])
 
+    def test_bundle_label_selector_conflict_validation(self):
+        """Test that conflicting label selectors within the same bundle group raise an error."""
+        # A single group with conflicting labels for 'ray.io/accelerator'
+        hierarchical_bundles = [[{"CPU": 1}, {"CPU": 1}]]
+        selectors = [
+            {"ray.io/accelerator": "A100"},
+            {"ray.io/accelerator": "H100"},
+        ]
+        with pytest.raises(
+            ValueError, match="Conflicting label selector values for key"
+        ):
+            validate_placement_group(
+                bundles=hierarchical_bundles,
+                bundle_label_selector=selectors,
+            )
+
+        # A valid configuration where labels within the group do not conflict
+        valid_selectors = [
+            {"ray.io/accelerator": "A100", "ray.io/az": "us-east"},
+            {"ray.io/accelerator": "A100"},
+        ]
+        validate_placement_group(
+            bundles=hierarchical_bundles,
+            bundle_label_selector=valid_selectors,
+        )
+
 
 def test_hierarchical_pg_validations(ray_start_regular):
     # Verify topology_strategy handles lists properly.
@@ -910,3 +936,63 @@ def test_hierarchical_pg_fault_tolerance_partial_failure(ray_start_cluster):
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
+
+
+def test_hierarchical_pg_strict_spread_scheduling(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create 3 nodes in 3 distinct zones, each with 2 CPUs
+    for i in range(3):
+        cluster.add_node(num_cpus=2, labels={"ray.io/zone": f"zone-{i}"})
+    ray.init(address=cluster.address)
+
+    # 1. Success case: request 3 bundle groups, each needs 2 CPUs
+    # With STRICT_SPREAD on zone, they should be mapped to the 3 distinct zones.
+    pg = ray.util.placement_group(
+        bundles=[[{"CPU": 2}], [{"CPU": 2}], [{"CPU": 2}]],
+        topology_strategy=[
+            {"ray.io/zone": "STRICT_SPREAD"},
+            {"ray.io/node-id": "STRICT_PACK"},
+        ],
+    )
+    ray.get(pg.ready())
+    assert ray.util.placement_group_table(pg)["state"] == "CREATED"
+
+    # 2. Failure case: request 4 bundle groups, but we only have 3 zones.
+    pg2 = ray.util.placement_group(
+        bundles=[[{"CPU": 2}], [{"CPU": 2}], [{"CPU": 2}], [{"CPU": 2}]],
+        topology_strategy=[
+            {"ray.io/zone": "STRICT_SPREAD"},
+            {"ray.io/node-id": "STRICT_PACK"},
+        ],
+    )
+    # Should stay PENDING because it's infeasible to strictly spread across 4 zones
+    import time
+
+    time.sleep(2)
+    assert ray.util.placement_group_table(pg2)["state"] == "PENDING"
+
+
+def test_hierarchical_pg_strict_pack_scheduling(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create 2 nodes in the same zone. Node 1 has 4 CPUs. Node 2 has 2 CPUs.
+    cluster.add_node(num_cpus=4, labels={"ray.io/zone": "zone-A"})
+    cluster.add_node(num_cpus=2, labels={"ray.io/zone": "zone-A"})
+
+    # Create another zone with one node of 6 CPUs
+    cluster.add_node(num_cpus=6, labels={"ray.io/zone": "zone-B"})
+    ray.init(address=cluster.address)
+
+    # Success case: request 2 bundle groups of {"CPU": 3} each, STRICT_PACKed in the same zone.
+    # zone-A has 4 + 2 = 6 CPUs, but no combination of nodes can fit {"CPU": 3} on one node and {"CPU": 3} on another because nodes are 4 and 2. The second {"CPU": 3} will fail on the 2-CPU node.
+    # Therefore, zone-A should FAIL. It should backtrack and try zone-B!
+    # zone-B has one node with 6 CPUs, so both {"CPU": 3} bundles can pack on it!
+    pg = ray.util.placement_group(
+        bundles=[[{"CPU": 3}], [{"CPU": 3}]],
+        topology_strategy=[
+            {"ray.io/zone": "STRICT_PACK"},
+            {"ray.io/node-id": "STRICT_PACK"},
+        ],
+    )
+    ray.get(pg.ready())
+    table = ray.util.placement_group_table(pg)
+    assert table["state"] == "CREATED"

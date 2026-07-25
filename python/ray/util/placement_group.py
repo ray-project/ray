@@ -477,6 +477,21 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
+        if bundles and isinstance(bundles[0], list):
+            idx = 0
+            for group in bundles:
+                group_labels = {}
+                for _ in group:
+                    selector = bundle_label_selector[idx]
+                    idx += 1
+                    for k, v in selector.items():
+                        if k in group_labels and group_labels[k] != v:
+                            raise ValueError(
+                                f"Conflicting label selector values for key '{k}' "
+                                "within the same bundle group."
+                            )
+                        group_labels[k] = v
+
     if lifetime not in [None, "detached"]:
         raise ValueError(
             "Placement group `lifetime` argument must be either `None` or "
