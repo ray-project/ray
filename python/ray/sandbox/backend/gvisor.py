@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
-    """gVisor sandbox backend spawning isolated processes locally via the runsc OCI runtime CLI."""
+    """gVisor sandbox backend spawning isolated processes locally via standard OCI bundle runtime (runsc run)."""
 
     def __init__(self, runsc_path_override: Optional[str] = None):
         self._runsc_path_override = runsc_path_override
@@ -62,21 +63,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         print(f"Creating gVisor sandbox '{sandbox_id}': root_dir='{root_dir}'")
 
         try:
-            curr = ""
-            for part in root_dir.split(os.sep):
-                if not part:
-                    curr = os.sep
-                    continue
-                curr = os.path.join(curr, part)
-                os.makedirs(curr, mode=0o777, exist_ok=True)
-                try:
-                    os.chmod(curr, 0o777)
-                except Exception:
-                    pass
-
+            os.makedirs(root_dir, mode=0o777, exist_ok=True)
             work_dir_path = os.path.join(root_dir, gvisor_config.work_dir.lstrip("/"))
             os.makedirs(work_dir_path, mode=0o777, exist_ok=True)
-            os.chmod(work_dir_path, 0o777)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
@@ -115,6 +104,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: GVisorSandboxConfig = meta["config"]
         runsc_path = meta["runsc_path"]
         root_dir = meta["root_dir"]
+        work_dir_path = meta["work_dir"]
 
         if isinstance(command, list):
             cmd_str = " ".join(command)
@@ -127,31 +117,39 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if env:
             exec_env.update(env)
 
-        env_prefix = " ".join(f"{k}='{v}'" for k, v in (env or {}).items())
         raw_cwd = cwd or config.work_dir
         resolved_cwd = self._resolve_path(root_dir, raw_cwd)
         os.makedirs(resolved_cwd, exist_ok=True)
 
-        cmd_str_resolved = cmd_str
-        if raw_cwd != "/" and raw_cwd in cmd_str:
-            cmd_str_resolved = cmd_str.replace(raw_cwd, resolved_cwd)
-
-        # wrapped_cmd = f"cd '{resolved_cwd}' && {env_prefix} {cmd_str_resolved}".strip()
-        wrapped_cmd = f"{env_prefix} {cmd_str_resolved}".strip()
-
-        # Build runsc do command
         if self._runsc_path_override is not None:
-            # Fallback for unit testing mock when runsc_path_override is provided
+            # Fallback for unit test mocking
+            cmd_str_resolved = cmd_str
+            if raw_cwd != "/" and raw_cwd in cmd_str:
+                cmd_str_resolved = cmd_str.replace(raw_cwd, resolved_cwd)
+            env_prefix = " ".join(f"{k}='{v}'" for k, v in (env or {}).items())
+            wrapped_cmd = (
+                f"cd '{resolved_cwd}' && {env_prefix} {cmd_str_resolved}".strip()
+            )
             run_args = ["/bin/sh", "-c", wrapped_cmd]
         else:
+            # Standard OCI bundle execution via `runsc run`
+            self._prepare_oci_bundle(
+                root_dir=root_dir,
+                work_dir_path=work_dir_path,
+                container_cwd=raw_cwd,
+                cmd_str=cmd_str,
+                env_dict=env or {},
+                runsc_path=runsc_path,
+            )
+
             run_args = [runsc_path]
             if config.rootless:
                 run_args.append("--rootless")
             if config.network:
                 run_args.extend(["--network", config.network])
-            run_args.extend(
-                ["do", "-cwd", resolved_cwd, "--", "/bin/sh", "-c", wrapped_cmd]
-            )
+
+            exec_container_id = f"sb-exec-{uuid.uuid4().hex[:8]}"
+            run_args.extend(["run", "--bundle", root_dir, exec_container_id])
 
         logger.debug(
             f"Executing command in gVisor sandbox '{sandbox_id}': command='{cmd_str}', cwd='{raw_cwd}', timeout={timeout}"
@@ -269,3 +267,60 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if sandbox_id not in self._sandbox_meta:
             raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
         return self._sandbox_meta[sandbox_id]
+
+    def _prepare_oci_bundle(
+        self,
+        root_dir: str,
+        work_dir_path: str,
+        container_cwd: str,
+        cmd_str: str,
+        env_dict: Dict[str, str],
+        runsc_path: str,
+    ) -> str:
+        config_json_path = os.path.join(root_dir, "config.json")
+        rootfs_dir = os.path.join(root_dir, "rootfs")
+        os.makedirs(rootfs_dir, exist_ok=True)
+
+        if not os.path.exists(config_json_path):
+            subprocess.run([runsc_path, "spec"], cwd=root_dir, check=True)
+
+        with open(config_json_path, "r", encoding="utf-8") as f:
+            spec = json.load(f)
+
+        spec["process"]["args"] = ["/bin/sh", "-c", cmd_str]
+        spec["process"]["cwd"] = container_cwd
+
+        # Set process environment
+        env_list = ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"]
+        for k, v in env_dict.items():
+            env_list.append(f"{k}={v}")
+        spec["process"]["env"] = env_list
+
+        # Configure mounts for host binaries and workspace
+        mounts = spec.get("mounts", [])
+        existing_dests = {m.get("destination") for m in mounts}
+
+        default_binds = [
+            ("/bin", "/bin"),
+            ("/usr", "/usr"),
+            ("/lib", "/lib"),
+            ("/lib64", "/lib64"),
+            (container_cwd, work_dir_path),
+        ]
+        for dest, src in default_binds:
+            if dest not in existing_dests and os.path.exists(src):
+                mounts.append(
+                    {
+                        "destination": dest,
+                        "type": "bind",
+                        "source": src,
+                        "options": ["rbind", "rw" if dest == container_cwd else "ro"],
+                    }
+                )
+
+        spec["mounts"] = mounts
+
+        with open(config_json_path, "w", encoding="utf-8") as f:
+            json.dump(spec, f, indent=2)
+
+        return config_json_path
