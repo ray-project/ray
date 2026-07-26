@@ -286,6 +286,34 @@ class MemoryMonitorUtils {
                                          const std::string &proc_dir);
 
   /**
+   * @brief Resolved cgroup v2 swap counters for one cgroup.
+   */
+  struct CgroupV2SwapBytes {
+    /// True when memory.swap.max exists and was readable.
+    bool present = false;
+    /// Swap budget: the numeric swap.max, or host swap for the "max"/overflow
+    /// "unlimited" sentinel.
+    int64_t max_bytes = 0;
+    /// Per-cgroup memory.swap.current; 0 when the budget is 0.
+    int64_t used_bytes = 0;
+  };
+
+  /**
+   * @brief Reads and resolves a cgroup's v2 swap counters.
+   *
+   * Parses memory.swap.max (host swap is the practical cap for the
+   * "unlimited" sentinel) and reads memory.swap.current only when there is a
+   * non-zero budget, so a stale swap.current cannot surface as used > total.
+   *
+   * @param cgroup_path The cgroup directory to read the swap counters from.
+   * @param proc_dir The /proc directory, used for the host-swap fallback.
+   * @return The resolved counters; present is false when memory.swap.max is
+   *         missing or unreadable.
+   */
+  static CgroupV2SwapBytes ReadCgroupV2Swap(const std::string &cgroup_path,
+                                            const std::string &proc_dir);
+
+  /**
    * @brief Gets the used memory from the smap file.
    *
    * @param smap_path File path to the smap file.
