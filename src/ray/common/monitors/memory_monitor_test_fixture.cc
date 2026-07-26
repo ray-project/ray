@@ -21,14 +21,15 @@ namespace ray {
 
 std::string MemoryMonitorTestFixture::MockProcMemoryUsage(pid_t pid,
                                                           const std::string &usage_kb) {
-  auto temp_dir_or = TempDirectory::Create();
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
   mock_proc_dirs_.push_back(std::move(temp_dir_or.value()));
 
   const std::string &proc_dir = mock_proc_dirs_.back()->GetPath();
 
-  auto proc_subdir_or = TempDirectory::Create(proc_dir + "/" + std::to_string(pid));
+  StatusOr<std::unique_ptr<TempDirectory>> proc_subdir_or =
+      TempDirectory::Create(proc_dir + "/" + std::to_string(pid));
   RAY_CHECK(proc_subdir_or.ok())
       << "Failed to create temp directory: " << proc_subdir_or.status().message();
   mock_proc_dirs_.push_back(std::move(proc_subdir_or.value()));
@@ -49,7 +50,7 @@ std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
     std::optional<int64_t> shmem_memory_bytes,
     int64_t inactive_file_bytes,
     int64_t active_file_bytes) {
-  auto temp_dir_or = TempDirectory::Create();
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
   mock_cgroup_dirs_.push_back(std::move(temp_dir_or.value()));
@@ -91,7 +92,7 @@ std::string MemoryMonitorTestFixture::MockProcMeminfo(
     int64_t mem_available_kb,
     std::optional<int64_t> swap_total_kb,
     std::optional<int64_t> swap_free_kb) {
-  auto temp_dir_or = TempDirectory::Create();
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
   mock_proc_dirs_.push_back(std::move(temp_dir_or.value()));
@@ -152,14 +153,15 @@ std::string MemoryMonitorTestFixture::MockCgroupv1MemoryUsage(int64_t total_byte
                                                               int64_t current_bytes,
                                                               int64_t inactive_file_bytes,
                                                               int64_t active_file_bytes) {
-  auto temp_dir_or = TempDirectory::Create();
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
   mock_cgroup_dirs_.push_back(std::move(temp_dir_or.value()));
 
   const std::string &cgroup_path = mock_cgroup_dirs_.back()->GetPath();
 
-  auto memory_dir_or = TempDirectory::Create(cgroup_path + "/memory");
+  StatusOr<std::unique_ptr<TempDirectory>> memory_dir_or =
+      TempDirectory::Create(cgroup_path + "/memory");
   RAY_CHECK(memory_dir_or.ok())
       << "Failed to create temp directory: " << memory_dir_or.status().message();
   mock_cgroup_dirs_.push_back(std::move(memory_dir_or.value()));

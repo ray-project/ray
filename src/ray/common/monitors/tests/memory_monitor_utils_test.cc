@@ -37,7 +37,8 @@ class MemoryMonitorUtilsTest : public MemoryMonitorTestFixture {};
 
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
-    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
+    MemoryUsageSnapshot system_memory =
+        MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
     ASSERT_GT(system_memory.total_bytes, 0);
     ASSERT_GT(system_memory.total_bytes, system_memory.used_bytes);
   }
@@ -59,7 +60,8 @@ TEST_F(MemoryMonitorUtilsTest,
                                                    inactive_file_bytes,
                                                    active_file_bytes);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(cgroup_dir);
+  MemoryUsageSnapshot system_memory =
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(cgroup_dir);
 
   ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
   ASSERT_EQ(system_memory.used_bytes, expected_used_bytes);
@@ -78,8 +80,10 @@ void SetCountSwapFlag(bool enabled) {
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   SetCountSwapFlag(false);
   {
-    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
-    auto cgroup_memory = MemoryMonitorUtils::GetCGroupMemoryBytes("");
+    MemoryUsageSnapshot system_memory =
+        MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
+    MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
+        MemoryMonitorUtils::GetCGroupMemoryBytes("");
 
     auto cmd_out = Process::Exec("free -b");
     std::string title;
@@ -111,7 +115,7 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxMemoryFoldsSwapIntoTotal) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+  MemoryUsageSnapshot system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       "", /*include_swap=*/true, proc_dir);
 
   int64_t expected_total = (mem_total_kb + swap_total_kb) * 1024;
@@ -133,7 +137,7 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxSwapIgnoredWhenFlagDisabled) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+  MemoryUsageSnapshot system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       "", /*include_swap=*/true, proc_dir);
 
   ASSERT_EQ(system_memory.total_bytes, mem_total_kb * 1024);
@@ -147,7 +151,7 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxMemoryWithoutSwapMatchesRamOnly) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, std::nullopt, std::nullopt);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+  MemoryUsageSnapshot system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       "", /*include_swap=*/true, proc_dir);
 
   ASSERT_EQ(system_memory.total_bytes, mem_total_kb * 1024);
@@ -169,7 +173,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapAddedToTotalAndUsed) {
                                                    /*active_file_bytes=*/0);
   MockCgroupv2Swap(cgroup_dir, swap_max_bytes, swap_current_bytes);
 
-  auto cgroup_memory =
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   // v2 keeps RAM and swap separate.
@@ -195,7 +199,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled) {
                                                    /*active_file_bytes=*/0);
   MockCgroupv2Swap(cgroup_dir, swap_max_bytes, swap_current_bytes);
 
-  auto cgroup_memory =
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/false);
 
   ASSERT_FALSE(cgroup_memory.has_swap);
@@ -232,9 +236,10 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto cgroup_memory = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
-                                                                /*include_swap=*/true,
-                                                                proc_dir);
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                               /*include_swap=*/true,
+                                               proc_dir);
 
   ASSERT_TRUE(cgroup_memory.has_swap);
   ASSERT_EQ(cgroup_memory.total_bytes, cgroup_total_bytes);
@@ -274,9 +279,10 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto cgroup_memory = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
-                                                                /*include_swap=*/true,
-                                                                proc_dir);
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                               /*include_swap=*/true,
+                                               proc_dir);
 
   ASSERT_TRUE(cgroup_memory.has_swap);
   ASSERT_EQ(cgroup_memory.total_bytes, cgroup_total_bytes);
@@ -313,7 +319,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedRamBoundedSwapCountsCgroupSw
   std::string proc_dir = MockProcMeminfo(
       mem_total_kb, mem_available_kb, host_swap_total_kb, host_swap_free_kb);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+  MemoryUsageSnapshot system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       cgroup_dir, /*include_swap=*/true, proc_dir);
 
   // RAM is unbounded at the cgroup -> host RAM dominates; swap is the cgroup's
@@ -336,7 +342,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   MockCgroupv1Memsw(cgroup_dir, memsw_limit_bytes, memsw_usage_bytes);
 
-  auto cgroup_memory =
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   // v1 memsw folds RAM+swap into total/used (combined path).
@@ -360,7 +366,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswIgnoredWhenFlagDisabled) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   MockCgroupv1Memsw(cgroup_dir, memsw_limit_bytes, memsw_usage_bytes);
 
-  auto cgroup_memory =
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/false);
 
   ASSERT_FALSE(cgroup_memory.has_swap);
@@ -384,7 +390,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   std::ofstream(cgroup_dir + "/memory.memsw.limit_in_bytes") << memsw_limit_bytes;
 
-  auto cgroup_memory =
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   // memsw.usage missing -> falls back to the RAM-only counters.
@@ -783,13 +789,15 @@ TEST_F(MemoryMonitorUtilsTest, TestTakePerProcessMemorySnapshotFiltersBadPids) {
   std::string proc_dir = MockProcMemoryUsage(1, "111");
 
   // Invalid pids with no memory usage file.
-  auto proc_2_memory_usage_file_or = TempDirectory::Create(proc_dir + "/2");
+  StatusOr<std::unique_ptr<TempDirectory>> proc_2_memory_usage_file_or =
+      TempDirectory::Create(proc_dir + "/2");
   RAY_CHECK(proc_2_memory_usage_file_or.ok())
       << "Failed to create temp directory: "
       << proc_2_memory_usage_file_or.status().message();
   std::unique_ptr<TempFile> proc_2_memory_usage_file =
       std::make_unique<TempFile>(proc_dir + "/2/smaps_rollup");
-  auto proc_3_memory_usage_file_or = TempDirectory::Create(proc_dir + "/3");
+  StatusOr<std::unique_ptr<TempDirectory>> proc_3_memory_usage_file_or =
+      TempDirectory::Create(proc_dir + "/3");
   RAY_CHECK(proc_3_memory_usage_file_or.ok())
       << "Failed to create temp directory: "
       << proc_3_memory_usage_file_or.status().message();
