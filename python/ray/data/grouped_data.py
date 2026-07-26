@@ -224,6 +224,7 @@ class GroupedData:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy in (
             ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.HASH_SHUFFLE_V2,
             ShuffleStrategy.GPU_SHUFFLE,
         ):
             num_partitions = (
