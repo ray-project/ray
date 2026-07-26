@@ -16,18 +16,22 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
 
 static instrumented_io_context __mock_io_context_;
-static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
+static ClusterResourceManager __mock_cluster_resource_manager_(
+    PeriodicalRunner::Create(__mock_io_context_));
 static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
+static Clock __mock_clock_;
 static pubsub::ObservabilityPublisher *__mock_observability_publisher() {
   static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
       std::make_unique<pubsub::FakePublisher>());
@@ -40,7 +44,8 @@ static GcsNodeManager __mock_gcs_node_manager_(nullptr,
                                                ClusterID::Nil(),
                                                __mock_ray_event_recorder_,
                                                "",
-                                               __mock_observability_publisher());
+                                               __mock_observability_publisher(),
+                                               __mock_clock_);
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:

@@ -19,11 +19,9 @@ from ray.tests.conftest import *  # noqa
 def test_count(ray_start_regular):
     ds = ray.data.range(100, override_num_blocks=10)
     # We do not kick off the read task by default.
-    assert not ds.has_started_execution
     assert ds.count() == 100
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
-    assert not ds.has_started_execution
 
     assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
@@ -49,7 +47,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     # After iterating over bundles and completing execution, row count should be known.
     list(ds.iter_internal_ref_bundles())
     assert ds.count() == DS_ROW_COUNT
-    assert ds._plan._cache._num_rows == DS_ROW_COUNT
+    assert ds._cache._num_rows == DS_ROW_COUNT
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

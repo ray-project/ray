@@ -8,6 +8,9 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal import session
+from ray.train._internal.autoscaling_coordinator_client import (
+    TrainV1ResourceReservation,
+)
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
@@ -259,12 +262,6 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-        train_total_resources = self.scaling_config.total_resources
-        self._data_config.set_train_total_resources(
-            train_total_resources.get("CPU", 0),
-            train_total_resources.get("GPU", 0),
-        )
-
         if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
             from ray.train._internal.state.state_actor import get_or_create_state_actor
 
@@ -284,6 +281,7 @@ class DataParallelTrainer(BaseTrainer):
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
         Args:
+            path: The path to the experiment directory to restore from.
             train_loop_per_worker: Optionally re-specified train loop function.
                 This should be used to re-specify a function that is not
                 restorable in a new Ray cluster (e.g., it holds onto outdated
@@ -293,11 +291,14 @@ class DataParallelTrainer(BaseTrainer):
                 This should similarly be used if the original `train_loop_config`
                 contained outdated object references, and it should not be modified
                 from what was originally passed in.
+            **kwargs: Additional arguments forwarded to
+                :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`.
 
         See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
         for descriptions of the other arguments.
 
-        Returns a restored instance of the `DataParallelTrainer`.
+        Returns:
+            A restored instance of the ``DataParallelTrainer``.
         """
         return super(DataParallelTrainer, cls).restore(
             path=path,
@@ -450,23 +451,39 @@ class DataParallelTrainer(BaseTrainer):
             max_retries=0,
         )
 
-        # Start the remote actors.
-        backend_executor.start()
+        requester_id = f"train-{trial_info.run_id}"
 
-        training_iterator = self._training_iterator_cls(
-            backend_executor=backend_executor,
-            backend_config=self._backend_config,
-            train_func=train_loop_per_worker,
-            datasets=self.datasets,
-            metadata=self.metadata,
-            data_config=self._data_config,
-            checkpoint=self.starting_checkpoint,
-        )
+        # NOTE: This spawns a thread that will continously refresh
+        # its autoscaling request.
+        with TrainV1ResourceReservation(
+            requester_id=requester_id,
+            scaling_config=scaling_config,
+            num_workers=scaling_config.num_workers,
+        ):
+            try:
+                # Start the remote actors.
+                # TODO(jhsu): Later, we need to fix this to support passing in the
+                # locations of each reservation
+                backend_executor.start()
 
-        self._run_training(training_iterator)
+                training_iterator = self._training_iterator_cls(
+                    backend_executor=backend_executor,
+                    backend_config=self._backend_config,
+                    train_func=train_loop_per_worker,
+                    datasets=self.datasets,
+                    metadata=self.metadata,
+                    data_config=self._data_config,
+                    checkpoint=self.starting_checkpoint,
+                )
 
-        # Shutdown workers.
-        backend_executor.shutdown()
+                self._run_training(training_iterator)
+            finally:
+                # Shut down workers (and release their placement group) before the
+                # resource reservation is cancelled on context exit. Otherwise there
+                # is a window where workers still hold CPUs/GPUs without an active
+                # reservation, allowing Ray Data to potentially reclaim those resources
+                # during teardown.
+                backend_executor.shutdown()
 
     def get_dataset_config(self) -> DataConfig:
         """Returns a copy of this Trainer's final dataset configs.
@@ -478,7 +495,7 @@ class DataParallelTrainer(BaseTrainer):
         return self._data_config
 
     @repr_with_fallback(["ipywidgets", "8"])
-    def _repr_mimebundle_(self, **kwargs):
+    def _repr_mimebundle_(self, **kwargs: Any):
         """Returns a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
@@ -487,6 +504,10 @@ class DataParallelTrainer(BaseTrainer):
         for information about this method, and
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
+
+        Args:
+            **kwargs: Standard Jupyter mimebundle kwargs (e.g. ``include``,
+                ``exclude``); unused by this implementation.
 
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.

@@ -43,7 +43,7 @@ def test_from_dask_e2e(ray_start_regular_shared):
 
     # Underlying implementation uses `FromPandas` operator
     assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    assert ds._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
 
 

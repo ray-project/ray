@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -60,7 +60,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
         &placement_group_scheduling_latency_in_ms_histogram,
-    ray::observability::MetricInterface &placement_group_count_gauge)
+    ray::observability::MetricInterface &placement_group_count_gauge,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_resource_manager_(gcs_resource_manager),
       placement_group_gauge_(placement_group_gauge),
@@ -68,7 +69,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
-      placement_group_count_gauge_(placement_group_count_gauge) {}
+      placement_group_count_gauge_(placement_group_count_gauge),
+      clock_(clock) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
@@ -80,7 +82,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
         &placement_group_scheduling_latency_in_ms_histogram,
-    ray::observability::MetricInterface &placement_group_count_gauge)
+    ray::observability::MetricInterface &placement_group_count_gauge,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(scheduler),
       gcs_table_storage_(gcs_table_storage),
@@ -91,16 +94,18 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
-      placement_group_count_gauge_(placement_group_count_gauge) {
+      placement_group_count_gauge_(placement_group_count_gauge),
+      clock_(clock) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
+  // On change, only retract states that dropped to zero (emit their final 0). Live
+  // states are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+  // emitting them here too would double-record. Keeps each state recorded once/tick.
   placement_group_state_counter_->SetOnChangeCallback(
       [this](const rpc::PlacementGroupTableData::PlacementGroupState key) mutable {
-        int64_t num_pg = placement_group_state_counter_->Get(key);
-        placement_group_gauge_.Record(
-            num_pg,
-            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
-             {"Source", "gcs"}});
+        if (placement_group_state_counter_->Get(key) == 0) {
+          RecordPlacementGroupState(key, /*value=*/0);
+        }
       });
   Tick();
 }
@@ -251,7 +256,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 
   // Setup stats.
   auto stats = placement_group->GetMutableStats();
-  auto now = absl::GetCurrentTimeNanos();
+  auto now = clock_.NowUnixNanos();
   auto scheduling_latency_us =
       absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
       absl::Microseconds(1);
@@ -313,7 +318,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   bool is_new_placement_group_scheduled = false;
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
-    if (iter->first > absl::GetCurrentTimeNanos()) {
+    if (iter->first > clock_.NowUnixNanos()) {
       // Here the rank equals the time to schedule, and it's an ordered tree,
       // it means all the other tasks should be scheduled after this one.
       // If the first one won't be scheduled, we just skip.
@@ -329,7 +334,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (registered_placement_groups_.contains(placement_group_id)) {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
-      stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
+      stats->set_scheduling_started_time_ns(clock_.NowUnixNanos());
       MarkSchedulingStarted(placement_group_id);
       // We can't use designated initializers thanks to MSVC (error C7555).
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
@@ -358,7 +363,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   const JobID &job_id =
       JobID::FromBinary(request.placement_group_spec().creator_job_id());
   auto placement_group = std::make_shared<GcsPlacementGroup>(
-      request, get_ray_namespace_(job_id), placement_group_state_counter_);
+      request, get_ray_namespace_(job_id), placement_group_state_counter_, clock_);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(
       placement_group, [reply, send_reply_callback, placement_group](Status status) {
@@ -646,7 +651,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     std::optional<int64_t> rank,
     std::optional<ExponentialBackoff> exp_backer) {
   if (!rank) {
-    rank = absl::GetCurrentTimeNanos();
+    rank = clock_.NowUnixNanos();
   }
 
   // Add the biggest delay that has seen so far.
@@ -727,14 +732,14 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
-        // are now unplaced (total domain failure), move the PG back to the pending queue
-        // so the scheduler can clear the stale domain assignment and retry on a new
-        // domain. The manager here is just reponsible for rescheduling the
-        // placment group, clearing the domain is handled by
+        // For topology strategy PGs that are stuck in the infeasible queue: if ALL
+        // bundles are now unplaced (total failure), move the PG back to the
+        // pending queue so the scheduler can clear the stale topology
+        // assignments and retry on a fresh selection. The manager here is just
+        // responsible for rescheduling; clearing the assignments is handled by
         // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
-            iter->second->GetLabelDomainKey().has_value()) {
+            iter->second->GetTopologyStrategyKeys().has_value()) {
           auto infeasible_pg_iter =
               std::find_if(infeasible_placement_groups_.begin(),
                            infeasible_placement_groups_.end(),
@@ -842,7 +847,7 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
-  int total_cnt = 0;
+  int total_count = 0;
   for (const auto &elem : pending_placement_groups_) {
     const auto pending_pg_spec = elem.second.second;
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
@@ -857,8 +862,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
@@ -877,8 +882,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
@@ -905,8 +910,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   std::vector<PlacementGroupID> groups_to_remove;
   const auto &jobs = gcs_init_data.Jobs();
   for (auto &item : gcs_init_data.PlacementGroups()) {
-    auto placement_group =
-        std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_);
+    auto placement_group = std::make_shared<GcsPlacementGroup>(
+        item.second, placement_group_state_counter_, clock_);
     const auto state = item.second.state();
     const auto &pg_id = placement_group->GetPlacementGroupID();
     if (state == rpc::PlacementGroupTableData::REMOVED) {
@@ -1028,7 +1033,23 @@ void GcsPlacementGroupManager::RecordMetrics() const {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
                                                  lifetime_num_placement_groups_created_);
   }
+  // Re-assert every live placement-group state each tick, not just transitions:
+  // the metrics backend clears gauge observations after each export (#56405), so
+  // these gauge values would otherwise drop out between transitions.
+  // FlushOnChangeCallbacks still emits the final 0 for keys that just dropped to
+  // zero (erased from the counter, so ForEachEntry won't visit them).
   placement_group_state_counter_->FlushOnChangeCallbacks();
+  placement_group_state_counter_->ForEachEntry(
+      [this](const rpc::PlacementGroupTableData::PlacementGroupState &key,
+             int64_t value) { RecordPlacementGroupState(key, value); });
+}
+
+void GcsPlacementGroupManager::RecordPlacementGroupState(
+    rpc::PlacementGroupTableData::PlacementGroupState state, int64_t value) const {
+  placement_group_gauge_.Record(
+      value,
+      {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(state)},
+       {"Source", "gcs"}});
 }
 
 bool GcsPlacementGroupManager::IsInPendingQueue(

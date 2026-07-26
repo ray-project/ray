@@ -238,8 +238,10 @@ RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 /// will become eligible for removal in the autoscaler.
 RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
-// The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled/promoted to plasma.
+/// Maximum size in bytes of a task return value that may be returned inline
+/// in the task reply (and stored in the owner's in-memory store). Return
+/// values larger than this are stored in plasma instead. Applies to all task
+/// types (normal tasks, actor tasks, generators).
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
@@ -357,6 +359,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -406,13 +411,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -427,11 +432,40 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
+/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+/// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
+/// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
+/// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+/// The storage backend to use for the GCS. It can be 'memory', 'redis', or
+/// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// Number of worker threads in the RocksDB I/O offload pool. RocksDB I/O
+/// (including the WAL fsync that dominates per-call latency) always runs
+/// on this pool so blocking ops do not stall the GCS event loop. RocksDB
+/// serializes WAL writes internally and batches concurrent in-flight
+/// writers into one fsync (group commit), so a small pool (~4) is enough
+/// to capture the aggregate-throughput benefit on the GCS metadata
+/// workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// Number of per-key strand buckets used for single-key op ordering on
+/// the RocksDB I/O offload pool. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4).
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -621,6 +655,18 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// A probe task is only posted after a previous probe task has completed.
 RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
+/// How often to probe each io_context for loop latency and health.
+RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
+
+/// If a probe has been outstanding longer than this, the io_context is marked
+/// unhealthy.
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 30000)
+
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -665,6 +711,12 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+// The threshold of the memory usage in bytes for the idle worker
+// to be considered as a candidate for killing.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
 
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
@@ -835,7 +887,9 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
+RAY_CONFIG(std::string,
+           custom_unit_instance_resources,
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -858,14 +912,15 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 /// grpc keepalive timeout.
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
-/// NOTE: we set a loose client keep alive because
-/// they have a failure model that considers network failures as component failures
-/// and this configuration break that assumption. We should apply to every other component
-/// after we change this failure assumption from code.
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive ping interval: how often a client pings the server to
+/// detect a dead connection. We keep it loose because the failure model treats
+/// network failures as component failures, which an aggressive value would break.
+/// NOTE: the GCS server derives its minimum accepted ping interval from this value
+/// (see grpc_server.cc), so it must be set consistently across the head and all nodes.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive timeout: how long to wait for a ping ack before treating
+/// the connection as dead.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
@@ -967,14 +1022,14 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max<int64_t>(1, ray::CpuMonitorUtils::GetCpuLimit() / 4));
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -1010,8 +1065,10 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, fals
 
 // Enable per-worker process-group-based cleanup. When enabled, workers are
 // placed into their own process groups and can be cleaned up via killpg on
-// worker death. Cross-platform semantics on POSIX (no-op on Windows).
-RAY_CONFIG(bool, process_group_cleanup_enabled, false)
+// worker death. Cross-platform semantics on POSIX (no-op on Windows). Enabled by
+// default; this supersedes the deprecated subreaper-based cleanup
+// (kill_child_processes_on_worker_exit_with_raylet_subreaper).
+RAY_CONFIG(bool, process_group_cleanup_enabled, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
@@ -1117,10 +1174,3 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
-
-// The threshold of the memory usage in bytes for the idle worker to be considered as
-// a candidate for killing.
-// TODO: We should clean it up after the memory monitor is revamped.
-RAY_CONFIG(int64_t,
-           idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB

@@ -27,9 +27,22 @@ namespace raylet {
 
 /**
  * @brief Policy that selects workers to kill based on:
- * 1. Retriable tasks first (to maximize retry opportunities)
- * 2. Among tasks with the same retriability, most recent task first (newest granted
- *    lease time)
+ *
+ * Workers without lease Policy:
+ * 1. workers without granted lease are prioritized for killing over workers
+ *    with granted lease. Note that workers that have never been granted a lease
+ *    (i.e. cold start idle workers) are only considered for killing if their
+ *    memory footprint exceeds the idle worker killing memory threshold.
+ * 2. Between the workers without leases, the worker with
+ *    the largest memory footprint is selected as tie-breaker
+ *
+ * Workers with lease Policy:
+ * 1. For workers with lease, retriable workers are first prioritized
+ *    (to maximize retry opportunities)
+ * 2. Among workers with the same retriability, tasks are prioritized over actors.
+ * 3. Finally, most recent workers (newest granted lease time) are selected over
+ *    older workers.
+ *
  * The policy will select enough workers to kill to put the system back
  * under the memory usage threshold - kill_buffer_bytes.
  */
@@ -65,7 +78,7 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
-      const SystemMemorySnapshot &system_memory_snapshot) override;
+      const MemoryUsageSnapshot &system_memory_snapshot) override;
 
  private:
   /**
@@ -84,7 +97,7 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> Policy(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
-      const SystemMemorySnapshot &system_memory_snapshot) const;
+      const MemoryUsageSnapshot &system_memory_snapshot) const;
 
   /**
    * @brief Creates the debug string showing workers sorted by the policy priority.

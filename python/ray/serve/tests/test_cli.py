@@ -15,7 +15,10 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.util.state import list_actors
@@ -41,6 +44,64 @@ def check_http_response(
     resp = httpx.post(f"{url}/", json=json)
     assert resp.text == expected_text
     return True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_config_default_num_replicas_no_replica_restart(
+    serve_instance, tmp_path
+):
+    """Explicitly setting default num_replicas via CLI config should not roll replicas."""
+
+    config = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ]
+    }
+    success_message_fragment = b"Sent deploy request successfully."
+    config_file_name = str(tmp_path / "serve_config.yaml")
+
+    def write_config() -> None:
+        with open(config_file_name, "w") as config_file:
+            yaml.safe_dump(config, config_file)
+
+    def check_running_with_one_replica() -> bool:
+        status = serve.status()
+        app_status = status.applications.get(SERVE_DEFAULT_APP_NAME)
+        if app_status is None or app_status.status != "RUNNING":
+            return False
+
+        deployment_status = app_status.deployments.get("f")
+        if deployment_status is None:
+            return False
+
+        return deployment_status.replica_states.get("RUNNING", 0) == 1
+
+    def get_pid() -> int:
+        url = get_application_url()
+        return httpx.get(url).json()[0]
+
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(check_running_with_one_replica, timeout=30)
+    initial_pid = get_pid()
+
+    config["applications"][0]["deployments"] = [
+        {
+            "name": "f",
+            "num_replicas": 1,
+        }
+    ]
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(check_running_with_one_replica, timeout=30)
+
+    observed_pids = [get_pid() for _ in range(5)]
+    assert observed_pids == [initial_pid] * len(observed_pids)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -785,6 +846,13 @@ def test_deployment_contains_utils(serve_instance):
     )
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_deploy_use_custom_request_router(serve_instance):
     """Test that the custom request router is initialized and used correctly."""
     config_file = os.path.join(

@@ -87,9 +87,11 @@ class OneToOneOperator(PhysicalOperator):
         target_max_block_size_override: Optional[int] = None,
     ):
         """Create a OneToOneOperator.
+
         Args:
-            input_op: Operator generating input data for this op.
             name: The name of this operator.
+            input_op: Operator generating input data for this op.
+            data_context: The :class:`DataContext` to use for this operator.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
         """
@@ -181,8 +183,16 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+
+        input_bundles = self._input_buffer.to_list()
+        output_buffer, self._stats = self._bulk_fn(input_bundles, ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
+
+        for bundle in output_buffer:
+            for entry in bundle.blocks:
+                self._block_ref_counter.on_block_produced(
+                    entry.ref, entry.metadata.size_bytes or 0, self.id
+                )
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
@@ -239,17 +249,20 @@ class NAryOperator(PhysicalOperator):
         self,
         data_context: DataContext,
         *input_ops: PhysicalOperator,
+        name: Optional[str] = None,
     ):
         """Create a NAryOperator.
 
         Args:
             data_context: The DataContext instance containing configuration settings.
             *input_ops: Operators generating input data for this op.
+            name: Optional override for the operator display name.
         """
-        input_names = ", ".join([op._name for op in input_ops])
-        op_name = f"{self.__class__.__name__}({input_names})"
+        if name is None:
+            input_names = ", ".join([op._name for op in input_ops])
+            name = f"{self.__class__.__name__}({input_names})"
         super().__init__(
-            op_name,
+            name,
             list(input_ops),
             data_context,
         )

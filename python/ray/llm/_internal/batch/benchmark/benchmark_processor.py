@@ -89,9 +89,9 @@ def _build_vllm_engine_config(
         model_source=model,
         batch_size=batch_size,
         concurrency=concurrency,
-        apply_chat_template=False,
-        tokenize=False,
-        detokenize=False,
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
         engine_kwargs=engine_kwargs,
     )
 
