@@ -34,23 +34,31 @@ namespace ray {
 
 namespace {
 
-// Classification of a cgroup `memory.swap.max` (or `memory.memsw`) value.
+/**
+ * @brief Classification of a cgroup `memory.swap.max` (or `memory.memsw`) value.
+ */
 struct CgroupSwapMax {
-  // "max", empty, non-numeric, or a numeric value that overflows int64 (the
-  // kernel's ULLONG_MAX "unlimited" sentinel). The cgroup imposes no swap cap,
-  // so callers fall back to host swap.
+  /// "max", empty, non-numeric, or a numeric value that overflows int64 (the
+  /// kernel's ULLONG_MAX "unlimited" sentinel). The cgroup imposes no swap cap,
+  /// so callers fall back to host swap.
   bool unlimited = false;
-  // Explicit "0" — the kernel says swap is disabled for this cgroup.
+  /// Explicit "0" — the kernel says swap is disabled for this cgroup.
   bool zero = false;
-  // Parsed byte value when bounded (i.e. !unlimited).
+  /// Parsed byte value when bounded (i.e. !unlimited).
   int64_t bytes = 0;
 };
 
-// Classify a raw `memory.swap.max` string. The all-digit (and non-empty)
-// pre-check guarantees std::stoll only ever sees valid numeric input, so the
-// only exception it can throw is std::out_of_range — an all-digit value that
-// overflows int64, which is the kernel's "unlimited" sentinel (e.g. ULLONG_MAX)
-// and is reported as unlimited.
+/**
+ * @brief Classifies a raw `memory.swap.max` string.
+ *
+ * The all-digit (and non-empty) pre-check guarantees std::stoll only ever sees
+ * valid numeric input, so the only exception it can throw is
+ * std::out_of_range — an all-digit value that overflows int64, which is the
+ * kernel's "unlimited" sentinel (e.g. ULLONG_MAX) and is reported as unlimited.
+ *
+ * @param swap_max_str The raw file content of memory.swap.max.
+ * @return The classified value. See CgroupSwapMax.
+ */
 CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
   CgroupSwapMax result;
   if (swap_max_str.empty() ||
@@ -69,8 +77,13 @@ CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
   return result;
 }
 
-// Read a cgroup `memory.swap.current` file. Returns the per-cgroup swap usage in
-// bytes, or 0 when the file is missing, unreadable, or non-positive.
+/**
+ * @brief Reads a cgroup `memory.swap.current` file.
+ *
+ * @param swap_current_path The path to the memory.swap.current file.
+ * @return The per-cgroup swap usage in bytes, or 0 when the file is missing,
+ *         unreadable, or non-positive.
+ */
 int64_t ReadCgroupSwapCurrentBytes(const std::string &swap_current_path) {
   if (!std::filesystem::exists(swap_current_path)) {
     return 0;
