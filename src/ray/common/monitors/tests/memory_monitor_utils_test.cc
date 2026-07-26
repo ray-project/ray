@@ -444,7 +444,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing) {
 
   std::string cgroup_dir = MockCgroupv1MemoryUsage(
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
-  std::ofstream(cgroup_dir + "/memory.memsw.limit_in_bytes") << memsw_limit_bytes;
+  std::ofstream(cgroup_dir + "/" + MemoryMonitorUtils::kCgroupsV1MemswMaxPath)
+      << memsw_limit_bytes;
 
   MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
       MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
