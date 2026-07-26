@@ -25,28 +25,29 @@ namespace observability {
 
 template class RayEvent<rpc::events::TaskDefinitionEvent>;
 
-// RayTaskDefinitionEvent wraps a rpc::events::TaskDefinitionEvent (the static
-// metadata of a non-actor task attempt as RayEventInterface for recording
-// through RayEventRecorder.
-//
-// Definition events are static, so MergeData is a no-op: if more than one definition
-// event is produced for the same task attempt (each spec-carrying status event produces
-// one), the recorder collapses them to a single event when grouping by
-// (entity_id, event_type).
-//
-// TODO(karticam): this proto is built EAGERLY -- the caller passes a fully-populated
-// TaskDefinitionEvent, constructed at task-submission time. The legacy TaskEventBuffer
-// instead deferred definition-proto building to the flush thread, keeping it off the task
-// submission/execution critical path. Building the proto eagerly here might increase
-// latency in the task submission time. Benchmark this and if it regresses, implement lazy
-// serialization. Definition events are the only ones eligible for deferral since
-// MergeData is a no-op, so the proto need not exist before the recorder's merge step.
-// Lifecycle/profile are mergeable and must stay eager.
+/**
+ * @brief Wraps a rpc::events::TaskDefinitionEvent (the static metadata of a non-actor
+ * task attempt) as a RayEventInterface for recording through RayTaskEventRecorder.
+ *
+ * Exactly one definition event is produced per task attempt (from the single
+ * spec-carrying status event), so MergeData must never be called; therefore
+ * RAY_CHECK fails.
+ *
+ * TODO(karticam): this proto is built EAGERLY -- the caller passes a fully-populated
+ * TaskDefinitionEvent, constructed at task-submission time. The legacy TaskEventBuffer
+ * instead deferred definition-proto building to the flush thread, keeping it off the task
+ * submission/execution critical path. Building the proto eagerly here might increase
+ * latency in the task submission time. Benchmark this and if it regresses, implement lazy
+ * serialization. Definition events are the only ones eligible for deferral since they are
+ * never merged, so the proto need not exist before the recorder's grouping step.
+ * Lifecycle/profile are mergeable and must stay eager.
+ */
 class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent>,
                                public TaskRayEventInterface {
  public:
   RayTaskDefinitionEvent(rpc::events::TaskDefinitionEvent data,
-                         const std::string &session_name);
+                         const std::string &session_name,
+                         int64_t timestamp);
 
   std::string GetEntityId() const override;
 

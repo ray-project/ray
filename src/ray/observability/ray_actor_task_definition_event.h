@@ -25,19 +25,23 @@ namespace observability {
 
 template class RayEvent<rpc::events::ActorTaskDefinitionEvent>;
 
-// RayActorTaskDefinitionEvent wraps a rpc::events::ActorTaskDefinitionEvent (the static
-// metadata of an actor-task attempt) as a RayEventInterface for recording through
-// RayTaskEventRecorder. Like the task definition event, MergeData is a no-op (static).
-//
-// TODO(karticam): built EAGERLY like RayTaskDefinitionEvent. Benchmark if this adds
-// latency and then maybe implement lazy serialization. (see RayTaskDefinitionEvent. same
-// followup applies there as well.
+/**
+ * @brief Wraps a rpc::events::ActorTaskDefinitionEvent (the static metadata of an
+ * actor-task attempt) as a RayEventInterface for recording through RayTaskEventRecorder.
+ * Like the task definition event, exactly one is produced per attempt, so MergeData must
+ * never be called (it RAY_CHECK-fails).
+ *
+ * TODO(karticam): built EAGERLY like RayTaskDefinitionEvent. Benchmark if this adds
+ * latency and then maybe implement lazy serialization (see RayTaskDefinitionEvent; the
+ * same follow-up applies there).
+ */
 class RayActorTaskDefinitionEvent
     : public RayEvent<rpc::events::ActorTaskDefinitionEvent>,
       public TaskRayEventInterface {
  public:
   RayActorTaskDefinitionEvent(rpc::events::ActorTaskDefinitionEvent data,
-                              const std::string &session_name);
+                              const std::string &session_name,
+                              int64_t timestamp);
 
   std::string GetEntityId() const override;
 

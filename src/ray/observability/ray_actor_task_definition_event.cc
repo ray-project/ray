@@ -25,13 +25,16 @@ namespace ray {
 namespace observability {
 
 RayActorTaskDefinitionEvent::RayActorTaskDefinitionEvent(
-    rpc::events::ActorTaskDefinitionEvent data, const std::string &session_name)
+    rpc::events::ActorTaskDefinitionEvent data,
+    const std::string &session_name,
+    int64_t timestamp)
     : RayEvent<rpc::events::ActorTaskDefinitionEvent>(
           rpc::events::RayEvent::CORE_WORKER,
           rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name) {
+          session_name,
+          timestamp) {
   data_ = std::move(data);
 }
 

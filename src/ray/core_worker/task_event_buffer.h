@@ -283,8 +283,16 @@ class TaskProfileEvent : public TaskEvent {
   std::string session_name_;
 };
 
-/// Build and record the RayEventInterface objects for a task status.
-/// no-op when task events are disabled for a task.
+/**
+ * @brief Build the RayEventInterface objects for a task status change and record them to
+ * the task-event recorder. No-op when task events are disabled for the task or the
+ * recorder path is disabled.
+ *
+ * @param timestamp The status-change time in Unix nanoseconds (from an injected clock).
+ * @param include_task_info Whether to attach the task spec (the definition event); true
+ * only for the first/submission event of an attempt.
+ * @param state_update Optional lifecycle details (node/worker/error/log) for this change.
+ */
 void RecordTaskStatusEventToRecorderIfNeeded(
     ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     const TaskID &task_id,
