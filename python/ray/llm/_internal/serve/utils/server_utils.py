@@ -182,6 +182,9 @@ def get_response_for_error(
         message = "Internal Server Error"
         exc_type = "InternalServerError"
     else:
+        # Only HTTP-style exceptions reach here, and their message is meant
+        # for the client. _extract_message() drops stack traces, so nothing
+        # internal can leak. New status mappings above must keep this true.
         _, message = _extract_message(e)
         exc_type = e.__class__.__name__
 
