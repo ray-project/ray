@@ -60,3 +60,19 @@ class KubernetesSandboxConfig(SandboxConfig):
     tolerations: Optional[List[Dict]] = None
     pod_template: Optional[Union[Dict, Any]] = None
     pod_modifier: Optional[Callable[[Any], Any]] = None
+
+
+@dataclass
+class GVisorSandboxConfig(SandboxConfig):
+    """gVisor sandbox configuration for spawning isolated processes locally via runsc.
+
+    Attributes:
+        runsc_path: Path to the gVisor `runsc` executable (default: "runsc").
+        rootless: If True, run gVisor in rootless mode (default: True).
+        network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
+    """
+
+    backend: str = "gvisor"
+    runsc_path: str = "runsc"
+    rootless: bool = True
+    network: str = "none"

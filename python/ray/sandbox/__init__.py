@@ -2,7 +2,11 @@ import asyncio
 
 from ray.sandbox.backend.base import ExecResult, SandboxStatus
 from ray.sandbox.backend.factory import SandboxBackendFactory
-from ray.sandbox.config import KubernetesSandboxConfig, SandboxConfig
+from ray.sandbox.config import (
+    GVisorSandboxConfig,
+    KubernetesSandboxConfig,
+    SandboxConfig,
+)
 from ray.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -18,22 +22,17 @@ def create(backend: str = "kubernetes", **kwargs) -> Sandbox:
     """Create a new Sandbox environment.
 
     Args:
-        backend: Name of the sandbox backend (default: "kubernetes").
-        **kwargs: Fields corresponding to SandboxConfig or backend-specific configs
-                  (e.g., image, cpu, memory, env, namespace, ttl_seconds).
+        backend: Name of the sandbox backend (e.g., "kubernetes", "gvisor").
+        **kwargs: Fields corresponding to SandboxConfig or backend-specific configs.
 
     Returns:
         A Sandbox instance.
-
-    Example:
-        >>> import ray.sandbox
-        >>> sb = ray.sandbox.create(image="python:3.10-slim", memory="1Gi")
-        >>> res = sb.exec("python3 -c 'print(\"Hello world\")'")
-        >>> print(res.stdout)
-        >>> sb.delete()
     """
-    if backend.lower() == "kubernetes":
+    key = backend.lower()
+    if key == "kubernetes":
         config = KubernetesSandboxConfig(backend=backend, **kwargs)
+    elif key == "gvisor":
+        config = GVisorSandboxConfig(backend=backend, **kwargs)
     else:
         config = SandboxConfig(backend=backend, **kwargs)
 
@@ -54,6 +53,7 @@ __all__ = [
     "SandboxPool",
     "SandboxConfig",
     "KubernetesSandboxConfig",
+    "GVisorSandboxConfig",
     "ExecResult",
     "SandboxStatus",
     "SandboxError",
