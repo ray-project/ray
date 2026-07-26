@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
-    """gVisor sandbox backend spawning isolated processes locally via standard OCI bundle runtime (runsc run)."""
+    """gVisor sandbox backend running a single persistent container instance per sandbox via runsc."""
 
     def __init__(self, runsc_path_override: Optional[str] = None):
         self._runsc_path_override = runsc_path_override
@@ -44,7 +44,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gvisor_config = config
 
         runsc_path = self._runsc_path_override or gvisor_config.runsc_path
-        # Verify runsc availability unless mock override is set
         if self._runsc_path_override is None and not shutil.which(runsc_path):
             raise SandboxCreationError(
                 f"gVisor executable '{runsc_path}' not found in PATH. "
@@ -71,11 +70,42 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
+        proc = None
+        if self._runsc_path_override is None:
+            # Prepare OCI bundle config for long-running container process
+            self._prepare_oci_bundle(
+                root_dir=root_dir,
+                work_dir_path=work_dir_path,
+                container_cwd=gvisor_config.work_dir,
+                runsc_path=runsc_path,
+                env_dict=gvisor_config.env,
+            )
+            run_args = [runsc_path]
+            if gvisor_config.rootless:
+                run_args.append("--rootless")
+            if gvisor_config.network:
+                run_args.extend(["--network", gvisor_config.network])
+            run_args.extend(["run", "--bundle", root_dir, sandbox_id])
+
+            logger.debug(f"Launching gVisor container daemon: {run_args}")
+            proc = subprocess.Popen(
+                run_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            time.sleep(0.5)
+            if proc.poll() is not None:
+                _, stderr_str = proc.communicate()
+                raise SandboxCreationError(
+                    f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
+                )
+
         self._sandbox_meta[sandbox_id] = {
             "root_dir": root_dir,
             "work_dir": work_dir_path,
             "config": gvisor_config,
             "runsc_path": runsc_path,
+            "proc": proc,
             "status": SandboxStatus.RUNNING,
         }
         return sandbox_id
@@ -85,10 +115,35 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         meta = self._sandbox_meta.pop(sandbox_id, None)
         if meta:
             root_dir = meta["root_dir"]
+            runsc_path = meta["runsc_path"]
+            config: GVisorSandboxConfig = meta["config"]
+            proc = meta.get("proc")
+
             logger.debug(
                 f"Deleting gVisor sandbox '{sandbox_id}': removing root_dir='{root_dir}'"
             )
             print(f"Deleting gVisor sandbox '{sandbox_id}': root_dir='{root_dir}'")
+
+            if self._runsc_path_override is None:
+                kill_args = [runsc_path]
+                if config.rootless:
+                    kill_args.append("--rootless")
+                kill_args.extend(["kill", sandbox_id, "SIGKILL"])
+                subprocess.run(kill_args, capture_output=True)
+
+                if proc and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.communicate(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+
+                del_args = [runsc_path]
+                if config.rootless:
+                    del_args.append("--rootless")
+                del_args.extend(["delete", sandbox_id])
+                subprocess.run(del_args, capture_output=True)
+
             shutil.rmtree(root_dir, ignore_errors=True)
 
     def exec_command(
@@ -99,19 +154,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> ExecResult:
-        """Spawn and execute a process inside the gVisor sandbox via runsc."""
+        """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_meta_or_raise(sandbox_id)
         config: GVisorSandboxConfig = meta["config"]
         runsc_path = meta["runsc_path"]
         root_dir = meta["root_dir"]
-        work_dir_path = meta["work_dir"]
 
         if isinstance(command, list):
             cmd_str = " ".join(command)
         else:
             cmd_str = command
 
-        # Environment & working directory setup
         exec_env = os.environ.copy()
         exec_env.update(config.env)
         if env:
@@ -122,7 +175,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         os.makedirs(resolved_cwd, exist_ok=True)
 
         if self._runsc_path_override is not None:
-            # Fallback for unit test mocking
+            # Fallback for unit test mocking without running container
             cmd_str_resolved = cmd_str
             if raw_cwd != "/" and raw_cwd in cmd_str:
                 cmd_str_resolved = cmd_str.replace(raw_cwd, resolved_cwd)
@@ -131,36 +184,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"cd '{resolved_cwd}' && {env_prefix} {cmd_str_resolved}".strip()
             )
             run_args = ["/bin/sh", "-c", wrapped_cmd]
-        else:
-            # Standard OCI bundle execution via `runsc run`
-            self._prepare_oci_bundle(
-                root_dir=root_dir,
-                work_dir_path=work_dir_path,
-                container_cwd=raw_cwd,
-                cmd_str=cmd_str,
-                env_dict=env or {},
-                runsc_path=runsc_path,
-            )
-
-            run_args = [runsc_path]
-            if config.rootless:
-                run_args.append("--rootless")
-            if config.network:
-                run_args.extend(["--network", config.network])
-
-            exec_container_id = f"sb-exec-{uuid.uuid4().hex[:8]}"
-            run_args.extend(["run", "--bundle", root_dir, exec_container_id])
-
-        logger.debug(
-            f"Executing command in gVisor sandbox '{sandbox_id}': command='{cmd_str}', cwd='{raw_cwd}', timeout={timeout}"
-        )
-        logger.debug(f"gVisor process arguments: {run_args}")
-        print(
-            f"Executing command in gVisor sandbox '{sandbox_id}': run_args={run_args}"
-        )
-
-        start_time = time.time()
-        try:
+            start_time = time.time()
             proc = subprocess.Popen(
                 run_args,
                 stdout=subprocess.PIPE,
@@ -171,8 +195,64 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
             stdout_str, stderr_str = proc.communicate(timeout=timeout)
             duration = time.time() - start_time
+            return ExecResult(
+                exit_code=proc.returncode,
+                stdout=stdout_str,
+                stderr=stderr_str,
+                duration_seconds=duration,
+            )
+
+        # Production execution against running container via `runsc exec`
+        exec_id = uuid.uuid4().hex[:8]
+        container_out = f"{raw_cwd.rstrip('/')}/.exec_{exec_id}.stdout"
+        container_err = f"{raw_cwd.rstrip('/')}/.exec_{exec_id}.stderr"
+        host_out = self._resolve_path(root_dir, container_out)
+        host_err = self._resolve_path(root_dir, container_err)
+
+        wrapped_cmd = f"({cmd_str}) > '{container_out}' 2> '{container_err}'"
+
+        runsc_args = [runsc_path]
+        if config.rootless:
+            runsc_args.append("--rootless")
+        runsc_args.extend(["exec", "-cwd", raw_cwd])
+        if env:
+            for k, v in env.items():
+                runsc_args.extend(["-env", f"{k}={v}"])
+        runsc_args.extend([sandbox_id, "/bin/sh", "-c", wrapped_cmd])
+
+        logger.debug(f"Executing in gVisor sandbox '{sandbox_id}': args={runsc_args}")
+        print(
+            f"Executing command in gVisor sandbox '{sandbox_id}': run_args={runsc_args}"
+        )
+
+        start_time = time.time()
+        try:
+            proc = subprocess.Popen(
+                runsc_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=exec_env,
+            )
+            proc.communicate(timeout=timeout)
+            duration = time.time() - start_time
+
+            stdout_str = open(host_out).read() if os.path.exists(host_out) else ""
+            stderr_str = open(host_err).read() if os.path.exists(host_err) else ""
+
+            if os.path.exists(host_out):
+                try:
+                    os.remove(host_out)
+                except Exception:
+                    pass
+            if os.path.exists(host_err):
+                try:
+                    os.remove(host_err)
+                except Exception:
+                    pass
+
             logger.debug(
-                f"gVisor command finished: exit_code={proc.returncode}, duration={duration:.3f}s, stdout='{stdout_str}', stderr='{stderr_str}'"
+                f"gVisor command finished: exit_code={proc.returncode}, duration={duration:.3f}s"
             )
             print(
                 f"gVisor command finished: exit_code={proc.returncode}, duration={duration:.3f}s\n"
@@ -219,10 +299,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         parent_dir = os.path.dirname(target_file)
         os.makedirs(parent_dir, mode=0o755, exist_ok=True)
-        try:
-            os.chmod(parent_dir, 0o755)
-        except Exception:
-            pass
 
         if isinstance(content, str):
             with open(target_file, "w", encoding="utf-8") as f:
@@ -230,10 +306,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         else:
             with open(target_file, "wb") as f:
                 f.write(content)
-        try:
-            os.chmod(target_file, 0o644)
-        except Exception:
-            pass
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
         """Read binary content from a file inside the local gVisor sandbox directory."""
@@ -273,9 +345,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         root_dir: str,
         work_dir_path: str,
         container_cwd: str,
-        cmd_str: str,
-        env_dict: Dict[str, str],
         runsc_path: str,
+        env_dict: Optional[Dict[str, str]] = None,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -287,16 +358,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
 
-        spec["process"]["args"] = ["/bin/sh", "-c", cmd_str]
+        spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
 
-        # Set process environment
         env_list = ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"]
-        for k, v in env_dict.items():
-            env_list.append(f"{k}={v}")
+        if env_dict:
+            for k, v in env_dict.items():
+                env_list.append(f"{k}={v}")
         spec["process"]["env"] = env_list
 
-        # Configure mounts for host binaries and workspace
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
