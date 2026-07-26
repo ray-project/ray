@@ -17,6 +17,10 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
+#include "ray/util/logging.h"
+
 namespace ray {
 namespace observability {
 
@@ -41,7 +45,11 @@ TaskAttemptId RayActorTaskDefinitionEvent::GetTaskAttempt() const {
 
 void RayActorTaskDefinitionEvent::MergeData(
     RayEvent<rpc::events::ActorTaskDefinitionEvent> &&other) {
-  // Definition events are static; merging does not change the event.
+  RAY_CHECK(false) << absl::StrFormat(
+      "MergeData called on actor task definition event for task %s attempt %d; only "
+      "one definition event is expected per task attempt.",
+      absl::BytesToHexString(data_.task_id()),
+      data_.task_attempt());
 }
 
 ray::rpc::events::RayEvent RayActorTaskDefinitionEvent::SerializeData() && {

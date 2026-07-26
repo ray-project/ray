@@ -228,10 +228,17 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
 }
 
 // With both recorder flags on, enqueuing a task records status events to the
-// RayEventRecorder (one lifecycle event per status transition).
-TEST(OrderedActorTaskExecutionQueueTest, TestRecordsToRecorderWhenEnabled) {
+// RayEventRecorder (one lifecycle event per status transition); with them off, it
+// records nothing.
+class OrderedActorTaskExecutionQueueRecorderTest : public ::testing::TestWithParam<bool> {
+};
+
+TEST_P(OrderedActorTaskExecutionQueueRecorderTest, RecordsToRecorderWhenEnabled) {
+  const bool recorder_enabled = GetParam();
   RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+      recorder_enabled
+          ? R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})"
+          : R"({"enable_ray_event": false, "enable_ray_task_event_recorder": false})");
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -261,52 +268,21 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRecordsToRecorderWhenEnabled) {
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
 
   auto recorded = ray_task_event_recorder.FlushBuffer();
-  ASSERT_EQ(recorded.size(), 1UL);
-  EXPECT_EQ(recorded[0]->GetEventType(), rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  if (recorder_enabled) {
+    ASSERT_EQ(recorded.size(), 1UL);
+    EXPECT_EQ(recorded[0]->GetEventType(), rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  } else {
+    EXPECT_TRUE(recorded.empty());
+  }
 
   io_service.run();
   pool_manager->GetDefaultExecutor()->Join();
   queue.Stop();
 }
 
-// With the recorder flags off, enqueuing a task records nothing to the RayEventRecorder.
-TEST(OrderedActorTaskExecutionQueueTest, TestNoRecordToRecorderWhenDisabled) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": false, "enable_ray_task_event_recorder": false})");
-  instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
-  ray::observability::FakeRayEventRecorder ray_task_event_recorder;
-
-  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
-  auto pool_manager =
-      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
-
-  auto execute_task = [](TaskToExecute &task) {};
-  auto cancel_task = [](const TaskToExecute &task, const Status &status) {};
-
-  OrderedActorTaskExecutionQueue queue(io_service,
-                                       waiter,
-                                       task_event_buffer,
-                                       ray_task_event_recorder,
-                                       pool_manager,
-                                       1,
-                                       execute_task,
-                                       cancel_task);
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().set_task_id(
-      TaskID::FromRandom(JobID::FromInt(1)).Binary());
-  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  task_spec.GetMutableMessage().set_enable_task_events(true);
-
-  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
-
-  EXPECT_TRUE(ray_task_event_recorder.FlushBuffer().empty());
-
-  io_service.run();
-  pool_manager->GetDefaultExecutor()->Join();
-  queue.Stop();
-}
+INSTANTIATE_TEST_SUITE_P(RecorderEnabledAndDisabled,
+                         OrderedActorTaskExecutionQueueRecorderTest,
+                         ::testing::Values(true, false));
 
 TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   instrumented_io_context io_service;
