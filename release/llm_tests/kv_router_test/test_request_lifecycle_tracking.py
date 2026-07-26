@@ -34,6 +34,19 @@ PROMPT_TEXT = (
 # routing, even if vLLM derives a separate engine-level id internally.
 LIFECYCLE_REQUEST_ID = REQUEST_ID
 
+# Each LLMRouter ingress replica builds its own KVTokenTracker, and Serve runs one
+# per proxy node (every node with a replica, plus the head), so this test's head +
+# GPU worker cluster gets two. The engine's lifecycle events load-balance across
+# them, splitting a request's state.
+# TODO (jeffreywang): Re-enable this after #65010 which enables multiple LLMRouter
+# ingress replicas lands.
+pytestmark = pytest.mark.skip(
+    reason=(
+        "Lifecycle accounting requires a single LLMRouter ingress replica; "
+        "re-enable after #65010."
+    )
+)
+
 
 def num_prompt_blocks(token_ids):
     """Number of full KV blocks in a token sequence (matches the indexer)."""
