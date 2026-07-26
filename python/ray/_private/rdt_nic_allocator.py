@@ -9,6 +9,14 @@ NIXL agent is created.
 
 The feature is opt-in via ``RAY_RDT_NIC_PINNING=1`` and fails open: any
 discovery or allocator failure falls back to UCX's default device selection.
+
+Deliberately kept outside ``ray.experimental.rdt``: that package's
+``__init__.py`` eagerly imports the NIXL, CUDA IPC, and collective (NCCL/
+GLOO) tensor transport modules, so importing anything from within it -- even
+this file alone -- pulls all of that in. Living under ``ray._private``
+instead lets callers that only need the tiny bookkeeping in this module
+(e.g. ``Worker.shutdown_rdt_manager``, on every actor's shutdown path) avoid
+paying that cost when RDT/NIXL was never used.
 """
 
 import glob

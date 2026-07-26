@@ -5,8 +5,8 @@ from unittest import mock
 import pytest
 
 import ray
-from ray.experimental.rdt import nic_allocator
-from ray.experimental.rdt.nic_allocator import (
+from ray._private import rdt_nic_allocator as nic_allocator
+from ray._private.rdt_nic_allocator import (
     RDT_NIC_PINNING_ENV_VAR,
     _NICAllocatorImpl,
     acquire_nic_for_current_actor,

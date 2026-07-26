@@ -230,12 +230,11 @@ class RDTManager:
                 self._monitor_failures_thread.join()
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
-
-        # Return this actor's pinned RDMA NIC (if any) to the cluster-wide
-        # pool. No-op unless RAY_RDT_NIC_PINNING=1.
-        from ray.experimental.rdt.nic_allocator import release_nic_for_current_actor
-
-        release_nic_for_current_actor()
+        # NIC release is handled unconditionally in
+        # Worker.shutdown_rdt_manager (ray/_private/worker.py), not here:
+        # NIC acquisition can happen via NixlTensorTransport without ever
+        # creating an RDTManager, so hooking release to this class's
+        # lifecycle would miss that case.
 
     def start_monitor_thread_if_needed(self):
         with self._init_lock:

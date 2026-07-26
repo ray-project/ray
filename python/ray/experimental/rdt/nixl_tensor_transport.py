@@ -252,19 +252,17 @@ class NixlTensorTransport(TensorTransportManager):
             backend == "UCX"
             and "UCX_NET_DEVICES" not in os.environ
             # Checked as a plain env lookup (matching
-            # nic_allocator.RDT_NIC_PINNING_ENV_VAR) so that importing and
-            # invoking the allocator -- including the @ray.remote class
-            # definition overhead in nic_allocator -- is fully skipped in
-            # the default case where NIC pinning is disabled.
+            # rdt_nic_allocator.RDT_NIC_PINNING_ENV_VAR) so that importing
+            # and invoking the allocator -- including the @ray.remote class
+            # definition overhead it triggers -- is fully skipped in the
+            # default case where NIC pinning is disabled.
             and os.environ.get("RAY_RDT_NIC_PINNING", "0") == "1"
         ):
             # Best-effort exclusive NIC pinning. Must run before agent
             # construction because UCX reads UCX_NET_DEVICES at context
             # init. A user-provided UCX_NET_DEVICES always wins (checked
             # above).
-            from ray.experimental.rdt.nic_allocator import (
-                acquire_nic_for_current_actor,
-            )
+            from ray._private.rdt_nic_allocator import acquire_nic_for_current_actor
 
             nic = acquire_nic_for_current_actor()
             if nic is not None:
