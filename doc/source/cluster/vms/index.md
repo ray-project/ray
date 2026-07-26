@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Launch and manage Ray clusters on cloud VMs across AWS, GCP, and Azure, with autoscaling and heterogeneous compute."
+---
+
 # Ray on Cloud VMs
 (cloud-vm-index)=
 

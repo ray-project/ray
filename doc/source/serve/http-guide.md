@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure HTTP handling in Ray Serve: Starlette request/response API, FastAPI integration, request cancellation, keep-alive timeouts, and custom HTTP adapters."
+---
+
 (serve-set-up-fastapi-http)=
 # Set Up FastAPI and HTTP
 

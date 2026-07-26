@@ -10,12 +10,11 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
-from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
 
-from ray._private.path_utils import is_path
+from ray._common.runtime_env_uri import parse_uri as _parse_uri
 from ray._private.ray_constants import (
     GRPC_CPP_MAX_MESSAGE_SIZE,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
@@ -254,70 +253,9 @@ def parse_path(pkg_path: str) -> None:
         raise ValueError(f"{path} is not a valid path.")
 
 
-def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
-    """
-    Parse package uri into protocol and package name based on its format.
-    Note that the output of this function is not for handling actual IO, it's
-    only for setting up local directory folders by using package name as path.
-
-    >>> parse_uri("https://test.com/file.zip")
-    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
-
-    >>> parse_uri("https://test.com/file.whl")
-    (<Protocol.HTTPS: 'https'>, 'file.whl')
-
-    """
-    if is_path(pkg_uri):
-        raise ValueError(f"Expected URI but received path {pkg_uri}")
-
-    uri = urlparse(pkg_uri)
-    try:
-        protocol = Protocol(uri.scheme)
-    except ValueError as e:
-        raise ValueError(
-            f'Invalid protocol for runtime_env URI "{pkg_uri}". '
-            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
-        )
-
-    if protocol in Protocol.remote_protocols():
-        if uri.path.endswith(".whl"):
-            # Don't modify the .whl filename. See
-            # https://peps.python.org/pep-0427/#file-name-convention
-            # for more information.
-            package_name = uri.path.split("/")[-1]
-        else:
-            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
-
-            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
-            for disallowed_char in disallowed_chars:
-                package_name = package_name.replace(disallowed_char, "_")
-
-            # Preserve compound extensions like .tar.gz before replacing dots
-            compound_ext = None
-            if package_name.endswith(".tar.gz"):
-                compound_ext = ".tar.gz"
-                package_name = package_name[: -len(".tar.gz")]
-            elif package_name.endswith(".tar.bz2"):
-                compound_ext = ".tar.bz2"
-                package_name = package_name[: -len(".tar.bz2")]
-
-            if compound_ext:
-                package_name = package_name.replace(".", "_")
-                package_name += compound_ext
-            else:
-                # Remove all periods except the last, which is part of the
-                # file extension
-                package_name = package_name.replace(
-                    ".", "_", package_name.count(".") - 1
-                )
-    else:
-        package_name = uri.netloc
-    return (protocol, package_name)
-
-
 def is_zip_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        protocol, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -326,7 +264,7 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -335,7 +273,7 @@ def is_whl_uri(uri: str) -> bool:
 
 def is_jar_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -344,7 +282,7 @@ def is_jar_uri(uri: str) -> bool:
 
 def is_tar_gz_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -511,7 +449,7 @@ def _store_package_in_gcs(
 
 
 def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = parse_uri(pkg_uri)
+    _, pkg_name = _parse_uri(pkg_uri)
     return os.path.join(base_directory, pkg_name)
 
 
@@ -577,7 +515,7 @@ def package_exists(pkg_uri: str) -> bool:
     Returns:
         True for package existing and False for not.
     """
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         return _internal_kv_exists(pkg_uri)
     else:
@@ -701,7 +639,7 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
         NotImplementedError: If the protocol of the URI is not supported.
 
     """
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
@@ -947,7 +885,7 @@ async def download_and_unpack_package(
             shutil.rmtree(local_dir)
 
         if download_package:
-            protocol, _ = parse_uri(pkg_uri)
+            protocol, _ = _parse_uri(pkg_uri)
             logger.info(
                 f"Downloading package from {pkg_uri} to {pkg_file} "
                 f"with protocol {protocol}"
