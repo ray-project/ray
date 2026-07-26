@@ -2599,6 +2599,15 @@ class DeploymentRankManager:
         # Track which node each replica is on
         self._replica_to_node: Dict[str, str] = {}
 
+    @property
+    def last_rank_op_errored(self) -> bool:
+        """Whether the most recent rank op swallowed an error (fail_on_rank_error off).
+
+        Read it immediately after the call whose result you are judging: any further
+        rank op resets it.
+        """
+        return self._last_rank_op_errored
+
     def _execute_with_error_handling(self, func, safe_default, *args, **kwargs):
         if self._fail_on_rank_error:
             # Let exceptions propagate
@@ -4990,16 +4999,19 @@ class DeploymentState:
         the controller loop. Rank consistency can only be violated by
         membership changes, so the active replica-id set gates it.
         """
-        active_replicas = self._replicas.get()
-        if not (
-            active_replicas
-            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+        # O(1) guards first -- `get()` below copies the whole replica list, and these
+        # two rule out the busiest ticks (rollouts, migrations) without paying for it.
+        if (
+            self._curr_status_info.status != DeploymentStatus.HEALTHY
             # Skip consistency check if there are STARTING replicas. During node
             # migration, new replicas are created in STARTING state (without ranks)
             # after the status is set to HEALTHY. Running the consistency check
             # with STARTING replicas causes "active keys without ranks" error.
-            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
+            or self._replicas.count(states=[ReplicaState.STARTING]) != 0
         ):
+            return
+        active_replicas = self._replicas.get()
+        if not active_replicas:
             return
         active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
         if active_replica_ids == self._last_rank_membership_ids:
@@ -5009,12 +5021,15 @@ class DeploymentState:
                 active_replicas,
             )
         )
+        # Snapshot now: the reconfigure below calls back into the rank manager, which
+        # resets this flag.
+        checked_cleanly = not self._rank_manager.last_rank_op_errored
 
         # Reconfigure replicas that had their ranks reassigned
         self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
-        if not self._rank_manager._last_rank_op_errored:
-            # Only mark this membership as checked if the pass did not swallow an
-            # error (fail_on_rank_error off); otherwise retry it next tick.
+        if checked_cleanly:
+            # Deliberate: a deployment that keeps erroring never caches and is
+            # rechecked every tick, rather than latching an unvalidated membership.
             self._last_rank_membership_ids = active_replica_ids
 
     def _handle_deployment_actor_failed_health_check(

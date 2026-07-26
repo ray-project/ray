@@ -10150,8 +10150,6 @@ class TestRankConsistencyMembershipGate:
     """The rank-consistency pass runs only when replica membership changes."""
 
     def _ds(self, uids):
-        from ray.serve._private.common import DeploymentStatus
-
         ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
         replicas = []
         for uid in uids:
@@ -10163,7 +10161,7 @@ class TestRankConsistencyMembershipGate:
         ds._replicas.count.return_value = 0
         ds._curr_status_info = Mock(status=DeploymentStatus.HEALTHY)
         ds._rank_manager = Mock()
-        ds._rank_manager._last_rank_op_errored = False
+        ds._rank_manager.last_rank_op_errored = False
         ds._rank_manager.check_rank_consistency_and_reassign_minimally.return_value = []
         ds._reconfigure_replicas_with_new_ranks = Mock()
         ds._last_rank_membership_ids = None
@@ -10198,7 +10196,7 @@ class TestRankConsistencyMembershipGate:
         # fail_on_rank_error off: the pass can swallow an error and return [].
         # The membership must NOT be cached, so the next tick retries.
         ds = self._ds(["a", "b", "c"])
-        ds._rank_manager._last_rank_op_errored = True
+        ds._rank_manager.last_rank_op_errored = True
         ds._maybe_check_rank_consistency()
         assert ds._last_rank_membership_ids is None
         ds._maybe_check_rank_consistency()
@@ -10207,13 +10205,48 @@ class TestRankConsistencyMembershipGate:
             == 2
         )
         # Once it succeeds, the membership is cached and the pass stops re-running.
-        ds._rank_manager._last_rank_op_errored = False
+        ds._rank_manager.last_rank_op_errored = False
         ds._maybe_check_rank_consistency()
         ds._maybe_check_rank_consistency()
         assert (
             ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
             == 3
         )
+
+    def _real_manager_ds(self, uids, node_id="node-1"):
+        """Gate wired to a real DeploymentRankManager with error-swallowing on (the
+        production default), primed so one active replica has no node mapping -- which
+        trips the consistency impl's `assert node_id is not None`."""
+        ds = self._ds(uids)
+        mgr = ds_mod.DeploymentRankManager(fail_on_rank_error=False)
+        for uid in uids:
+            mgr.assign_rank(uid, node_id)
+        del mgr._replica_to_node[uids[-1]]
+        ds._rank_manager = mgr
+        return ds, mgr
+
+    def test_real_manager_swallowed_error_is_not_cached(self):
+        # RAY_SERVE_FAIL_ON_RANK_ERROR defaults off, so this is the production path:
+        # the pass logs, returns [], and the membership must NOT be cached.
+        ds, mgr = self._real_manager_ds(["a", "b"])
+
+        ds._maybe_check_rank_consistency()
+
+        assert mgr.last_rank_op_errored is True
+        assert ds._last_rank_membership_ids is None
+
+    def test_error_flag_read_before_reconfigure(self):
+        # Guards a latent hazard, not a live bug: today safe_default is [] and the
+        # reconfigure early-returns on an empty list. Stub it to call back into the
+        # manager -- get_replica_rank() clears the flag, so reading it after the
+        # reconfigure would see False and wrongly cache an unvalidated membership.
+        ds, mgr = self._real_manager_ds(["a", "b"])
+        ds._reconfigure_replicas_with_new_ranks = lambda _: mgr.get_replica_rank("a")
+
+        ds._maybe_check_rank_consistency()
+
+        assert mgr.last_rank_op_errored is False  # cleared by the reconfigure call
+        assert ds._last_rank_membership_ids is None  # ...yet still not cached
 
     def test_starting_replicas_skip_entirely(self):
         ds = self._ds(["a", "b"])
