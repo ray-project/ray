@@ -619,6 +619,12 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
   // include_swap is the single gate (the caller already AND-ed it with
   // count_swap_in_memory_monitor). The user-slice path passes false so it can
   // add per-slice cgroup swap separately without double-counting host swap.
+  //
+  // Both terms of the sum err high: MemTotal - MemAvailable keeps the RAM copy
+  // of swap-cached pages in used, and SwapTotal - SwapFree keeps their swap
+  // slots (plus lazily-freed ones), so swap-cached pages are counted twice.
+  // The overcount is bounded by SwapCached and only makes the monitor kill
+  // earlier, never later — the safe direction — so it is left as is.
   if (include_swap) {
     int64_t swap_used_bytes = swap_total_bytes - swap_free_bytes;
     if (swap_used_bytes < 0) {
