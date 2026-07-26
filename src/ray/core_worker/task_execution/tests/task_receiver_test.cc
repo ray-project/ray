@@ -122,6 +122,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string GetSessionName() const override { return "test-session-name"; }
 
   NodeID GetNodeID() const override { return NodeID::Nil(); }
+  int64_t GetCurrentTimestampNanos() const override { return 0; }
 };
 
 class TaskReceiverTest : public ::testing::Test {

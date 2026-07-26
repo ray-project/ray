@@ -194,6 +194,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec.AttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        task_event_buffer_.GetCurrentTimestampNanos(),
         task_event_buffer_.GetSessionName(),
         task_event_buffer_.GetNodeID(),
         /*include_task_info=*/false);
@@ -216,6 +217,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
           task.AttemptNumber(),
           task,
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          task_event_buffer_.GetCurrentTimestampNanos(),
           task_event_buffer_.GetSessionName(),
           task_event_buffer_.GetNodeID(),
           /*include_task_info=*/false);
@@ -238,6 +240,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec.AttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        task_event_buffer_.GetCurrentTimestampNanos(),
         task_event_buffer_.GetSessionName(),
         task_event_buffer_.GetNodeID(),
         /*include_task_info=*/false);
