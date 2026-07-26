@@ -292,6 +292,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
     int32_t attempt_number,
     const TaskSpecification &spec,
     rpc::TaskStatus status,
+    int64_t timestamp,
     const std::string &session_name,
     const NodeID &node_id,
     bool include_task_info = false,
@@ -415,6 +416,9 @@ class TaskEventBuffer {
 
   /// Return the node ID.
   virtual NodeID GetNodeID() const = 0;
+
+  /// Return the current timestamp in nanoseconds from the injected clock.
+  virtual int64_t GetCurrentTimestampNanos() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -466,6 +470,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::string GetSessionName() const override { return session_name_; }
 
   NodeID GetNodeID() const override { return node_id_; }
+
+  int64_t GetCurrentTimestampNanos() const override { return clock_.NowUnixNanos(); }
 
  private:
   /// Add a task status event to be reported.

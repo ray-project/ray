@@ -129,6 +129,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 
   NodeID GetNodeID() const override { return NodeID::Nil(); }
+  int64_t GetCurrentTimestampNanos() const override { return 0; }
 };
 
 namespace {
