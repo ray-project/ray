@@ -39,6 +39,10 @@ class SandboxBackendFactory:
                 from ray.sandbox.backend.kubernetes import KubernetesSandboxBackend
 
                 cls.register_backend("kubernetes", KubernetesSandboxBackend)
+            elif key == "gvisor":
+                from ray.sandbox.backend.gvisor import GVisorSandboxBackend
+
+                cls.register_backend("gvisor", GVisorSandboxBackend)
             else:
                 raise SandboxError(
                     f"Unsupported sandbox backend: '{name}'. "
