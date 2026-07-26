@@ -79,14 +79,18 @@ class MemoryMonitorTestFixture : public ::testing::Test {
    * @param shmem_memory_bytes The shmem to write to memory.stat (shared memory usage).
    * @param inactive_file_bytes The inactive_file value in memory.stat.
    * @param active_file_bytes The active_file value in memory.stat.
+   * @param swapcached_bytes The swapcached value in memory.stat. Pass
+   *        std::nullopt to omit the line (kernels < 5.12 don't publish it).
    * @return The path to the created mock cgroup directory.
    */
-  std::string MockCgroupv2MemoryUsage(int64_t total_bytes,
-                                      int64_t current_bytes,
-                                      std::optional<int64_t> anon_memory_bytes,
-                                      std::optional<int64_t> shmem_memory_bytes,
-                                      int64_t inactive_file_bytes,
-                                      int64_t active_file_bytes);
+  std::string MockCgroupv2MemoryUsage(
+      int64_t total_bytes,
+      int64_t current_bytes,
+      std::optional<int64_t> anon_memory_bytes,
+      std::optional<int64_t> shmem_memory_bytes,
+      int64_t inactive_file_bytes,
+      int64_t active_file_bytes,
+      std::optional<int64_t> swapcached_bytes = std::nullopt);
 
   /**
    * @brief Sets up a mock cgroup v1 directory for emulating memory usage and populates

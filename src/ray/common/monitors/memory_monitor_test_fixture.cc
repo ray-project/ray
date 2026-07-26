@@ -49,7 +49,8 @@ std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
     std::optional<int64_t> anon_memory_bytes,
     std::optional<int64_t> shmem_memory_bytes,
     int64_t inactive_file_bytes,
-    int64_t active_file_bytes) {
+    int64_t active_file_bytes,
+    std::optional<int64_t> swapcached_bytes) {
   StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
   RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
                               << temp_dir_or.status().message();
@@ -83,6 +84,11 @@ std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
   mock_cgroup_files_.back()->AppendLine(
       std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatActiveFileKey) + " " +
       std::to_string(active_file_bytes));
+  if (swapcached_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatSwapCachedKey) + " " +
+        std::to_string(*swapcached_bytes));
+  }
 
   return cgroup_path;
 }

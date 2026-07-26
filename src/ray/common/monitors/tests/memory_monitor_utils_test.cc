@@ -208,6 +208,62 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled) {
   ASSERT_EQ(cgroup_memory.swap_total_bytes, 0);
 }
 
+TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapcachedSubtractedFromSwapUsed) {
+  // Swapcache pages are charged to BOTH memory.current and memory.swap.current
+  // (https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files),
+  // so summing used + swap.current would double count them. The swap side must
+  // report swap.current net of memory.stat's swapcached — the resident copies
+  // are already counted on the RAM side, whichever RAM figure the caller
+  // composes with (cgroup memory.current or host meminfo).
+  SetCountSwapFlag(true);
+  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;    // 4 GiB RAM limit
+  int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;  // 2 GiB RAM used
+  int64_t swap_max_bytes = 2LL * 1024 * 1024 * 1024;        // 2 GiB swap limit
+  int64_t swap_current_bytes = 512LL * 1024 * 1024;         // 512 MiB swap used
+  int64_t swapcached_bytes = 128LL * 1024 * 1024;           // 128 MiB in swapcache
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   /*anon_memory_bytes=*/0,
+                                                   /*shmem_memory_bytes=*/0,
+                                                   /*inactive_file_bytes=*/0,
+                                                   /*active_file_bytes=*/0,
+                                                   swapcached_bytes);
+  MockCgroupv2Swap(cgroup_dir, swap_max_bytes, swap_current_bytes);
+
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
+
+  ASSERT_TRUE(cgroup_memory.has_swap);
+  // The RAM side keeps the resident swapcache copies...
+  ASSERT_EQ(cgroup_memory.used_bytes, cgroup_current_bytes);
+  // ...so the swap side must not count them again.
+  ASSERT_EQ(cgroup_memory.swap_used_bytes, swap_current_bytes - swapcached_bytes);
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapcachedIgnoredWhenFlagDisabled) {
+  // Without swap accounting the swap counters are never read, so swapcached in
+  // memory.stat must not affect the RAM-only view.
+  SetCountSwapFlag(false);
+  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;
+  int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;
+  int64_t swapcached_bytes = 128LL * 1024 * 1024;
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   /*anon_memory_bytes=*/0,
+                                                   /*shmem_memory_bytes=*/0,
+                                                   /*inactive_file_bytes=*/0,
+                                                   /*active_file_bytes=*/0,
+                                                   swapcached_bytes);
+
+  MemoryMonitorUtils::CgroupMemoryBytes cgroup_memory =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/false);
+
+  ASSERT_EQ(cgroup_memory.used_bytes, cgroup_current_bytes);
+  ASSERT_EQ(cgroup_memory.swap_used_bytes, 0);
+}
+
 TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
   // swap.max == "max" means the cgroup imposes no swap cap, so the practical
   // limit is whatever the host has. Mirrors the Python helper in

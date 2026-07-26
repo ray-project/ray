@@ -78,6 +78,28 @@ CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
 }
 
 /**
+ * @brief Reads the swapcached value from a cgroup v2 `memory.stat` file.
+ *
+ * @param stat_path The path to the memory.stat file.
+ * @return The per-cgroup swapcache size in bytes, or 0 when the file or the
+ *         key is missing (kernels < 5.12 don't publish it).
+ */
+int64_t ReadCgroupSwapCachedBytes(const std::string &stat_path) {
+  std::ifstream stat_ifs(stat_path, std::ios::in | std::ios::binary);
+  if (!stat_ifs) {
+    return 0;
+  }
+  std::string key;
+  int64_t value;
+  while (stat_ifs >> key >> value) {
+    if (key == MemoryMonitorUtils::kCgroupsV2MemoryStatSwapCachedKey) {
+      return std::max<int64_t>(0, value);
+    }
+  }
+  return 0;
+}
+
+/**
  * @brief Reads a cgroup `memory.swap.current` file.
  *
  * @param swap_current_path The path to the memory.swap.current file.
@@ -529,8 +551,16 @@ MemoryMonitorUtils::CgroupV2SwapBytes MemoryMonitorUtils::ReadCgroupV2Swap(
   // when there is no budget (swap.max == 0) so a stale swap.current can't
   // surface as used > total.
   if (result.max_bytes > 0) {
-    result.used_bytes =
+    int64_t swap_current_bytes =
         ReadCgroupSwapCurrentBytes(cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath);
+    // Swapcache pages are charged to both memory.current and swap.current, so
+    // subtract them here to count each page once — on the RAM side, where the
+    // resident copy lives. Doing it on the swap side keeps the sum correct no
+    // matter which RAM figure the caller composes with (cgroup memory.current,
+    // host meminfo, or the user-slice anon counter).
+    int64_t swapcached_bytes =
+        ReadCgroupSwapCachedBytes(cgroup_path + "/" + kCgroupsV2MemoryStatPath);
+    result.used_bytes = std::max<int64_t>(0, swap_current_bytes - swapcached_bytes);
   }
   return result;
 }

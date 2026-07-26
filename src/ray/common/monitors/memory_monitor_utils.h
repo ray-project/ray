@@ -48,6 +48,9 @@ class MemoryMonitorUtils {
   static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
   static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
+  // Swapcache pages are charged to both memory.current and memory.swap.current,
+  // so they must be subtracted from one side when the two are summed.
+  static constexpr char kCgroupsV2MemoryStatSwapCachedKey[] = "swapcached";
   static constexpr char kCgroupsV2MemoryAnonKey[] = "anon";
   static constexpr char kCgroupsV2MemoryShmemKey[] = "shmem";
   // Swap-only counters in cgroup v2. Added to memory.max / memory.current.
@@ -294,7 +297,9 @@ class MemoryMonitorUtils {
     /// Swap budget: the numeric swap.max, or host swap for the "max"/overflow
     /// "unlimited" sentinel.
     int64_t max_bytes = 0;
-    /// Per-cgroup memory.swap.current; 0 when the budget is 0.
+    /// Per-cgroup memory.swap.current net of swapcached (pages whose only copy
+    /// is in swap — the swapcache resident copies are already counted on the
+    /// RAM side); 0 when the budget is 0.
     int64_t used_bytes = 0;
   };
 
@@ -386,6 +391,8 @@ class MemoryMonitorUtils {
   FRIEND_TEST(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapAddedToTotalAndUsed);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapcachedSubtractedFromSwapUsed);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapcachedIgnoredWhenFlagDisabled);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed);
