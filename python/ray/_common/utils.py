@@ -540,8 +540,17 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             # (ram_capacity + swap_total) lands on memsw_limit, matching
             # what C++ GetCGroupMemoryBytes does in this branch (it uses
             # memsw_limit as the combined total directly).
+            host_ram_total = psutil.virtual_memory().total
             if ram_limit is None:
-                ram_limit = psutil.virtual_memory().total
+                ram_limit = host_ram_total
+            # An unset memsw limit reads as a huge near-int64 sentinel
+            # (page-rounded, so it passes the > _INT64_MAX check). Cap the
+            # combined limit with host RAM+swap — the same NullableMin the
+            # C++ monitor applies to the memsw total — so the sentinel can't
+            # inflate the scheduler memory resource and (ram + swap) stays
+            # equal to the OOM monitor's total.
+            host_swap_total, _ = _get_host_swap_memory()
+            memsw_limit = min(memsw_limit, host_ram_total + host_swap_total)
             swap_total = max(0, memsw_limit - ram_limit)
             swap_used = 0 if ram_usage is None else max(0, memsw_usage - ram_usage)
             return swap_total, swap_used

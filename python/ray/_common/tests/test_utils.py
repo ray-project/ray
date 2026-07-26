@@ -501,6 +501,56 @@ class TestGetCgroupAwareSwapMemory:
         # ram_usage still missing → swap_used stays at 0.
         assert used == 0
 
+    @pytest.mark.parametrize(
+        "memsw_limit_value",
+        [
+            # An unset v1 memsw limit reads as the kernel's page-rounded
+            # near-int64 sentinel — parseable, and below _INT64_MAX, so the
+            # overflow guard doesn't catch it.
+            "9223372036854771712",
+            # Bounded but above host RAM+swap.
+            str(30 * 1024**3),
+        ],
+    )
+    def test_cgroup_v1_memsw_limit_capped_by_host(
+        self, monkeypatch, tmp_path, memsw_limit_value
+    ):
+        """A memsw limit above host RAM+swap (typically the unset-limit
+        sentinel) must be capped by host capacity — the same NullableMin the
+        C++ monitor applies to the combined memsw total — so the scheduler
+        memory resource can't become astronomically large."""
+        ram_limit = 4 * 1024**3
+        host_ram = 16 * 1024**3
+        host_swap = 8 * 1024**3
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V1_MEMSW_LIMIT=self._write(
+                tmp_path, "memsw.limit", memsw_limit_value
+            ),
+            _CGROUP_V1_MEMSW_USAGE=self._write(
+                tmp_path, "memsw.usage", str(5 * 1024**3)
+            ),
+            _CGROUP_V1_MEM_LIMIT=self._write(tmp_path, "mem.limit", str(ram_limit)),
+            _CGROUP_V1_MEM_USAGE=self._write(tmp_path, "mem.usage", str(4 * 1024**3)),
+        )
+        self._patch_host_swap(monkeypatch, total=host_swap, used=0)
+
+        class _FakeVMem:
+            total = host_ram
+
+        monkeypatch.setattr(
+            "ray._common.utils.psutil.virtual_memory", lambda: _FakeVMem()
+        )
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        # Combined cap = min(memsw_limit, host_ram + host_swap); swap-only is
+        # what remains after the RAM limit.
+        assert total == host_ram + host_swap - ram_limit
+        # Usage counters are real values — not clamped.
+        assert used == 1 * 1024**3
+
     @pytest.mark.parametrize("variant", ["v2", "v1"])
     def test_cgroup_branch_returns_zero_on_read_error(
         self, monkeypatch, tmp_path, variant
