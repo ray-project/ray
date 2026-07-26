@@ -1,7 +1,7 @@
 import copy
 import logging
 from dataclasses import is_dataclass, replace
-from typing import List
+from typing import List, Type
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import (
@@ -9,6 +9,7 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Project,
     Read,
     ReadFiles,
     Union,
@@ -41,6 +42,27 @@ class LimitPushdownRule(Rule):
     In addition, we also fuse consecutive Limit operators into a single
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
     """
+
+    @classmethod
+    def dependencies(cls) -> List[Type["Rule"]]:
+        # Run ProjectionPushdown and PredicatePushdown first. A `Project`
+        # (from `select_columns`, and from `read_parquet(columns=...)` which is
+        # rewired to it) or a `Filter` sits directly above the read. If limit
+        # pushdown runs first it slides the `Limit` in between that operator and
+        # the read, after which projection/predicate pushdown can no longer
+        # reach the read -- the column selection / filter is stranded above the
+        # `Limit` and the reader reads every column / every row. Applying those
+        # pushdowns first lets the selection and predicate be absorbed into the
+        # read while still adjacent, so the reader prunes columns and filters
+        # rows; the `Limit` then pushes down past the already-pruned read.
+        from ray.data._internal.logical.rules.predicate_pushdown import (
+            PredicatePushdown,
+        )
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            ProjectionPushdown,
+        )
+
+        return [ProjectionPushdown, PredicatePushdown]
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         # The DAG's root is the most downstream operator.
@@ -156,6 +178,12 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
+            if isinstance(current_op, Project) and not current_op.is_idempotent():
+                # Do not push the limit past a projection producing a non-idempotent
+                # column (e.g. monotonically_increasing_id): its value depends on row
+                # position / cardinality, which a reordered limit would change.
+                break
+
             if isinstance(current_op, AbstractMap):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:

@@ -1,18 +1,25 @@
+import concurrent.futures
+import re
 import sys
 
 import httpx
 import pytest
 from openai import OpenAI
-
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.engines.sglang import SGLangServer
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, build_openai_app
 from ray.serve.schema import ApplicationStatus
+from ray.util.state import list_actors
+
+from test_utils import get_total_gpu_memory_mb, wait_for_gpu_memory_to_clear
+
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b-sglang"
+# Headroom over the pre-deploy GPU baseline that still counts as "cleared".
+_GPU_MEMORY_CLEAR_TOLERANCE_MB = 2000
 
 
 def _app_is_running():
@@ -23,6 +30,15 @@ def _app_is_running():
         )
     except (KeyError, AttributeError):
         return False
+
+
+def _shutdown_and_wait_for_gpu_clear(baseline_mb: float) -> None:
+    """Shut Serve down and wait for GPU memory to clear.
+
+    See wait_for_gpu_memory_to_clear for why the wait is needed.
+    """
+    serve.shutdown()
+    wait_for_gpu_memory_to_clear(baseline_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB)
 
 
 @pytest.fixture(scope="module")
@@ -47,6 +63,7 @@ def sglang_client():
         },
     )
 
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(_app_is_running, timeout=300)
@@ -54,7 +71,7 @@ def sglang_client():
     client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
     yield client
 
-    serve.shutdown()
+    _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
 def test_sglang_serve_e2e(sglang_client):
@@ -193,6 +210,120 @@ def test_sglang_batched_completions(sglang_client):
     assert batch_resp.usage.total_tokens > 0
 
 
+def _get_llm_handle(model_id: str = RAY_MODEL_ID):
+    """Return a Ray Serve handle to the LLMServer deployment for model_id."""
+    cleaned_id = model_id.replace("/", "--").replace(".", "_")
+    deployment_name = f"{SGLangServer.__name__}:{cleaned_id}"
+    return serve.get_deployment_handle(deployment_name, SERVE_DEFAULT_APP_NAME)
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume(sglang_client):
+    """Verify pause/resume lifecycle: server accepts requests before and after."""
+    handle = _get_llm_handle()
+
+    # Baseline: inference works before pause.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Pause with default mode ("abort").
+    await handle.pause.remote()
+    assert await handle.is_paused.remote() is True
+
+    # Resume and confirm state clears.
+    await handle.resume.remote()
+    assert await handle.is_paused.remote() is False
+
+    # Inference must work again after resume.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume_modes(sglang_client):
+    """Verify all three pause modes are accepted without error."""
+    handle = _get_llm_handle()
+
+    for mode in ("abort", "in_place", "retract"):
+        await handle.pause.remote(mode=mode)
+        assert await handle.is_paused.remote() is True
+        await handle.resume.remote()
+        assert await handle.is_paused.remote() is False
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup(sglang_client):
+    """Verify sleep/wakeup lifecycle: GPU memory released then restored."""
+    handle = _get_llm_handle()
+
+    # Baseline inference.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Sleep (release all GPU memory).
+    await handle.sleep.remote()
+    assert await handle.is_sleeping.remote() is True
+
+    # Wakeup and confirm state clears.
+    await handle.wakeup.remote()
+    assert await handle.is_sleeping.remote() is False
+
+    # Inference must work again after wakeup.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup_with_tags(sglang_client):
+    """Verify selective sleep/wakeup using component tags."""
+    handle = _get_llm_handle()
+
+    await handle.sleep.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is True
+
+    await handle.wakeup.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is False
+
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_reset_prefix_cache(sglang_client):
+    """Verify reset_prefix_cache completes and inference continues to work."""
+    handle = _get_llm_handle()
+
+    # Warm the cache with a request.
+    sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
+    )
+
+    # Flush the cache.
+    await handle.reset_prefix_cache.remote()
+
+    # Inference must still work after cache flush.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
+    )
+    assert resp.choices[0].text.strip()
+
+
 @pytest.fixture(scope="module")
 def sglang_embedding_client():
     """Start an SGLang server with is_embedding enabled for embedding tests."""
@@ -216,6 +347,7 @@ def sglang_embedding_client():
         },
     )
 
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(_app_is_running, timeout=300)
@@ -223,7 +355,7 @@ def sglang_embedding_client():
     client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
     yield client
 
-    serve.shutdown()
+    _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
 def test_sglang_embeddings(sglang_embedding_client):
@@ -253,7 +385,8 @@ def test_sglang_serve_e2e_multi_gpu():
     """Verify SGLang multi-GPU deployment works with tp_size=2.
 
     Requires a node with at least 2 GPUs. Confirms that:
-    - Placement group bundles are correctly constructed as [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+    - Placement group bundles pack all GPUs into a single node-sized bundle
+      ([{"GPU": 2, "CPU": 1}]) — RayEngine requires one bundle per node.
     - The model loads and serves inference correctly across both GPUs.
     """
     llm_config = LLMConfig(
@@ -275,6 +408,7 @@ def test_sglang_serve_e2e_multi_gpu():
         },
     )
 
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
@@ -282,7 +416,7 @@ def test_sglang_serve_e2e_multi_gpu():
         wait_for_condition(_app_is_running, timeout=300)
 
         deployment_options = SGLangServer.get_deployment_options(llm_config)
-        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+        expected_bundles = [{"GPU": 2, "CPU": 1}]
         assert deployment_options["placement_group_bundles"] == expected_bundles, (
             f"Expected placement group bundles {expected_bundles}, "
             f"got {deployment_options['placement_group_bundles']}"
@@ -306,15 +440,16 @@ def test_sglang_serve_e2e_multi_gpu():
         )
         assert comp_resp.choices[0].text.strip()
     finally:
-        serve.shutdown()
+        _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
 def test_sglang_serve_e2e_pipeline_parallel():
     """Verify SGLang multi-GPU deployment works with tp_size=2, pp_size=2.
 
     Requires a node with at least 4 GPUs. Confirms that:
-    - Placement group bundles are correctly constructed as
-      [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+    - Placement group bundles pack all GPUs into a single node-sized bundle
+      ([{"GPU": 4, "CPU": 1}]) — RayEngine assigns every tp/pp rank on a node
+      to the same bundle, so the bundle must hold all GPUs for that node.
     - The model loads and serves inference correctly across all 4 GPUs.
     """
     llm_config = LLMConfig(
@@ -337,16 +472,16 @@ def test_sglang_serve_e2e_pipeline_parallel():
         },
     )
 
+    baseline_gpu_mb = get_total_gpu_memory_mb()
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
     try:
         wait_for_condition(_app_is_running, timeout=300)
 
-        # tp_size=2, pp_size=2 → num_devices=4 → 4 GPU bundles
-        # first bundle merges replica actor CPU with first GPU worker
+        # tp_size=2, pp_size=2 → num_devices=4 → one bundle with all 4 GPUs
         deployment_options = SGLangServer.get_deployment_options(llm_config)
-        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+        expected_bundles = [{"GPU": 4, "CPU": 1}]
         assert deployment_options["placement_group_bundles"] == expected_bundles, (
             f"Expected placement group bundles {expected_bundles}, "
             f"got {deployment_options['placement_group_bundles']}"
@@ -370,7 +505,73 @@ def test_sglang_serve_e2e_pipeline_parallel():
         )
         assert comp_resp.choices[0].text.strip()
     finally:
-        serve.shutdown()
+        _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
+
+
+def test_sglang_serve_e2e_multi_replica():
+    """Verify SGLang serves correctly with two replicas.
+
+    Requires a node with at least 2 GPUs. Each replica runs tp_size=1 and owns a
+    separate placement group, so sglang names its scheduler actor with a distinct
+    `_pg<id>_bundle` suffix and both replicas come up without colliding
+    (sgl-project/sglang#22917). Confirms two distinct scheduler placement groups
+    are alive and that concurrent requests are served.
+    """
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 2,
+                "max_replicas": 2,
+            }
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 1,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    baseline_gpu_mb = get_total_gpu_memory_mb()
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    try:
+        wait_for_condition(_app_is_running, timeout=600)
+
+        # sgl-project/sglang#22917 suffixes each scheduler-actor name with its
+        # placement-group id, so two replicas yield two distinct ids. Before that
+        # fix the second replica reused the first's name and never came up.
+        scheduler_pgs = set()
+        for actor in list_actors(filters=[("state", "=", "ALIVE")], limit=10000):
+            match = re.search(r"_pg([0-9a-f]+)_bundle", actor.name or "")
+            if match:
+                scheduler_pgs.add(match.group(1))
+        assert len(scheduler_pgs) == 2, (
+            f"expected 2 distinct sglang scheduler placement groups, got "
+            f"{len(scheduler_pgs)}: {scheduler_pgs}"
+        )
+
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+        def _chat(i):
+            resp = client.chat.completions.create(
+                model=RAY_MODEL_ID,
+                messages=[{"role": "user", "content": f"Name city number {i}."}],
+                max_tokens=16,
+                temperature=0.0,
+            )
+            return resp.choices[0].message.content.strip()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            answers = list(executor.map(_chat, range(16)))
+        assert all(answers), "some concurrent requests returned empty content"
+    finally:
+        _shutdown_and_wait_for_gpu_clear(baseline_gpu_mb)
 
 
 def test_sglang_custom_placement_group_config():

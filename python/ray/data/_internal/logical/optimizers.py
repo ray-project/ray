@@ -14,12 +14,14 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.rules import (
     CombineShuffles,
+    CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
     PredicatePushdown,
     ProjectionPushdown,
+    PushdownCountFiles,
     SetReadParallelismRule,
 )
 from ray.util.annotations import DeveloperAPI
@@ -30,6 +32,7 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
+        PushdownCountFiles,
     ]
 )
 
@@ -59,6 +62,12 @@ class LogicalOptimizer(Optimizer):
     @property
     def rules(self) -> List[Rule]:
         return [rule_cls() for rule_cls in get_logical_ruleset()]
+
+    def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
+        # CommonSubExprElimination is only supposed to run once
+        # isolated from the optimizer rule loop as it applies to
+        # a single Projection operator not a chain of operators.
+        return CommonSubExprElimination().apply(plan)
 
 
 class PhysicalOptimizer(Optimizer):
