@@ -78,7 +78,12 @@ const useFetchStateApiProgressByTaskName = (
         const summary = formatSummaryToTaskProgress(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.num_filtered };
+        return {
+          summary,
+          totalTasks: rsp.data.data.result.num_filtered,
+          totalTaskAttempts: rsp.data.data.result.total,
+          numAfterTruncation: rsp.data.data.result.num_after_truncation,
+        };
       } else {
         setError(true);
         setRefresh(false);
@@ -130,6 +135,8 @@ export const useJobProgress = (
   return {
     progress: summed,
     totalTasks: data?.totalTasks,
+    totalTaskAttempts: data?.totalTaskAttempts,
+    numAfterTruncation: data?.numAfterTruncation,
     isLoading,
     msg,
     error,
@@ -194,6 +201,8 @@ export const useJobProgressByTaskName = (jobId: string) => {
     page: { pageNo: page, pageSize: 10 },
     total: formattedTasks.length,
     totalTasks: data?.totalTasks,
+    totalTaskAttempts: data?.totalTaskAttempts,
+    numAfterTruncation: data?.numAfterTruncation,
     isLoading,
     setPage,
     msg,
@@ -314,7 +323,12 @@ export const useJobProgressByLineage = (
           rsp.data.data.result.result,
           showFinishedTasks,
         );
-        return { summary, totalTasks: rsp.data.data.result.num_filtered };
+        return {
+          summary,
+          totalTasks: rsp.data.data.result.num_filtered,
+          totalTaskAttempts: rsp.data.data.result.total,
+          numAfterTruncation: rsp.data.data.result.num_after_truncation,
+        };
       } else {
         setError(true);
         setRefresh(false);
@@ -331,6 +345,8 @@ export const useJobProgressByLineage = (
     progressGroups: data?.summary?.progressGroups,
     total: data?.summary?.total,
     totalTasks: data?.totalTasks,
+    totalTaskAttempts: data?.totalTaskAttempts,
+    numAfterTruncation: data?.numAfterTruncation,
     isLoading,
     msg,
     error,
