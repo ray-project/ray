@@ -42,6 +42,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_task_event_recorder.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
@@ -457,7 +458,8 @@ CoreWorker::CoreWorker(
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
     // Add the driver task info.
-    if (task_event_buffer_->Enabled() &&
+    if ((task_event_buffer_->Enabled() ||
+         observability::RayTaskEventRecorder::Enabled()) &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
       auto spec = std::move(builder).ConsumeAndBuild();
       auto job_id = spec.JobId();
@@ -471,8 +473,12 @@ CoreWorker::CoreWorker(
           options_.session_name,
           GetCurrentNodeId(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
-      ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
+      if (observability::RayTaskEventRecorder::Enabled()) {
+        ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+      }
+      if (task_event_buffer_->Enabled()) {
+        task_event_buffer_->AddTaskEvent(std::move(task_event));
+      }
     }
   }
 
@@ -622,7 +628,8 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Driver exiting.
-  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
+  if (options_.worker_type == WorkerType::DRIVER &&
+      (task_event_buffer_->Enabled() || observability::RayTaskEventRecorder::Enabled()) &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_->GetCurrentTaskID(),
@@ -633,8 +640,12 @@ void CoreWorker::Disconnect(
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
-    ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
-    task_event_buffer_->AddTaskEvent(std::move(task_event));
+    if (observability::RayTaskEventRecorder::Enabled()) {
+      ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+    }
+    if (task_event_buffer_->Enabled()) {
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   opencensus::stats::StatsExporter::ExportNow();
