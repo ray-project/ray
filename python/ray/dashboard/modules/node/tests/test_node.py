@@ -412,5 +412,33 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
     wait_for_condition(_check_worker_pids, timeout=20)
 
 
+@pytest.mark.parametrize(
+    "path,expected_status_code",
+    [
+        # An unknown node ID is a client error, not a server error.
+        ("/nodes/{unknown_node_id}", 404),
+        # An unsupported `view` is a client error, not a server error.
+        ("/nodes?view=unknown_view", 400),
+        ("/nodes", 400),
+        # Sanity check that the success paths still return 200.
+        ("/nodes/{node_id}", 200),
+        ("/nodes?view=summary", 200),
+        ("/nodes?view=hostnamelist", 200),
+    ],
+)
+def test_node_api_status_codes(
+    disable_aiohttp_cache, ray_start_with_dashboard, path, expected_status_code
+):
+    """The node APIs return 4xx for client errors instead of 200/500."""
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    node_id = ray_start_with_dashboard["node_id"]
+
+    url = webui_url + path.format(node_id=node_id, unknown_node_id="8" * len(node_id))
+    response = requests.get(url)
+    assert response.status_code == expected_status_code, response.text
+    assert response.json()["result"] is (expected_status_code == 200)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
