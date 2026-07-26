@@ -25,14 +25,17 @@ namespace observability {
 
 template class RayEvent<rpc::events::TaskProfileEvents>;
 
-// RayTaskProfileEvent wraps a rpc::events::TaskProfileEvents (timeline/profiling spans
-// for a task attempt) as a RayEventInterface for recording through RayEventRecorder.
-// Profile events for the same task attempt are merged by appending their span entries.
+/**
+ * @brief Wraps a rpc::events::TaskProfileEvents (timeline/profiling spans for a task
+ * attempt) as a RayEventInterface for recording through RayTaskEventRecorder. Profile
+ * events for the same task attempt are merged by appending their span entries.
+ */
 class RayTaskProfileEvent : public RayEvent<rpc::events::TaskProfileEvents>,
                             public TaskRayEventInterface {
  public:
   RayTaskProfileEvent(rpc::events::TaskProfileEvents data,
-                      const std::string &session_name);
+                      const std::string &session_name,
+                      int64_t timestamp);
 
   std::string GetEntityId() const override;
 

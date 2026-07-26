@@ -402,12 +402,12 @@ TaskStatusEvent::ToRayEventInterfaces() {
       rpc::events::ActorTaskDefinitionEvent definition_event_data;
       PopulateRpcRayTaskDefinitionEvent(definition_event_data);
       events.push_back(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
-          std::move(definition_event_data), session_name_));
+          std::move(definition_event_data), session_name_, timestamp_));
     } else {
       rpc::events::TaskDefinitionEvent definition_event_data;
       PopulateRpcRayTaskDefinitionEvent(definition_event_data);
       events.push_back(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
-          std::move(definition_event_data), session_name_));
+          std::move(definition_event_data), session_name_, timestamp_));
     }
   }
 
@@ -415,7 +415,7 @@ TaskStatusEvent::ToRayEventInterfaces() {
   rpc::events::TaskLifecycleEvent lifecycle_event_data;
   PopulateRpcRayTaskLifecycleEvent(lifecycle_event_data, timestamp);
   events.push_back(std::make_unique<ray::observability::RayTaskLifecycleEvent>(
-      std::move(lifecycle_event_data), session_name_));
+      std::move(lifecycle_event_data), session_name_, timestamp_));
 
   return events;
 }
@@ -521,7 +521,7 @@ TaskProfileEvent::ToRayEventInterfaces() {
 
   std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
   events.push_back(std::make_unique<ray::observability::RayTaskProfileEvent>(
-      std::move(task_profile_events), session_name_));
+      std::move(task_profile_events), session_name_, start_time_));
   return events;
 }
 
