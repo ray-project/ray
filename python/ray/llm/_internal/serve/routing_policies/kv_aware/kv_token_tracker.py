@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.exceptions import RayServeException
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -37,7 +38,6 @@ _TENANT_ID = "default"
 # Hooks a replica may invoke through ``KVTokenTracker.on_lifecycle_events``.
 LIFECYCLE_HOOKS = frozenset(
     {
-        "on_request_added",
         "on_prefill_complete",
         "on_decode_progress",
         "on_request_completed",
@@ -83,6 +83,74 @@ class WorkerSelection(TypedDict):
     effective_prefill_tokens: int
 
 
+class ReservationBroadcast(TypedDict):
+    """Selected-worker booking state replicated to peer ingress routers."""
+
+    request_id: str
+    source_ingress_replica_rank: Optional[int]
+    worker_id: int
+    dp_rank: int
+    sequence_hashes: List[int]
+    isl_tokens: int
+    expected_output_tokens: Optional[int]
+    effective_prefill_tokens: int
+
+
+class ReservationBroadcastForwarder:
+    """Best-effort background replication of selected-worker reservations.
+
+    ``report`` only enqueues the selected-worker booking facts Dynamo already
+    returned. Sending the broadcast and waiting for its results happen on the
+    delivery task, off the request's selection and dispatch path.
+    """
+
+    def __init__(self, handle: Any):
+        self._handle = handle
+        if getattr(handle, "is_initialized", True) is False:
+            # Keep broadcast routing off the ingress replica's request loop.
+            handle._init(_run_router_in_separate_loop=True)
+        self._reservations: asyncio.Queue = asyncio.Queue()
+        self._delivery_task: Optional[asyncio.Task] = None
+
+    def report(self, reservation: ReservationBroadcast) -> None:
+        if self._delivery_task is None or self._delivery_task.done():
+            self._delivery_task = asyncio.get_running_loop().create_task(
+                self._deliver()
+            )
+        self._reservations.put_nowait(reservation)
+
+    async def _deliver(self) -> None:
+        while True:
+            batch = [await self._reservations.get()]
+            while not self._reservations.empty():
+                batch.append(self._reservations.get_nowait())
+            try:
+                self._broadcast(batch)
+            except Exception as e:
+                logger.warning("Dropping selection service reservation broadcast: %s", e)
+            finally:
+                for _ in batch:
+                    self._reservations.task_done()
+
+    def _broadcast(self, reservations: List[ReservationBroadcast]) -> None:
+        scheduled = self._handle.broadcast(
+            "on_reservations_created", reservations
+        )._ensure_scheduled()
+
+        def _log_schedule_failure(future) -> None:
+            try:
+                future.result()
+            except Exception as e:
+                logger.warning("Dropping selection service reservation broadcast: %s", e)
+
+        scheduled.add_done_callback(_log_schedule_failure)
+
+    def close(self) -> None:
+        if self._delivery_task is not None:
+            self._delivery_task.cancel()
+            self._delivery_task = None
+
+
 class KVTokenTracker:
     """Tracks per-replica KV-cache overlap and token load inside the LLMRouter
     ingress replica.
@@ -95,23 +163,33 @@ class KVTokenTracker:
        mapping each running replica to a Dynamo worker id.
     3. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
-    4. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
-       and prefill/decode load.
-    5. Books each request's lifecycle into the service's active-load tracker, so
-       in-flight load feeds back into scoring for subsequent requests. The
-       engine broadcasts lifecycle events to every ingress replica, so all
-       trackers converge on the same booked-load view regardless of which
-       replica routed a given request.
+    4. Scoring (``select_worker``) atomically ranks candidate workers by
+       KV-cache overlap and current token load, reserves the chosen worker, and
+       records local lifecycle state. The selected reservation is replicated to
+       peer ingress replicas in the background so every selection service can
+       apply the engine's subsequent lifecycle events. A separate
+       select-then-reserve flow causes herding because concurrent requests can
+       select the same worker from stale load state before any reservation is
+       visible.
     """
 
     def __init__(
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
+        ingress_replica_rank: Optional[int] = None,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
+        self._ingress_replica_rank = ingress_replica_rank
+        if self._ingress_replica_rank is None:
+            try:
+                replica_rank = serve.get_replica_context().rank
+            except RayServeException:
+                replica_rank = None
+            if replica_rank is not None:
+                self._ingress_replica_rank = replica_rank.rank
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
@@ -132,14 +210,10 @@ class KVTokenTracker:
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
-        # Carries the effective prefill tokens select() computed at routing time to
-        # on_request_added, which books them via the explicit create_reservation.
-        # TODO(jeffreywang): this map is only needed because create_reservation
-        # requires the effective prefill tokens to be passed in explicitly. Once the
-        # selection service caches each select() result and create_reservation can
-        # look it up by request id, Ray no longer needs to forward it.
-        self._effective_prefill_tokens_by_request: Dict[str, int] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
+        self._reservation_forwarder: Optional[ReservationBroadcastForwarder] = None
+        self._reservation_updates: asyncio.Queue = asyncio.Queue()
+        self._reservation_apply_task: Optional[asyncio.Task] = None
         self._long_poll_client: Optional[LongPollClient] = None
         self._create_selection_service()
         self._start_replica_tracking()
@@ -147,6 +221,10 @@ class KVTokenTracker:
     def get_block_size(self) -> int:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
+
+    def start_reservation_broadcast(self, handle: Any) -> None:
+        """Configure background reservation replication to this deployment."""
+        self._reservation_forwarder = ReservationBroadcastForwarder(handle)
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -321,6 +399,7 @@ class KVTokenTracker:
         request_id: str,
         token_ids: List[int],
         allowed_worker_ids: List[int],
+        expected_output_tokens: Optional[int] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
@@ -329,6 +408,9 @@ class KVTokenTracker:
             request_id: Unique identifier for the request being routed.
             token_ids: Prompt token ids used to compute KV-cache overlap.
             allowed_worker_ids: Candidate worker ids the router may select from.
+            expected_output_tokens: The request's output-token cap. With
+                select-time reservation this lets selection service decay decode
+                load without per-token progress events.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -343,24 +425,141 @@ class KVTokenTracker:
                 "KV-aware routing is unavailable because ai-dynamo is not "
                 "installed in the deployment's environment."
             )
-        selection = await self._svc.select(
-            {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
-                "selection_id": request_id,
-                "token_ids": token_ids,
-                "allowed_worker_ids": allowed_worker_ids,
-            }
+        await self._evict_stale_requests()
+        request = {
+            "model_name": _MODEL_NAME,
+            "tenant_id": _TENANT_ID,
+            "selection_id": request_id,
+            "token_ids": token_ids,
+            "allowed_worker_ids": allowed_worker_ids,
+            "expected_output_tokens": expected_output_tokens,
+        }
+        selection = await self._svc.select_and_reserve(request)
+        self._track_request_state(
+            request_id,
+            selection["worker_id"],
+            len(token_ids),
+            expected_output_tokens,
         )
-        self._effective_prefill_tokens_by_request[request_id] = selection[
-            "effective_prefill_tokens"
-        ]
+        if self._reservation_forwarder is not None:
+            self._reservation_forwarder.report(
+                {
+                    "request_id": request_id,
+                    "source_ingress_replica_rank": self._ingress_replica_rank,
+                    "worker_id": selection["worker_id"],
+                    "dp_rank": selection["dp_rank"],
+                    "sequence_hashes": selection["sequence_hashes"],
+                    "isl_tokens": selection["isl_tokens"],
+                    "expected_output_tokens": expected_output_tokens,
+                    "effective_prefill_tokens": selection["effective_prefill_tokens"],
+                }
+            )
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    def _track_request_state(
+        self,
+        request_id: str,
+        worker_id: int,
+        prompt_tokens: int,
+        expected_output_tokens: Optional[int],
+    ) -> None:
+        old = self._requests.pop(request_id, None)
+        if old is not None:
+            self._untrack_worker_request(request_id, old.worker_id)
+        if self._block_size is None:
+            raise RuntimeError(
+                "KV block size is unavailable before worker registration."
+            )
+        block_size = self._block_size
+        self._requests[request_id] = RequestLifecycle(
+            worker_id=worker_id,
+            prompt_tokens=prompt_tokens,
+            expected_output_tokens=expected_output_tokens,
+            total_blocks=math.ceil(prompt_tokens / block_size),
+        )
+        self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
+
+    async def on_reservations_created(
+        self, reservations: List[ReservationBroadcast]
+    ) -> None:
+        """Queue already-selected requests for this ingress's selection service.
+
+        This method runs as a Serve RPC on LLMRouter replicas. Keep it short:
+        route handling shares the same replica, so the heavier Dynamo
+        ``create_reservation`` calls are applied by a background task.
+        """
+        if self._svc is None or self._block_size is None:
+            return
+        pending = []
+        for reservation in reservations:
+            # The selecting ingress receives its own broadcast after it has
+            # already booked the atomic reservation. It must skip even if the
+            # request already completed locally before the broadcast arrived.
+            if (
+                reservation["source_ingress_replica_rank"]
+                == self._ingress_replica_rank
+            ):
+                continue
+            pending.append(reservation)
+        if not pending:
+            return
+        if (
+            self._reservation_apply_task is None
+            or self._reservation_apply_task.done()
+        ):
+            self._reservation_apply_task = asyncio.create_task(
+                self._apply_reservation_updates()
+            )
+        self._reservation_updates.put_nowait(pending)
+
+    async def _apply_reservation_updates(self) -> None:
+        while True:
+            batches = [await self._reservation_updates.get()]
+            while not self._reservation_updates.empty():
+                batches.append(self._reservation_updates.get_nowait())
+            reservations = [
+                reservation for batch in batches for reservation in batch
+            ]
+            try:
+                await self._apply_reservations(reservations)
+            except Exception:
+                logger.exception("Failed to apply KV reservation broadcast batch.")
+            finally:
+                for _ in batches:
+                    self._reservation_updates.task_done()
+
+    async def _apply_reservations(
+        self, reservations: List[ReservationBroadcast]
+    ) -> None:
+        await self._evict_stale_requests()
+        for reservation in reservations:
+            request_id = reservation["request_id"]
+            if request_id in self._requests:
+                continue
+            await self._svc.create_reservation(
+                {
+                    "model_name": _MODEL_NAME,
+                    "tenant_id": _TENANT_ID,
+                    "selection_id": request_id,
+                    "worker_id": reservation["worker_id"],
+                    "dp_rank": reservation["dp_rank"],
+                    "sequence_hashes": reservation["sequence_hashes"],
+                    "isl_tokens": reservation["isl_tokens"],
+                    "expected_output_tokens": reservation["expected_output_tokens"],
+                    "effective_prefill_tokens": reservation["effective_prefill_tokens"],
+                }
+            )
+            self._track_request_state(
+                request_id,
+                reservation["worker_id"],
+                reservation["isl_tokens"],
+                reservation["expected_output_tokens"],
+            )
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
@@ -384,59 +583,6 @@ class KVTokenTracker:
                     "KV lifecycle hook %s failed; skipping it and continuing.",
                     hook_name,
                 )
-
-    async def on_request_added(
-        self,
-        request_id: str,
-        worker_id: int,
-        token_ids: List[int],
-        expected_output_tokens: Optional[int] = None,
-    ) -> None:
-        """Admit a routed request into ``worker_id``'s active load, booking its
-        prefill and decode load into the selection service.
-
-        The engine broadcasts this event to every ingress replica, so it must
-        book correctly both on the replica that routed the request (which has
-        the ``select()`` result stashed) and on replicas that did not."""
-        await self._evict_stale_requests()
-        prompt_tokens = len(token_ids)
-        self._requests[request_id] = RequestLifecycle(
-            worker_id=worker_id,
-            prompt_tokens=prompt_tokens,
-            expected_output_tokens=expected_output_tokens,
-            total_blocks=math.ceil(prompt_tokens / self._block_size),
-        )
-        self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
-        effective_prefill_tokens = self._effective_prefill_tokens_by_request.pop(
-            request_id, None
-        )
-        if effective_prefill_tokens is None:
-            # This replica did not route the request, so score the routed
-            # worker against its own KV index; the service otherwise books
-            # zero prefill load.
-            selection = await self._svc.select(
-                {
-                    "model_name": _MODEL_NAME,
-                    "tenant_id": _TENANT_ID,
-                    "token_ids": token_ids,
-                    "allowed_worker_ids": [worker_id],
-                }
-            )
-            effective_prefill_tokens = selection["effective_prefill_tokens"]
-
-        await self._svc.create_reservation(
-            {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
-                "reservation_id": request_id,
-                "worker_id": worker_id,
-                "token_ids": token_ids,
-                "expected_output_tokens": expected_output_tokens,
-                "effective_prefill_tokens": effective_prefill_tokens,
-            }
-        )
-        if request_id not in self._requests:
-            await self._svc.free_reservation(request_id)
 
     async def on_prefill_complete(self, request_id: str) -> None:
         """Record a request's prefill -> decode transition, dropping its prefill
@@ -468,7 +614,6 @@ class KVTokenTracker:
     async def on_request_completed(self, request_id: str) -> None:
         """Free ``request_id`` from the selection service's active load and the
         local view."""
-        self._effective_prefill_tokens_by_request.pop(request_id, None)
         state = self._requests.pop(request_id, None)
         if state is not None:
             self._untrack_worker_request(request_id, state.worker_id)
@@ -494,7 +639,6 @@ class KVTokenTracker:
                 break
             self._requests.popitem(last=False)
             self._untrack_worker_request(request_id, state.worker_id)
-            self._effective_prefill_tokens_by_request.pop(request_id, None)
             logger.warning(
                 "Evicting stale KV request %s (tracked > %ds without completion); "
                 "freeing its reservation.",

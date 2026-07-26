@@ -1,9 +1,10 @@
 """Tests for token-load state across LLMRouter ingress replicas.
 
-The engine broadcasts every request's lifecycle events to ALL ingress replicas
-via ``handle.broadcast``, so each replica's tracker books the load locally --
-no peer-to-peer sync. Cached KV blocks are likewise tracked per replica: every
-ingress independently subscribes to each engine worker's KV-event stream.
+Each ingress owns a local KV selector and books load when it performs atomic
+selection for a request. Engine lifecycle events are still broadcast, but a
+non-routing ingress ignores events for reservations it does not own. Cached KV
+blocks are tracked per replica: every ingress independently subscribes to each
+engine worker's KV-event stream.
 """
 
 import asyncio
@@ -149,11 +150,8 @@ class TestIngressSynchronization:
 
     @pytest.mark.asyncio
     async def test_booked_load(self, ingress_replicas_per_node, deployed_handle):
-        """A broadcast lifecycle batch books identical load on every ingress
-        replica -- a non-routing replica scores prefill against its own KV
-        index -- and freeing clears all of them. Decode blocks are not
-        compared: they decay with time, so per-replica reads race.
-        """
+        """One ingress selects atomically, then every ingress converges through
+        booking, prefill completion, and request completion."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         replica_ids = await _ingress_replica_ids(router, ingress_replicas_per_node)
         num_ingress_replicas = len(replica_ids)
@@ -162,34 +160,63 @@ class TestIngressSynchronization:
         loads = await _broadcast(router, "get_worker_load", worker_id)
         assert all(load["active_requests"] == 0 for load in loads)
 
-        await _broadcast(
-            router,
-            "on_lifecycle_events",
-            [("on_request_added", ("probe", worker_id, list(range(64)), 32))],
+        token_ids = list(range(64))
+        selection = await router.select_worker.remote(
+            "probe", token_ids, [worker_id], 32
         )
-        loads = await _broadcast(router, "get_worker_load", worker_id)
-        assert len(loads) == num_ingress_replicas
-        assert all(load["active_requests"] == 1 for load in loads)
-        prefills = {load["potential_prefill_tokens"] for load in loads}
-        assert len(prefills) == 1 and prefills.pop() > 0
+        assert selection["worker_id"] == worker_id
+
+        async def reservation_converged():
+            states = await _broadcast(router, "get_request_lifecycle", "probe")
+            loads = await _broadcast(router, "get_worker_load", worker_id)
+            return (
+                len(states) == num_ingress_replicas
+                and all(state is not None for state in states)
+                and all(load["active_requests"] == 1 for load in loads)
+                and len({load["potential_prefill_tokens"] for load in loads}) == 1
+                and loads[0]["potential_prefill_tokens"] > 0
+            )
+
+        await async_wait_for_condition(
+            reservation_converged, timeout=30, retry_interval_ms=100
+        )
 
         await _broadcast(
             router, "on_lifecycle_events", [("on_prefill_complete", ("probe",))]
         )
-        loads = await _broadcast(router, "get_worker_load", worker_id)
-        assert all(load["active_requests"] == 1 for load in loads)
-        assert all(load["potential_prefill_tokens"] == 0 for load in loads)
+
+        async def prefill_converged():
+            states = await _broadcast(router, "get_request_lifecycle", "probe")
+            loads = await _broadcast(router, "get_worker_load", worker_id)
+            return all(
+                state is not None and state["prefill_completed"] for state in states
+            ) and all(
+                load["active_requests"] == 1 and load["potential_prefill_tokens"] == 0
+                for load in loads
+            )
+
+        await async_wait_for_condition(
+            prefill_converged, timeout=30, retry_interval_ms=100
+        )
 
         await _broadcast(
             router, "on_lifecycle_events", [("on_request_completed", ("probe",))]
         )
-        loads = await _broadcast(router, "get_worker_load", worker_id)
-        assert all(load["active_requests"] == 0 for load in loads)
+
+        async def completion_converged():
+            states = await _broadcast(router, "get_request_lifecycle", "probe")
+            loads = await _broadcast(router, "get_worker_load", worker_id)
+            return all(state is None for state in states) and all(
+                load["active_requests"] == 0 for load in loads
+            )
+
+        await async_wait_for_condition(
+            completion_converged, timeout=30, retry_interval_ms=100
+        )
 
     @pytest.mark.asyncio
     async def test_real_request_load(self, ingress_replicas_per_node, deployed_handle):
-        """A streamed request's lifecycle events land on every ingress tracker
-        while in flight, and all free it on completion."""
+        """A streamed request is eventually booked and freed on every ingress."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         num_ingress_replicas = len(
             await _ingress_replica_ids(router, ingress_replicas_per_node)
