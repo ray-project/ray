@@ -2820,14 +2820,15 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     // owner can copy it onto peeked EOF refs via the PushTask reply. Putting it
     // in plasma would pin a copy the owner never learns to free (reply would
     // look inlined). IsException() distinguishes this from the success None.
-    const auto current_task = worker_context_->GetCurrentTask();
-    const bool force_inlined = current_task != nullptr &&
+    const std::shared_ptr<const TaskSpecification> current_task =
+        worker_context_->GetCurrentTask();
+    const bool inline_error = current_task != nullptr &&
                                current_task->IsStreamingGenerator() &&
                                object_id == current_task->ReturnId(0) &&
                                RayObject(nullptr, metadata, {}).IsException();
 
     // Allocate a buffer for the return object.
-    if (force_inlined ||
+    if (inline_error ||
         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
          (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=

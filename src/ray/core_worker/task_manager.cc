@@ -63,11 +63,11 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
 
 // Copy a serialized proto field (data or metadata) into an owned buffer so it
 // outlives the transient reply it came from. Returns null for an empty field.
-std::shared_ptr<Buffer> MakeInlinedBuffer(const std::string &field) {
+std::unique_ptr<Buffer> MakeInlinedBuffer(const std::string &field) {
   if (field.empty()) {
     return nullptr;
   }
-  return std::make_shared<LocalMemoryBuffer>(
+  return std::make_unique<LocalMemoryBuffer>(
       const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(field.data())),
       field.size(),
       /*copy_data=*/true);

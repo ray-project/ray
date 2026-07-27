@@ -97,7 +97,7 @@ class ObjectRefStream {
   ///
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
-  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  /// \return ObjectRefEndOfStream if the cursor has reached EOF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
   /**

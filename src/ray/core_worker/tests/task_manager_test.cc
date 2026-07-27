@@ -2116,17 +2116,18 @@ TEST_F(TaskManagerTest, TestObjectRefStreamNoRetryThenFailurePropagatesError) {
 // Cancellation must win over a later actor-death notification: both the
 // eagerly-peeked refs and the generator completion object report TASK_CANCELLED.
 TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekCancellationPropagatesError) {
-  auto spec =
+  TaskSpecification spec =
       CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
-  auto generator_id = spec.ReturnId(0);
+  const ObjectID generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
 
-  auto value_id = ObjectID::FromIndex(spec.TaskId(), 2);
-  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
-  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+  const ObjectID value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  const ObjectID eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  const ObjectID post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
 
-  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  std::vector<std::pair<ObjectID, bool>> peeked =
+      manager_.PeekObjectRefStreamN(generator_id, 3);
   ASSERT_EQ(peeked.size(), 3);
 
   // Simulate cancellation racing with actor death. Cancellation is published
