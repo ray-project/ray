@@ -463,11 +463,30 @@ def _get_udf(
 
     else:
 
-        def _wrapped_udf_map_fn(item: Any) -> Any:
-            try:
-                return udf(item, *fn_args, **fn_kwargs)
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        if inspect.iscoroutinefunction(udf):
+
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    return await udf(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _try_wrap_udf_exception(e)
+
+        elif inspect.isasyncgenfunction(udf):
+
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    async for res in udf(item, *fn_args, **fn_kwargs):
+                        yield res
+                except Exception as e:
+                    _try_wrap_udf_exception(e, item)
+
+        else:
+
+            def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    return udf(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _try_wrap_udf_exception(e)
 
         def init_fn():
             pass
@@ -943,28 +962,80 @@ def _generate_transform_fn_for_async_map(
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)
+        actor_context = ray.data._map_actor_context
+        local_async_thread = None
 
-        loop = ray.data._map_actor_context.udf_map_asyncio_loop
+        if actor_context is None or actor_context.udf_map_asyncio_loop is None:
+            # Task-pool workers don't run the actor init function that creates an
+            # async UDF context. Use a fresh loop scoped to this transform. A fused
+            # upstream transform can be initialized from another transform's event
+            # loop thread, so reusing that thread's current loop isn't safe.
+            loop = asyncio.new_event_loop()
 
-        asyncio.run_coroutine_threadsafe(
+            def run_loop():
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_forever()
+                finally:
+                    try:
+                        # Match asyncio.run() cleanup so unfinished user tasks,
+                        # async generators, and default-executor work are finalized.
+                        pending_tasks = asyncio.all_tasks(loop)
+                        for task in pending_tasks:
+                            task.cancel()
+                        loop.run_until_complete(
+                            asyncio.gather(*pending_tasks, return_exceptions=True)
+                        )
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                        loop.run_until_complete(loop.shutdown_default_executor())
+                    finally:
+                        asyncio.set_event_loop(None)
+                        loop.close()
+
+            local_async_thread = Thread(target=run_loop, daemon=True)
+            local_async_thread.start()
+        else:
+            loop = actor_context.udf_map_asyncio_loop
+
+        assert loop is not None
+
+        transform_future = asyncio.run_coroutine_threadsafe(
             _execute_transform(iter(batch_iter), output_queue), loop
         )
 
-        while True:
-            items = output_queue.get()
-            if items is _SENTINEL:
-                break
-            elif isinstance(items, Exception):
-                raise items
-            else:
-                # NOTE: Sequences from individual UDFs are combined into a single
-                #       sequence here, as compared to letting individual UDFs to
-                #       add into the output queue to guarantee *deterministic* ordering
-                #       (necessary for Ray Data to be able to guarantee task retries
-                #       producing the same results)
-                for item in items:
-                    validate_fn(item)
-                    yield item
+        completed = False
+        try:
+            while True:
+                items = output_queue.get()
+                if items is _SENTINEL:
+                    completed = True
+                    break
+                elif isinstance(items, Exception):
+                    raise items
+                else:
+                    # NOTE: Sequences from individual UDFs are combined into a single
+                    #       sequence here, as compared to letting individual UDFs to
+                    #       add into the output queue to guarantee *deterministic* ordering
+                    #       (necessary for Ray Data to be able to guarantee task retries
+                    #       producing the same results)
+                    for item in items:
+                        validate_fn(item)
+                        yield item
+        finally:
+            if local_async_thread is not None:
+                try:
+                    if completed:
+                        transform_future.result()
+                    else:
+                        transform_future.cancel()
+                finally:
+                    loop.call_soon_threadsafe(loop.stop)
+                    local_async_thread.join(timeout=5.0)
+                    if local_async_thread.is_alive():
+                        logger.warning(
+                            "Timed out while cleaning up an async task-pool UDF "
+                            "event loop."
+                        )
 
     return _transform
 

@@ -22,10 +22,12 @@ from ray._common.test_utils import (
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.util import get_compute_strategy
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -1110,6 +1112,97 @@ def test_async_map_batches(
 
 
 @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+@pytest.mark.parametrize("concurrency", [None, 2])
+def test_async_map_batches_task_pool(
+    ray_start_regular_shared,
+    udf_kind,
+    concurrency,
+    target_max_block_size_infinite_or_default,
+):
+    if udf_kind == "async_gen":
+
+        async def async_udf(batch, increment, *, multiplier):
+            await asyncio.sleep(0.01)
+            yield {"id": (batch["id"] + increment) * multiplier}
+
+    elif udf_kind == "coroutine":
+
+        async def async_udf(batch, increment, *, multiplier):
+            await asyncio.sleep(0.01)
+            return {"id": (batch["id"] + increment) * multiplier}
+
+    else:
+        pytest.fail(f"Unknown udf_kind: {udf_kind}")
+
+    assert isinstance(
+        get_compute_strategy(async_udf, concurrency=concurrency), TaskPoolStrategy
+    )
+
+    output = (
+        ray.data.range(8, override_num_blocks=4)
+        .map_batches(
+            async_udf,
+            batch_size=1,
+            fn_args=(1,),
+            fn_kwargs={"multiplier": 2},
+            concurrency=concurrency,
+        )
+        .take_all()
+    )
+
+    assert sorted(row["id"] for row in output) == list(range(2, 18, 2))
+
+
+def test_async_map_batches_task_pool_fusion(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    async def add_one(batch):
+        await asyncio.sleep(0.01)
+        return {"id": batch["id"] + 1}
+
+    async def double(batch):
+        await asyncio.sleep(0.01)
+        yield {"id": batch["id"] * 2}
+
+    output = (
+        ray.data.range(4, override_num_blocks=2)
+        .map_batches(add_one, batch_size=1)
+        .map_batches(double, batch_size=1)
+        .take_all()
+    )
+
+    assert sorted(row["id"] for row in output) == [2, 4, 6, 8]
+
+
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_map_batches_task_pool_exception(
+    ray_start_regular_shared,
+    udf_kind,
+    target_max_block_size_infinite_or_default,
+):
+    if udf_kind == "async_gen":
+
+        async def failing_udf(batch):
+            raise ValueError("expected async UDF error")
+            yield batch
+
+    elif udf_kind == "coroutine":
+
+        async def failing_udf(batch):
+            raise ValueError("expected async UDF error")
+
+    else:
+        pytest.fail(f"Unknown udf_kind: {udf_kind}")
+
+    with pytest.raises(RayTaskError, match="expected async UDF error"):
+        (
+            ray.data.range(1, override_num_blocks=1)
+            .map_batches(failing_udf)
+            .materialize()
+        )
+
+
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
 def test_async_flat_map(
     shutdown_only, udf_kind, target_max_block_size_infinite_or_default
 ):
@@ -1208,6 +1301,41 @@ class TestGenerateTransformFnForAsyncMap:
         task_context = Mock()
         assert list(transform_fn([], task_context)) == []
         validate_fn.assert_not_called()
+
+    def test_task_pool_event_loop_cleanup(
+        self, monkeypatch, target_max_block_size_infinite_or_default
+    ):
+        """Test that task-pool event loops finalize unfinished async work."""
+        monkeypatch.setattr(ray.data, "_map_actor_context", None)
+        cleanup = {"task": False, "async_gen": False}
+        retained_generators = []
+
+        async def pending_task():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleanup["task"] = True
+
+        async def pending_generator():
+            try:
+                yield
+            finally:
+                cleanup["async_gen"] = True
+
+        async def async_fn(item):
+            asyncio.create_task(pending_task())
+            await asyncio.sleep(0)
+            generator = pending_generator()
+            await generator.__anext__()
+            retained_generators.append(generator)
+            return item
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn, Mock(), max_concurrency=1
+        )
+
+        assert list(transform_fn([1], Mock())) == [1]
+        assert cleanup == {"task": True, "async_gen": True}
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
     def test_basic_async_processing(
