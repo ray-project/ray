@@ -1,9 +1,10 @@
 import logging
+import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, List
 
 import ray
-from ray import ObjectRef
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -25,16 +26,30 @@ from ray.util.debug import log_once
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
 
+# Number of threads used to `ray.put` read tasks into the object store during
+# input generation. `ray.put` releases the GIL while copying into plasma and
+# issuing the raylet RPC, so this work is IPC-bound: threads spend their time
+# blocked on I/O, not competing for cores, and the GIL serializes the cloudpickle
+# step regardless. We therefore intentionally allow more threads than cores.
+#
+# The default mirrors CPython's ThreadPoolExecutor heuristic for I/O-bound work
+# (`min(32, cpu_count + 4)`), which scales down on small machines and up on large
+# ones. Override via RAY_DATA_READ_TASK_PUT_MAX_WORKERS for benchmarking.
+def _default_read_task_put_max_workers() -> int:
+    return min(32, (os.cpu_count() or 1) + 4)
+
+
+_READ_TASK_PUT_MAX_WORKERS = int(
+    os.environ.get(
+        "RAY_DATA_READ_TASK_PUT_MAX_WORKERS",
+        _default_read_task_put_max_workers(),
+    )
+)
+
 logger = logging.getLogger(__name__)
 
 
-def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMetadata:
-    # NOTE: Use the `get_local_object_locations` API to get the size of the
-    # serialized ReadTask, instead of pickling.
-    # Because the ReadTask may capture ObjectRef objects, which cannot
-    # be serialized out-of-band.
-    locations = get_local_object_locations([read_task_ref])
-    task_size = locations[read_task_ref]["object_size"]
+def _derive_metadata(read_task: ReadTask, task_size: int) -> BlockMetadata:
     if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES and log_once(
         f"large_read_task_{read_task.read_fn.__name__}"
     ):
@@ -79,18 +94,34 @@ def plan_read_op(
 
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
+        if not read_tasks:
+            return []
+
+        # Serialize read tasks into the object store. `ray.put` releases the GIL
+        # during the plasma write and raylet RPC, so parallelizing across a
+        # thread pool overlaps that IPC latency rather than paying it
+        # sequentially per task.
+        # TODO: figure out a better way to pass read tasks other than ray.put().
+        num_workers = min(len(read_tasks), _READ_TASK_PUT_MAX_WORKERS)
+        if num_workers > 1:
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                # `executor.map` preserves input order.
+                read_task_refs = list(executor.map(ray.put, read_tasks))
+        else:
+            read_task_refs = [ray.put(read_task) for read_task in read_tasks]
+
+        # Fetch the serialized sizes for all tasks in a single RPC instead of
+        # one `get_local_object_locations` call per task.
+        # NOTE: Use the `get_local_object_locations` API to get the size of the
+        # serialized ReadTask, instead of pickling, because the ReadTask may
+        # capture ObjectRef objects, which cannot be serialized out-of-band.
+        locations = get_local_object_locations(read_task_refs)
+
         ret = []
-        for read_task in read_tasks:
-            read_task_ref = ray.put(read_task)
+        for read_task, read_task_ref in zip(read_tasks, read_task_refs):
+            task_size = locations[read_task_ref]["object_size"]
             ref_bundle = RefBundle(
-                (
-                    (
-                        # TODO: figure out a better way to pass read
-                        # tasks other than ray.put().
-                        read_task_ref,
-                        _derive_metadata(read_task, read_task_ref),
-                    ),
-                ),
+                ((read_task_ref, _derive_metadata(read_task, task_size)),),
                 # `owns_blocks` is False, because these refs are the root of the
                 # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
                 # be reconstructed.
