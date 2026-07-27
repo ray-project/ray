@@ -338,8 +338,8 @@ class RollingWindowMax(_RollingWindowBase):
         seq = self._get_current_seq(now)
 
         with data.lock:
-            if seq == data.current_seq:
-                # Same bucket: just track the running max — no deque modification.
+            if seq <= data.current_seq:
+                # Same bucket or time rolled backwards: just track the running max — no deque modification.
                 if value > data.current_bucket_val:
                     data.current_bucket_val = value
                 return
@@ -465,8 +465,8 @@ class RollingWindowMin(_RollingWindowBase):
         seq = self._get_current_seq(now)
 
         with data.lock:
-            if seq == data.current_seq:
-                # Same bucket: just track the running min — no deque modification.
+            if seq <= data.current_seq:
+                # Same bucket or time rolled backwards: just track the running min — no deque modification.
                 if value < data.current_bucket_val:
                     data.current_bucket_val = value
                 return
