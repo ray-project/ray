@@ -42,7 +42,7 @@ class _ThreadDequeData:
             has been recorded.
     """
 
-    __slots__ = ("deque", "current_seq", "current_bucket_val")
+    __slots__ = ("deque", "current_seq", "current_bucket_val", "lock")
 
     def __init__(self, sentinel: float) -> None:
         """Initialize the thread deque data.
@@ -53,6 +53,7 @@ class _ThreadDequeData:
         self.deque: deque = deque()
         self.current_seq: int = -1
         self.current_bucket_val: float = sentinel
+        self.lock = threading.Lock()
 
 
 class _ThreadLocalRef(threading.local):
@@ -297,13 +298,9 @@ class RollingWindowMax(_RollingWindowBase):
         maximum = tracker.get_max()  # returns 500.0
 
     Thread Safety:
-        - add() is lock-free after the first call from each thread
-        - get_max() acquires a lock to aggregate across threads; it also
-          opportunistically evicts expired entries from each thread's deque
-          without holding the thread's own lock (safe under CPython's GIL
-          since individual deque operations are atomic). Minor inaccuracies
-          are possible during concurrent add()/get_max() calls, similar to
-          RollingWindowAccumulator.
+        - add() acquires a per-thread lock to ensure thread safety
+        - get_max() acquires a global registry lock to aggregate across threads,
+          and per-thread locks to safely read and evict expired entries
         - Safe to call from multiple threads concurrently
     """
 
@@ -325,7 +322,7 @@ class RollingWindowMax(_RollingWindowBase):
     def add(self, value: float) -> None:
         """Record a value, updating the current bucket's running maximum.
 
-        This operation is lock-free for the calling thread after the first call.
+        This operation acquires a per-thread lock to ensure thread safety.
         Safe to call from multiple threads concurrently.
 
         Within each bucket period only the maximum value is tracked via a scalar
@@ -340,30 +337,31 @@ class RollingWindowMax(_RollingWindowBase):
         now = time.time()
         seq = self._get_current_seq(now)
 
-        if seq == data.current_seq:
-            # Same bucket: just track the running max — no deque modification.
-            if value > data.current_bucket_val:
-                data.current_bucket_val = value
-            return
+        with data.lock:
+            if seq == data.current_seq:
+                # Same bucket: just track the running max — no deque modification.
+                if value > data.current_bucket_val:
+                    data.current_bucket_val = value
+                return
 
-        # Bucket has advanced: commit the previous bucket's max to the deque.
-        if data.current_seq >= 0:
-            bucket_val = data.current_bucket_val
-            # Maintain monotonic descending order; pop entries that are now
-            # dominated by the new bucket's max (they can never be the future max
-            # while this newer, higher value is still in the window).
-            while data.deque and data.deque[-1][1] <= bucket_val:
-                data.deque.pop()
-            data.deque.append((data.current_seq, bucket_val))
+            # Bucket has advanced: commit the previous bucket's max to the deque.
+            if data.current_seq >= 0:
+                bucket_val = data.current_bucket_val
+                # Maintain monotonic descending order; pop entries that are now
+                # dominated by the new bucket's max (they can never be the future max
+                # while this newer, higher value is still in the window).
+                while data.deque and data.deque[-1][1] <= bucket_val:
+                    data.deque.pop()
+                data.deque.append((data.current_seq, bucket_val))
 
-        # Evict expired committed buckets from the front.
-        min_valid_seq = seq - self._num_buckets + 1
-        while data.deque and data.deque[0][0] < min_valid_seq:
-            data.deque.popleft()
+            # Evict expired committed buckets from the front.
+            min_valid_seq = seq - self._num_buckets + 1
+            while data.deque and data.deque[0][0] < min_valid_seq:
+                data.deque.popleft()
 
-        # Start accumulating the new bucket.
-        data.current_seq = seq
-        data.current_bucket_val = value
+            # Start accumulating the new bucket.
+            data.current_seq = seq
+            data.current_bucket_val = value
 
     def get_max(self) -> float:
         """Get max value across all non-expired buckets in the window.
@@ -382,21 +380,22 @@ class RollingWindowMax(_RollingWindowBase):
 
         with self._registry_lock:
             for data in self._all_thread_data:
-                # Evict expired committed buckets from the front.
-                while data.deque and data.deque[0][0] < min_valid_seq:
-                    data.deque.popleft()
-                # Max from committed buckets (front of monotonic descending deque).
-                if data.deque and data.deque[0][1] > result:
-                    result = data.deque[0][1]
-                # Also consider the uncommitted current bucket if it is still
-                # within the valid window. This bucket has not yet been committed
-                # to the deque because no newer bucket has arrived yet.
-                if (
-                    data.current_seq >= 0
-                    and data.current_seq >= min_valid_seq
-                    and data.current_bucket_val > result
-                ):
-                    result = data.current_bucket_val
+                with data.lock:
+                    # Evict expired committed buckets from the front.
+                    while data.deque and data.deque[0][0] < min_valid_seq:
+                        data.deque.popleft()
+                    # Max from committed buckets (front of monotonic descending deque).
+                    if data.deque and data.deque[0][1] > result:
+                        result = data.deque[0][1]
+                    # Also consider the uncommitted current bucket if it is still
+                    # within the valid window. This bucket has not yet been committed
+                    # to the deque because no newer bucket has arrived yet.
+                    if (
+                        data.current_seq >= 0
+                        and data.current_seq >= min_valid_seq
+                        and data.current_bucket_val > result
+                    ):
+                        result = data.current_bucket_val
 
         return result
 
@@ -426,13 +425,9 @@ class RollingWindowMin(_RollingWindowBase):
         minimum = tracker.get_min()  # returns 50.0
 
     Thread Safety:
-        - add() is lock-free after the first call from each thread
-        - get_min() acquires a lock to aggregate across threads; it also
-          opportunistically evicts expired entries from each thread's deque
-          without holding the thread's own lock (safe under CPython's GIL
-          since individual deque operations are atomic). Minor inaccuracies
-          are possible during concurrent add()/get_min() calls, similar to
-          RollingWindowAccumulator.
+        - add() acquires a per-thread lock to ensure thread safety
+        - get_min() acquires a global registry lock to aggregate across threads,
+          and per-thread locks to safely read and evict expired entries
         - Safe to call from multiple threads concurrently
     """
 
@@ -454,7 +449,7 @@ class RollingWindowMin(_RollingWindowBase):
     def add(self, value: float) -> None:
         """Record a value, updating the current bucket's running minimum.
 
-        This operation is lock-free for the calling thread after the first call.
+        This operation acquires a per-thread lock to ensure thread safety.
         Safe to call from multiple threads concurrently.
 
         Within each bucket period only the minimum value is tracked via a scalar
@@ -469,30 +464,31 @@ class RollingWindowMin(_RollingWindowBase):
         now = time.time()
         seq = self._get_current_seq(now)
 
-        if seq == data.current_seq:
-            # Same bucket: just track the running min — no deque modification.
-            if value < data.current_bucket_val:
-                data.current_bucket_val = value
-            return
+        with data.lock:
+            if seq == data.current_seq:
+                # Same bucket: just track the running min — no deque modification.
+                if value < data.current_bucket_val:
+                    data.current_bucket_val = value
+                return
 
-        # Bucket has advanced: commit the previous bucket's min to the deque.
-        if data.current_seq >= 0:
-            bucket_val = data.current_bucket_val
-            # Maintain monotonic ascending order; pop entries that are now
-            # dominated by the new bucket's min (they can never be the future min
-            # while this newer, lower value is still in the window).
-            while data.deque and data.deque[-1][1] >= bucket_val:
-                data.deque.pop()
-            data.deque.append((data.current_seq, bucket_val))
+            # Bucket has advanced: commit the previous bucket's min to the deque.
+            if data.current_seq >= 0:
+                bucket_val = data.current_bucket_val
+                # Maintain monotonic ascending order; pop entries that are now
+                # dominated by the new bucket's min (they can never be the future min
+                # while this newer, lower value is still in the window).
+                while data.deque and data.deque[-1][1] >= bucket_val:
+                    data.deque.pop()
+                data.deque.append((data.current_seq, bucket_val))
 
-        # Evict expired committed buckets from the front.
-        min_valid_seq = seq - self._num_buckets + 1
-        while data.deque and data.deque[0][0] < min_valid_seq:
-            data.deque.popleft()
+            # Evict expired committed buckets from the front.
+            min_valid_seq = seq - self._num_buckets + 1
+            while data.deque and data.deque[0][0] < min_valid_seq:
+                data.deque.popleft()
 
-        # Start accumulating the new bucket.
-        data.current_seq = seq
-        data.current_bucket_val = value
+            # Start accumulating the new bucket.
+            data.current_seq = seq
+            data.current_bucket_val = value
 
     def get_min(self) -> Optional[float]:
         """Get min value across all non-expired buckets in the window.
@@ -511,20 +507,21 @@ class RollingWindowMin(_RollingWindowBase):
 
         with self._registry_lock:
             for data in self._all_thread_data:
-                # Evict expired committed buckets from the front.
-                while data.deque and data.deque[0][0] < min_valid_seq:
-                    data.deque.popleft()
-                # Min from committed buckets (front of monotonic ascending deque).
-                if data.deque:
-                    val = data.deque[0][1]
-                    if result is None or val < result:
-                        result = val
-                # Also consider the uncommitted current bucket if it is still
-                # within the valid window. This bucket has not yet been committed
-                # to the deque because no newer bucket has arrived yet.
-                if data.current_seq >= 0 and data.current_seq >= min_valid_seq:
-                    val = data.current_bucket_val
-                    if result is None or val < result:
-                        result = val
+                with data.lock:
+                    # Evict expired committed buckets from the front.
+                    while data.deque and data.deque[0][0] < min_valid_seq:
+                        data.deque.popleft()
+                    # Min from committed buckets (front of monotonic ascending deque).
+                    if data.deque:
+                        val = data.deque[0][1]
+                        if result is None or val < result:
+                            result = val
+                    # Also consider the uncommitted current bucket if it is still
+                    # within the valid window. This bucket has not yet been committed
+                    # to the deque because no newer bucket has arrived yet.
+                    if data.current_seq >= 0 and data.current_seq >= min_valid_seq:
+                        val = data.current_bucket_val
+                        if result is None or val < result:
+                            result = val
 
         return result
