@@ -2240,7 +2240,14 @@ TEST_F(TaskManagerTest, TestObjectRefStreamValueEofCollisionNotOverReleasedOnDel
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status) {}));
 
-  // Simulate the consumer retaining the produced value ref.
+  // Peek the produced value the way a Python consumer would (ObjectRefGenerator
+  // / bulk wait), then retain that ObjectRef. Peek hands back ObjectRefs without
+  // skip_adding_local_ref, so AddLocalReference models the consumer-side hold
+  // on top of the owner-side ref from the generator report.
+  std::vector<std::pair<ObjectID, bool>> peeked =
+      manager_.PeekObjectRefStreamN(generator_id, 1);
+  ASSERT_EQ(peeked.size(), 1UL);
+  ASSERT_EQ(peeked[0].first, value_id);
   reference_counter_->AddLocalReference(value_id, "");
   ASSERT_TRUE(reference_counter_->HasReference(value_id));
 
