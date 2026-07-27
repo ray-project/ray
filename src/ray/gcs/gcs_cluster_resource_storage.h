@@ -28,11 +28,13 @@ class ClusterResourceStorage : public ClusterResourceStorageInterface {
 
   ~ClusterResourceStorage();
 
-  void Put(const ray::NodeID node_id, const rpc::ResourcesData &data) override;
+  void UpdateStoredResources(const scheduling::NodeID node_id,
+                             const NodeResources &node_resources) override;
 
-  void Delete(const ray::NodeID node_id) override;
+  void DeleteStoredResources(const scheduling::NodeID node_id) override;
 
  private:
+  void Put(const ray::NodeID node_id, const rpc::ResourcesData &data);
   GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
 };

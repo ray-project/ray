@@ -75,7 +75,6 @@ ray_cc_library(
         "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common/scheduling:cluster_resource_storage",
         "//src/ray/observability:metric_interface",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",

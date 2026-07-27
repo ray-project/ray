@@ -25,9 +25,10 @@ class RayletClusterResourceStorage : public ClusterResourceStorageInterface {
 
   ~RayletClusterResourceStorage();
 
-  void Put(const ray::NodeID node_id, const rpc::ResourcesData &data) override {}
+  void UpdateStoredResources(const scheduling::NodeID node_id,
+                             const NodeResources &node_resources) override {}
 
-  void Delete(const ray::NodeID node_id) override {}
+  void DeleteStoredResources(const scheduling::NodeID node_id) override {}
 };
 
 }  // namespace raylet

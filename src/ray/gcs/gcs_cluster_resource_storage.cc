@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_cluster_resource_storage.h"
 
+#include "ray/common/grpc_util.h"
 #include "ray/gcs/postable/postable.h"
 
 namespace ray {
@@ -25,6 +26,20 @@ ClusterResourceStorage::ClusterResourceStorage(GcsTableStorage *gcs_table_storag
 
 ClusterResourceStorage::~ClusterResourceStorage() {}
 
+void ClusterResourceStorage::UpdateStoredResources(const scheduling::NodeID node_id,
+                                                   const NodeResources &node_resources) {
+  auto resource_data = rpc::ResourcesData();
+  auto binary = node_id.Binary();
+  if (binary == "-1") {
+    // we can see this in tests, since integer IDs don't get added to the map
+    return;
+  }
+
+  auto ray_node_id = NodeID::FromBinary(binary);
+  FillResourceUsage(ray_node_id, node_resources, &resource_data);
+  Put(ray_node_id, resource_data);
+}
+
 void ClusterResourceStorage::Put(const ray::NodeID node_id,
                                  const rpc::ResourcesData &data) {
   RAY_LOG(DEBUG).WithField(node_id) << "RESOURCE PUT";
@@ -35,11 +50,18 @@ void ClusterResourceStorage::Put(const ray::NodeID node_id,
       node_id, data, {std::move(on_done), io_context_});
 }
 
-void ClusterResourceStorage::Delete(const ray::NodeID node_id) {
-  RAY_LOG(DEBUG).WithField(node_id) << "RESOURCE DELETE";
+void ClusterResourceStorage::DeleteStoredResources(const scheduling::NodeID node_id) {
+  auto binary = node_id.Binary();
+  // we can see this in tests, since integer IDs don't get added to the map
+  if (binary == "-1") {
+    return;
+  }
+
+  auto ray_node_id = NodeID::FromBinary(binary);
+  RAY_LOG(DEBUG).WithField(ray_node_id) << "RESOURCE DELETE";
   auto on_done = [](const Status &status) { RAY_CHECK_OK(status); };
 
-  gcs_table_storage_->NodeResourcesTable().Delete(node_id,
+  gcs_table_storage_->NodeResourcesTable().Delete(ray_node_id,
                                                   {std::move(on_done), io_context_});
 }
 

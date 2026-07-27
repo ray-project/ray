@@ -429,7 +429,7 @@ void ClusterResourceScheduler::RestoreNodeResources(
     scheduling::NodeID s_node_id = scheduling::NodeID(node_id.Binary());
 
     auto restored_resources =
-        cluster_resource_manager_->NodeResourcesFromResourcesData(resources);
+        cluster_resource_storage_.NodeResourcesFromResourcesData(resources);
 
     RAY_LOG(DEBUG).WithField(node_id)
         << "RESTORE RES " << restored_resources.DebugString();

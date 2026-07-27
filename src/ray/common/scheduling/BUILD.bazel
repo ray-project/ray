@@ -6,7 +6,11 @@ ray_cc_library(
         "cluster_resource_storage_interface.h",
     ],
     deps = [
+        "cluster_resource_data",
+        "scheduling_ids",
+        "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 

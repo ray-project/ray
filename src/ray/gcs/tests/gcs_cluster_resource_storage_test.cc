@@ -45,23 +45,27 @@ class GcsClusterResourceStorageTest : public ::testing::Test {
 TEST_F(GcsClusterResourceStorageTest, TestBasicStorage) {
   auto node_resources_table = gcs_table_storage_.get()->NodeResourcesTable();
   auto node_id = NodeID::FromRandom();
+  auto s_node_id = scheduling::NodeID(node_id.Binary());
+
   auto resource_data = rpc::ResourcesData();
   resource_data.set_node_id(node_id.Binary());
+  auto new_resources =
+      cluster_resource_storage_.get()->NodeResourcesFromResourcesData(resource_data);
 
   auto on_start =
-      [this, node_resources_table, node_id, resource_data](
+      [this, node_resources_table, node_id, s_node_id, new_resources](
           const absl::flat_hash_map<NodeID, rpc::ResourcesData> &&result) mutable {
         ASSERT_EQ(0, result.size());
-        cluster_resource_storage_.get()->Put(node_id, resource_data);
+        cluster_resource_storage_.get()->UpdateStoredResources(s_node_id, new_resources);
 
         auto on_put =
-            [this, node_resources_table, node_id](
+            [this, node_resources_table, node_id, s_node_id](
                 const absl::flat_hash_map<NodeID, rpc::ResourcesData> &&result) mutable {
               ASSERT_EQ(1, result.size());
               auto it = result.find(node_id);
               ASSERT_NE(it, result.end());
 
-              cluster_resource_storage_.get()->Delete(node_id);
+              cluster_resource_storage_.get()->DeleteStoredResources(s_node_id);
 
               auto on_del = [node_resources_table](
                                 const absl::flat_hash_map<NodeID, rpc::ResourcesData>

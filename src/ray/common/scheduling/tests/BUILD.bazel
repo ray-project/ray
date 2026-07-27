@@ -1,6 +1,18 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
+    name = "cluster_resource_storage_test",
+    size = "small",
+    srcs = [
+        "cluster_resource_storage_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:cluster_resource_storage",
+    ],
+)
+
+ray_cc_test(
     name = "resource_request_test",
     size = "small",
     srcs = [

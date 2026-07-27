@@ -180,9 +180,6 @@ class ClusterResourceManager {
   FixedPoint GetNodeTotalResources(scheduling::NodeID node_id,
                                    scheduling::ResourceID resource_id) const;
 
-  /// populate node resources from resource data
-  NodeResources NodeResourcesFromResourcesData(rpc::ResourcesData resources);
-
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;
@@ -224,21 +221,11 @@ class ClusterResourceManager {
   /// storage interface for GCS restart support
   ClusterResourceStorageInterface &cluster_resource_storage_;
 
-  /// updates the stored resource information for the node
-  void UpdateStoredResources(const scheduling::NodeID node_id,
-                             const NodeResources &node_resources);
-
-  /// populate resource data from node resources
-  void FillResourceUsage(const ray::NodeID node_id,
-                         const NodeResources &node_resources,
-                         rpc::ResourcesData *data);
-
   mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
 
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterLeaseManagerTest;
-  FRIEND_TEST(ClusterResourceManagerTest, ResourcesDataConversion);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
