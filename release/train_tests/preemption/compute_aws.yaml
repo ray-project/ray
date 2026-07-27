@@ -1,0 +1,20 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    # The benchmark terminates worker instances to inject preemptions, so
+    # `max_nodes` leaves room for replacements while the run recovers.
+    - name: train-worker-node
+      instance_type: g4dn.xlarge
+      min_nodes: 2
+      max_nodes: 4
+      market_type: ON_DEMAND
