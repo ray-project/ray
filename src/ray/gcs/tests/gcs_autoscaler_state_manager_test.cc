@@ -1415,7 +1415,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
-       TestGetPendingGangResourceRequestsNoLocalityWithoutLabelDomainKey) {
+       TestGetPendingGangResourceRequestsNoLocalityWithoutTopologyStrategyKey) {
   rpc::PlacementGroupLoad load;
   auto *pg_data = load.add_placement_group_data();
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
@@ -1434,7 +1434,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
   const auto &req = requests.Get(0);
   ASSERT_EQ(req.bundle_selectors_size(), 1);
-  // Does not use label-domain scheduling, so locality_requirement should not be set.
+  // Does not use a topology strategy, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
 }
 
