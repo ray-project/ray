@@ -11,6 +11,7 @@ import pytest
 import webdataset as wds
 
 import ray
+from ray.data._internal.datasource.webdataset_datasource import _group_by_keys
 from ray.tests.conftest import *  # noqa
 
 
@@ -327,6 +328,46 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
 
     assert len(rows) == 1
     assert rows[0]["pkl"] == {"key": "value"}
+
+
+def _file_samples(*names):
+    return [{"fname": name, "data": name.encode("utf-8")} for name in names]
+
+
+def test_group_by_keys_groups_consecutive_files():
+    samples = list(
+        _group_by_keys(
+            _file_samples("000000.a", "000000.b", "000001.a", "000001.b"),
+            meta={"__url__": "test.tar"},
+        )
+    )
+
+    assert [sample["__key__"] for sample in samples] == ["000000", "000001"]
+    assert all(sample.keys() >= {"a", "b"} for sample in samples)
+
+
+def test_group_by_keys_raises_on_non_adjacent_keys():
+    # "000000" reappears after "000001", so its files would otherwise be split
+    # across two incomplete rows.
+    with pytest.raises(ValueError, match="reappears"):
+        list(
+            _group_by_keys(
+                _file_samples("000000.a", "000001.a", "000000.b", "000001.b"),
+                meta={"__url__": "test.tar"},
+            )
+        )
+
+
+def test_webdataset_non_adjacent_keys_raises(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "unsorted.tar")
+    with TarWriter(path) as tf:
+        tf.write("000000.a", b"0")
+        tf.write("000001.a", b"1")
+        tf.write("000000.b", b"0")
+
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
+    with pytest.raises(Exception, match="reappears"):
+        ds.take_all()
 
 
 if __name__ == "__main__":

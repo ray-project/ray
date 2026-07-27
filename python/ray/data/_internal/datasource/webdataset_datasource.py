@@ -168,9 +168,15 @@ def _group_by_keys(
     Yields:
         Dict[str, Any]: Grouped samples, where files sharing the same key prefix are
         combined into a single dictionary.
+
+    Raises:
+        ValueError: If a key reappears after files with a different key. The
+            WebDataset format requires all files belonging to a sample to be
+            stored consecutively.
     """
     meta = meta or {}
     current_sample = None
+    completed_keys = set()
     for filesample in data:
         assert isinstance(filesample, dict)
         fname, value = filesample["fname"], filesample["data"]
@@ -178,9 +184,21 @@ def _group_by_keys(
         if prefix is None:
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
-            if _valid_sample(current_sample):
-                current_sample.update(meta)
-                yield current_sample
+            if current_sample is not None:
+                completed_key = current_sample["__key__"]
+                if _valid_sample(current_sample):
+                    current_sample.update(meta)
+                    yield current_sample
+                completed_keys.add(completed_key)
+            if prefix in completed_keys:
+                raise ValueError(
+                    f"{fname}: key {prefix!r} reappears after files with a "
+                    "different key. The WebDataset format requires all files "
+                    "belonging to a sample to be stored consecutively, so this "
+                    "sample would be split into several incomplete rows. Sort "
+                    "the files by name when writing the tar file. Tar is "
+                    f"{meta.get('__url__')}"
+                )
             current_sample = dict(__key__=prefix)
             if "__url__" in filesample:
                 current_sample["__url__"] = filesample["__url__"]
