@@ -1433,19 +1433,18 @@ def test_map_op_backpressure_configured_properly(
 
     # Reducing number of blocks in the generator buffer, will prevent this pipeline
     # from throwing
-    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
-        vals = (
-            df.map(
-                _map_raising,
-                concurrency=1,
-                ray_remote_args_fn=lambda: {
-                    "_generator_backpressure_num_objects": 2,  # 1 for block, 1 for metadata
-                },
-            )
-            .limit(total - 1)
-            .take_batch()["item"]
-            .tolist()
+    vals = (
+        df.map(
+            _map_raising,
+            concurrency=1,
+            ray_remote_args_fn=lambda: {
+                "_generator_backpressure_num_objects": 2,  # 1 for block, 1 for metadata
+            },
         )
+        .limit(total - 1)
+        .take_batch()["item"]
+        .tolist()
+    )
 
     assert list(range(5))[:-1] == vals
 
@@ -1512,13 +1511,12 @@ def test_map_with_max_calls():
     ds = ray.data.range(10)
 
     # Not OK to set 'max_calls' as dynamic option
-    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
-        with pytest.raises(ValueError):
-            ds = ds.map(
-                lambda x: x,
-                ray_remote_args_fn=lambda: {"max_calls": 1},
-            )
-            ds.take_all()
+    with pytest.raises(ValueError):
+        ds = ds.map(
+            lambda x: x,
+            ray_remote_args_fn=lambda: {"max_calls": 1},
+        )
+        ds.take_all()
 
 
 def test_downstream_operators_scheduled_on_different_workers_than_read_workers(

@@ -1167,14 +1167,21 @@ def test_groupby_map_groups_ray_remote_args_fn(
         df["value"] = int(os.environ["__MY_TEST__"])
         return df
 
-    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
-        ds = ds.groupby("group").map_groups(
-            func,
-            ray_remote_args_fn=lambda: {
-                "runtime_env": {"env_vars": {"__MY_TEST__": "69"}}
-            },
-        )
+    ds = ds.groupby("group").map_groups(
+        func,
+        ray_remote_args_fn=lambda: {"runtime_env": {"env_vars": {"__MY_TEST__": "69"}}},
+    )
     assert sorted([x["value"] for x in ds.take()]) == [69, 69, 69, 69]
+
+
+def test_groupby_map_groups_ray_remote_args_fn_deprecation_warning():
+    grouped_ds = ray.data.range(1).groupby("id")
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        grouped_ds.map_groups(
+            lambda batch: batch,
+            ray_remote_args_fn=lambda: {},
+        )
 
 
 def test_groupby_map_groups_extra_args(
