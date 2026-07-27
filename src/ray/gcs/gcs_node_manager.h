@@ -422,7 +422,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ray::stats::Count ray_metric_node_failures_total_{
       /*name=*/"node_failure_total",
       /*description=*/"Number of node failures that have happened in the cluster.",
-      /*unit=*/""};
+      /*unit=*/"",
+      /*tag_keys=*/{"Reason"}};
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;

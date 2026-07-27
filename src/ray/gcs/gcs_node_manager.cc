@@ -645,7 +645,8 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
         << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(node_death_info.reason())
         << ", death message = " << node_death_info.reason_message();
     // Record stats that there's a new removed node.
-    ray_metric_node_failures_total_.Record(1);
+    ray_metric_node_failures_total_.Record(
+        1, {{"Reason", rpc::NodeDeathInfo_Reason_Name(node_death_info.reason())}});
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from draining nodes if present.
