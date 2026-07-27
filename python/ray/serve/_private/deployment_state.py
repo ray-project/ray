@@ -15,6 +15,7 @@ from typing import (
     Callable,
     Deque,
     Dict,
+    FrozenSet,
     Iterable,
     List,
     Mapping,
@@ -2246,6 +2247,37 @@ class DeploymentReplica:
         return self._actor.get_outbound_deployments()
 
 
+def _memoized_walk(obj, memo_attr: str, token, compute):
+    """Return compute() memoized on *token* in obj.<memo_attr>.
+
+    token=None means "uncacheable right now": recompute and drop the memo.
+    Callers must treat returned collections as immutable (they are shared).
+    """
+    # No getattr default: a misspelled memo_attr must raise here rather than have
+    # setattr silently create a second memo the real attribute never sees.
+    memo = getattr(obj, memo_attr)
+    if token is not None and memo is not None and memo[0] == token:
+        return memo[1]
+    result = compute()
+    setattr(obj, memo_attr, None if token is None else (token, result))
+    return result
+
+
+# One odd multiplier per state. A hash of (replica_id, state) will not do: the tuple
+# hash makes term(r, A) - term(r, B) nearly independent of r, so two replicas swapping
+# states in one tick cancel out. Multiplying keeps that difference proportional to
+# hash(replica_id). Terms are ~128 bits, so each add/pop/remove is a small bigint add;
+# masking to 64 would reintroduce the cancellation, as the multiplier difference is even.
+_STATE_MULTIPLIERS = {
+    state: (2 * i + 1) * 0x9E3779B97F4A7C15 for i, state in enumerate(ReplicaState)
+}
+
+
+def _membership_term(replica_id: ReplicaID, state: ReplicaState) -> int:
+    """One fingerprint term -- add() adds it, pop()/remove() subtract the same value."""
+    return hash(replica_id) * _STATE_MULTIPLIERS[state]
+
+
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
 
@@ -2256,6 +2288,21 @@ class ReplicaStateContainer:
         # Incremental (state, version) counts for O(1) version-filtered count()
         # (maintained on add/pop/remove) -> replaces the per-tick O(N) version scan.
         self._sv_counts: Dict[tuple, int] = defaultdict(int)
+        # Running sum of per-replica terms. The memo key is the membership_fingerprint
+        # property, which pairs this with the replica count.
+        self._membership_fingerprint: int = 0
+
+    @property
+    def membership_fingerprint(self) -> Tuple[int, int]:
+        """Fingerprint of the {replica id -> state} content, for memo keys.
+
+        Terms are summed, so popping a replica and re-adding it under the SAME state
+        cancels -- which is what the gang health pass and the drain pass do every tick --
+        while arrivals, departures and real state transitions do not. The exact replica
+        count rides along, so only equal-size contents can collide: equality means
+        "almost certainly unchanged", not proof.
+        """
+        return len(self._replica_id_index), self._membership_fingerprint
 
     def __getstate__(self):
         # Exclude the callback to keep the container picklable (the callback
@@ -2279,6 +2326,7 @@ class ReplicaStateContainer:
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
         self._sv_counts[(state, replica.version)] += 1
+        self._membership_fingerprint += _membership_term(replica.replica_id, state)
         if self._on_replica_state_change and state != old_state:
             self._on_replica_state_change(old_state, state)
 
@@ -2370,8 +2418,11 @@ class ReplicaStateContainer:
 
             self._replicas[state] = remaining
             replicas.extend(popped)
-            for _r in popped:
-                self._sv_counts[(state, _r.version)] -= 1
+            for replica in popped:
+                self._sv_counts[(state, replica.version)] -= 1
+                self._membership_fingerprint -= _membership_term(
+                    replica.replica_id, state
+                )
 
         for replica in replicas:
             self._replica_id_index.pop(replica.replica_id, None)
@@ -2442,6 +2493,9 @@ class ReplicaStateContainer:
                 if remaining_to_find > 0 and replica.replica_id in replica_ids:
                     removed.append(replica)
                     self._sv_counts[(state, replica.version)] -= 1
+                    self._membership_fingerprint -= _membership_term(
+                        replica.replica_id, state
+                    )
                     self._replica_id_index.pop(replica.replica_id, None)
                     remaining_to_find -= 1
                     found_any = True
@@ -3008,7 +3062,11 @@ class DeploymentState:
         self._rank_manager = DeploymentRankManager(
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
-        self._last_rank_membership_ids: Optional[Set[str]] = None
+        self._last_rank_membership_fp: Optional[Tuple[int, int]] = None
+        # (token, result) memos for per-tick id-collection walks.
+        self._alive_replica_actor_ids_memo = None
+        self._running_replica_ids_memo = None
+        self._active_node_ids_memo = None
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -3413,16 +3471,52 @@ class DeploymentState:
         )
         return replica_failed or self.deployment_actor_terminally_failed()
 
-    def get_alive_replica_actor_ids(self) -> Set[str]:
-        return {r.actor_id for r in self._replicas.get() if r.actor_id is not None}
+    def _membership_cache_token(self) -> Optional[Tuple[int, int]]:
+        """Per-deployment memo token, or None while uncacheable.
 
-    def get_running_replica_ids(self) -> List[ReplicaID]:
-        return [
-            replica.replica_id
-            for replica in self._replicas.get(
-                [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+        The fingerprint covers which replica is in which state, not the replicas' own
+        fields -- and these walks read actor_id/actor_node_id, which check_ready() fills
+        in in place for STARTING, UPDATING and RECOVERING replicas. So disable caching
+        while any of the three exist.
+        """
+        if (
+            self._replicas.count(
+                states=[
+                    ReplicaState.STARTING,
+                    ReplicaState.UPDATING,
+                    ReplicaState.RECOVERING,
+                ]
             )
-        ]
+            > 0
+        ):
+            return None
+        return self._replicas.membership_fingerprint
+
+    def get_alive_replica_actor_ids(self) -> FrozenSet[str]:
+        return _memoized_walk(
+            self,
+            "_alive_replica_actor_ids_memo",
+            self._membership_cache_token(),
+            lambda: frozenset(
+                r.actor_id for r in self._replicas.get() if r.actor_id is not None
+            ),
+        )
+
+    def get_running_replica_ids(self) -> Tuple[ReplicaID, ...]:
+        # Keyed on the fingerprint rather than the shared token: this walk reads only
+        # replica_id, which never changes after construction, so it has no check_ready()
+        # dependency and stays cached through rollouts.
+        return _memoized_walk(
+            self,
+            "_running_replica_ids_memo",
+            self._replicas.membership_fingerprint,
+            lambda: tuple(
+                replica.replica_id
+                for replica in self._replicas.get(
+                    [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+                )
+            ),
+        )
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -3462,7 +3556,7 @@ class DeploymentState:
             - recovering_replicas
         )
 
-    def get_active_node_ids(self) -> Set[str]:
+    def get_active_node_ids(self) -> FrozenSet[str]:
         """Get the node ids of all running replicas in this deployment.
 
         This is used to determine which node has replicas. Only nodes with replicas and
@@ -3477,11 +3571,16 @@ class DeploymentState:
             # node before all the replicas are migrated.
             ReplicaState.PENDING_MIGRATION,
         ]
-        return {
-            replica.actor_node_id
-            for replica in self._replicas.get(active_states)
-            if replica.actor_node_id is not None
-        }
+        return _memoized_walk(
+            self,
+            "_active_node_ids_memo",
+            self._membership_cache_token(),
+            lambda: frozenset(
+                replica.actor_node_id
+                for replica in self._replicas.get(active_states)
+                if replica.actor_node_id is not None
+            ),
+        )
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
@@ -5148,7 +5247,10 @@ class DeploymentState:
         The pass is O(N) with heavy constants and used to run on every
         control-loop tick in steady state -- at 10K+ replicas it monopolizes
         the controller loop. Rank consistency can only be violated by
-        membership changes, so the active replica-id set gates it.
+        replica-id set changes, so the container's (id, state) fingerprint gates it.
+        It is finer than that set, so state transitions re-run the pass as well. That is
+        safe because a replica cannot run without a rank, so everything the pass sees
+        under a HEALTHY deployment holds one.
         """
         # O(1) guards first -- `get()` below copies the whole replica list, and these
         # two rule out the busiest ticks (rollouts, migrations) without paying for it.
@@ -5161,11 +5263,12 @@ class DeploymentState:
             or self._replicas.count(states=[ReplicaState.STARTING]) != 0
         ):
             return
+        fp = self._replicas.membership_fingerprint
+        if fp == self._last_rank_membership_fp:
+            return
         active_replicas = self._replicas.get()
         if not active_replicas:
-            return
-        active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
-        if active_replica_ids == self._last_rank_membership_ids:
+            self._last_rank_membership_fp = fp
             return
         replicas_to_reconfigure = (
             self._rank_manager.check_rank_consistency_and_reassign_minimally(
@@ -5174,7 +5277,7 @@ class DeploymentState:
         )
         # Reconfigure replicas that had their ranks reassigned
         self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
-        self._last_rank_membership_ids = active_replica_ids
+        self._last_rank_membership_fp = fp
 
     def _handle_deployment_actor_failed_health_check(
         self,
@@ -5958,6 +6061,9 @@ class DeploymentStateManager:
         self._shutdown_tier_started_at: Optional[float] = None
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        # (key, result) memos for cross-deployment id-collection walks.
+        self._alive_replica_actor_ids_memo = None
+        self._active_node_ids_memo = None
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
         # reconcile on it, skipping the O(replicas) pass on ticks with no change.
@@ -6393,12 +6499,34 @@ class DeploymentStateManager:
                     statuses.append(state.curr_status_info)
             return statuses
 
-    def get_alive_replica_actor_ids(self) -> Set[str]:
-        alive_replica_actor_ids: Set[str] = set()
-        for ds in self._deployment_states.values():
-            alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
+    def _membership_cache_key(self) -> Optional[tuple]:
+        """Combined per-deployment token, or None if any deployment is uncacheable.
 
-        return alive_replica_actor_ids
+        Adding or removing a deployment changes the tuple, so that is covered too. One
+        STARTING replica disarms this cluster-wide, but the per-deployment memos still
+        hit inside compute(), so it degrades to a union per deployment, not a walk per
+        replica."""
+        parts = []
+        for deployment_id, ds in self._deployment_states.items():
+            token = ds._membership_cache_token()
+            if token is None:
+                return None
+            parts.append((deployment_id, token))
+        return tuple(parts)
+
+    def get_alive_replica_actor_ids(self) -> FrozenSet[str]:
+        def compute():
+            alive_replica_actor_ids: Set[str] = set()
+            for ds in self._deployment_states.values():
+                alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
+            return frozenset(alive_replica_actor_ids)
+
+        return _memoized_walk(
+            self,
+            "_alive_replica_actor_ids_memo",
+            self._membership_cache_key(),
+            compute,
+        )
 
     def get_deployment_ids(self) -> List[DeploymentID]:
         return list(self._deployment_states.keys())
@@ -6836,16 +6964,22 @@ class DeploymentStateManager:
             return
         self._deployment_states[deployment_id].record_request_routing_info(info)
 
-    def get_active_node_ids(self) -> Set[str]:
+    def get_active_node_ids(self) -> FrozenSet[str]:
         """Return set of node ids with running replicas of any deployment.
 
         This is used to determine which node has replicas. Only nodes with replicas and
         head node should have active proxies.
         """
-        node_ids = set()
-        for deployment_state in self._deployment_states.values():
-            node_ids.update(deployment_state.get_active_node_ids())
-        return node_ids
+
+        def compute():
+            node_ids = set()
+            for deployment_state in self._deployment_states.values():
+                node_ids.update(deployment_state.get_active_node_ids())
+            return frozenset(node_ids)
+
+        return _memoized_walk(
+            self, "_active_node_ids_memo", self._membership_cache_key(), compute
+        )
 
     def get_ingress_membership_version(self) -> int:
         """Monotonic counter of ingress running-replica-set changes (node/ports
