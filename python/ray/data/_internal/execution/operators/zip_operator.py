@@ -292,6 +292,34 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 continue
             return True
 
+    def _do_shutdown(self, force: bool) -> None:
+        super()._do_shutdown(force)
+        # Cancelled tasks never run their completion callbacks, so drop them
+        # here to release the block refs they hold.
+        self._data_tasks.clear()
+        self._pending_count_tasks.clear()
+
+    @override
+    def clear_internal_input_queue(self) -> None:
+        """Drop buffered input and stop accounting for it.
+
+        Runs when execution ends before the inputs do, such as a downstream
+        limit being reached, as well as on shutdown. Whatever the operator is
+        still holding has to be released here, or those bundles stay counted in
+        its input metrics and blocks it owns are never freed.
+        """
+        for input_index, buffer in enumerate(self._input_buffers):
+            # Rows staged for zipping that never got consumed.
+            pending = self._pending[input_index]
+            while pending:
+                self._release_hold(pending.popleft().source)
+            # Bundles that never even reached the staging queue.
+            while buffer.has_next():
+                bundle = buffer.get_next()
+                self._metrics.on_input_dequeued(bundle, input_index=input_index)
+                bundle.destroy_if_owned()
+        super().clear_internal_input_queue()
+
     def _release_hold(self, source: _SourceBundle) -> None:
         """Drop one hold on an input bundle, releasing it once none remain."""
         source.holds -= 1

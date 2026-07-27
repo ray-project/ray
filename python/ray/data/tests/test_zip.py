@@ -588,6 +588,85 @@ def test_zip_streaming_accounts_held_input_memory(ray_start_regular_shared):
     assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
 
 
+def test_zip_streaming_releases_input_on_early_stop(ray_start_regular_shared):
+    """Ending execution early must not strand held input bundles.
+
+    A downstream limit can finish the operator while rows are still staged for
+    zipping. Those bundles have already left the input queue, so unless they are
+    released here they stay counted in the operator's metrics and blocks it owns
+    are never freed.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    # Feed input 0 only, so nothing can be zipped and its blocks stay staged.
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1], [2, 3], [4, 5]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+
+    # Blocks are held across both the staging queue and the input buffer.
+    assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
+
+    # A downstream limit finishing takes this path.
+    zip_op.mark_execution_finished()
+
+    assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
+    assert zip_op.internal_input_queue_num_blocks() == 0
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_zip_streaming_releases_tasks_on_shutdown(ray_start_regular_shared, force):
+    """Shutdown must drop in-flight tasks so their block refs are released.
+
+    Cancelled tasks never run their completion callbacks, so the operator has to
+    clear them itself rather than wait for callbacks that will never arrive.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data._internal.stats import Timer
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1], [2, 3]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11], [12, 13]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    assert zip_op.num_active_tasks() > 0
+
+    zip_op.shutdown(timer=Timer(), force=force)
+
+    assert zip_op.num_active_tasks() == 0
+    assert zip_op.get_active_tasks() == []
+
+
 def test_zip_streaming_reuses_block_across_offsets(ray_start_regular_shared):
     """A block spanning several of the other input's blocks is zipped in place.
 
