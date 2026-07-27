@@ -42,10 +42,7 @@ def __ray_send__(
 def validate_tensor_buffers(
     tensor_buffers: List["torch.Tensor"],
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    device: Optional[str] = None,
 ):
-    import torch
-
     if len(tensor_buffers) != len(tensor_meta):
         raise ValueError(
             f"Length of tensor_buffers ({len(tensor_buffers)}) does not match length from object metadata ({len(tensor_meta)})."
@@ -54,7 +51,6 @@ def validate_tensor_buffers(
     def tensor_buffer_mismatch_msg(prop, idx, actual, expected):
         return f"{prop} of tensor_buffer at index {idx} ({actual}) does not match {prop.lower()} from object metadata ({expected})."
 
-    expected_device_type = torch.device(device).type if device is not None else None
     for idx, single_buffer in enumerate(tensor_buffers):
         shape, dtype = tensor_meta[idx]
         if single_buffer.shape != shape:
@@ -64,15 +60,6 @@ def validate_tensor_buffers(
         if single_buffer.dtype != dtype:
             raise ValueError(
                 tensor_buffer_mismatch_msg("Dtype", idx, single_buffer.dtype, dtype)
-            )
-        if (
-            expected_device_type is not None
-            and single_buffer.device.type != expected_device_type
-        ):
-            raise ValueError(
-                tensor_buffer_mismatch_msg(
-                    "Device", idx, single_buffer.device.type, expected_device_type
-                )
             )
         if not single_buffer.is_contiguous():
             raise ValueError(f"Tensor buffer at index {idx} is not contiguous.")

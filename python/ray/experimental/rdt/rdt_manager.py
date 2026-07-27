@@ -557,9 +557,9 @@ class RDTManager:
         assert rdt_meta is not None
 
         if use_object_store:
-            if rdt_meta.target_buffers:
+            if rdt_meta.target_buffers or rdt_meta.target_device:
                 logger.warning(
-                    "Target buffers are not supported for use_object_store=True. Ignoring the target buffers."
+                    "Target buffers and target device are not supported for use_object_store=True. Ignoring the target buffers and target device."
                 )
 
             src_actor = rdt_meta.src_actor
@@ -614,7 +614,7 @@ class RDTManager:
                 # require it to match the source device (cross-device fetch).
                 # Here we only validate shape/dtype/contiguity.
                 tensor_meta = tensor_transport_meta.tensor_meta
-                validate_tensor_buffers(target_buffers, tensor_meta, device=None)
+                validate_tensor_buffers(target_buffers, tensor_meta)
             elif rdt_meta.target_device is not None:
                 # No pre-allocated buffers, but the user requested a specific
                 # target device. Allocate the receive buffers on that device so

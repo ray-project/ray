@@ -230,9 +230,14 @@ class SerializationContext:
                         "This is likely because the object you're trying to borrow an object that was not created on the "
                         "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
                     )
-                # We don't want to send over any target buffers the user set
-                if rdt_meta.target_buffers:
-                    rdt_meta = rdt_meta._replace(target_buffers=None)
+                # target_buffers and target_device are the local consumer's
+                # receive targets, so don't send them over to borrowers. Otherwise
+                # a target set for this process's own ray.get would leak into the
+                # borrowing process's fetch.
+                if rdt_meta.target_buffers or rdt_meta.target_device:
+                    rdt_meta = rdt_meta._replace(
+                        target_buffers=None, target_device=None
+                    )
                 return _rdt_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),

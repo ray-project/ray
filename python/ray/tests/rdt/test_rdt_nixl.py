@@ -666,6 +666,46 @@ def test_nixl_cross_device_fetch(ray_start_regular):
     assert torch.equal(override_tensors[1], torch.tensor([4, 5, 6]))
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_target_device_not_leaked_to_borrower(ray_start_regular):
+    """A target device set for one consumer must not leak to a borrowing process.
+
+    The target device is a per-consumer receive target, so it should be stripped
+    when an RDT ObjectRef is serialized in-band for borrowing (like target
+    buffers). Otherwise a process that set a target device for its own ray.get
+    would force a different process's fetch onto that device.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_default(self, refs):
+            # No target device/buffer is set on this actor. The fetch should
+            # land on the source device (cuda), not the device the driver set
+            # for its own consumption.
+            tensors = ray.get(refs[0])
+            for t in tensors:
+                assert t.device.type == "cuda"
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    # The driver sets a target device for its own consumption of the ref.
+    set_target_device_for_ref(cuda_ref, "cpu")
+    # Borrow the ref in another actor by passing it in-band. The borrower must
+    # not inherit the driver's target device.
+    result = ray.get(actors[1].fetch_default.remote([cuda_ref]))
+    assert torch.equal(result[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(result[1], torch.tensor([4, 5, 6]))
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_register_deregister_nixl_memory(ray_start_regular):
     """
