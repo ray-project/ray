@@ -29,9 +29,13 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT,
+    RAY_SERVE_WORKER_PROXY_HTTP_PORT,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOG_COMPONENT,
@@ -69,7 +73,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     HandlerMetadata,
@@ -82,6 +85,7 @@ from ray.serve._private.proxy_request_response import (
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -161,7 +165,7 @@ class GenericProxy(ABC):
 
         self.proxy_router = proxy_router
 
-        self._proxy_metrics = ProxyMetrics(
+        self._proxy_metrics = RequestIngressMetrics(
             self.protocol,
             source="proxy",
             node_id=node_id,
@@ -243,6 +247,22 @@ class GenericProxy(ABC):
     ) -> ResponseGenerator:
         raise NotImplementedError
 
+    def _should_emit_request_ingress_metrics(self) -> bool:
+        """Whether this proxy emits the RequestIngressMetrics family itself.
+
+        In HAProxy mode (with HAProxy metrics enabled), this proxy runs as the
+        head-node fallback behind HAProxy. HAProxy already counts every request
+        it forwards -- including the ones it routes to this fallback -- from its
+        per-request log datagrams, so emitting here too would double-count HTTP
+        ingress metrics. gRPC is not proxied by HAProxy, so the fallback proxy
+        still emits gRPC.
+        """
+        return not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and self.protocol == RequestProtocol.HTTP
+        )
+
     def _ongoing_requests_start(self):
         """Ongoing requests start.
 
@@ -252,7 +272,8 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -261,7 +282,8 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _setup_proxy_tracing(
         self,
@@ -459,6 +481,11 @@ class GenericProxy(ABC):
                 self._ongoing_requests_end()
 
         latency_ms = (time.time() - start_time) * 1000.0
+        status_code = (
+            status.code.name
+            if self.protocol == RequestProtocol.GRPC
+            else str(status.code)
+        )
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
             self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
@@ -467,22 +494,23 @@ class GenericProxy(ABC):
                 access_log_msg(
                     method=proxy_request.method,
                     route=request_context.route,
-                    status=str(status.code),
+                    status=status_code,
                     latency_ms=latency_ms,
                     client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
 
-        self._proxy_metrics.record_request(
-            route=response_handler_info.metadata.route,
-            method=proxy_request.method,
-            application=response_handler_info.metadata.application_name,
-            status_code=str(status.code),
-            latency_ms=latency_ms,
-            is_error=status.is_error,
-            deployment_name=response_handler_info.metadata.deployment_name,
-        )
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.record_request(
+                route=response_handler_info.metadata.route,
+                method=proxy_request.method,
+                application=response_handler_info.metadata.application_name,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                is_error=status.is_error,
+                deployment_name=response_handler_info.metadata.deployment_name,
+            )
 
     @abstractmethod
     def setup_request_context_and_handle(
@@ -1399,6 +1427,23 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
+def apply_per_node_port_overrides(
+    http_options: HTTPOptions, grpc_options: gRPCOptions, is_head: bool
+) -> None:
+    """Override this proxy's HTTP and gRPC bind ports from the per-node env knobs.
+
+    Worker proxies bind RAY_SERVE_WORKER_PROXY_HTTP_PORT and
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT when set. The head node is exempt so its
+    configured ports and the fallback proxy stay intact.
+    """
+    if is_head:
+        return
+    if RAY_SERVE_WORKER_PROXY_HTTP_PORT is not None:
+        http_options.port = RAY_SERVE_WORKER_PROXY_HTTP_PORT
+    if RAY_SERVE_WORKER_PROXY_GRPC_PORT is not None:
+        grpc_options.port = RAY_SERVE_WORKER_PROXY_GRPC_PORT
+
+
 class ProxyActorInterface(ABC):
     """Abstract interface for proxy actors in Ray Serve.
 
@@ -1566,6 +1611,9 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
+        is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(http_options, grpc_options, is_head)
+
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
         grpc_enabled = is_grpc_enabled(self._grpc_options)
@@ -1633,7 +1681,6 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
-        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,

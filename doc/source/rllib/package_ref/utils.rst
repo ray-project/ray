@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _utils-reference-docs:
 
 RLlib Utilities
@@ -82,7 +80,6 @@ For example:
     Scheduler.validate
     Scheduler.get_current_value
     Scheduler.update
-    Scheduler._create_tensor_variable
 
 
 Framework Utilities

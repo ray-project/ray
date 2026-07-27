@@ -1,14 +1,17 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import List, Optional
 
 import ray
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    ResourceDict,
+)
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
+from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (  # noqa: E501
     AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
 )
 from ray.train.v2._internal.execution.worker_group import (
@@ -19,11 +22,6 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
-        ResourceDict,
-    )
 
 
 class ElasticScalingPolicy(ScalingPolicy):
@@ -39,14 +37,12 @@ class ElasticScalingPolicy(ScalingPolicy):
         self._latest_monitor_time = float("-inf")
         self._latest_insufficient_workers_warning_time = float("-inf")
         self._latest_allocated_resources_query_time = float("-inf")
-        self._latest_allocated_resources: Optional[List["ResourceDict"]] = None
+        self._latest_allocated_resources: Optional[List[ResourceDict]] = None
 
     def _get_num_workers_for_resource_request(self) -> int:
         return self.scaling_config.max_workers
 
-    def _count_possible_workers(
-        self, allocated_resources: List[Dict[str, float]]
-    ) -> int:
+    def _count_possible_workers(self, allocated_resources: List[ResourceDict]) -> int:
         """Count the number of workers that can be started/restarted with the given
         the list of node resources. The returned number is capped at the maximum
         number of workers.
@@ -56,7 +52,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         TPU slices (see ``_get_strict_tpu_worker_count``).
 
         Args:
-            allocated_resources: The resources currently allocated by the AutoscalingCoordinator.
+            allocated_resources: Per-node reserved resources from the AutoscalingCoordinator.
 
         Returns:
             The number of workers that can be started/restarted with the current resources.
@@ -258,7 +254,7 @@ class ElasticScalingPolicy(ScalingPolicy):
     # Methods for interacting with AutoscalingCoordinator
     # ---------------------------------------------------
 
-    def _get_allocated_resources(self) -> Optional[List["ResourceDict"]]:
+    def _get_allocated_resources(self) -> Optional[List[ResourceDict]]:
         """Get allocated resources from AutoscalingCoordinator.
         Return None if there is an error."""
         now = time_monotonic()

@@ -50,6 +50,9 @@ from ray.rllib.algorithms.utils import (
     _get_offline_eval_runner_bundles,
 )
 from ray.rllib.callbacks.utils import make_callback
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+)
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
@@ -1049,6 +1052,12 @@ class Algorithm(Checkpointable, Trainable):
                         inference_only=False,
                     )[COMPONENT_LEARNER]
                 # Create the offline evaluation runner group.
+                # Compute the correct pg_offset so offline eval runners
+                # target the right placement group bundle indices
+                # (after main process, env runners, and eval env runners).
+                offline_eval_pg_offset = self.config.num_env_runners
+                if self._should_create_evaluation_env_runners(self.evaluation_config):
+                    offline_eval_pg_offset += self.evaluation_config.num_env_runners
                 self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
                     config=self.evaluation_config,
                     # Do not create a local runner such that the dataset can be split.
@@ -1059,6 +1068,7 @@ class Algorithm(Checkpointable, Trainable):
                     # Note, even if no environment is run, the `MultiRLModule` needs
                     # spaces to construct the policy network.
                     spaces=spaces,
+                    pg_offset=offline_eval_pg_offset,
                 )
 
         # Create an Aggregator actor set, if necessary.
@@ -3946,6 +3956,9 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results[
                     "num_remote_worker_restarts"
                 ] = self.eval_env_runner_group.num_remote_worker_restarts()
+                eval_results[
+                    "num_env_runners_dropped_lifetime"
+                ] = self.eval_env_runner_group.num_env_runners_dropped_lifetime()
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -4074,6 +4087,9 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                     "num_remote_worker_restarts": (
                         self.env_runner_group.num_remote_worker_restarts()
+                    ),
+                    "num_env_runners_dropped_lifetime": (
+                        self.env_runner_group.num_env_runners_dropped_lifetime()
                     ),
                 }
                 results["env_runner_group"] = {
@@ -4553,6 +4569,9 @@ class Algorithm(Checkpointable, Trainable):
         results[
             "num_remote_worker_restarts"
         ] = self.env_runner_group.num_remote_worker_restarts()
+        results[
+            "num_env_runners_dropped_lifetime"
+        ] = self.env_runner_group.num_env_runners_dropped_lifetime()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [
@@ -4667,7 +4686,6 @@ class Algorithm(Checkpointable, Trainable):
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Algorithm's local worker!"
             )
-        pp = policy.agent_connectors[ObsPreprocessorConnector]
 
         if not isinstance(observation, (np.ndarray, dict, tuple)):
             try:
@@ -4677,25 +4695,33 @@ class Algorithm(Checkpointable, Trainable):
                     f"Observation type {type(observation)} cannot be converted to "
                     f"np.ndarray."
                 )
-        if pp:
-            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-            pp = pp[0]
 
-            if not pp.is_identity():
-                pp.in_eval()
-                if observation is not None:
-                    _input_dict = {Columns.OBS: observation}
-                elif input_dict is not None:
-                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
-                else:
-                    raise ValueError(
-                        "Either observation or input_dict must be provided."
-                    )
+        for pp_type in [
+            ObsPreprocessorConnector,
+            MeanStdObservationFilterAgentConnector,
+        ]:
+            pp = policy.agent_connectors[pp_type]
+            if pp:
+                assert (
+                    len(pp) == 1
+                ), f"Only one preprocessor of type {pp_type} is allowed per policy!"
+                pp = pp[0]
 
-                acd = AgentConnectorDataType("0", "0", _input_dict)
-                pp.reset(env_id="0")
-                ac_o = pp([acd])[0]
-                observation = ac_o.data[Columns.OBS]
+                if not hasattr(pp, "is_identity") or not pp.is_identity():
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {Columns.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
+
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[Columns.OBS]
 
         if input_dict is not None:
             input_dict[Columns.OBS] = observation
