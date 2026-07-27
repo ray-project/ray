@@ -313,6 +313,8 @@ class ActorPool:
         i, a = self._future_to_actor.pop(future_key)
 
         if raise_timeout_after_ignore:
+            # TODO: Keep tracking the ignored task and only return the actor
+            # after it finishes so a later task cannot inherit its failure.
             self._return_actor(a)
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
@@ -387,6 +389,8 @@ class ActorPool:
         self._next_return_index = max(self._next_return_index, i + 1)
 
         if raise_timeout_after_ignore:
+            # TODO: Keep tracking the ignored task and only return the actor
+            # after it finishes so a later task cannot inherit its failure.
             self._return_actor(a)
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
