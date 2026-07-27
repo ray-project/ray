@@ -394,6 +394,97 @@ class TestReplicaStateContainer:
             states=[ReplicaState.STOPPING],
         ) == [r1]
 
+    def test_membership_fingerprint_ignores_rebucketing_churn(self):
+        """The health and migration passes pop a whole bucket and re-add it every
+        tick. Only a real change of the {replica id -> state} content may show up."""
+        c = ReplicaStateContainer()
+        r1, r2 = replica(deployment_version("1")), replica(deployment_version("1"))
+        c.add(ReplicaState.RUNNING, r1)
+        c.add(ReplicaState.RUNNING, r2)
+        settled = c.membership_fingerprint
+
+        # The migration pass: pop the bucket, re-add each replica to the state it
+        # came from. Order within a bucket is not membership.
+        for r in reversed(c.pop(states=[ReplicaState.RUNNING])):
+            c.add(ReplicaState.RUNNING, r)
+        assert c.membership_fingerprint == settled
+
+        # The in-place health path re-buckets a single replica: remove + re-add.
+        c.remove({r1.replica_id})
+        c.add(ReplicaState.RUNNING, r1)
+        assert c.membership_fingerprint == settled
+
+        # A real state transition, an arrival and a departure each change it.
+        c.remove({r1.replica_id})
+        c.add(ReplicaState.STOPPING, r1)
+        transitioned = c.membership_fingerprint
+        assert transitioned != settled
+
+        c.add(ReplicaState.RUNNING, replica(deployment_version("1")))
+        arrived = c.membership_fingerprint
+        assert arrived not in (settled, transitioned)
+
+        c.remove({r2.replica_id})
+        assert c.membership_fingerprint not in (settled, transitioned, arrived)
+
+    def test_paired_state_swap_changes_the_fingerprint(self):
+        """A drain tick moves one replica into a state as another moves out, so the
+        counts are unchanged and only the terms can tell the two apart."""
+        for _ in range(32):
+            c = ReplicaStateContainer()
+            r1, r2 = replica(deployment_version("1")), replica(deployment_version("1"))
+            c.add(ReplicaState.RUNNING, r1)
+            c.add(ReplicaState.PENDING_MIGRATION, r2)
+            before = c.membership_fingerprint
+
+            c.remove({r1.replica_id, r2.replica_id})
+            c.add(ReplicaState.PENDING_MIGRATION, r1)
+            c.add(ReplicaState.RUNNING, r2)
+            assert c.membership_fingerprint != before
+
+    def test_membership_terms_do_not_cancel_across_replicas(self):
+        """The swap above is only caught if term(r, A) - term(r, B) differs per replica.
+        Hashing (replica_id, state) as a tuple collapses it to a handful of values, which
+        makes a paired swap invisible for a large fraction of replica pairs."""
+        deltas = {
+            ds_mod._membership_term(r.replica_id, ReplicaState.RUNNING)
+            - ds_mod._membership_term(r.replica_id, ReplicaState.PENDING_MIGRATION)
+            for r in (replica(deployment_version("1")) for _ in range(64))
+        }
+        assert len(deltas) == 64
+
+    def test_membership_fingerprint_matches_a_recompute(self):
+        """The fingerprint is maintained incrementally, so pin it to ground truth: a
+        future bucket write that forgot to update it would silently make both the memos
+        and the rank gate skip real work."""
+
+        def recomputed(c):
+            return len(c._replica_id_index), sum(
+                ds_mod._membership_term(r.replica_id, state)
+                for state, replicas in c._replicas.items()
+                for r in replicas
+            )
+
+        c = ReplicaStateContainer()
+        r1, r2, r3 = (replica(deployment_version("1")) for _ in range(3))
+        c.add(ReplicaState.RUNNING, r1)
+        c.add(ReplicaState.STARTING, r2)
+        c.add(ReplicaState.RUNNING, r3)
+        assert c.membership_fingerprint == recomputed(c)
+
+        for r in c.pop(states=[ReplicaState.RUNNING]):
+            c.add(ReplicaState.RUNNING, r)
+        assert c.membership_fingerprint == recomputed(c)
+
+        c.remove({r1.replica_id})
+        assert c.membership_fingerprint == recomputed(c)
+
+        c.pop(states=[ReplicaState.STARTING])
+        assert c.membership_fingerprint == recomputed(c)
+
+        c.add(ReplicaState.STOPPING, r1)
+        assert c.membership_fingerprint == recomputed(c)
+
 
 def _mock_deployment_actor_wrapper(deployment_id, code_version: str, name: str):
     """Create a MockDeploymentActorWrapper for container tests."""
@@ -10693,6 +10784,187 @@ class TestRankConsistencyMembershipGate:
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
         assert ds._rank_manager.consistency_calls == 0
+
+    def test_draining_elsewhere_does_not_rerun_the_pass(
+        self, rank_gate_dsm, mock_deployment_state_manager
+    ):
+        """A node draining elsewhere in the cluster churns the buckets every tick
+        without changing membership; the O(N) pass must still be gated off."""
+        dsm, ds, rank_manager, _ = rank_gate_dsm
+        _, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+        node = NodeID.from_random().hex()
+        cluster_node_info_cache.add_node(node)
+        before = rank_manager.consistency_calls
+
+        cluster_node_info_cache.draining_nodes = {node: 60 * 1000}
+        for _ in range(5):
+            bucket = ds._replicas._replicas[ReplicaState.RUNNING]
+            dsm.update()
+            # pop() installs a fresh bucket list, so this witnesses the churn rather
+            # than assuming it -- otherwise the assertion below could hold vacuously.
+            assert ds._replicas._replicas[ReplicaState.RUNNING] is not bucket
+            # The gate's first guard is HEALTHY: a status flip would make this
+            # pass for the wrong reason.
+            assert ds._curr_status_info.status == DeploymentStatus.HEALTHY
+        assert rank_manager.consistency_calls == before
+
+
+def test_running_replica_ids_stay_cached_during_a_rollout(
+    mock_deployment_state_manager,
+):
+    """The running-id walk reads only replica_id, so unlike the other two it does not
+    need the STARTING/UPDATING/RECOVERING disarm -- and staying cached through a rollout
+    is what keeps the autoscaler from rebuilding its id-string set every tick."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    info, v = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v)])
+
+    # Scale up: the third replica stays STARTING, which disarms the shared token.
+    info, _ = deployment_info(num_replicas=3, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.update()
+    assert ds._replicas.count(states=[ReplicaState.STARTING]) == 1
+    assert ds._membership_cache_token() is None
+
+    running, alive = ds.get_running_replica_ids(), ds.get_alive_replica_actor_ids()
+    for _ in range(3):
+        dsm.update()
+        assert ds.get_running_replica_ids() is running
+        # The other walks read actor_id/actor_node_id, so they stay disarmed.
+        assert ds.get_alive_replica_actor_ids() is not alive
+
+
+def test_steady_state_ticks_do_not_change_the_fingerprint(
+    mock_deployment_state_manager,
+):
+    """The memo's whole value: an idle tick must not mutate the container."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    info, v = deployment_info(num_replicas=8, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.save_checkpoint()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=8, by_state=[(ReplicaState.RUNNING, 8, v)])
+    for _ in range(3):
+        dsm.update()
+    fp0 = ds._replicas.membership_fingerprint
+    alive, running, nodes = (
+        ds.get_alive_replica_actor_ids(),
+        ds.get_running_replica_ids(),
+        ds.get_active_node_ids(),
+    )
+    for _ in range(20):
+        dsm.update()
+        assert ds._replicas.membership_fingerprint == fp0
+        assert ds.get_alive_replica_actor_ids() is alive
+        assert ds.get_running_replica_ids() is running
+        assert ds.get_active_node_ids() is nodes
+
+
+def test_draining_elsewhere_does_not_invalidate_the_memo(
+    mock_deployment_state_manager,
+):
+    """A node draining elsewhere in the cluster makes the migration pass pop the
+    whole RUNNING bucket and re-add it every tick, membership unchanged."""
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    node, draining_node = NodeID.from_random().hex(), NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node)
+    cluster_node_info_cache.add_node(draining_node)
+    dsm = create_dsm()
+    info, v = deployment_info(num_replicas=4, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for r in ds._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_node_id(node)
+        r._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v)])
+
+    # None of these replicas is on the draining node, so none of them moves.
+    cluster_node_info_cache.draining_nodes = {draining_node: 60 * 1000}
+    dsm.update()
+    fp0 = ds._replicas.membership_fingerprint
+    alive, running, nodes = (
+        ds.get_alive_replica_actor_ids(),
+        ds.get_running_replica_ids(),
+        ds.get_active_node_ids(),
+    )
+    # The controller and proxy read the manager-level getters, which key on the
+    # per-deployment tokens.
+    dsm_alive, dsm_nodes = dsm.get_alive_replica_actor_ids(), dsm.get_active_node_ids()
+    for _ in range(10):
+        bucket = ds._replicas._replicas[ReplicaState.RUNNING]
+        dsm.update()
+        # pop() installs a fresh bucket list, so this witnesses the churn the test
+        # is about -- without it the assertions below could pass vacuously.
+        assert ds._replicas._replicas[ReplicaState.RUNNING] is not bucket
+        assert ds._replicas.membership_fingerprint == fp0
+        assert ds.get_alive_replica_actor_ids() is alive
+        assert ds.get_running_replica_ids() is running
+        assert ds.get_active_node_ids() is nodes
+        assert dsm.get_alive_replica_actor_ids() is dsm_alive
+        assert dsm.get_active_node_ids() is dsm_nodes
+    check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v)])
+
+
+def test_gang_health_churn_does_not_invalidate_the_memo(mock_deployment_state_manager):
+    """Gang deployments health-check through the pop-and-re-add path, so their
+    buckets churn on every tick with membership unchanged."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    deployment_id = DeploymentID(name="gang_memo", app_name="app")
+    info, v = deployment_info(
+        num_replicas=4,
+        version="v1",
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+        return_value={
+            deployment_id: GangReservationResult(
+                success=True,
+                gang_pgs=[Mock(name="pg-0"), Mock(name="pg-1")],
+                gang_ids=["g0", "g1"],
+                gang_pg_names=["SERVE_GANG::pg-0", "SERVE_GANG::pg-1"],
+            )
+        }
+    )
+    dsm.deploy(deployment_id, info)
+    ds = dsm._get_deployment_state_for_testing(deployment_id)
+    dsm.update()
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v)])
+    assert ds._is_gang_deployment, "the churn path under test is the gang one"
+
+    fp0 = ds._replicas.membership_fingerprint
+    alive, running, nodes = (
+        ds.get_alive_replica_actor_ids(),
+        ds.get_running_replica_ids(),
+        ds.get_active_node_ids(),
+    )
+    for _ in range(10):
+        bucket = ds._replicas._replicas[ReplicaState.RUNNING]
+        dsm.update()
+        # pop() installs a fresh bucket list: the churn is real, not assumed.
+        assert ds._replicas._replicas[ReplicaState.RUNNING] is not bucket
+        assert ds._replicas.membership_fingerprint == fp0
+        assert ds.get_alive_replica_actor_ids() is alive
+        assert ds.get_running_replica_ids() is running
+        assert ds.get_active_node_ids() is nodes
+    check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v)])
 
 
 if __name__ == "__main__":
