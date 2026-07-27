@@ -1,3 +1,4 @@
+from collections import deque
 import threading
 import time
 from typing import List, Optional
@@ -18,13 +19,23 @@ class _ThreadBuckets:
         self.last_rotation_time = time.time()
 
 
+class _ThreadMaxBuckets:
+    """Per-thread monotonic deque bucket storage for RollingWindowMax."""
+
+    __slots__ = ("deque", "last_rotation_time")
+
+    def __init__(self):
+        self.deque: deque = deque()
+        self.last_rotation_time = time.time()
+
+
 class _ThreadLocalRef(threading.local):
     """Thread-local reference to the thread's _ThreadBuckets instance."""
 
     def __init__(self) -> None:
         super().__init__()
         # by using threading.local, each thread gets its own instance of _ThreadBuckets.
-        self.data: Optional[_ThreadBuckets] = None
+        self.data: Optional[object] = None
 
 
 class _RollingWindowBase:
@@ -54,6 +65,7 @@ class _RollingWindowBase:
         self._window_duration_s = window_duration_s
         self._num_buckets = num_buckets
         self._bucket_duration_s = window_duration_s / num_buckets
+        self._start_time = time.time()
 
         # Thread-local reference to per-thread bucket data
         self._local = _ThreadLocalRef()
@@ -219,9 +231,9 @@ class RollingWindowAccumulator(_RollingWindowBase):
 class RollingWindowMax(_RollingWindowBase):
     """Tracks the maximum value over a rolling time window.
 
-    Uses the same bucketed rolling window approach as RollingWindowAccumulator,
-    but each bucket stores the maximum observed value instead of a cumulative
-    sum. Querying returns the max across all non-expired buckets.
+    Uses a bucketed rolling window approach with a monotonic deque for $O(1)$
+    max query operations per thread. Each bucket stores candidate max values
+    in descending order.
 
     Example:
         # Create a 30-second rolling window with 6 buckets (5s each)
@@ -244,8 +256,24 @@ class RollingWindowMax(_RollingWindowBase):
         - Safe to call from multiple threads concurrently
     """
 
+    def _ensure_initialized(self) -> _ThreadMaxBuckets:
+        data = self._local.data
+        if data is not None:
+            return data
+
+        data = _ThreadMaxBuckets()
+        self._local.data = data
+
+        with self._registry_lock:
+            self._all_thread_data.append(data)
+
+        return data
+
+    def _get_current_seq(self, now: float) -> int:
+        return int((now - self._start_time) / self._bucket_duration_s)
+
     def add(self, value: float) -> None:
-        """Record a value, updating the current bucket's max if exceeded.
+        """Record a value, updating the monotonic deque of buckets.
 
         This operation is lock-free for the calling thread after the first call.
         Safe to call from multiple threads concurrently.
@@ -254,10 +282,20 @@ class RollingWindowMax(_RollingWindowBase):
             value: The value to record.
         """
         data = self._ensure_initialized()
+        now = time.time()
+        seq = self._get_current_seq(now)
+        min_valid_seq = seq - self._num_buckets + 1
 
-        self._rotate_buckets_if_needed(data)
-        if value > data.buckets[data.current_bucket_idx]:
-            data.buckets[data.current_bucket_idx] = value
+        # Evict expired entries from the front of the deque
+        while data.deque and data.deque[0][0] < min_valid_seq:
+            data.deque.popleft()
+
+        # Maintain monotonic deque in descending order of value
+        while data.deque and data.deque[-1][1] <= value:
+            data.deque.pop()
+
+        data.deque.append((seq, value))
+        data.last_rotation_time = now
 
     def get_max(self) -> float:
         """Get max value across all non-expired buckets in the window.
@@ -271,18 +309,15 @@ class RollingWindowMax(_RollingWindowBase):
         """
         result = 0.0
         now = time.time()
+        seq = self._get_current_seq(now)
+        min_valid_seq = seq - self._num_buckets + 1
 
         with self._registry_lock:
             for data in self._all_thread_data:
-                elapsed = now - data.last_rotation_time
-                buckets_expired = int(elapsed / self._bucket_duration_s)
-
-                if buckets_expired >= self._num_buckets:
-                    continue
-
-                for i in range(self._num_buckets - buckets_expired):
-                    idx = (data.current_bucket_idx - i) % self._num_buckets
-                    if data.buckets[idx] > result:
-                        result = data.buckets[idx]
+                # Evict expired entries for this thread
+                while data.deque and data.deque[0][0] < min_valid_seq:
+                    data.deque.popleft()
+                if data.deque and data.deque[0][1] > result:
+                    result = data.deque[0][1]
 
         return result
