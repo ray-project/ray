@@ -9,7 +9,7 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray.core.generated import events_event_aggregator_service_pb2
+from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.dashboard.modules.task_events.task_events_head import TaskEventsHead
 from ray.dashboard.subprocesses.module import SubprocessModuleConfig
@@ -106,6 +106,35 @@ def test_deserialize_request_roundtrip():
     request = head._deserialize_request(body)
 
     assert len(request.events_data.events) == 1
+
+
+def test_handle_worker_delta_buffers():
+    head = _make_head()
+    assert head.num_dead_workers_received == 0
+
+    head._handle_worker_delta(
+        gcs_pb2.WorkerDeltaData(worker_id=b"worker_1", node_id=b"node_1")
+    )
+
+    assert head.num_dead_workers_received == 1
+
+
+def test_handle_job_update_buffers_finished_job():
+    head = _make_head()
+
+    head._handle_job_update(
+        gcs_pb2.JobTableData(job_id=b"job_1", is_dead=True, end_time=123)
+    )
+
+    assert head.num_finished_jobs_received == 1
+
+
+def test_handle_job_update_ignores_running_job():
+    head = _make_head()
+
+    head._handle_job_update(gcs_pb2.JobTableData(job_id=b"job_1", is_dead=False))
+
+    assert head.num_finished_jobs_received == 0
 
 
 if __name__ == "__main__":
