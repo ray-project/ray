@@ -155,12 +155,12 @@ def test_unwalked_violations_covered_is_ignored():
 
 def test_unwalked_violations_allowlisted_is_ignored():
     # Neither an unimportable nor an annotated-but-unwalked child fails when it is on
-    # the reviewed allowlist (this is the ray.data.llm case).
+    # the reviewed allowlist.
     assert (
         cmd._unwalked_violations(
-            {"ray.data.llm": (False, False), "ray.serve.foo": (True, True)},
+            {"ray.pkg.unimportable": (False, False), "ray.pkg.annotated": (True, True)},
             covered=set(),
-            allowlist={"ray.data.llm", "ray.serve.foo"},
+            allowlist={"ray.pkg.unimportable", "ray.pkg.annotated"},
         )
         == []
     )
@@ -169,19 +169,19 @@ def test_unwalked_violations_allowlisted_is_ignored():
 def test_unwalked_violations_annotated_not_walked_fails():
     # Imports fine, exposes public API, but no walk reaches it -> coverage hole.
     assert cmd._unwalked_violations(
-        {"ray.serve.llm": (True, True)},
+        {"ray.pkg.annotated": (True, True)},
         covered=set(),
         allowlist=set(),
-    ) == [("ray.serve.llm", "annotated-not-walked")]
+    ) == [("ray.pkg.annotated", "annotated-not-walked")]
 
 
 def test_unwalked_violations_import_error_fails():
     # Cannot be imported here, so its surface cannot be verified -> must be explicit.
     assert cmd._unwalked_violations(
-        {"ray.data.llm": (False, False)},
+        {"ray.pkg.unimportable": (False, False)},
         covered=set(),
         allowlist=set(),
-    ) == [("ray.data.llm", "unverifiable-import-error")]
+    ) == [("ray.pkg.unimportable", "unverifiable-import-error")]
 
 
 def test_unwalked_violations_importable_without_api_is_ignored():

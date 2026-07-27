@@ -30,7 +30,14 @@ from ci.ray_ci.doc.module import Module
 # permanent" or "we still owe a decision here".
 TEAM_API_CONFIGS = {
     "data": {
-        "head_modules": {"ray.data", "ray.data.grouped_data"},
+        # ray.data.llm is a public API surface (ray.data.llm.build_llm_processor,
+        # vLLMEngineProcessorConfig, ...) that ray/data/__init__.py does not import, so
+        # the ray.data walk never reaches it. It is walked as its own root here: its
+        # eager `import transformers` (via the vLLM/SGLang engine processor configs)
+        # resolves under _mock_uninstalled_backends, which mocks the backends the
+        # docbuild image lacks. Its surface is documented in doc/source/data/api/llm.rst
+        # (reachable from api.rst's toctree).
+        "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
         "head_doc_file": "doc/source/data/api/api.rst",
         "white_list_apis": {
             # special case where we cannot deprecate although we want to
@@ -103,7 +110,7 @@ TEAM_API_CONFIGS = {
         # ray.serve walk never reaches it. It is import-safe under the docbuild image
         # (transformers is a soft try_import; vllm is only imported lazily), so it can
         # be a walk root of its own. The unwalked-subpackage guard would otherwise flag
-        # it. (Its sibling ray.data.llm is NOT import-safe -- see UNWALKED_*_ALLOWLIST.)
+        # it. (Its sibling ray.data.llm is walked the same way, under the data team.)
         "head_modules": {"ray.serve", "ray.serve.llm"},
         "head_doc_file": "doc/source/serve/api/index.md",
         "white_list_apis": set(),
@@ -238,18 +245,11 @@ TEAM_API_CONFIGS = {
 # (_check_unwalked_annotated_subpackages) fails on any unwalked annotated subpackage
 # that is not listed here, so this list is the single reviewed record of what is
 # knowingly left out of the code<->docs consistency check and why.
-UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {
-    # ray.data.llm eagerly imports the vLLM/SGLang engine processor configs, which do
-    # a hard `import transformers` at module load. transformers is absent from the
-    # docbuild image (python/deplocks/docs/docbuild_depset_py3.11.lock), so importing
-    # ray.data.llm here raises ModuleNotFoundError -- it cannot be a walk root. Its
-    # public surface is documented in doc/source/data/api/llm.rst.
-    "ray.data.llm": (
-        "Eager `import transformers` (via the vLLM/SGLang engine processor configs) "
-        "is not installed in the docbuild image, so ray.data.llm cannot be imported "
-        "by this check. Documented in doc/source/data/api/llm.rst."
-    ),
-}
+#
+# Empty today: both known escapees (ray.serve.llm, ray.data.llm) are walked as their
+# own head_modules. Add an entry only when a subpackage genuinely cannot be a walk root
+# (e.g. an import that no mock in _mock_uninstalled_backends can satisfy).
+UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {}
 
 
 def _team_head_modules() -> Set[str]:
@@ -591,18 +591,15 @@ def main(ray_checkout_dir: str, team: str) -> None:
                 continue
             if not _check_team(ray_checkout_dir, team):
                 all_pass = False
-
-    # Cross-team guard: catch annotated subpackages that no team's walk reaches.
-    # It runs outside _mock_uninstalled_backends on purpose. The guard reasons
-    # about real import behavior in the docbuild image -- an optional-dependency
-    # subpackage that genuinely can't be imported (e.g. ray.data.llm, whose eager
-    # `import transformers` fails there) is categorized "unverifiable" and recorded
-    # in UNWALKED_ANNOTATED_ALLOWLIST. Running it under the backend mock would make
-    # those modules import cleanly and silently defeat that reasoning.
-    if not _check_unwalked_annotated_subpackages():
-        all_pass = False
-    if not all_pass:
-        exit(1)
+        # Cross-team guard: catch annotated subpackages that no team's walk reaches.
+        # It runs inside _mock_uninstalled_backends so its coverage check and import
+        # probes see the same backend mocks as the walks -- an optional-dependency
+        # subpackage promoted to a head module (e.g. ray.data.llm) imports cleanly
+        # here and is correctly counted as covered rather than flagged.
+        if not _check_unwalked_annotated_subpackages():
+            all_pass = False
+        if not all_pass:
+            exit(1)
 
 
 if __name__ == "__main__":
