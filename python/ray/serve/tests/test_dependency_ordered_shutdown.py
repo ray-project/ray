@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from typing import List, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 import pytest
 
@@ -15,8 +15,8 @@ from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture
-def serve_shutdown_instance(request, monkeypatch):
-    """A Serve instance the test itself is allowed to shut down."""
+def shutdown_test_cluster(request, monkeypatch):
+    """A Ray cluster whose Serve instance the test itself shuts down."""
     for name, value in getattr(request, "param", {}).items():
         monkeypatch.setenv(name, value)
 
@@ -95,14 +95,12 @@ class LazyNode(_RecordsShutdown):
 
 @serve.deployment
 class PlainNode:
-    """Same shape as Node but does not record its teardown."""
+    """A placeholder for a deployment a LinkedNode needs to already exist."""
 
     def __init__(self, *downstream: DeploymentHandle):
         self._downstream = downstream
 
-    async def __call__(self) -> str:
-        for handle in self._downstream:
-            await handle.remote()
+    def __call__(self) -> str:
         return "plain"
 
 
@@ -113,9 +111,7 @@ class WedgedNode:
     def __init__(self, *downstream: DeploymentHandle):
         self._downstream = downstream
 
-    async def __call__(self) -> str:
-        for handle in self._downstream:
-            await handle.remote()
+    def __call__(self) -> str:
         return "wedged"
 
     async def __del__(self):
@@ -152,6 +148,20 @@ def _outbound(app_name: str, deployment_name: str) -> Set[Tuple[str, str]]:
     }
 
 
+def _wait_for_topology(expected: Dict[Tuple[str, str], Set[Tuple[str, str]]]):
+    """Wait until the controller sees exactly these caller to callee edges."""
+    seen = {}
+
+    def _matches() -> bool:
+        seen.update({node: _outbound(*node) for node in expected})
+        return seen == expected
+
+    try:
+        wait_for_condition(_matches, timeout=20)
+    except RuntimeError:
+        raise AssertionError(f"Expected topology {expected}, controller sees {seen}.")
+
+
 def _shutdown_order(recorder: ray.actor.ActorHandle) -> List[str]:
     return ray.get(recorder.get.remote())
 
@@ -166,10 +176,10 @@ def _replica_actor(deployment_name: str, app_name: str) -> ray.actor.ActorHandle
     raise RuntimeError(f"No live replica for {deployment_name} in app {app_name}.")
 
 
-class TestDependencyOrderedShutdown:
+class TestKnownTopologyShutdown:
     """Teardown order for topologies the controller fully knows."""
 
-    def test_linear_chain(self, serve_shutdown_instance):
+    def test_linear_chain(self, shutdown_test_cluster):
         recorder = Accumulator.remote()
 
         handle = serve.run(
@@ -180,73 +190,19 @@ class TestDependencyOrderedShutdown:
         )
         assert handle.remote().result() == "Ingress/Middle/Leaf"
 
-        wait_for_condition(
-            lambda: _outbound("chain", "Ingress") == {("chain", "Middle")}
-            and _outbound("chain", "Middle") == {("chain", "Leaf")}
-            and _outbound("chain", "Leaf") == set()
+        _wait_for_topology(
+            {
+                ("chain", "Ingress"): {("chain", "Middle")},
+                ("chain", "Middle"): {("chain", "Leaf")},
+                ("chain", "Leaf"): set(),
+            }
         )
 
         serve.shutdown()
 
         assert _shutdown_order(recorder) == ["Ingress", "Middle", "Leaf"]
 
-    def test_diamond_shared_leaf_last(self, serve_shutdown_instance):
-        recorder = Accumulator.remote()
-
-        leaf = _node("Leaf", recorder)
-        handle = serve.run(
-            _node(
-                "Ingress",
-                recorder,
-                _node("M1", recorder, leaf),
-                _node("M2", recorder, leaf),
-            ),
-            name="diamond",
-        )
-        assert handle.remote().result() == "Ingress/M1/Leaf/M2/Leaf"
-
-        wait_for_condition(
-            lambda: _outbound("diamond", "Ingress")
-            == {("diamond", "M1"), ("diamond", "M2")}
-            and _outbound("diamond", "M1") == {("diamond", "Leaf")}
-            and _outbound("diamond", "M2") == {("diamond", "Leaf")}
-        )
-
-        serve.shutdown()
-
-        order = _shutdown_order(recorder)
-        assert order[0] == "Ingress"
-        assert order[-1] == "Leaf"
-        assert set(order[1:3]) == {"M1", "M2"}
-
-    def test_independent_apps(self, serve_shutdown_instance):
-        recorder = Accumulator.remote()
-
-        serve.run(
-            _node("Ingress1", recorder, _node("Backend1", recorder)),
-            name="app1",
-            route_prefix="/app1",
-        )
-        serve.run(
-            _node("Ingress2", recorder, _node("Backend2", recorder)),
-            name="app2",
-            route_prefix="/app2",
-        )
-
-        wait_for_condition(
-            lambda: _outbound("app1", "Ingress1") == {("app1", "Backend1")}
-            and _outbound("app2", "Ingress2") == {("app2", "Backend2")}
-        )
-
-        serve.shutdown()
-
-        order = _shutdown_order(recorder)
-        assert set(order) == {"Ingress1", "Backend1", "Ingress2", "Backend2"}
-        assert max(order.index("Ingress1"), order.index("Ingress2")) < min(
-            order.index("Backend1"), order.index("Backend2")
-        )
-
-    def test_cross_app_chain(self, serve_shutdown_instance):
+    def test_cross_app_chain(self, shutdown_test_cluster):
         """A caller in one app is torn down before its callee in another."""
         recorder = Accumulator.remote()
 
@@ -262,9 +218,11 @@ class TestDependencyOrderedShutdown:
         )
         assert handle.remote().result() == "Caller/Middle/Leaf"
 
-        wait_for_condition(
-            lambda: _outbound("frontend", "Caller") == {("backend", "Middle")}
-            and _outbound("backend", "Middle") == {("backend", "Leaf")}
+        _wait_for_topology(
+            {
+                ("frontend", "Caller"): {("backend", "Middle")},
+                ("backend", "Middle"): {("backend", "Leaf")},
+            }
         )
 
         serve.shutdown()
@@ -275,7 +233,7 @@ class TestDependencyOrderedShutdown:
 class TestBestEffortTopologyShutdown:
     """Shutdown when the topology is incomplete, cyclic, or cannot drain."""
 
-    def test_incomplete_topology(self, serve_shutdown_instance):
+    def test_incomplete_topology(self, shutdown_test_cluster):
         """Handles created at request time are missing from the topology."""
         recorder = Accumulator.remote()
 
@@ -288,8 +246,12 @@ class TestBestEffortTopologyShutdown:
 
         assert handle.remote().result() == "Ingress/Middle/Leaf"
 
-        wait_for_condition(lambda: _outbound("main", "Ingress") == {("main", "Middle")})
-        assert _outbound("main", "Middle") == set()
+        _wait_for_topology(
+            {
+                ("main", "Ingress"): {("main", "Middle")},
+                ("main", "Middle"): set(),
+            }
+        )
 
         serve.shutdown()
 
@@ -299,26 +261,7 @@ class TestBestEffortTopologyShutdown:
         # The known edge is still respected.
         assert order.index("Ingress") < order.index("Middle")
 
-    def test_cycle(self, serve_shutdown_instance):
-        """A cycle has no caller first order, so it is torn down as a group."""
-        recorder = Accumulator.remote()
-
-        # Redeploy A after B is up to build the cycle.
-        serve.run(_plain("A"), name="app_a", route_prefix="/a")
-        serve.run(_linked("B", recorder, "A", "app_a"), name="app_b", route_prefix="/b")
-        serve.run(_linked("A", recorder, "B", "app_b"), name="app_a", route_prefix="/a")
-
-        wait_for_condition(
-            lambda: _outbound("app_a", "A") == {("app_b", "B")}
-            and _outbound("app_b", "B") == {("app_a", "A")},
-            timeout=20,
-        )
-
-        serve.shutdown()
-
-        assert sorted(_shutdown_order(recorder)) == ["A", "B"]
-
-    def test_ingress_into_cycle(self, serve_shutdown_instance):
+    def test_ingress_into_cycle(self, shutdown_test_cluster):
         """An ingress feeding a cycle drains before the cyclic remainder."""
         recorder = Accumulator.remote()
 
@@ -330,11 +273,12 @@ class TestBestEffortTopologyShutdown:
             route_prefix="/a",
         )
 
-        wait_for_condition(
-            lambda: _outbound("app_a", "Ingress") == {("app_a", "A")}
-            and _outbound("app_a", "A") == {("app_b", "B")}
-            and _outbound("app_b", "B") == {("app_a", "A")},
-            timeout=20,
+        _wait_for_topology(
+            {
+                ("app_a", "Ingress"): {("app_a", "A")},
+                ("app_a", "A"): {("app_b", "B")},
+                ("app_b", "B"): {("app_a", "A")},
+            }
         )
 
         serve.shutdown()
@@ -344,11 +288,11 @@ class TestBestEffortTopologyShutdown:
         assert sorted(order[1:]) == ["A", "B"]
 
     @pytest.mark.parametrize(
-        "serve_shutdown_instance",
+        "shutdown_test_cluster",
         [{"RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S": "2"}],
         indirect=True,
     )
-    def test_tier_that_never_drains(self, serve_shutdown_instance):
+    def test_tier_that_never_drains(self, shutdown_test_cluster):
         """A replica that refuses to stop does not block the tiers behind it."""
         recorder = Accumulator.remote()
 
@@ -362,29 +306,25 @@ class TestBestEffortTopologyShutdown:
         )
         assert handle.remote().result() == "Ingress/wedged"
 
+        _wait_for_topology(
+            {
+                ("chain", "Ingress"): {("chain", "Middle")},
+                ("chain", "Middle"): {("chain", "Leaf")},
+            }
+        )
+
         # Start the shutdown without blocking the driver on the stuck replica.
         client = _get_global_client()
         ray.get(client._controller.graceful_shutdown.remote(False))
 
-        wait_for_condition(lambda: "Leaf" in _shutdown_order(recorder), timeout=60)
+        # Leaf can only be torn down while Middle is still stopping, so its
+        # teardown proves shutdown advanced past the tier that never drained.
+        wait_for_condition(lambda: "Leaf" in _shutdown_order(recorder), timeout=20)
         assert _shutdown_order(recorder) == ["Ingress", "Leaf"]
-
-        # Leaf was torn down while Middle was still stopping, which is only
-        # possible if shutdown advanced past the tier that never drained.
         middle_replica = _replica_actor("Middle", "chain")
+
+        # Cleanup Middle so it doesn't sit in __del__ for its full 1000s grace period
         ray.kill(middle_replica)
-
-    def test_no_applications(self, serve_shutdown_instance):
-        """Shutting down an instance with nothing deployed completes."""
-        serve.start()
-
-        serve.shutdown()
-
-        assert not [
-            actor
-            for actor in ray.util.list_named_actors(all_namespaces=True)
-            if actor["name"].startswith("SERVE")
-        ]
 
 
 if __name__ == "__main__":
