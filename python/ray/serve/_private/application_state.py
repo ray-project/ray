@@ -1027,12 +1027,15 @@ class ApplicationState:
                 or target_state_changed
             )
 
-        # Delete outdated deployments
-        for deployment_name in self._get_live_deployments():
-            if deployment_name not in self.target_deployments:
-                target_state_changed = (
-                    self._delete_deployment(deployment_name) or target_state_changed
-                )
+        # Delete outdated deployments. Skipped during a full instance
+        # shutdown, as it would bypass DeploymentStateManager's own tiered
+        # shutdown order.
+        if not self._deployment_state_manager.is_shutting_down():
+            for deployment_name in self._get_live_deployments():
+                if deployment_name not in self.target_deployments:
+                    target_state_changed = (
+                        self._delete_deployment(deployment_name) or target_state_changed
+                    )
 
         return target_state_changed
 
