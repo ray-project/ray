@@ -536,17 +536,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Work extracted under the lock to be invoked after release.
-  struct DeferredWork {
-    std::vector<std::pair<ObjectID, std::function<void(const ObjectID &)>>> callbacks;
-    std::vector<std::pair<ObjectID, absl::flat_hash_set<NodeID>>> frees;
-  };
-
   /// This should be called whenever the object is out of scope or manually freed.
-  /// When `deferred` is non-null, OOS callbacks and free_object_on_nodes
-  /// requests are collected into it instead of being invoked under the mutex.
-  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
-                                 DeferredWork *deferred = nullptr)
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
@@ -660,8 +651,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
-                               std::vector<ObjectID> *deleted,
-                               DeferredWork *deferred = nullptr)
+                               std::vector<ObjectID> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// To respond to the object's owner once we are no longer borrowing it.  The
@@ -730,8 +720,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// This method is internal and not thread-safe. mutex_ lock must be held before
   /// calling this method.
   void RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                    std::vector<ObjectID> *deleted,
-                                    DeferredWork *deferred = nullptr)
+                                    std::vector<ObjectID> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a

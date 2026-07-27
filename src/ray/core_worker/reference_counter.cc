@@ -468,22 +468,12 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  DeferredWork deferred;
-  {
-    absl::MutexLock lock(&mutex_);
-    RemoveLocalReferenceInternal(object_id, deleted, &deferred);
-  }
-  for (auto &[id, locations] : deferred.frees) {
-    free_object_on_nodes_async_(id, locations);
-  }
-  for (auto &[id, cb] : deferred.callbacks) {
-    cb(id);
-  }
+  absl::MutexLock lock(&mutex_);
+  RemoveLocalReferenceInternal(object_id, deleted);
 }
 
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                                    std::vector<ObjectID> *deleted,
-                                                    DeferredWork *deferred) {
+                                                    std::vector<ObjectID> *deleted) {
   RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -501,7 +491,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
-    DeleteReferenceInternal(it, deleted, deferred);
+    DeleteReferenceInternal(it, deleted);
   } else {
     PRINT_REF_COUNT(it);
   }
@@ -751,8 +741,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
 }
 
 void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
-                                               std::vector<ObjectID> *deleted,
-                                               DeferredWork *deferred) {
+                                               std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
@@ -781,10 +770,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         // NOTE: a NestedReferenceCount struct is created after the first
         // mutable_nested() call, but the struct will not be deleted until the
         // enclosing Reference struct is deleted.
-        DeleteReferenceInternal(inner_it, deleted, deferred);
+        DeleteReferenceInternal(inner_it, deleted);
       }
     }
-    OnObjectOutOfScopeOrFreed(it, deferred);
+    OnObjectOutOfScopeOrFreed(it);
     if (deleted != nullptr) {
       deleted->push_back(id);
     }
@@ -850,8 +839,7 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
-                                                 DeferredWork *deferred) {
+void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
@@ -865,22 +853,12 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it,
       locations_set.insert(*it->second.pinned_at_node_id_);
     }
     if (!locations_set.empty()) {
-      if (deferred != nullptr) {
-        deferred->frees.emplace_back(it->first, std::move(locations_set));
-      } else {
-        free_object_on_nodes_async_(it->first, locations_set);
-      }
+      free_object_on_nodes_async_(it->first, locations_set);
     }
   }
 
-  if (deferred != nullptr) {
-    for (auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-      deferred->callbacks.emplace_back(it->first, std::move(callback));
-    }
-  } else {
-    for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-      callback(it->first);
-    }
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+    callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
