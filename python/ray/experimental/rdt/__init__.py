@@ -14,6 +14,7 @@ from ray.experimental.rdt.util import (
     register_nixl_memory,
     register_nixl_memory_pool,
     register_tensor_transport,
+    set_nixl_cuda_stream,
 )
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "register_nixl_memory",
     "deregister_nixl_memory",
     "register_nixl_memory_pool",
+    "set_nixl_cuda_stream",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",

@@ -186,6 +186,14 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:rocksdb.BUILD",
         url = "https://github.com/facebook/rocksdb/archive/refs/tags/v10.6.2.tar.gz",
         sha256 = "14c619b8a10f994aa6061bd12182b20270c4c27c2f3d9cb4376d57f3cd1c5d7f",
+        patches = [
+            # WITH_TSAN=ON injects `-Wl,-pie`, which breaks every CMake
+            # try_compile under the rules_foreign_cc crosstool (clang +
+            # static libc++), aborting configure at find_package(Threads).
+            # `-fsanitize=thread` alone is sufficient for TSan.
+            "@io_ray//thirdparty/patches:rocksdb-tsan-no-pie.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
@@ -219,10 +227,10 @@ def ray_deps_setup():
         sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
         strip_prefix = "xz-5.2.7",
         urls = [
-            "https://cfhcable.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://superb-sea2.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://ayera.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
-            "https://astuteinternet.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            # Use the SourceForge redirector, which picks a live mirror,
+            # instead of pinning specific mirrors that can go offline.
+            "https://downloads.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://tukaani.org/xz/xz-5.2.7.tar.gz",
         ],
         build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
     )

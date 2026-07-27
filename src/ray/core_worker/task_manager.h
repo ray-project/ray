@@ -198,6 +198,17 @@ class ObjectRefStream {
   void MarkCallerDeleted() { caller_deleted_ = true; }
   bool IsCallerDeleted() const { return caller_deleted_; }
 
+  /// Record that a reported return was stored in plasma. These are the returns
+  /// that can be lost (e.g. their node dies) and must be failed if the generator
+  /// task fails before its first completion recorded them on the task spec.
+  /// Inline returns live in the owner's memory store and are not lost this way.
+  void MarkReportedInPlasma(const ObjectID &object_id) {
+    reported_plasma_refs_.insert(object_id);
+  }
+  std::vector<ObjectID> GetReportedPlasmaRefs() const {
+    return {reported_plasma_refs_.begin(), reported_plasma_refs_.end()};
+  }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
   bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
@@ -210,6 +221,9 @@ class ObjectRefStream {
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
   // A set of refs that's already written to a stream -> size of the object.
   absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  /// Reported returns that were stored in plasma (and can therefore be lost).
+  /// See MarkReportedInPlasma.
+  absl::flat_hash_set<ObjectID> reported_plasma_refs_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -771,6 +785,13 @@ class TaskManager : public TaskManagerInterface {
   absl::flat_hash_set<ObjectID> GetTaskReturnObjectsToStoreInPlasma(
       const TaskID &task_id, bool *first_execution = nullptr) const
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// The plasma-backed object ids reported to the streaming generator's object
+  /// ref stream so far, or empty if the stream no longer exists. Used to fail
+  /// already-reported returns when the task fails before its first completion
+  /// recorded them on the task spec.
+  std::vector<ObjectID> GetStreamingGeneratorReportedPlasmaRefs(
+      const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() ABSL_LOCKS_EXCLUDED(mu_);
