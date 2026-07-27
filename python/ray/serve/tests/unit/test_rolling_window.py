@@ -1086,17 +1086,72 @@ class TestRollingWindowMaxEdgeCases:
 
 class TestRollingWindowMinSingleThread:
     def test_empty_tracker(self):
+        """Test get_min on empty tracker returns None."""
         tracker = RollingWindowMin(window_duration_s=10.0)
         assert tracker.get_min() is None
 
     def test_basic_add_and_get_min(self):
+        """Test that get_min returns the smallest value added."""
         tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
         tracker.add(100.0)
         tracker.add(50.0)
         tracker.add(500.0)
         assert tracker.get_min() == 50.0
 
+    def test_single_value(self):
+        """Test get_min with a single value."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        tracker.add(42.0)
+        assert tracker.get_min() == 42.0
+
+    def test_all_same_values(self):
+        """Test get_min when all values are identical."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        for _ in range(100):
+            tracker.add(42.0)
+        assert tracker.get_min() == 42.0
+
+    def test_increasing_values(self):
+        """Test that min retains the first (lowest) value."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        for i in range(1, 11):
+            tracker.add(float(i * 100))
+        assert tracker.get_min() == 100.0
+
+    def test_decreasing_values(self):
+        """Test that min tracks the latest lowest value."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        for i in range(10, 0, -1):
+            tracker.add(float(i * 100))
+        assert tracker.get_min() == 100.0
+
+    def test_min_across_buckets(self):
+        """Test that get_min returns min across different time buckets."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Bucket 0: min 50
+            tracker.add(100.0)
+            tracker.add(50.0)
+
+            # Bucket 1: min 20
+            mock_time.return_value = 1.0
+            tracker.add(500.0)
+            tracker.add(20.0)
+
+            # Bucket 2: min 300
+            mock_time.return_value = 2.0
+            tracker.add(300.0)
+
+            assert tracker.get_min() == 20.0
+
     def test_min_expires_with_window(self):
+        """Test that the min value expires when its bucket rotates out."""
         with patch("time.time") as mock_time:
             mock_time.return_value = 0.0
             tracker = RollingWindowMin(window_duration_s=60.0, num_buckets=6)
@@ -1112,9 +1167,156 @@ class TestRollingWindowMinSingleThread:
             tracker.add(200.0)
             assert tracker.get_min() == 100.0
 
+    def test_full_window_idle(self):
+        """Test that get_min returns None after being idle for full window."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            tracker.add(42.0)
+            assert tracker.get_min() == 42.0
+
+            # Advance past the full window
+            mock_time.return_value = 15.0
+            assert tracker.get_min() is None
+
+    def test_gradual_min_expiry(self):
+        """Test that the min shifts as old buckets expire."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Bucket 0 (t=0): min=10
+            tracker.add(10.0)
+
+            # Bucket 3 (t=3): min=50
+            mock_time.return_value = 3.0
+            tracker.add(50.0)
+
+            # Bucket 7 (t=7): min=200
+            mock_time.return_value = 7.0
+            tracker.add(200.0)
+
+            # At t=7, all buckets are valid
+            assert tracker.get_min() == 10.0
+
+            # At t=10, bucket 0 (with 10) expires
+            mock_time.return_value = 10.0
+            tracker.add(999.0)
+            assert tracker.get_min() == 50.0
+
+            # At t=13, bucket 3 (with 50) expires
+            mock_time.return_value = 13.0
+            tracker.add(999.0)
+            assert tracker.get_min() == 200.0
+
+            # At t=17, bucket 7 (with 200) expires
+            mock_time.return_value = 17.0
+            tracker.add(999.0)
+            assert tracker.get_min() == 999.0
+
+    def test_large_time_jump(self):
+        """Test handling of large time jumps."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            tracker.add(42.0)
+            assert tracker.get_min() == 42.0
+
+            # Jump forward by a very large amount
+            mock_time.return_value = 1000000.0
+            assert tracker.get_min() is None
+
+            # Should still work after the jump
+            tracker.add(99.0)
+            assert tracker.get_min() == 99.0
+
+    def test_min_does_not_accumulate(self):
+        """Test that add() takes min, not sum, within a bucket."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(100.0)
+        tracker.add(100.0)
+        tracker.add(100.0)
+
+        # Should be 100 (min), not 300 (sum)
+        assert tracker.get_min() == 100.0
+
+    def test_new_min_replaces_old_after_expiry(self):
+        """Test the typical scenario: old low value expires, new higher
+        steady-state values become the min."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=60.0,
+                num_buckets=6,
+            )
+
+            # Low-latency spike at t=0
+            tracker.add(1.0)
+
+            # Normal latencies at t=10, t=20, t=30
+            for t in [10.0, 20.0, 30.0]:
+                mock_time.return_value = t
+                tracker.add(50.0)
+
+            # Spike is still in window
+            assert tracker.get_min() == 1.0
+
+            # At t=60, the spike bucket (t=0) has expired
+            mock_time.return_value = 60.0
+            tracker.add(50.0)
+            assert tracker.get_min() == 50.0
+
 
 class TestRollingWindowMinMultiThread:
+    def test_thread_registration(self):
+        """Test that threads are correctly registered."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        assert tracker.get_num_registered_threads() == 0
+
+        tracker.add(100.0)
+        assert tracker.get_num_registered_threads() == 1
+
+        tracker.add(200.0)
+        assert tracker.get_num_registered_threads() == 1
+
+    def test_multiple_threads_registration(self):
+        """Test that multiple threads are correctly registered."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        num_threads = 8
+        barrier = threading.Barrier(num_threads)
+
+        def worker():
+            barrier.wait()
+            tracker.add(1.0)
+
+        threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert tracker.get_num_registered_threads() == num_threads
+
     def test_min_across_threads(self):
+        """Test that get_min returns the global min across all threads."""
         tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
         barrier = threading.Barrier(3)
 
@@ -1132,6 +1334,177 @@ class TestRollingWindowMinMultiThread:
             t.join()
 
         assert tracker.get_min() == 25.0
+
+    def test_concurrent_adds_with_threadpool(self):
+        """Test concurrent adds using ThreadPoolExecutor."""
+        tracker = RollingWindowMin(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        num_workers = 16
+        adds_per_worker = 500
+
+        def worker(worker_idx):
+            for i in range(adds_per_worker):
+                # Values range from 1.0 to num_workers * adds_per_worker
+                tracker.add(float(worker_idx * adds_per_worker + i + 1))
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [executor.submit(worker, i) for i in range(num_workers)]
+            for f in futures:
+                f.result()
+
+        # Worker 0, i=0 adds 1.0 — the global minimum
+        assert tracker.get_min() == 1.0
+
+    def test_add_and_get_min_concurrent(self):
+        """Test concurrent add() and get_min() calls."""
+        tracker = RollingWindowMin(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        num_threads = 4
+        iterations = 1000
+        results = []
+        lock = threading.Lock()
+
+        def adder(thread_idx):
+            for i in range(iterations):
+                # All values >= 1.0, so min should always be >= 1.0
+                tracker.add(float(thread_idx * iterations + i + 1))
+
+        def reader():
+            mins = []
+            for _ in range(iterations):
+                mins.append(tracker.get_min())
+            with lock:
+                results.extend(mins)
+
+        threads = []
+        for i in range(num_threads):
+            threads.append(threading.Thread(target=adder, args=(i,)))
+            threads.append(threading.Thread(target=reader))
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Thread 0 adds 1.0 as its first value
+        assert tracker.get_min() == 1.0
+
+        # All read values should be either None (before any add) or >= 1.0
+        for r in results:
+            assert r is None or r >= 1.0
+
+    def test_thread_isolation_with_expiry(self):
+        """Test that bucket expiry works correctly across threads."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            results = {}
+            lock = threading.Lock()
+
+            def thread_a():
+                # Thread A adds low value at time 0
+                tracker.add(5.0)
+                with lock:
+                    results["a_added"] = True
+
+            def thread_b():
+                while "a_added" not in results:
+                    pass
+                # Thread B adds higher value at time 5
+                mock_time.return_value = 5.0
+                tracker.add(200.0)
+                with lock:
+                    results["b_added"] = True
+
+            t_a = threading.Thread(target=thread_a)
+            t_b = threading.Thread(target=thread_b)
+
+            t_a.start()
+            t_a.join()
+            t_b.start()
+            t_b.join()
+
+            assert tracker.get_num_registered_threads() == 2
+
+            # At time 5, thread A's 5.0 is still valid
+            mock_time.return_value = 5.0
+            assert tracker.get_min() == 5.0
+
+            # At time 12, thread A's data (added at time 0) has expired
+            mock_time.return_value = 12.0
+            assert tracker.get_min() == 200.0
+
+
+class TestRollingWindowMinEdgeCases:
+    def test_single_bucket(self):
+        """Test with a single bucket."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMin(
+                window_duration_s=10.0,
+                num_buckets=1,
+            )
+
+            tracker.add(100.0)
+            tracker.add(500.0)
+            assert tracker.get_min() == 100.0
+
+            # After window expires, everything is cleared
+            mock_time.return_value = 15.0
+            assert tracker.get_min() is None
+
+    def test_many_buckets(self):
+        """Test with many buckets."""
+        tracker = RollingWindowMin(
+            window_duration_s=10.0,
+            num_buckets=1000,
+        )
+
+        for i in range(100):
+            tracker.add(float(i + 1))
+
+        assert tracker.get_min() == 1.0
+
+    def test_very_large_values(self):
+        """Test with very large values."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        large_value = 1e15
+        tracker.add(large_value)
+        tracker.add(large_value + 1)
+
+        assert tracker.get_min() == large_value
+
+    def test_very_small_values(self):
+        """Test with very small positive values."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(2e-15)
+        tracker.add(1e-15)
+        tracker.add(3e-15)
+
+        assert tracker.get_min() == 1e-15
+
+    def test_zero_values(self):
+        """Test that zero values are handled correctly."""
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(0.0)
+        tracker.add(0.0)
+
+        assert tracker.get_min() == 0.0
 
 
 if __name__ == "__main__":
