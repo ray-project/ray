@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private import ray_constants
+from ray._private import ray_constants, utils
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
@@ -539,6 +539,53 @@ def test_kill_actor_after_restart(shutdown_only):
 
     ray.shutdown()
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.parametrize("sigterm_handler", [signal.SIG_DFL, signal.SIG_IGN])
+def test_set_sigterm_handler_preserves_non_callable_handlers(
+    monkeypatch, sigterm_handler
+):
+    installed_handlers = []
+    monkeypatch.setattr(
+        signal,
+        "signal",
+        lambda signum, handler: installed_handlers.append((signum, handler)),
+    )
+
+    utils.set_sigterm_handler(sigterm_handler)
+
+    expected_signal = signal.SIGBREAK if sys.platform == "win32" else signal.SIGTERM
+    assert installed_handlers == [(expected_signal, sigterm_handler)]
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signals only.")
+def test_set_sigterm_handler_cancels_alarm_before_calling_handler(monkeypatch):
+    installed_handlers = []
+    events = []
+    monkeypatch.setattr(
+        signal,
+        "signal",
+        lambda signum, handler: installed_handlers.append((signum, handler)),
+    )
+    monkeypatch.setattr(
+        signal, "alarm", lambda seconds: events.append(("alarm", seconds))
+    )
+
+    def handler(signum, frame):
+        events.append(("handler", signum, frame))
+
+    utils.set_sigterm_handler(handler)
+    assert len(installed_handlers) == 1
+
+    signum, installed_handler = installed_handlers[0]
+    frame = object()
+    installed_handler(signum, frame)
+
+    assert signum == signal.SIGTERM
+    assert events == [
+        ("alarm", 0),
+        ("handler", signal.SIGTERM, frame),
+    ]
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signals only.")
