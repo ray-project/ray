@@ -40,8 +40,9 @@ def merge_instantaneous_total_arrays(
     if not active:
         return np.zeros(0), np.zeros(0)
     if len(active) == 1:
+        # Pass through unrounded: the object path returns the lone series as-is.
         a, b = active[0]
-        return np.round(ts[a:b], 2), val[a:b].astype(float)
+        return ts[a:b].astype(float), val[a:b].astype(float)
 
     ev_ts, ev_d = [], []
     for a, b in active:
@@ -117,8 +118,11 @@ def merge_and_aggregate_arrays(
     window_start = None
     n_active = int(np.sum(np.diff(offsets) > 0))
     if n_active > 1:
+        # Unrounded, matching the object path: the bound is compared against merged
+        # timestamps that ARE rounded, and rounding it too can shift which points fall
+        # inside the window.
         aligned = max(
-            round(float(ts[offsets[i]]), 2)
+            float(ts[offsets[i]])
             for i in range(len(offsets) - 1)
             if offsets[i + 1] > offsets[i]
         )

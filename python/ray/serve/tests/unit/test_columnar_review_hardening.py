@@ -8,6 +8,7 @@ ingest, columnar store pruning/cleanup, and the producer-side encode gate.
 """
 import random
 import sys
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -160,6 +161,47 @@ def test_array_merge_matches_object_kernels():
             )
             arr_v = merge.merge_and_aggregate_arrays(ts, val, offs, now, fn.value)
             assert abs(ref_v - arr_v) < 1e-9, (fn, ref_v, arr_v)
+
+
+def test_array_path_equals_production_object_path_unrounded_timestamps():
+    """Array and object paths must agree on real (unrounded) time.time()-style stamps.
+
+    test_array_merge_matches_object_kernels generates timestamps already rounded to 2
+    decimals, which makes every round() inside the array path a no-op -- it cannot see a
+    rounding divergence. Production timestamps are not 2-decimal.
+
+    The reference here is the production method itself, not a reimplementation of its
+    window logic, and time.time() is pinned because that method reads it internally.
+    """
+    rng = random.Random(11)
+    for _ in range(200):
+        tl = []
+        for _ in range(rng.randint(1, 5)):
+            base = 88.0 + rng.random()
+            tss = sorted(
+                {
+                    base + j * (0.031 + rng.random() * 0.4)
+                    for j in range(rng.randint(1, 8))
+                }
+            )
+            tl.append([TimeStampedValue(t, float(rng.randint(0, 12))) for t in tss])
+
+        das = DeploymentAutoscalingState(DeploymentID(name="d", app_name="a"))
+        das._config = AutoscalingConfig(min_replicas=1, max_replicas=10)
+        ts, val, offs = _to_arrays(tl)
+
+        now = 100.0
+        with mock.patch("time.time", return_value=now):
+            expected = das._merge_and_aggregate_timeseries(list(tl))
+            actual = merge.merge_and_aggregate_arrays(ts, val, offs, now, "mean")
+        assert abs(expected - actual) < 1e-9, (expected, actual, tl)
+
+        # A lone series is passed through untouched by the object path, so the array
+        # path must not perturb its timestamps either.
+        if len([s for s in tl if s]) == 1:
+            mts, _ = merge.merge_instantaneous_total_arrays(ts, val, offs)
+            merged = merge_instantaneous_total(tl)
+            assert [float(p.timestamp) for p in merged] == [float(x) for x in mts]
 
 
 # ---- randomized equivalence through the PRODUCTION handle-array path ----
