@@ -38,6 +38,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
 
 
@@ -112,8 +113,6 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
-
-DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
