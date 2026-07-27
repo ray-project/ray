@@ -19,7 +19,7 @@ from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve.llm.request_router import KVAwareRouter
 
-from utils import MODEL_ID, build_kv_app, patch_ingress
+from utils import MODEL_ID, build_kv_app, build_kv_config, patch_ingress
 
 APP_NAME = "token_load_test"
 KV_EVENTS_PORT_BASE = 21800
@@ -95,6 +95,16 @@ async def _broadcast(router, method, *args):
     return await router.broadcast(method, *args).results_async()
 
 
+async def _ingress_replica_ids(router, ingress_replicas_per_node):
+    """Every ingress replica's id. The per-node setting applies to each proxy
+    node, so the total depends on the cluster's shape; read it off the
+    broadcast rather than assuming it equals the per-node setting."""
+    replica_ids = await _broadcast(router, "get_replica_id")
+    assert len(set(replica_ids)) == len(replica_ids)
+    assert len(replica_ids) >= ingress_replicas_per_node
+    return replica_ids
+
+
 async def _registered_worker(router, num_replicas):
     """Wait until every ingress replica can schedule the engine's worker and
     return the worker id."""
@@ -121,34 +131,32 @@ async def _backend_endpoint(handle):
     raise AssertionError("replica backend HTTP endpoint never became available")
 
 
-@pytest.mark.parametrize("num_ingress_replicas", [1, 2], scope="class")
+@pytest.mark.parametrize("ingress_replicas_per_node", [1, 2], scope="class")
 class TestIngressSynchronization:
     @pytest.fixture(scope="class")
-    def deployed_handle(self, num_ingress_replicas):
+    def deployed_handle(self, ingress_replicas_per_node):
         if not ray.is_initialized():
             ray.init(address="auto")
-        _restart_serve(ingress_replicas_per_node=num_ingress_replicas)
+        _restart_serve(ingress_replicas_per_node=ingress_replicas_per_node)
+        llm_config = build_kv_config(
+            request_router_class=KVAwareRouter,
+            kv_events_port_base=KV_EVENTS_PORT_BASE,
+        )
         with patch_ingress():
-            handle = serve.run(
-                build_kv_app(
-                    request_router_class=KVAwareRouter,
-                    kv_events_port_base=KV_EVENTS_PORT_BASE,
-                ),
-                name=APP_NAME,
-            )
+            handle = serve.run(build_kv_app(llm_config), name=APP_NAME)
         yield handle
         serve.shutdown()
 
     @pytest.mark.asyncio
-    async def test_booked_load(self, num_ingress_replicas, deployed_handle):
+    async def test_booked_load(self, ingress_replicas_per_node, deployed_handle):
         """A broadcast lifecycle batch books identical load on every ingress
         replica -- a non-routing replica scores prefill against its own KV
         index -- and freeing clears all of them. Decode blocks are not
         compared: they decay with time, so per-replica reads race.
         """
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
-        replica_ids = await _broadcast(router, "get_replica_id")
-        assert len(set(replica_ids)) == num_ingress_replicas
+        replica_ids = await _ingress_replica_ids(router, ingress_replicas_per_node)
+        num_ingress_replicas = len(replica_ids)
         worker_id = await _registered_worker(router, num_ingress_replicas)
 
         loads = await _broadcast(router, "get_worker_load", worker_id)
@@ -179,10 +187,13 @@ class TestIngressSynchronization:
         assert all(load["active_requests"] == 0 for load in loads)
 
     @pytest.mark.asyncio
-    async def test_real_request_load(self, num_ingress_replicas, deployed_handle):
+    async def test_real_request_load(self, ingress_replicas_per_node, deployed_handle):
         """A streamed request's lifecycle events land on every ingress tracker
         while in flight, and all free it on completion."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
+        num_ingress_replicas = len(
+            await _ingress_replica_ids(router, ingress_replicas_per_node)
+        )
         worker_id = await _registered_worker(router, num_ingress_replicas)
         endpoint = await _backend_endpoint(deployed_handle)
 
@@ -213,10 +224,13 @@ class TestIngressSynchronization:
         await async_wait_for_condition(is_cleared, timeout=30, retry_interval_ms=500)
 
     @pytest.mark.asyncio
-    async def test_kv_events_indexed(self, num_ingress_replicas, deployed_handle):
+    async def test_kv_events_indexed(self, ingress_replicas_per_node, deployed_handle):
         """Engine KV-cache events reach every ingress replica's indexer, so all
         replicas score the cached prefix alike."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
+        num_ingress_replicas = len(
+            await _ingress_replica_ids(router, ingress_replicas_per_node)
+        )
         worker_id = await _registered_worker(router, num_ingress_replicas)
 
         # Warm the engine's cache; it emits stored-block events every ingress

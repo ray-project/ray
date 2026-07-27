@@ -30,8 +30,12 @@ from ray.serve.llm.request_router import KVAwareRouter
 MODEL_ID = "Qwen/Qwen3-0.6B"
 
 
-def build_kv_app(*, request_router_class, kv_events_port_base, num_replicas=1):
-    """A direct-streaming KV-aware app with engine KV events enabled."""
+def build_kv_config(*, request_router_class, kv_events_port_base, num_replicas=1):
+    """Config for a direct-streaming KV-aware app with engine KV events enabled.
+
+    Build it outside ``patch_ingress``: serializing the router class clears this
+    module from cloudpickle's pickle-by-value registry.
+    """
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=MODEL_ID,
@@ -57,6 +61,11 @@ def build_kv_app(*, request_router_class, kv_events_port_base, num_replicas=1):
     # Emit engine KV-cache events so each ingress tracker registers the
     # replica's worker (schedulable, required to book a reservation against it).
     configure_kv_events_for_kv_routing(llm_config)
+    return llm_config
+
+
+def build_kv_app(llm_config):
+    """The Serve app for ``llm_config``; call inside ``patch_ingress``."""
     return build_openai_app({"llm_configs": [llm_config]})
 
 
@@ -185,6 +194,15 @@ class LLMRouter(_LLMRouter):
         snapshot = asdict(state)
         snapshot.pop("created_at", None)
         return snapshot
+
+    async def get_lifecycle_snapshot(self, request_id, worker_id):
+        """(Test only) This replica's id, its view of a request's lifecycle and
+        the load it books on ``worker_id``."""
+        return {
+            "replica_id": self.get_replica_id(),
+            "lifecycle": await self.get_request_lifecycle(request_id),
+            "active_requests": await self.get_worker_active_requests(worker_id),
+        }
 
     async def get_active_request_ids(self):
         """(Test only) Ids of the requests in the tracker's in-flight view."""
