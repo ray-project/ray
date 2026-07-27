@@ -216,8 +216,12 @@ class ObjectRefStream {
   int64_t EofIndex() const { return end_of_stream_index_; }
 
   /**
-   * The object written to every EOF-region ref, recorded by MarkEndOfStream.
+   * \brief The object written to every EOF-region ref, recorded by
+   * MarkEndOfStream.
+   *
    * Only valid once the stream has been ended (EofIndex() != -1).
+   *
+   * \return The terminal RayObject for EOF-region refs.
    */
   const RayObject &EndOfStreamError() const { return *end_of_stream_error_; }
 
@@ -990,10 +994,15 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
-   * If object_id is in the EOF region of stream, Put the recorded terminal
-   * error so a waiter on that ObjectID does not hang. Used by both single and
-   * bulk peek: bulk consume can advance next_index_ past EOF, after which a
-   * later peek may return a past-EOF ID that MarkEndOfStream never saw.
+   * \brief If object_id is in the EOF region of stream, Put the recorded
+   * terminal error so a waiter on that ObjectID does not hang.
+   *
+   * Used by both single and bulk peek: bulk consume can advance next_index_
+   * past EOF, after which a later peek may return a past-EOF ID that
+   * MarkEndOfStream never saw.
+   *
+   * \param[in] stream The object ref stream that may have been ended.
+   * \param[in] object_id The peeked object ID that may need an EOF error.
    */
   void PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream,
                                    const ObjectID &object_id)

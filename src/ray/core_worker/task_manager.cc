@@ -61,8 +61,13 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
   return rpc::ErrorType::WORKER_DIED;
 }
 
-// Copy a serialized proto field (data or metadata) into an owned buffer so it
-// outlives the transient reply it came from. Returns null for an empty field.
+/**
+ * \brief Copy a serialized proto field (data or metadata) into an owned buffer
+ * so it outlives the transient reply it came from.
+ *
+ * \param[in] field Serialized bytes from a proto string field.
+ * \return An owned buffer copy, or null if field is empty.
+ */
 std::unique_ptr<Buffer> MakeInlinedBuffer(const std::string &field) {
   if (field.empty()) {
     return nullptr;
