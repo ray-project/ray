@@ -8,14 +8,17 @@ from typing import List, Optional
 import aiohttp
 
 from ray._common.utils import get_or_create_event_loop
+from ray._private import ray_constants
 from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray._private.protobuf_compat import message_to_json
+from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
 )
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.aggregator.publisher.configs import (
     GCS_EXPOSABLE_EVENT_TYPES,
     HTTP_EXPOSABLE_EVENT_TYPES,
@@ -195,17 +198,38 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
 
     def __init__(
         self,
-        endpoint: str,
+        gcs_client: GcsClient,
         executor: ThreadPoolExecutor,
         timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
-        self._endpoint = endpoint
+        self._gcs_client = gcs_client
         self._executor = executor
         self._timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._session = None
+        # Resolved lazily from InternalKV on first publish and cached.
+        self._endpoint = None
 
         self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
+
+    async def _get_endpoint(self) -> Optional[str]:
+        """Lazily resolve and cache the dashboard head's task-events endpoint from
+        InternalKV. Returns None if the head has not registered its address yet, so the
+        caller can retry later."""
+        if self._endpoint:
+            return self._endpoint
+        address = await self._gcs_client.async_internal_kv_get(
+            ray_constants.DASHBOARD_ADDRESS.encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not address:
+            return None
+        address = address.decode()
+        if not address.startswith(("http://", "https://")):
+            address = f"http://{address}"
+        self._endpoint = f"{address}/api/task_events"
+        return self._endpoint
 
     async def publish(
         self,
@@ -237,6 +261,16 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
             )
 
         try:
+            endpoint = await self._get_endpoint()
+            if endpoint is None:
+                logger.warning(
+                    "Dashboard head address not yet in InternalKV; will retry."
+                )
+                return PublishStats(
+                    is_publish_successful=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
             events_data = self._create_ray_events_data(
                 filtered_events, task_events_metadata
             )
@@ -254,7 +288,7 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
             # Propagate the auth token so the POST passes the dashboard's auth middleware.
             headers = get_auth_headers_if_auth_enabled({})
             async with self._session.post(
-                self._endpoint,
+                endpoint,
                 data=serialized_request,
                 headers=headers,
             ) as resp:

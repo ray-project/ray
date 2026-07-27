@@ -61,9 +61,9 @@ EVENTS_EXPORT_ADDR = os.environ.get(
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
 )
-# flag to enable publishing events to GCS
-PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
+# flag to enable publishing events to the dashboard head
+PUBLISH_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", False
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
@@ -138,15 +138,13 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
-        if PUBLISH_EVENTS_TO_GCS:
-            logger.info("Publishing events to GCS is enabled")
+        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
+            logger.info("Publishing events to the dashboard head is enabled")
             self._event_processing_enabled = True
-            self._gcs_publisher = RayEventPublisher(
-                name="ray_gcs",
+            self._dashboard_head_publisher = RayEventPublisher(
+                name="dashboard_head",
                 publish_client=AsyncDashboardHeadPublisherClient(
-                    # TODO(karticam): wire the dedicated flag (sub-goal b) and resolve the
-                    # dashboard head URL (sub-goal c); this path is inactive until then.
-                    endpoint=None,
+                    gcs_client=self._dashboard_agent.gcs_client,
                     executor=self._executor,
                 ),
                 event_buffer=self._event_buffer,
@@ -154,8 +152,8 @@ class AggregatorAgent(
                 task_metadata_buffer=self._task_metadata_buffer,
             )
         else:
-            logger.info("Publishing events to GCS is disabled")
-            self._gcs_publisher = NoopPublisher()
+            logger.info("Publishing events to the dashboard head is disabled")
+            self._dashboard_head_publisher = NoopPublisher()
 
         # Metrics
         self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
@@ -189,7 +187,7 @@ class AggregatorAgent(
         failed_count = 0
         events_data = request.events_data
 
-        if PUBLISH_EVENTS_TO_GCS:
+        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
 
         for event in events_data.events:
@@ -222,7 +220,7 @@ class AggregatorAgent(
         try:
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),
-                self._gcs_publisher.run_forever(),
+                self._dashboard_head_publisher.run_forever(),
             )
         finally:
             self._executor.shutdown()
