@@ -990,6 +990,15 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
+   * If object_id is in the EOF region of stream, Put the recorded terminal
+   * error so a waiter on that ObjectID does not hang. Used by both single and
+   * bulk peek: bulk consume can advance next_index_ past EOF, after which a
+   * later peek may return a past-EOF ID that MarkEndOfStream never saw.
+   */
+  void PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream, const ObjectID &object_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_);
+
+  /**
    * Helper method for TryDelObjectRefStream. Fails any pending callbacks,
    * sends consumed-progress teardown, and releases unconsumed refs. Return true if it is
    * safe to delete the stream and task metadata for the generator.

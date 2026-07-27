@@ -238,8 +238,8 @@ std::vector<std::pair<ObjectID, bool>> ObjectRefStream::PeekNextItems(int64_t nu
     const int64_t index = next_index_ + i;
     if (end_of_stream_index_ != -1 && index >= end_of_stream_index_) {
       // At or past EOF the ref belongs to the EOF region and will carry the
-      // stream's terminal error. TaskManager::PeekObjectRefStreamN materializes
-      // that error if needed; report the ref as ready.
+      // stream's terminal error. TaskManager peek APIs materialize that error
+      // if needed; report the ref as ready.
       results.emplace_back(GetObjectRefAtIndex(index), true);
       continue;
     }
@@ -884,6 +884,35 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
   return can_gc_lineage;
 }
 
+void TaskManager::PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream,
+                                              const ObjectID &object_id) {
+  // Materialize the EOF error for refs at or past EOF (ObjectIndex() is the
+  // raw index; EofIndex() + 2 is the sentinel's raw index. The +2 is because
+  // object return indexes are 1-based and index 1 is the generator task's own
+  // return, so stream item 0 is raw index 2). These are positions the
+  // generator never produces, so without this a waiter on them blocks forever.
+  //
+  // Example: a generator that only yields one object, and then
+  // _wait_generators_bulk([(gen, [True, True, True])]) peeks
+  //   refs = [value(idx0), sentinel(idx1=EOF), past_eof(idx2)]
+  // MarkEndOfStream never saw past_eof(idx2), and the bulk waiter waits on it
+  // (the last ref), so we put its EOF error here.
+  //
+  // The same Put is required for single peek: after PeekN + bulk consume,
+  // next_index_ can sit past EOF, and a later PeekObjectRefStream returns a
+  // fresh past-EOF ID that neither MarkEndOfStream nor the earlier PeekN saw.
+  //
+  // Temporary ownership taken by the peek caller keeps these alive; they are
+  // released on stream deletion and erased once unreferenced.
+  if (stream.EofIndex() != -1 &&
+      object_id.ObjectIndex() >=
+          static_cast<ObjectIDIndexType>(stream.EofIndex() + 2)) {
+    in_memory_store_.Put(stream.EndOfStreamError(),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
+  }
+}
+
 std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   ObjectID next_object_id;
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -897,6 +926,7 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
   // not reported yet.
   TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
                                                    generator_id);
+  PutEndOfStreamErrorIfNeeded(stream_it->second, result.first);
   return result;
 }
 
@@ -916,27 +946,7 @@ std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
   for (const std::pair<ObjectID, bool> &result : results) {
     TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
                                                      generator_id);
-    // Materialize the EOF error for refs at or past EOF (ObjectIndex() is the
-    // raw index; EofIndex() + 2 is the sentinel's raw index. The +2 is because
-    // object return indexes are 1-based and index 1 is the generator task's own
-    // return, so stream item 0 is raw index 2). These are positions the
-    // generator never produces, so without this a waiter on them blocks forever.
-    //
-    // Example: a generator that only yields one object, and then
-    // _wait_generators_bulk([(gen, [True, True, True])]) peeks
-    //   refs = [value(idx0), sentinel(idx1=EOF), past_eof(idx2)]
-    // MarkEndOfStream never saw past_eof(idx2), and the bulk waiter waits on it
-    // (the last ref), so we put its EOF error here.
-    //
-    // The temporary ownership taken above keeps these alive; they are released
-    // on stream deletion and erased once unreferenced.
-    if (stream_it->second.EofIndex() != -1 &&
-        result.first.ObjectIndex() >=
-            static_cast<ObjectIDIndexType>(stream_it->second.EofIndex() + 2)) {
-      in_memory_store_.Put(stream_it->second.EndOfStreamError(),
-                           result.first,
-                           reference_counter_.HasReference(result.first));
-    }
+    PutEndOfStreamErrorIfNeeded(stream_it->second, result.first);
   }
   return results;
 }

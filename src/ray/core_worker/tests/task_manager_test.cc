@@ -2058,6 +2058,32 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekBeforeFailurePropagatesError)
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+// After PeekN + bulk consume advances next_index_ past EOF, a later single
+// peek returns a fresh past-EOF ObjectID that MarkEndOfStream / PeekN never
+// saw. PeekObjectRefStream must materialize the terminal error on that ID.
+TEST_F(TaskManagerTest,
+       TestObjectRefStreamSinglePeekAfterBulkConsumePastEofMaterializesError) {
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  const ObjectID generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+
+  // Peek and consume two EOF-region refs (EOF lands at index 0 when nothing
+  // was produced). Cursor advances to 2 while EofIndex() is 0.
+  ASSERT_EQ(manager_.PeekObjectRefStreamN(generator_id, 2).size(), 2UL);
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+
+  const auto [past_eof_id, ready] = manager_.PeekObjectRefStream(generator_id);
+  ASSERT_TRUE(ready);
+  ASSERT_EQ(past_eof_id, ObjectID::FromIndex(spec.TaskId(), 4));
+  ExpectStreamRefsCarryError(*store_, {past_eof_id}, rpc::ErrorType::ACTOR_DIED);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 // Fail the task first, then peek. PeekObjectRefStreamN itself materializes the
 // past-EOF refs (EofIndex() is already set), and must use the recorded terminal
 // error rather than a hardcoded end-of-stream.
