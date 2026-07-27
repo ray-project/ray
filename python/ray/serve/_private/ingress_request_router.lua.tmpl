@@ -84,6 +84,22 @@ local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
+local function extract_json_string(json_body, field)
+    return json_body:match('"' .. field .. '"%s*:%s*"([^"]*)"')
+end
+
+local function set_router_response_headers(txn, json_body)
+    local headers = json_body:match('"request_headers"%s*:%s*{(.-)}')
+    if not headers then
+        return
+    end
+    for name, value in headers:gmatch('"%s*([^"]-)%s*"%s*:%s*"([^"]*)"') do
+        if name ~= "" then
+            txn.http:req_set_header(name, value)
+        end
+    end
+end
+
 -- Returns the original Content-Length when `body` is shorter than the
 -- advertised length (truncated by tune.bufsize), or nil otherwise.
 local function truncated_full_length(txn, body)
@@ -167,7 +183,8 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
-    local replica_id = extract_replica_id(http_response_body(response))
+    local response_body = http_response_body(response)
+    local replica_id = extract_replica_id(response_body)
     if not replica_id then
         txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
@@ -182,6 +199,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
+    set_router_response_headers(txn, response_body)
     txn:set_var("txn.ingress_request_router_target", server_name)
     txn:set_var("txn.via_ingress_request_router", true)
 end

@@ -968,6 +968,10 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
     "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
 )
 
+# Optional flat header map returned by /internal/route. HAProxy applies these
+# as trusted request headers before forwarding to the selected replica.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD = "request_headers"
+
 # Emit per-request metrics from the ingress-request-router data path:
 # - truncated body counter
 # - router consultation latency histogram

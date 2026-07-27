@@ -7,7 +7,10 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_EVENTS_PORT_BASE,
     DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
+    DEFAULT_KV_TOKEN_PORT_BASE,
     KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_METADATA_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
@@ -122,6 +125,28 @@ def get_kv_event_routing_stats(
     return {"kv_event_metadata": kv_event_metadata}
 
 
+def get_token_channel_endpoints(
+    llm_config: LLMConfig,
+) -> Optional[tuple[str, str]]:
+    """Return (bind_endpoint, advertised_endpoint) for prompt-token ZMQ.
+
+    This is a per-LLMServer-replica token channel, not a vLLM engine socket. Use
+    the Serve replica's node-local rank to avoid collisions among colocated
+    replicas, independent of vLLM data-parallel rank.
+    """
+    if not is_kv_aware(llm_config):
+        return None
+    port = _default_prompt_token_port(llm_config) + _get_replica_rank()
+    return f"tcp://*:{port}", f"tcp://{ray.util.get_node_ip_address()}:{port}"
+
+
+def get_prompt_token_routing_stats(endpoint: Optional[str]) -> Dict[str, Any]:
+    """Return routing stats advertising this replica's prompt-token endpoint."""
+    if not endpoint:
+        return {}
+    return {KV_TOKEN_METADATA_KEY: {"endpoint": endpoint}}
+
+
 def _get_node_routable_endpoint(llm_config: LLMConfig, endpoint: str) -> str:
     """Rewrite a wildcard-bound engine endpoint to this replica's node IP.
 
@@ -155,6 +180,14 @@ def _default_kv_events_replay_endpoint(llm_config: LLMConfig) -> str:
         )
     )
     return f"tcp://*:{port_base + DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET}"
+
+
+def _default_prompt_token_port(llm_config: LLMConfig) -> int:
+    return int(
+        llm_config.experimental_configs.get(
+            KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE
+        )
+    )
 
 
 def _get_offset_endpoint_port(endpoint: str, offset: int) -> str:

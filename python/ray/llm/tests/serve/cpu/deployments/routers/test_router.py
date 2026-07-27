@@ -56,9 +56,11 @@ class _DirectRouterReplica:
         unique_id: str,
         full_id: Optional[str] = None,
         endpoint: Optional[tuple] = ("127.0.0.1", 8000),
+        routing_stats: Optional[dict] = None,
     ):
         self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
         self.backend_http_endpoint = endpoint
+        self.routing_stats = routing_stats or {}
 
 
 def _new_direct_router(handle=None):
@@ -137,7 +139,7 @@ class TestDirectStreamingLLMRouter:
         """A parseable body becomes a routing payload passed positionally."""
         router = _new_direct_router()
         router._pick_replica = AsyncMock(
-            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
@@ -167,7 +169,7 @@ class TestDirectStreamingLLMRouter:
         warns once per replica."""
         router = _new_direct_router()
         router._pick_replica = AsyncMock(
-            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
         # Truncated prefix is not valid JSON so json.loads fails.
@@ -227,9 +229,29 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = _choose_replica_returning(replica)
         router = _new_direct_router(handle)
 
-        host, port, replica_id = await router._pick_replica(handle=handle)
+        host, port, replica_id, token_endpoint = await router._pick_replica(
+            handle=handle
+        )
 
         assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
+        assert token_endpoint is None
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_returns_prompt_token_endpoint(self):
+        replica = _DirectRouterReplica(
+            "r1",
+            full_id="DeploymentName#r1",
+            routing_stats={
+                "kv_prompt_token_metadata": {"endpoint": "tcp://10.0.0.1:7557"}
+            },
+        )
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
+
+        *_, token_endpoint = await router._pick_replica(handle=handle)
+
+        assert token_endpoint == "tcp://10.0.0.1:7557"
 
     @pytest.mark.asyncio
     async def test_pick_replica_forwards_payload_positionally(self):
@@ -335,9 +357,9 @@ class TestRoutingPayload:
         Async so a running event loop exists for the ``PendingRequest`` default
         ``asyncio.Future``.
         """
-        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (  # noqa: E501
+        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
             PrefixCacheAffinityRouter,
-        )
+        )  # noqa: E501
         from ray.serve._private.request_router.common import PendingRequest
 
         # __new__ avoids the tree-actor setup in __init__. The method under test
