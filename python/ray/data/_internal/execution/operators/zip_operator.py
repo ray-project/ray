@@ -43,6 +43,23 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class _SourceBundle:
+    """An input bundle whose blocks the operator is still holding.
+
+    A bundle's blocks stay live while any of its rows are unzipped *or* any zip
+    task still references them, which outlives the bundle leaving the input
+    queue. ``holds`` tracks both so the bundle's memory keeps counting against
+    this operator (and stays visible to backpressure) for exactly as long as it
+    is really held, and is released and freed as soon as it isn't.
+    """
+
+    bundle: RefBundle
+    input_index: int
+    # Unconsumed slices, plus in-flight zip tasks referencing this bundle.
+    holds: int
+
+
+@dataclass
 class _BlockSlice:
     """A view of the rows ``[offset, offset + num_rows)`` of a block.
 
@@ -57,6 +74,8 @@ class _BlockSlice:
     # Rows remaining in this slice, or ``None`` until the block's row count has
     # been resolved (see ``ZipOperator._submit_count_task``).
     num_rows: Optional[int]
+    # The input bundle this block came from, released once nothing holds it.
+    source: _SourceBundle
 
 
 class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
@@ -245,9 +264,14 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             # (an empty bundle must not stall the input).
             while not pending and self._input_buffers[input_index].has_next():
                 bundle = self._input_buffers[input_index].get_next()
-                self._metrics.on_input_dequeued(bundle, input_index=input_index)
+                # NOTE: The bundle stays accounted for as queued input until its
+                # last hold is released; see `_release_hold`.
+                source = _SourceBundle(bundle, input_index, len(bundle.blocks))
+                if not source.holds:
+                    self._release_bundle(source)
+                    continue
                 pending.extend(
-                    _BlockSlice(entry.ref, 0, entry.metadata.num_rows)
+                    _BlockSlice(entry.ref, 0, entry.metadata.num_rows, source)
                     for entry in bundle.blocks
                 )
             if not pending:
@@ -264,8 +288,26 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 # pairing them off; otherwise they'd linger as phantom leftovers
                 # and trip the row-count validation above.
                 pending.popleft()
+                self._release_hold(head.source)
                 continue
             return True
+
+    def _release_hold(self, source: _SourceBundle) -> None:
+        """Drop one hold on an input bundle, releasing it once none remain."""
+        source.holds -= 1
+        assert source.holds >= 0, source
+        if source.holds == 0:
+            self._release_bundle(source)
+
+    def _release_bundle(self, source: _SourceBundle) -> None:
+        """Stop accounting for an input bundle and free its blocks if owned.
+
+        Called once nothing references the bundle: every row has been zipped and
+        every task that read it has finished. Blocks shared with other operators
+        (``owns_blocks=False``) aren't freed.
+        """
+        self._metrics.on_input_dequeued(source.bundle, input_index=source.input_index)
+        source.bundle.destroy_if_owned()
 
     def _submit_count_task(self, input_index: int, head: _BlockSlice) -> None:
         """Asynchronously resolve ``head``'s row count without blocking the loop.
@@ -303,16 +345,29 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             num_rows = min(head.num_rows for head in heads)
             assert num_rows > 0, heads
 
-            self._submit_zip_task([(head.ref, head.offset) for head in heads], num_rows)
+            # The task reads these blocks, so hold their bundles until it ends.
+            # A block can feed several tasks (at different offsets), so it must
+            # not be freed when only the first of them finishes.
+            sources = [head.source for head in heads]
+            for source in sources:
+                source.holds += 1
+
+            self._submit_zip_task(
+                [(head.ref, head.offset) for head in heads], num_rows, sources
+            )
 
             for input_index, head in enumerate(heads):
                 head.offset += num_rows
                 head.num_rows -= num_rows
                 if head.num_rows == 0:
                     self._pending[input_index].popleft()
+                    self._release_hold(head.source)
 
     def _submit_zip_task(
-        self, block_slices: List[Tuple[ray.ObjectRef, int]], num_rows: int
+        self,
+        block_slices: List[Tuple[ray.ObjectRef, int]],
+        num_rows: int,
+        sources: List[_SourceBundle],
     ) -> None:
         """Submit a task zipping ``num_rows`` rows from each of ``block_slices``.
 
@@ -321,9 +376,13 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 that input's contribution starts.
             num_rows: How many rows to take from each block, starting at its
                 offset. Equal across inputs, so the rows line up.
+            sources: The input bundles these blocks came from. Each holds one
+                reference for this task, released when it finishes.
         """
-        # TODO(ekl): Wire up per-task metrics so the progress bar and
-        # task counters reflect zip tasks.
+        # TODO(ekl): Wire up per-task metrics (`on_task_submitted` and friends)
+        # so the progress bar and task counters reflect zip tasks. NOTE: input
+        # memory is already accounted for via `_SourceBundle`, which keeps each
+        # bundle in this operator's input-queue metrics until nothing holds it.
         label_selector = self.data_context.execution_options.label_selector
         zip_fn = cached_remote_fn(_zip_blocks_task, num_returns="streaming")
         if label_selector:
@@ -352,6 +411,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             self._data_tasks.pop(task_index, None)
             # Mark this ordering key complete so the output queue can advance.
             self._output_buffer.finalize(key=task_index)
+            # The task is done reading its inputs, so they can now be freed
+            # (unless another task or unzipped range still holds them).
+            for source in sources:
+                self._release_hold(source)
 
         self._data_tasks[task_index] = DataOpTask(
             task_index,

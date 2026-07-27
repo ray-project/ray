@@ -537,6 +537,57 @@ def test_zip_streaming_output_queue_matches_preserve_order(
     assert isinstance(zip_op._output_buffer, expected)
 
 
+def test_zip_streaming_accounts_held_input_memory(ray_start_regular_shared):
+    """Input blocks the operator is still holding must stay visible to backpressure.
+
+    Blocks move out of the input queue into internal pending state well before
+    they are zipped, so the operator keeps them accounted until nothing
+    references them; otherwise skewed inputs would let upstream over-admit work.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    # Feed input 0 only, so its blocks pile up with nothing to pair against —
+    # exactly the skew case where unaccounted memory would be invisible.
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1], [2, 3]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11], [12, 13]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+
+    # Nothing can be zipped yet, so every block of input 0 is still held and
+    # must still count against this operator.
+    assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
+
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    run_op_tasks_sync(zip_op)
+    while zip_op.has_next():
+        zip_op.get_next()
+
+    # Everything has been zipped and every task has finished, so all input
+    # bundles should have been released.
+    assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
+
+
 def test_zip_streaming_reuses_block_across_offsets(ray_start_regular_shared):
     """A block spanning several of the other input's blocks is zipped in place.
 
