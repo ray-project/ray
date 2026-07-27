@@ -342,5 +342,141 @@ def test_get_num_tpu_visible_chips_per_host():
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
+# Subslice topology test helpers
+
+
+def test_parse_topology_dims():
+    """Test topology string parsing."""
+    assert tpu._parse_topology_dims("2x4") == (2, 4)
+    assert tpu._parse_topology_dims("16x16") == (16, 16)
+    assert tpu._parse_topology_dims("2x2x2") == (2, 2, 2)
+    assert tpu._parse_topology_dims("4x8x16") == (4, 8, 16)
+
+
+def test_get_worker_dims_2d():
+    """Test worker dimension lookup for 2D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
+    assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
+
+
+def test_get_worker_dims_3d():
+    """Test worker dimension lookup for 3D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
+
+
+def test_get_worker_dims_unknown():
+    """Test that unknown topologies raise ValueError."""
+    with pytest.raises(ValueError, match="Unknown 2D topology"):
+        tpu._get_worker_dims_for_topology("99x99")
+
+
+def test_get_default_chips_per_vm():
+    """Test default chips per VM."""
+    # v6e single-host: total chips
+    assert tpu._get_default_chips_per_vm("2x4", "v6e") == 8
+    assert tpu._get_default_chips_per_vm("2x2", "v6e") == 4
+    assert tpu._get_default_chips_per_vm("1x1", "v6e") == 1
+    # v6e multi-host: 4 chips
+    assert tpu._get_default_chips_per_vm("4x8", "v6e") == 4
+    # v4/v5p: always 4
+    assert tpu._get_default_chips_per_vm("2x2x2", "v4") == 4
+
+
+@pytest.mark.parametrize(
+    "physical_worker_id, parent_topology, expected_labels",
+    [
+        # 4x4 parent, 4 workers at positions (0,0), (1,0), (0,1), (1,1)
+        (0, "4x4", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
+        (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "0"}),
+        (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "1"}),
+        (3, "4x4", {"ray.io/tpu-subslice-2x2": "3", "ray.io/tpu-subslice-2x4": "1"}),
+    ],
+)
+def test_build_subslice_labels_2d(physical_worker_id, parent_topology, expected_labels):
+    """Test subslice label computation for 2D topologies."""
+    labels = tpu._build_subslice_labels(physical_worker_id, parent_topology)
+    for key, value in expected_labels.items():
+        assert labels[key] == value
+
+
+def test_build_subslice_labels_3d():
+    """Test subslice label computation for 3D."""
+    # 4x4x4 parent, 16 workers: (z,y,x)
+    # Worker 0 → (0,0,0)
+    labels = tpu._build_subslice_labels(0, "4x4x4")
+    assert labels["ray.io/tpu-subslice-2x2x1"] == "0"
+    assert labels["ray.io/tpu-subslice-2x2x2"] == "0"
+
+    # Worker 8 → (1,0,0): z=1, y=0, x=0
+    labels = tpu._build_subslice_labels(8, "4x4x4")
+    assert labels["ray.io/tpu-subslice-2x2x1"] == "8"
+    assert labels["ray.io/tpu-subslice-2x2x2"] == "4"
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4 v6e — 4 workers in a 2×2 mesh
+        ([[0, 0], [0, 1], [1, 0], [1, 1]], "4x4", 0),
+        ([[2, 0], [2, 1], [3, 0], [3, 1]], "4x4", 1),
+        ([[0, 2], [0, 3], [1, 2], [1, 3]], "4x4", 2),
+        ([[2, 2], [2, 3], [3, 2], [3, 3]], "4x4", 3),
+        # 2x4 single-host v6e (8 chips on one VM — worker at the origin)
+        (
+            [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3]],
+            "2x4",
+            0,
+        ),
+    ],
+)
+def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 2D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4x4: worker grid (z,y,x)=(2,2,4); each worker owns 1 chip in x,
+        # 2 in y, 2 in z. Coords are [x, y, z].
+        # Worker 0: x=0, y in {0,1}, z in {0,1}.
+        ([[0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]], "4x4x4", 0),
+        # Worker 1: wx=1 (x=1).
+        ([[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1]], "4x4x4", 1),
+        # Worker 8: wz=1 (z in {2,3}) → linear = wz*(dy*dx) = 1*(2*4) = 8.
+        ([[0, 0, 2], [0, 1, 2], [0, 0, 3], [0, 1, 3]], "4x4x4", 8),
+    ],
+)
+def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 3D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology",
+    [
+        # 2D: x coordinate far outside the 4x4 chip grid → wx out of bounds.
+        ([[99, 0], [99, 1]], "4x4"),
+        # 3D: z coordinate outside the 4x4x4 grid → wz out of bounds.
+        ([[0, 0, 99], [1, 0, 99]], "4x4x4"),
+    ],
+)
+def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
+    """Bad/partial libtpu coordinates that map outside the worker mesh raise
+    ValueError in both the 2D and 3D branches, rather than silently producing
+    an incorrect subslice label.
+    """
+    with pytest.raises(ValueError, match="out of bounds"):
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
