@@ -7,6 +7,7 @@ import pytest
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
+    RollingWindowMin,
     _RollingWindowBase,
 )
 
@@ -1081,6 +1082,56 @@ class TestRollingWindowMaxEdgeCases:
             mock_time.return_value = 60.0
             tracker.add(50.0)
             assert tracker.get_max() == 50.0
+
+
+class TestRollingWindowMinSingleThread:
+    def test_empty_tracker(self):
+        tracker = RollingWindowMin(window_duration_s=10.0)
+        assert tracker.get_min() is None
+
+    def test_basic_add_and_get_min(self):
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        tracker.add(100.0)
+        tracker.add(50.0)
+        tracker.add(500.0)
+        assert tracker.get_min() == 50.0
+
+    def test_min_expires_with_window(self):
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+            tracker = RollingWindowMin(window_duration_s=60.0, num_buckets=6)
+            tracker.add(10.0)
+
+            mock_time.return_value = 10.0
+            tracker.add(100.0)
+
+            assert tracker.get_min() == 10.0
+
+            # At t=60, min value 10.0 expires
+            mock_time.return_value = 60.0
+            tracker.add(200.0)
+            assert tracker.get_min() == 100.0
+
+
+class TestRollingWindowMinMultiThread:
+    def test_min_across_threads(self):
+        tracker = RollingWindowMin(window_duration_s=10.0, num_buckets=10)
+        barrier = threading.Barrier(3)
+
+        def worker(val):
+            barrier.wait()
+            tracker.add(val)
+
+        t1 = threading.Thread(target=worker, args=(500.0,))
+        t2 = threading.Thread(target=worker, args=(25.0,))
+        t3 = threading.Thread(target=worker, args=(150.0,))
+
+        for t in [t1, t2, t3]:
+            t.start()
+        for t in [t1, t2, t3]:
+            t.join()
+
+        assert tracker.get_min() == 25.0
 
 
 if __name__ == "__main__":
