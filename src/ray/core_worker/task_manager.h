@@ -995,7 +995,8 @@ class TaskManager : public TaskManagerInterface {
    * bulk peek: bulk consume can advance next_index_ past EOF, after which a
    * later peek may return a past-EOF ID that MarkEndOfStream never saw.
    */
-  void PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream, const ObjectID &object_id)
+  void PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream,
+                                   const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_);
 
   /**

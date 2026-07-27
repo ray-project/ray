@@ -905,11 +905,9 @@ void TaskManager::PutEndOfStreamErrorIfNeeded(const ObjectRefStream &stream,
   // Temporary ownership taken by the peek caller keeps these alive; they are
   // released on stream deletion and erased once unreferenced.
   if (stream.EofIndex() != -1 &&
-      object_id.ObjectIndex() >=
-          static_cast<ObjectIDIndexType>(stream.EofIndex() + 2)) {
-    in_memory_store_.Put(stream.EndOfStreamError(),
-                         object_id,
-                         reference_counter_.HasReference(object_id));
+      object_id.ObjectIndex() >= static_cast<ObjectIDIndexType>(stream.EofIndex() + 2)) {
+    in_memory_store_.Put(
+        stream.EndOfStreamError(), object_id, reference_counter_.HasReference(object_id));
   }
 }
 
