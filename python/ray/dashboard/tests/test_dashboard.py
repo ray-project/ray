@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import copy
 import ipaddress
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 import warnings
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
@@ -49,6 +51,7 @@ from ray._private.test_utils import (
 )
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHead
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
@@ -1694,6 +1697,184 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
         return True
 
     wait_for_condition(check_lag_metrics)
+
+
+_COMPONENT_CPU_METRIC = "ray_component_cpu_percentage"
+
+# `_record_dashboard_metrics` is wrapped in an infinite loop by
+# `async_loop_forever`. `__wrapped__` is the undecorated coroutine, so a test can
+# drive one record cycle at a time.
+_record_metrics_once = DashboardHead._record_dashboard_metrics.__wrapped__
+
+
+@contextlib.contextmanager
+def _busy_process():
+    """Spawn a CPU-bound child process, and reap it on exit."""
+    process = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+    try:
+        yield process
+    finally:
+        process.kill()
+        # Wait so the pid is not left behind as a zombie, which psutil still
+        # considers running.
+        process.wait()
+
+
+def _fake_subprocess_module_handle(process, module_name="DataHead"):
+    """Build a stand-in for SubprocessModuleHandle.
+
+    `_record_dashboard_metrics` only reads `process.pid` and
+    `module_cls.__name__` off the handle, the latter becoming the
+    `dashboard_<module_name>` component label.
+    """
+    return SimpleNamespace(process=process, module_cls=type(module_name, (), {}))
+
+
+def _make_dashboard_head_for_metrics(tmpdir):
+    """A DashboardHead wired up only enough to record metrics.
+
+    `DashboardHead.__init__` does no I/O and makes no GCS connection, so it can
+    be constructed directly. `metrics` and `_event_loop_lag_s_max` are normally
+    initialized in `run()`, which these tests do not call.
+    """
+    head = DashboardHead(
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
+        log_dir=str(tmpdir),
+        logging_level=ray_constants.LOGGER_LEVEL,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=True,
+        serve_frontend=False,
+    )
+    head.metrics = DashboardPrometheusMetrics()
+    head._event_loop_lag_s_max = None
+    return head
+
+
+def _component_cpu_percentage(head, component, pid=None):
+    """Read the exported CPU percentage of `component`, or None if unexported.
+
+    A component that restarted has a sample per pid it has run under, so `pid`
+    selects which one to read.
+    """
+    for metric in head.metrics.registry.collect():
+        for sample in metric.samples:
+            if (
+                sample.name == _COMPONENT_CPU_METRIC
+                and sample.labels.get("Component") == component
+                and (pid is None or sample.labels.get("pid") == str(pid))
+            ):
+                return sample.value
+    return None
+
+
+async def _record_until_nonzero_cpu(head, handles, component, pid=None, cycles=20):
+    """Drive record cycles until `component` reports non-zero CPU.
+
+    Returns the last value read, which is 0.0 if the metric never moved. A
+    process spinning in a `while True` loop pegs a core, so one cycle past the
+    first is normally enough; the rest of the budget is for a heavily loaded
+    machine where the child gets little CPU time. The sleep matters:
+    cpu_percent() over a zero-length interval reads 0.0.
+    """
+    value = 0.0
+    for _ in range(cycles):
+        await asyncio.sleep(0.1)
+        await _record_metrics_once(head, handles)
+        value = _component_cpu_percentage(head, component, pid) or 0.0
+        if value > 0:
+            break
+    return value
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
+    """The `dashboard_<Module>` CPU metric must not be stuck at zero.
+
+    `psutil.Process.cpu_percent()` is measured relative to the previous call on
+    the *same* Process object, so it returns 0.0 the first time it is called on a
+    new object. Building a fresh Process every record cycle therefore pinned this
+    metric at ~0. See https://github.com/ray-project/ray/issues/29848
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    with _busy_process() as process:
+        handles = [_fake_subprocess_module_handle(process)]
+
+        await _record_metrics_once(head, handles)
+        # The very first cycle has no baseline to compare against, so 0.0 is
+        # expected.
+        assert _component_cpu_percentage(head, "dashboard_DataHead") == 0.0
+
+        assert (
+            await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
+        ), "ray_component_cpu_percentage stayed at 0 for a CPU-bound module"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
+    """A module that restarts under a new pid still reports its CPU usage."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    with _busy_process() as first_process:
+        handle = _fake_subprocess_module_handle(first_process)
+        await _record_until_nonzero_cpu(
+            head, [handle], "dashboard_DataHead", first_process.pid
+        )
+
+    # Leaving the block above reaped the first process. Simulate the health
+    # check restarting the module under a new pid.
+    with _busy_process() as second_process:
+        handle.process = second_process
+        assert second_process.pid != first_process.pid
+
+        assert (
+            await _record_until_nonzero_cpu(
+                head, [handle], "dashboard_DataHead", second_process.pid
+            )
+            > 0
+        ), "the restarted module's CPU usage was not reported under its new pid"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir):
+    """Recording module metrics must not disturb the main `dashboard` component."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    with _busy_process() as process:
+        handles = [_fake_subprocess_module_handle(process)]
+
+        cpu_percentage = 0.0
+        for _ in range(20):
+            # The `dashboard` component measures the process running this test,
+            # so burn CPU here rather than sleeping, to give it something to
+            # report.
+            deadline = time.monotonic() + 0.1
+            while time.monotonic() < deadline:
+                pass
+            await _record_metrics_once(head, handles)
+            cpu_percentage = _component_cpu_percentage(head, "dashboard") or 0.0
+            if cpu_percentage > 0:
+                break
+        assert cpu_percentage > 0
 
 
 if __name__ == "__main__":
