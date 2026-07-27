@@ -9,7 +9,10 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
-from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+)
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
     _fits,
@@ -1222,9 +1225,26 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         # Schedule the tasks/actor resource requests
+        resource_requests = ResourceRequestUtil.ungroup_by_count(
+            request.resource_requests
+        )
+        if len(resource_requests) > AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+            resource_requests = sorted(
+                resource_requests,
+                key=ResourceDemandScheduler._sort_resource_request_for_truncation,
+                reverse=True,
+            )
+            resource_requests = resource_requests[
+                :AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+            ]
+            logger.info(
+                f"Truncated resource requests from "
+                f"{sum(r.count for r in request.resource_requests)} to "
+                f"{AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE} for scheduling."
+            )
         infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
             ctx,
-            ResourceRequestUtil.ungroup_by_count(request.resource_requests),
+            resource_requests,
         )
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
@@ -1576,6 +1596,28 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         ctx.update(scheduled_nodes)
         return []
+
+    @staticmethod
+    def _sort_resource_request_for_truncation(req: "ResourceRequest") -> Tuple:
+        """
+        Sort resource requests by complexity for truncation priority.
+
+        Requests with more constraints (placement, labels, more resource types,
+        higher resource values) are sorted first so that truncation only drops
+        homogeneous simple requests from the tail.
+        """
+        label_constraint_len = (
+            len(req.label_selectors[0].label_constraints)
+            if req.label_selectors
+            else 0
+        )
+        return (
+            len(req.placement_constraints),
+            label_constraint_len,
+            len(req.resources_bundle.values()),
+            sum(req.resources_bundle.values()),
+            sorted(req.resources_bundle.items()),
+        )
 
     @staticmethod
     def _sched_resource_requests(

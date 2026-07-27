@@ -3639,6 +3639,89 @@ class TestSchedulerPerformanceOptimizations:
         assert to_launch == {}
 
 
+class TestDemandTruncation:
+    def test_demand_truncation_basic(self):
+        """Truncation should not affect the correctness of to_launch decisions."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=3000,
+            ),
+        }
+        # 3000 requests × 0.2 CPU each → needs 600 nodes (5 tasks per 1-CPU node).
+        # With truncation to 1000, scheduler sees 1000 requests → needs 200 nodes.
+        # This is expected: under-provisioning is corrected in the next reconcile.
+        requests = [ResourceRequestUtil.make({"CPU": 0.2})] * 3000
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=requests,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+
+        # With truncation to 1000 requests: 1000 × 0.2 CPU = 200 CPU → 200 nodes.
+        assert to_launch == {"type_1": 200}
+
+    def test_demand_truncation_preserves_complex_requests(self):
+        """GPU and label-constrained requests should survive truncation."""
+        node_type_configs = {
+            "gpu_type": NodeTypeConfig(
+                name="gpu_type",
+                resources={"CPU": 4, "GPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+            "cpu_type": NodeTypeConfig(
+                name="cpu_type",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=3000,
+            ),
+        }
+        # 10 GPU requests (complex) + 2000 simple CPU requests.
+        # After truncation to 1000, GPU requests must still be present.
+        gpu_requests = [ResourceRequestUtil.make({"CPU": 1, "GPU": 1})] * 10
+        cpu_requests = [ResourceRequestUtil.make({"CPU": 0.2})] * 2000
+        requests = cpu_requests + gpu_requests  # GPU at the end
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=requests,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+
+        # GPU nodes must be launched (GPU requests were not truncated).
+        assert "gpu_type" in to_launch
+        assert to_launch["gpu_type"] == 10
+
+    def test_no_truncation_below_threshold(self):
+        """No truncation when requests are below the limit."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=3000,
+            ),
+        }
+        # 500 requests, below the 1000 threshold → no truncation.
+        requests = [ResourceRequestUtil.make({"CPU": 0.2})] * 500
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=requests,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+
+        # 500 × 0.2 CPU = 100 CPU → 100 nodes (no truncation, exact result).
+        assert to_launch == {"type_1": 100}
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
