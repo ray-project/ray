@@ -2571,6 +2571,11 @@ class RankManager:
         return keys_needing_ranks
 
 
+# Minimum gap between retries of a rank-consistency pass that swallowed an error, so a
+# deterministic failure cannot re-run an O(N) pass and log every tick.
+_RANK_ERROR_RETRY_S = 30.0
+
+
 class DeploymentRankManager:
     """Manages replica ranks for a deployment.
     This class handles rank assignment, release, consistency checking, and reassignment.
@@ -2951,6 +2956,9 @@ class DeploymentState:
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
         self._last_rank_membership_ids: Optional[Set[str]] = None
+        # Membership whose pass swallowed an error, and when, for retry backoff.
+        self._last_rank_error_ids: Optional[Set[str]] = None
+        self._last_rank_error_ts: float = 0.0
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -5016,6 +5024,14 @@ class DeploymentState:
         active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
         if active_replica_ids == self._last_rank_membership_ids:
             return
+        # An errored pass leaves the membership uncached so it is retried; rate-limit that
+        # retry while the membership still matches the one that failed. A real membership
+        # change bypasses this and runs immediately.
+        if (
+            self._last_rank_error_ids == active_replica_ids
+            and time.time() - self._last_rank_error_ts < _RANK_ERROR_RETRY_S
+        ):
+            return
         replicas_to_reconfigure = (
             self._rank_manager.check_rank_consistency_and_reassign_minimally(
                 active_replicas,
@@ -5028,9 +5044,12 @@ class DeploymentState:
         # Reconfigure replicas that had their ranks reassigned
         self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
         if checked_cleanly:
-            # Deliberate: a deployment that keeps erroring never caches and is
-            # rechecked every tick, rather than latching an unvalidated membership.
             self._last_rank_membership_ids = active_replica_ids
+            self._last_rank_error_ids = None
+        else:
+            # Not cached: an unvalidated membership must be rechecked, just not every tick.
+            self._last_rank_error_ids = active_replica_ids
+            self._last_rank_error_ts = time.time()
 
     def _handle_deployment_actor_failed_health_check(
         self,

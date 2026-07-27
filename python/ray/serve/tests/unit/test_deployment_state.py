@@ -10203,7 +10203,7 @@ def rank_gate_dsm(mock_deployment_state_manager, monkeypatch):
     CountingRankManager.instances = []
     monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
 
-    create_dsm, _, _, _ = mock_deployment_state_manager
+    create_dsm, timer, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
     info, v1 = deployment_info(num_replicas=3, version="1")
     assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -10223,21 +10223,21 @@ def rank_gate_dsm(mock_deployment_state_manager, monkeypatch):
     assert (
         ds._rank_manager.consistency_calls >= 1
     ), "gate never ran for a new membership"
-    return dsm, ds, ds._rank_manager
+    return dsm, ds, ds._rank_manager, timer
 
 
 class TestRankConsistencyMembershipGate:
     """The rank-consistency pass runs only when replica membership changes."""
 
     def test_skips_while_membership_unchanged(self, rank_gate_dsm):
-        dsm, _, rank_manager = rank_gate_dsm
+        dsm, _, rank_manager, _ = rank_gate_dsm
         after_startup = rank_manager.consistency_calls
         for _ in range(5):
             dsm.update()
         assert rank_manager.consistency_calls == after_startup
 
     def test_reruns_when_a_replica_leaves(self, rank_gate_dsm):
-        dsm, ds, rank_manager = rank_gate_dsm
+        dsm, ds, rank_manager, timer = rank_gate_dsm
         before = rank_manager.consistency_calls
 
         # Membership change through the public path: scale up adds a new replica id.
@@ -10248,7 +10248,7 @@ class TestRankConsistencyMembershipGate:
     def test_swallowed_error_is_rechecked_next_tick(self, rank_gate_dsm):
         """fail_on_rank_error is off by default in production, so the pass can log and
         return a safe default. That membership must not be cached as validated."""
-        dsm, ds, rank_manager = rank_gate_dsm
+        dsm, ds, rank_manager, timer = rank_gate_dsm
 
         # Membership change makes the gate run; that run errors and is swallowed.
         rank_manager.raise_next = True
@@ -10256,10 +10256,14 @@ class TestRankConsistencyMembershipGate:
         errored_at = rank_manager.consistency_calls
         assert errored_at > 0, "the errored pass never ran"
 
-        # An errored pass must not be cached as validated, so it is retried even though
-        # membership is now stable.
+        # Rate-limited: the same membership is not re-run immediately...
         for _ in range(4):
             dsm.update()
+        assert rank_manager.consistency_calls == errored_at
+
+        # ...but it is not cached either, so it is retried once the backoff elapses.
+        timer.advance(ds_mod._RANK_ERROR_RETRY_S + 1)
+        dsm.update()
         assert rank_manager.consistency_calls > errored_at
 
     def test_starting_replicas_skip_the_pass(
