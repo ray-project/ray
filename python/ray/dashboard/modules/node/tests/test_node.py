@@ -412,6 +412,19 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
     wait_for_condition(_check_worker_pids, timeout=20)
 
 
+def _wait_for_node_registered(webui_url, node_id, timeout=30):
+    """Wait until `node_id` appears in the dashboard's node summary."""
+
+    def _registered():
+        response = requests.get(webui_url + "/nodes?view=summary")
+        if response.status_code != 200:
+            return False
+        summary = response.json()["data"]["summary"]
+        return any(node["raylet"]["nodeId"] == node_id for node in summary)
+
+    wait_for_condition(_registered, timeout=timeout)
+
+
 @pytest.mark.parametrize(
     "path,expected_status_code",
     [
@@ -433,6 +446,11 @@ def test_node_api_status_codes(
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     node_id = ray_start_with_dashboard["node_id"]
+
+    # `wait_until_server_available` only checks that the HTTP server accepts
+    # connections. `/nodes/{node_id}` now 404s until the node shows up in the
+    # dashboard's node table, so wait for that before asserting on a status code.
+    _wait_for_node_registered(webui_url, node_id)
 
     url = webui_url + path.format(node_id=node_id, unknown_node_id="8" * len(node_id))
     response = requests.get(url)

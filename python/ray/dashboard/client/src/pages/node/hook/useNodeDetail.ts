@@ -37,9 +37,11 @@ export const useNodeDetail = () => {
         }
       } catch (e) {
         // The API returns 404 for an unknown node ID, which axios rejects on.
+        // Keep auto-refresh running: a 404 can be transient (e.g. the node is
+        // not in the dashboard's node table yet), and stopping the refresh
+        // would leave the page stuck on the error until a manual reload.
         if (axios.isAxiosError(e) && e.response?.status === 404) {
           setMsg("Node Query Error Please Check Node Name");
-          setRefresh(false);
           return undefined;
         }
         throw e;
