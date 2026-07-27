@@ -210,6 +210,9 @@ class DeploymentAutoscalingState:
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
+        if running_replicas is self._running_replicas:
+            # Same (cached) list object -- membership unchanged, skip rebuild.
+            return
         self._running_replicas = running_replicas
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
@@ -395,7 +398,9 @@ class DeploymentAutoscalingState:
             app_name=self._deployment_id.app_name,
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
-            running_replicas=self._running_replicas,
+            # list(): AutoscalingContext.running_replicas is List[ReplicaID] on a
+            # stable PublicAPI; the tuple stays internal so the identity skip works.
+            running_replicas=list(self._running_replicas),
             total_num_requests=self.get_total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
