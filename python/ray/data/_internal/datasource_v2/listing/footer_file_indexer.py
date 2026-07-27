@@ -14,7 +14,7 @@ from ray.data._internal.datasource_v2.listing.footer_reader import FooterReaderA
 from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
     OnlineBinPacker,
 )
-from ray.data._internal.util import GiB
+from ray.data._internal.util import MiB
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -44,7 +44,13 @@ _DEFAULT_MAX_INFLIGHT_BATCHES = env_integer(
 )
 # Fallback bin budget (uncompressed bytes per read task) when
 # ``target_max_block_size`` is unset.
-_DEFAULT_BIN_BYTES = env_integer("RAY_DATA_PARQUET_FOOTER_BIN_BYTES", 1 * GiB)
+_DEFAULT_BIN_PACKING_BYTES = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 64 * MiB)
+# Shared (mixed-colour) bins the packer keeps open at once. A wider pool packs
+# tighter; a narrower one seals bins sooner, and since each sealed bin becomes a
+# read task, that's what lets reads start before every footer has landed.
+_DEFAULT_MAX_SHARED_OPEN_BINS = env_integer(
+    "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+)
 
 
 class FooterFileIndexer(NonSamplingFileIndexer):
@@ -63,11 +69,10 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         max_paths_per_output: Optional[int] = None,
         coalesce_bytes: int = 0,
         split_coalesced: bool = False,
-        num_actors: Optional[int] = None,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         max_inflight_batches: Optional[int] = None,
-        max_shared_open_bins: int = 16,
+        max_shared_open_bins: Optional[int] = None,
     ):
         super().__init__(
             ignore_missing_paths=ignore_missing_paths,
@@ -76,7 +81,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         self._coalesce_bytes = coalesce_bytes
         self._split_coalesced = split_coalesced
-        self._num_actors = num_actors if num_actors is not None else _DEFAULT_NUM_ACTORS
+        self._num_actors = _DEFAULT_NUM_ACTORS
         self._io_concurrency = (
             io_concurrency if io_concurrency is not None else _DEFAULT_IO_CONCURRENCY
         )
@@ -90,7 +95,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             else _DEFAULT_MAX_INFLIGHT_BATCHES
         )
         self._max_inflight_batches = _inflight if _inflight else self._num_actors * 2
-        self._max_shared_open_bins = max_shared_open_bins
+        self._max_shared_open_bins = (
+            max_shared_open_bins
+            if max_shared_open_bins is not None
+            else _DEFAULT_MAX_SHARED_OPEN_BINS
+        )
 
     @property
     def yields_read_units(self) -> bool:
@@ -109,7 +118,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
-        max_bin_bytes = _DEFAULT_BIN_BYTES
+        max_bin_bytes = _DEFAULT_BIN_PACKING_BYTES
         file_infos = self.list_file_infos(
             paths,
             filesystem=filesystem,

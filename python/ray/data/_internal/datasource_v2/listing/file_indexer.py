@@ -183,6 +183,26 @@ class NonSamplingFileIndexer(FileIndexer):
         """
         return self._file_chunker
 
+    def as_whole_file_indexer(self) -> "NonSamplingFileIndexer":
+        """A plain per-file indexer sharing this one's traversal config.
+
+        Metadata-only consumers (the ``PushdownCountFiles`` rule) need a listing
+        that emits each file exactly once and does no per-file IO while listing.
+        Subclasses that override :meth:`list_files` with a metadata-aware
+        strategy -- e.g. ``FooterFileIndexer``, which footer-reads every file on
+        an actor pool and bin-packs row groups, emitting one manifest row per
+        file *per bin* -- would both duplicate that IO and risk emitting a path
+        more than once. So this deliberately returns a base
+        ``NonSamplingFileIndexer`` rather than ``type(self)``, carrying over only
+        the traversal settings.
+        """
+        return NonSamplingFileIndexer(
+            ignore_missing_paths=self._ignore_missing_paths,
+            num_workers=self._num_workers,
+            max_paths_per_output=self._max_paths_per_output,
+            file_chunker=WholeFileChunker(),
+        )
+
     def list_files(
         self,
         paths: "BlockColumn",

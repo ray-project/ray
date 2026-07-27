@@ -304,6 +304,10 @@
         - RAYTEST_FAIL_ON_SPILLING=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=39000000
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=22
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
     cluster_compute: fixed_size_cpu_compute.yaml
 
   matrix:

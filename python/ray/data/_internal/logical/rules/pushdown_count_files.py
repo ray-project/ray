@@ -1,10 +1,7 @@
-import copy
 import dataclasses
+import logging
 from typing import TYPE_CHECKING, Optional
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    WholeFileChunker,
-)
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
@@ -27,6 +24,8 @@ from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFi
 if TYPE_CHECKING:
     import pyarrow as pa
 
+logger = logging.getLogger(__name__)
+
 
 class PushdownCountFiles(Rule):
     """Answer ``Dataset.count()`` from file metadata instead of reading data.
@@ -39,9 +38,15 @@ class PushdownCountFiles(Rule):
         Count(ReadFiles(ListFiles))  ->  MapBatches(count_rows, ListFiles)
 
     ``count_rows`` sums ``read_metadata()`` (e.g. Parquet-footer row counts),
-    so no data columns are read. The upstream ``ListFiles`` is rebuilt to list
-    each file exactly once (``WholeFileChunker``, no partitioner) so footers are
-    read once, in the parallel count pass rather than during listing.
+    so no data columns are read. The upstream ``ListFiles`` is rebuilt with a
+    plain whole-file indexer and no partitioner, so (a) each file appears in
+    exactly one manifest row -- no over-counting -- and (b) listing does no
+    metadata IO of its own: footers are read once, in the parallel count pass.
+
+    Note this *replaces* metadata-aware indexers such as the footer-based
+    Parquet one, rather than reconfiguring them: those override ``list_files``
+    outright, so reconfiguring is a silent no-op and they would footer-sweep
+    every file during listing and pack them into a single read unit.
     """
 
     # Default CPU allocation per task is 1; lower it so at least 2 footer-read
@@ -91,16 +96,27 @@ class PushdownCountFiles(Rule):
         assert isinstance(list_files, ListFiles), list_files
 
         # Rebuild ``ListFiles`` to list each file exactly once: disable
-        # partitioning and use the ``WholeFileChunker`` (otherwise a file could
-        # appear once per chunk, in different batches, and be over-counted).
-        # ``ListFiles`` is frozen, so ``replace`` a copy with a fresh indexer.
-        count_indexer = copy.deepcopy(list_files.file_indexer)
-        assert isinstance(count_indexer, NonSamplingFileIndexer), type(count_indexer)
-        count_indexer._file_chunker = WholeFileChunker()
+        # partitioning and swap in a plain whole-file indexer. Mutating the
+        # existing indexer's chunker isn't enough -- a metadata-aware indexer
+        # (e.g. the footer-based Parquet one) overrides ``list_files`` outright
+        # and ignores its chunker, so it would keep footer-sweeping during
+        # listing and could emit a path once per bin, over-counting it.
+        base_indexer = list_files.file_indexer
+        if not isinstance(base_indexer, NonSamplingFileIndexer):
+            # A third-party indexer may chunk files or do its own metadata IO;
+            # we can't prove one-row-per-file, so leave the plan alone and let
+            # ``count()`` fall back to the regular read path.
+            logger.debug(
+                "Skipping count pushdown: %s is not a NonSamplingFileIndexer",
+                type(base_indexer).__name__,
+            )
+            return plan
+
+        # ``ListFiles`` is frozen, so ``replace`` it with a fresh indexer.
         list_files = dataclasses.replace(
             list_files,
             file_partitioner=None,
-            file_indexer=count_indexer,
+            file_indexer=base_indexer.as_whole_file_indexer(),
         )
 
         # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but
