@@ -95,6 +95,11 @@ message RequestWorkerLeaseReply {
   // The error message explaining why scheduling has failed.
   // Must be an empty string if failure_type is `NOT_FAILED`.
   string scheduling_failure_message = 10;
+  // Structured detail about the runtime env setup failure. Set only when
+  // failure_type is SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED and the agent
+  // reported one. scheduling_failure_message above is user-visible text and must
+  // not be used to smuggle a serialized proto.
+  optional RuntimeEnvFailedContext runtime_env_setup_failure = 11;
 }
 
 // Request to prestart workers. At this time we don't yet know the resource, or task type.

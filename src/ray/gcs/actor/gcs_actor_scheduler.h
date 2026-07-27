@@ -42,10 +42,15 @@
 namespace ray {
 namespace gcs {
 
+/// The last parameter carries structured detail about a runtime env setup
+/// failure and is null unless the raylet reported one. It is borrowed from the
+/// lease reply for the duration of the call only, so a receiver that keeps it
+/// must copy it.
 using GcsActorSchedulerFailureCallback =
     std::function<void(std::shared_ptr<GcsActor>,
                        rpc::RequestWorkerLeaseReply::SchedulingFailureType,
-                       const std::string &)>;
+                       const std::string &,
+                       const rpc::RuntimeEnvFailedContext *)>;
 using GcsActorSchedulerSuccessCallback =
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
 
@@ -287,11 +292,14 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_id The node where the runtime env is failed to setup.
   /// \param failure_type The type of the canceling.
   /// \param scheduling_failure_message The scheduling failure error message.
+  /// \param runtime_env_setup_failure Structured detail about the runtime env
+  /// setup failure, or nullptr if the raylet did not report one.
   void HandleRequestWorkerLeaseCanceled(
       std::shared_ptr<GcsActor> actor,
       const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-      const std::string &scheduling_failure_message);
+      const std::string &scheduling_failure_message,
+      const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure);
 
   /// Create the specified actor on the specified worker.
   ///

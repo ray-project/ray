@@ -50,6 +50,7 @@ from ray.exceptions import (
     TaskCancelledError,
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
+    WorkerBootstrapError,
     WorkerCrashedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
@@ -130,6 +131,15 @@ def _rdt_ref_deserializer(
     rdt_manager.set_rdt_metadata(obj_ref.hex(), rdt_meta)
 
     return obj_ref
+
+
+def _optional_proto_field(message, field_name: str):
+    """Read an optional proto field, returning None when it is unset.
+
+    The zero value is a real signal for these fields, so the proto default
+    cannot stand in for "the sender did not report this".
+    """
+    return getattr(message, field_name) if message.HasField(field_name) else None
 
 
 def _actor_handle_deserializer(serialized_obj, weak_ref):
@@ -514,9 +524,13 @@ class SerializationContext:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 # TODO(sang): Assert instead once actor also reports error messages.
                 error_msg = ""
+                setup_failure = None
                 if error_info.HasField("runtime_env_setup_failed_error"):
-                    error_msg = error_info.runtime_env_setup_failed_error.error_message
-                return RuntimeEnvSetupError(error_message=error_msg)
+                    setup_failure = error_info.runtime_env_setup_failed_error
+                    error_msg = setup_failure.error_message
+                return RuntimeEnvSetupError(
+                    error_message=error_msg, setup_failure=setup_failure
+                )
             elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
                 return TaskPlacementGroupRemoved()
             elif error_type == ErrorType.Value("ACTOR_PLACEMENT_GROUP_REMOVED"):
@@ -526,6 +540,19 @@ class SerializationContext:
                 return TaskUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("WORKER_STARTUP_FAILED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
+                if error_info.HasField("worker_bootstrap_error"):
+                    bootstrap_error = error_info.worker_bootstrap_error
+                    return WorkerBootstrapError(
+                        error_message=bootstrap_error.error_message,
+                        attempts=_optional_proto_field(bootstrap_error, "attempts"),
+                        worker_id=_optional_proto_field(bootstrap_error, "worker_id"),
+                        stderr_tail=_optional_proto_field(
+                            bootstrap_error, "stderr_tail"
+                        ),
+                        stderr_ref=_optional_proto_field(bootstrap_error, "stderr_ref"),
+                    )
+                # The plain-task path sets this error type without a context, so
+                # it keeps raising the exception type it has always raised.
                 return RaySystemError(error_info.error_message)
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)

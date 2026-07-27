@@ -136,13 +136,22 @@ def create_conda_env_if_needed(
     ]
 
     logger.info(f"Creating conda environment {prefix}")
-    exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
+    exit_code, _ = exec_cmd_stream_to_logger(create_cmd, logger)
     if exit_code != 0:
         if os.path.exists(prefix):
             shutil.rmtree(prefix)
-        raise RuntimeError(
-            f"Failed to install conda environment {prefix}:\nOutput:\n{output}"
+        # Conda's output is not interpolated into the message: this message is
+        # carried up as the structured setup failure that the state and export
+        # APIs serve, and exec_cmd_stream_to_logger has already streamed every
+        # line of that output to the log.
+        error = RuntimeError(
+            f"Failed to install conda environment {prefix}: conda exited with "
+            f"code {exit_code}. See the runtime env setup log on this node for "
+            "the conda output."
         )
+        error.phase = "conda_env_create"
+        error.returncode = exit_code
+        raise error
 
 
 def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:

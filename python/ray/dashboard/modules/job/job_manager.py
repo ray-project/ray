@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import copy
 import logging
 import os
@@ -30,12 +31,19 @@ from ray.dashboard.modules.job.common import (
     JobFailureStage,
     JobInfo,
     JobInfoStorageClient,
+    context_dict_from_proto,
     make_failure_info,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.utils import close_logger_file_descriptor, get_head_node_id
-from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnschedulableError,
+    OutOfMemoryError,
+    RuntimeEnvSetupError,
+    WorkerBootstrapError,
+)
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 
@@ -54,6 +62,30 @@ def generate_job_id() -> str:
     )
     id_part = "".join(rand.choices(possible_characters, k=16))
     return f"raysubmit_{id_part}"
+
+
+def _supervisor_death_cause(e: ActorDiedError) -> Optional[Dict[str, Any]]:
+    """Return the supervisor's death cause shaped as an ActorDeathCause dict.
+
+    ActorDiedError reports the inner ActorDiedErrorContext, which is one branch
+    of the ActorDeathCause that SupervisorDeathContext.death_cause declares, so
+    it has to be wrapped in that branch. Writing it in unwrapped would present
+    ActorDiedErrorContext's field names to a parse expecting ActorDeathCause's,
+    and one unrecognised key does not drop the key -- it makes the GCS drop the
+    job's entire record.
+
+    Carrying the cause whole is also what keeps a preempted node visible without
+    a second source of truth for it: the reason stays where Ray recorded it, on
+    actor_died_error_context.node_death_info.
+    """
+    death_cause = e.death_cause
+    if not death_cause:
+        return None
+    # A dict today. Tolerate the message itself so that this keeps writing a
+    # parseable context if that property ever hands back the proto.
+    if not isinstance(death_cause, dict):
+        death_cause = context_dict_from_proto(death_cause)
+    return {"actor_died_error_context": death_cause}
 
 
 class JobManager:
@@ -305,15 +337,52 @@ class JobManager:
 
                         target_job_error_message = f"runtime_env setup failed: {e}"
                         target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
-                        # Only the flattened message is available here. The
-                        # agent's structured setup_failure (plugin, package,
-                        # installer exit code, per-attempt history) is dropped in
-                        # the raylet at runtime_env_agent_client.cc, whose
-                        # callback signature carries a bare string.
+                        runtime_env_context: Dict[str, Any] = {}
+                        if e.setup_failure is not None:
+                            runtime_env_context = context_dict_from_proto(
+                                e.setup_failure
+                            )
+                        # str(e) rather than the agent's own text, which is what
+                        # setup_failure.error_message holds: str() adds the
+                        # "Failed to set up runtime environment." preamble that
+                        # consumers already read.
+                        runtime_env_context["error_message"] = str(e)
                         target_failure_info = make_failure_info(
                             JobFailureStage.RUNTIME_ENV_SETUP,
                             context_key="runtime_env",
-                            context={"error_message": str(e)},
+                            context=runtime_env_context,
+                        )
+
+                    elif isinstance(e, WorkerBootstrapError):
+                        logger.error(
+                            f"Failed to start job {job_id} because the "
+                            "supervisor actor's worker process never finished "
+                            f"registering: {e}"
+                        )
+
+                        target_job_error_message = (
+                            f"Job supervisor actor's worker failed to start: {e}"
+                        )
+                        target_job_error_type = (
+                            JobErrorType.JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE
+                        )
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.WORKER_BOOTSTRAP,
+                            context_key="worker_bootstrap",
+                            context={
+                                "error_message": str(e),
+                                "attempts": e.attempts,
+                                # base64 because that is how protobuf JSON
+                                # represents bytes, and because raw bytes do
+                                # not survive json.dumps at all.
+                                "worker_id": (
+                                    base64.b64encode(e.worker_id).decode()
+                                    if e.worker_id is not None
+                                    else None
+                                ),
+                                "stderr_tail": e.stderr_tail,
+                                "stderr_ref": e.stderr_ref,
+                            },
                         )
 
                     elif isinstance(e, ActorUnschedulableError):
@@ -328,14 +397,6 @@ class JobManager:
                         target_job_error_type = (
                             JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
                         )
-                        # NOTE: this branch is overloaded upstream. A worker that
-                        # crashed before registering is written into
-                        # ActorUnschedulableContext at gcs_actor_manager.cc, the
-                        # same context used for genuine capacity failures, so a
-                        # broken bootstrap script arrives here reading as
-                        # "unschedulable". We cannot separate the two without the
-                        # C++ change, so the stage stays SUPERVISOR_START rather
-                        # than guessing WORKER_BOOTSTRAP from the message text.
                         target_failure_info = make_failure_info(
                             JobFailureStage.SUPERVISOR_START,
                             context_key="supervisor",
@@ -349,12 +410,30 @@ class JobManager:
                         logger.error(f"Job supervisor actor for {job_id} died: {e}")
                         target_job_error_message = f"Job supervisor actor died: {e}"
                         target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
-                        # e.cause is a structured ActorDiedErrorContext that is
-                        # flattened into the f-string above. Carrying it into
-                        # SupervisorDeathContext.death_cause is R6 and is left
-                        # out here deliberately: a hand-built nested proto dict
-                        # that does not match the schema would fail the GCS JSON
-                        # parse and silently blank the whole job_info record.
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.SUPERVISOR_START,
+                            context_key="supervisor",
+                            context={
+                                "error_message": str(e),
+                                "exception_class": type(e).__name__,
+                                "death_cause": _supervisor_death_cause(e),
+                            },
+                        )
+
+                    elif isinstance(e, OutOfMemoryError):
+                        logger.error(
+                            f"Job supervisor actor for {job_id} was killed under "
+                            f"memory pressure: {e}"
+                        )
+                        target_job_error_message = f"Job supervisor actor died: {e}"
+                        target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+                        # A memory-monitor kill is recorded as OomContext, a
+                        # different ActorDeathCause branch, which reaches Python
+                        # as OutOfMemoryError rather than ActorDiedError -- so it
+                        # would otherwise land in the unknown-failure branch
+                        # below. JobFailureInfo.oom stays unset: OutOfMemoryError
+                        # carries only a message, so the only way to fill an
+                        # OomContext here would be to parse it back out.
                         target_failure_info = make_failure_info(
                             JobFailureStage.SUPERVISOR_START,
                             context_key="supervisor",
@@ -409,7 +488,24 @@ class JobManager:
                     )
                     if target_job_error_message:
                         event_log += f" {target_job_error_message}"
-                        self.event_logger.error(event_log, submission_id=job_id)
+                        # The attribution also goes out as kwargs, which the
+                        # event logger copies verbatim into Event.custom_fields,
+                        # so that these events can be aggregated by field rather
+                        # than by matching patterns against the message.
+                        self.event_logger.error(
+                            event_log,
+                            submission_id=job_id,
+                            error_type=(
+                                target_job_error_type.value
+                                if target_job_error_type
+                                else None
+                            ),
+                            failure_stage=(
+                                target_failure_info.get("stage")
+                                if target_failure_info
+                                else None
+                            ),
+                        )
                     else:
                         self.event_logger.info(event_log, submission_id=job_id)
 

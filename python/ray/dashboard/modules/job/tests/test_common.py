@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 from dataclasses import asdict
 from unittest.mock import AsyncMock, MagicMock
@@ -6,7 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
-from ray.core.generated.common_pb2 import JobFailureInfo
+from ray.core.generated.common_pb2 import (
+    ActorDiedErrorContext,
+    ErrorType,
+    InfraCauseContext,
+    JobFailureInfo,
+    RuntimeEnvFailedContext,
+)
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
@@ -15,6 +22,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
+    context_dict_from_proto,
     http_uri_components_to_uri,
     make_failure_info,
     uri_to_http_components,
@@ -291,6 +299,150 @@ def test_job_info_json_to_proto():
         "failure_info",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
+
+
+def _parse_failure_info(failure_info):
+    """Round-trip a failure_info dict through the hop the GCS performs.
+
+    The GCS parses the job record with ignore_unknown_fields at its default of
+    false, so a key the proto does not know does not get dropped: the parse fails
+    and the job's entire job_info record is left empty. Every context key
+    therefore needs a case here, and the assertions have to reach the leaves --
+    the dict is written on one side of this hop and read on the other, with
+    nothing in between to notice a mismatch.
+    """
+    info = JobInfo(
+        status=JobStatus.FAILED,
+        entrypoint="echo hi",
+        failure_info=failure_info,
+    )
+    return Parse(json.dumps(info.to_json()), JobsAPIInfo()).failure_info
+
+
+def test_runtime_env_failure_info_json_to_proto():
+    setup_failure = RuntimeEnvFailedContext(
+        error_message="the agent's own message",
+        plugin="pip",
+        phase="install",
+        installer_exit_code=1,
+    )
+    setup_failure.attempts.add(attempt=1, exit_code=1, duration_ms=123)
+    # Built from the proto rather than by hand, which is what job_manager does
+    # and the only way the keys are guaranteed to be ones the proto knows.
+    context = context_dict_from_proto(setup_failure)
+    context["error_message"] = "Failed to set up runtime environment."
+
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.RUNTIME_ENV_SETUP,
+            context_key="runtime_env",
+            context=context,
+        )
+    )
+    assert failure_info.stage == JobFailureInfo.Stage.RUNTIME_ENV_SETUP
+    assert failure_info.WhichOneof("context") == "runtime_env"
+    assert failure_info.runtime_env.plugin == "pip"
+    assert failure_info.runtime_env.phase == "install"
+    assert failure_info.runtime_env.installer_exit_code == 1
+    assert (
+        failure_info.runtime_env.error_message
+        == "Failed to set up runtime environment."
+    )
+    # A uint64 is a string in protobuf JSON, so the dict carries "123". It parses
+    # back to an int; do not "clean up" the dict builder to emit one.
+    assert context["attempts"][0]["duration_ms"] == "123"
+    assert len(failure_info.runtime_env.attempts) == 1
+    assert failure_info.runtime_env.attempts[0].attempt == 1
+    assert failure_info.runtime_env.attempts[0].duration_ms == 123
+    # An installer that never ran is a different claim from one that exited 0.
+    assert not failure_info.runtime_env.HasField("failed_package")
+
+
+def test_worker_bootstrap_failure_info_json_to_proto():
+    worker_id = b"\x01\x02\x03\x04"
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.WORKER_BOOTSTRAP,
+            context_key="worker_bootstrap",
+            context={
+                "error_message": "Failed to startup worker after retrying 3 times.",
+                "attempts": 3,
+                "worker_id": base64.b64encode(worker_id).decode(),
+                "stderr_tail": None,
+                "stderr_ref": "node_id:raylet.err (pid 1)",
+            },
+        )
+    )
+    assert failure_info.stage == JobFailureInfo.Stage.WORKER_BOOTSTRAP
+    assert failure_info.WhichOneof("context") == "worker_bootstrap"
+    assert failure_info.worker_bootstrap.attempts == 3
+    assert failure_info.worker_bootstrap.stderr_ref == "node_id:raylet.err (pid 1)"
+    # protobuf JSON represents bytes as base64, so the encoding on the writing
+    # side has to be exactly this parse's inverse. Raw bytes would not survive
+    # json.dumps at all, so this is not a field that can be passed through.
+    assert failure_info.worker_bootstrap.worker_id == worker_id
+    assert not failure_info.worker_bootstrap.HasField("stderr_tail")
+
+
+def test_supervisor_failure_info_json_to_proto():
+    died = ActorDiedErrorContext(
+        error_message="The actor died unexpectedly before finishing this task.",
+        reason=ActorDiedErrorContext.NODE_DIED,
+        actor_id=b"\x05\x06",
+    )
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.SUPERVISOR_START,
+            context_key="supervisor",
+            context={
+                "error_message": "The actor died unexpectedly.",
+                "exception_class": "ActorDiedError",
+                # The death cause is one branch of an ActorDeathCause, so it has
+                # to be written inside that branch: ActorDiedErrorContext's own
+                # field names are not ActorDeathCause's.
+                "death_cause": {
+                    "actor_died_error_context": context_dict_from_proto(died)
+                },
+            },
+        )
+    )
+    assert failure_info.stage == JobFailureInfo.Stage.SUPERVISOR_START
+    assert failure_info.WhichOneof("context") == "supervisor"
+    assert failure_info.supervisor.exception_class == "ActorDiedError"
+    assert (
+        failure_info.supervisor.death_cause.WhichOneof("context")
+        == "actor_died_error_context"
+    )
+    assert (
+        failure_info.supervisor.death_cause.actor_died_error_context.reason
+        == ActorDiedErrorContext.NODE_DIED
+    )
+
+
+def test_infra_cause_failure_info_json_to_proto():
+    infra_cause = InfraCauseContext(
+        error_type=ErrorType.NODE_DIED,
+        error_message="node died",
+        ray_job_id=b"\x64\x00\x00\x00",
+    )
+    infra_cause.sample_task_ids.append("task_id_1")
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.DRIVER_RUN,
+            driver_exit_code=1,
+            context_key="driver_run",
+            context={"error_message": "driver exited with code 1"},
+            infra_cause=context_dict_from_proto(infra_cause),
+        )
+    )
+    # infra_cause annotates the stage rather than replacing it: the driver really
+    # did exit non-zero, so driver_run stays set alongside it.
+    assert failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
+    assert failure_info.WhichOneof("context") == "driver_run"
+    assert failure_info.HasField("infra_cause")
+    assert failure_info.infra_cause.error_type == ErrorType.NODE_DIED
+    assert failure_info.infra_cause.ray_job_id == b"\x64\x00\x00\x00"
+    assert list(failure_info.infra_cause.sample_task_ids) == ["task_id_1"]
 
 
 def test_get_all_jobs_filters_out_none_job_info():

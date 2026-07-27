@@ -84,7 +84,7 @@ class GcsActorSchedulerMockTest : public Test {
         io_context,
         *actor_table,
         *gcs_node_manager,
-        [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
+        [this](auto a, auto b, auto c, auto d) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
         *worker_client_pool_,

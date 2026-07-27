@@ -302,6 +302,8 @@ message RayErrorInfo {
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     // for ErrorType::ACTOR_UNAVAILABLE
     ActorUnavailableContext actor_unavailable_error = 4;
+    // for ErrorType::WORKER_STARTUP_FAILED raised on the actor path
+    WorkerBootstrapContext worker_bootstrap_error = 6;
   }
   string error_message = 5;
   // The type of error that caused the exception.
@@ -371,6 +373,11 @@ message ActorDeathCause {
     ActorDiedErrorContext actor_died_error_context = 3;
     ActorUnschedulableContext actor_unschedulable_context = 4;
     OomContext oom_context = 5;
+    // Indicates that this actor is marked as DEAD because its worker process
+    // crashed or hung before completing registration. Distinct from
+    // actor_unschedulable_context, which means the cluster could not place the
+    // actor at all.
+    WorkerBootstrapContext worker_bootstrap_context = 6;
   }
 }
 // ---Actor death contexts start----
@@ -384,14 +391,21 @@ message RuntimeEnvFailedContext {
   // "container". Raw plugin name rather than an enum so a new plugin is a new
   // value, not a schema change.
   optional string plugin = 2;
-  // Which phase of that plugin failed, e.g. "resolve", "download", "install".
+  // Which step of that plugin failed, named after the call site that raised,
+  // e.g. "create_venv", "install_pip", "install", "dependency_check",
+  // "image_pull", "conda_env_create", or "timeout". These are the boundaries
+  // the agent can actually observe: pip and uv resolve, download and install
+  // inside a single subprocess, so a finer split would have to be parsed back
+  // out of installer output.
   optional string phase = 3;
   // The specific requirement that failed, e.g. "torch==2.9.1", when the plugin
   // can attribute the failure to one.
   optional string failed_package = 4;
   // Exit code of the installer process (uv, pip, ...), when one ran.
   optional int32 installer_exit_code = 5;
-  // Reference to the captured installer stderr.
+  // Reference to the captured installer output. The installer runs with stderr
+  // redirected into stdout, so what is stored behind this reference is a single
+  // merged stream rather than stderr alone.
   optional string stderr_ref = 6;
   // One entry per setup attempt. Today only the last attempt survives, so a
   // failure that succeeded on retry is indistinguishable from one that never
@@ -464,6 +478,35 @@ message OomContext {
   bool fail_immediately = 2;
 }
 
+// A worker that died before completing registration. Distinct from
+// ActorUnschedulableContext, which this path currently borrows and which makes
+// a broken bootstrap script read as a capacity problem.
+// Note: WorkerBootstrapContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
+message WorkerBootstrapContext {
+  string error_message = 1;
+  // Not populated: a worker spawned before registration inherits the raylet's
+  // stderr, so its bytes are interleaved into raylet.err with every other
+  // concurrently starting worker and no per-worker marker. Slicing a tail out
+  // of that would attach some other worker's traceback to this failure, so
+  // stderr_ref below is used instead. Declared so that filling it in, once
+  // workers get their own stream at spawn time, is not a schema change.
+  optional string stderr_tail = 2;
+  // Number of registration attempts made before giving up.
+  optional int32 attempts = 3;
+  optional bytes worker_id = 4;
+  // Not populated, for two independent reasons: the raylet leaves SIGCHLD as
+  // SIG_IGN on the default path, so the kernel reaps the worker and waitpid
+  // returns ECHILD; and Process::Wait() consults its lifetime pipe first, which
+  // is always created, so the waitpid is unreachable for a spawned worker even
+  // when it would have succeeded. Restoring SIGCHLD alone will not fill this in.
+  // Declared so that adding it later is not a schema change.
+  optional int32 exit_code = 5;
+  // Where the worker's output went, e.g. "<node_id>:raylet.err (pid <N>)", so
+  // the bytes stay a two-hop lookup rather than a misattributed tail.
+  optional string stderr_ref = 6;
+}
+
 // ---Actor death contexts end----
 
 // ---Job failure info start----
@@ -512,24 +555,10 @@ message JobFailureInfo {
 
   // Reference to the captured log excerpt for this failure.
   optional string log_excerpt_ref = 9;
-}
 
-// A worker that died before completing registration. Distinct from
-// ActorUnschedulableContext, which this path currently borrows and which makes
-// a broken bootstrap script read as a capacity problem.
-message WorkerBootstrapContext {
-  string error_message = 1;
-  // stderr of the worker that failed. Today this is interleaved into
-  // raylet.err, because workers spawned before registration inherit the
-  // raylet's output stream.
-  optional string stderr_tail = 2;
-  // Number of registration attempts made before giving up.
-  optional int32 attempts = 3;
-  optional bytes worker_id = 4;
-  // Not populated today: the raylet sets SIGCHLD to SIG_IGN, so the kernel
-  // reaps workers and waitpid returns ECHILD. Reserved so that adding it later
-  // is not a schema change.
-  optional int32 exit_code = 5;
+  // Ray-internal infra signal found in the GCS for this job, annotating the
+  // stage above rather than replacing it.
+  optional InfraCauseContext infra_cause = 11;
 }
 
 // Death of the job supervisor actor, as data rather than as its string form.
@@ -556,6 +585,30 @@ message DriverRunContext {
   // then exiting non-zero. Distinguishes ENTRYPOINT_START_FAILED from
   // DRIVER_EXITED_NONZERO downstream.
   optional bool failed_to_start = 3;
+}
+
+// An infra cause found in the GCS for a job, read from the job's actor and task
+// records. This annotates a stage rather than being one: a driver that exits
+// non-zero because a node it depended on died is still a DRIVER_RUN failure, it
+// is just not the entrypoint's fault.
+message InfraCauseContext {
+  // Reuses the ErrorType vocabulary above rather than minting a parallel enum,
+  // so a cause Ray already names keeps that name here. This field has no
+  // presence and its zero value is WORKER_DIED, so read it only when
+  // infra_cause itself is set.
+  ErrorType error_type = 1;
+  string error_message = 2;
+  // The whole death cause when an actor of this job died, so that e.g. an OOM
+  // kill stays a oneof branch instead of collapsing into error_message.
+  optional ActorDeathCause actor_death_cause = 3;
+  // Set when what was found is a node death, e.g. a spot preemption.
+  optional NodeDeathInfo node_death_info = 4;
+  // The Ray job id the evidence was read under. The job record is keyed by
+  // submission id, so without this there is no way to repeat the lookup.
+  optional bytes ray_job_id = 5;
+  // A bounded sample of the task ids the evidence came from, to follow up on.
+  // Deliberately a sample and not the full set.
+  repeated string sample_task_ids = 6;
 }
 
 // ---Job failure info end----

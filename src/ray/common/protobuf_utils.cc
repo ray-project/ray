@@ -108,7 +108,8 @@ const std::string &GetActorDeathCauseString(const rpc::ActorDeathCause &death_ca
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
       {ContextCase::kActorUnschedulableContext, "ActorUnschedulableContext"},
       {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"},
-      {ContextCase::kOomContext, "OOMContext"}};
+      {ContextCase::kOomContext, "OOMContext"},
+      {ContextCase::kWorkerBootstrapContext, "WorkerBootstrapContext"}};
   auto it = death_cause_string.find(death_cause.context_case());
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
@@ -130,7 +131,16 @@ rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
     break;
   case ContextCase::kActorUnschedulableContext:
+    // No CopyFrom: ActorUnschedulableContext holds only error_message, which the
+    // unconditional set_error_message below already carries.
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
+    break;
+  case ContextCase::kWorkerBootstrapContext:
+    // Unlike the arm above, this context holds more than error_message, so the
+    // whole sub-message has to be copied to reach the Python side.
+    error_info.mutable_worker_bootstrap_error()->CopyFrom(
+        death_cause.worker_bootstrap_context());
+    error_info.set_error_type(rpc::ErrorType::WORKER_STARTUP_FAILED);
     break;
   case ContextCase::kOomContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
@@ -155,6 +165,8 @@ std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_caus
     return death_cause.actor_died_error_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     return death_cause.oom_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kWorkerBootstrapContext) {
+    return death_cause.worker_bootstrap_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     return "Death cause not recorded.";

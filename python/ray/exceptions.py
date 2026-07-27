@@ -8,6 +8,7 @@ import colorama
 
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
+from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import ActorID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import (
     PYTHON,
@@ -17,6 +18,7 @@ from ray.core.generated.common_pb2 import (
     Language,
     NodeDeathInfo,
     RayException,
+    RuntimeEnvFailedContext,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -521,10 +523,28 @@ class ActorDiedError(RayActorError):
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
+        # Kept so that consumers can read the cause instead of parsing it back
+        # out of error_msg, which flattens it. Read through the death_cause
+        # property below, which does not hand out the protobuf message itself.
+        self._death_cause = cause
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
         return ActorDiedError(task_error)
+
+    @property
+    def death_cause(self) -> Optional[dict]:
+        """The system-level death context, as a plain dict.
+
+        None when the actor died because of an exception raised in its creation
+        task -- the cause is then a ``RayTaskError``, which ``str(self)``
+        already carries -- and None when no cause was reported at all.
+        """
+        if not isinstance(self._death_cause, ActorDiedErrorContext):
+            return None
+        # snake_case keys, matching the proto field names the consumers of this
+        # dict parse it back into. MessageToDict emits camelCase by default.
+        return message_to_dict(self._death_cause, preserving_proto_field_name=True)
 
 
 @DeveloperAPI
@@ -957,10 +977,25 @@ class RuntimeEnvSetupError(RayError):
     Args:
         error_message: The error message that explains
             why runtime env setup has failed.
+        setup_failure: Structured detail about the failure as reported by the
+            runtime env agent -- which plugin and step failed, the installer's
+            exit code, and one entry per setup attempt. None when the agent
+            reported no context.
     """
 
-    def __init__(self, error_message: str = None):
+    def __init__(
+        self,
+        error_message: str = None,
+        setup_failure: Optional[RuntimeEnvFailedContext] = None,
+    ):
         self.error_message = error_message
+        # A detached copy rather than the argument itself: callers pass a
+        # sub-message view of a RayErrorInfo they own and are free to reuse,
+        # while this exception is pickled by RayError.to_bytes and outlives it.
+        self.setup_failure = None
+        if setup_failure is not None:
+            self.setup_failure = RuntimeEnvFailedContext()
+            self.setup_failure.CopyFrom(setup_failure)
 
     def __str__(self):
         msgs = ["Failed to set up runtime environment."]
@@ -1024,6 +1059,55 @@ class ActorUnschedulableError(RayError):
 
     def __str__(self):
         return f"The actor is not schedulable: {self.error_message}"
+
+
+@PublicAPI(stability="alpha")
+class WorkerBootstrapError(RayError):
+    """Raised when a worker process started but never finished registering.
+
+    Ray gave up after repeated startup attempts, for example because a
+    ``py_executable`` wrapper exits before the worker registers. Distinct from
+    ``ActorUnschedulableError``, which means the cluster could not place the
+    work at all.
+
+    Args:
+        error_message: The error message that explains why worker startup
+            failed.
+        attempts: How many startup attempts were made before giving up, when
+            reported.
+        worker_id: ID of the worker that failed to register, when reported.
+        stderr_tail: Tail of the worker's own output, when reported. A worker
+            that dies before registering writes into the raylet's stderr,
+            interleaved with every other worker starting at the same time, so
+            this is normally left unset in favour of stderr_ref.
+        stderr_ref: Where the worker's output went, e.g.
+            ``"<node_id>:raylet.err (pid <N>)"``.
+    """
+
+    def __init__(
+        self,
+        error_message: str,
+        attempts: Optional[int] = None,
+        worker_id: Optional[bytes] = None,
+        stderr_tail: Optional[str] = None,
+        stderr_ref: Optional[str] = None,
+    ):
+        # BaseException.__reduce__ rebuilds the exception from self.args, which
+        # is only seeded by positional arguments. This one is constructed with
+        # keywords, so seed it here or the class cannot be unpickled -- and
+        # RayError.to_bytes pickles it.
+        super().__init__(error_message)
+        self.error_message = error_message
+        self.attempts = attempts
+        self.worker_id = worker_id
+        self.stderr_tail = stderr_tail
+        self.stderr_ref = stderr_ref
+
+    def __str__(self):
+        msgs = [self.error_message]
+        if self.stderr_ref:
+            msgs.append(f"The worker's output is in {self.stderr_ref}.")
+        return "\n".join(msgs)
 
 
 @DeveloperAPI
@@ -1177,6 +1261,7 @@ RAY_EXCEPTION_TYPES = [
     TaskUnschedulableError,
     ActorDiedError,
     ActorUnschedulableError,
+    WorkerBootstrapError,
     ActorUnavailableError,
     RayChannelError,
     RayChannelTimeoutError,

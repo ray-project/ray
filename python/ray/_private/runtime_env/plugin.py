@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from abc import ABC
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Type
 
 from ray._common.utils import import_attr
@@ -227,6 +228,27 @@ class RuntimeEnvPluginManager:
         return sorted(self.plugins.values(), key=lambda x: x.priority)
 
 
+@contextmanager
+def _attribute_failure_to_plugin(plugin_name: str, phase: Optional[str] = None):
+    """Tag whatever the plugin raises with the plugin it came from.
+
+    The runtime env agent reports which plugin failed, and by the time an
+    exception reaches it the plugin identity survives nowhere but the traceback
+    frames. Tagging it here keeps that a typed attribute instead of something
+    the agent has to recover from the traceback or the message text.
+    """
+    try:
+        yield
+    except BaseException as e:
+        if getattr(e, "runtime_env_plugin", None) is None:
+            e.runtime_env_plugin = plugin_name
+        # Only for the entry points that are a phase in themselves; `create`
+        # passes no phase because the cmd it runs sets a more specific one.
+        if phase is not None and getattr(e, "phase", None) is None:
+            e.phase = phase
+        raise
+
+
 async def create_for_plugin_if_needed(
     runtime_env: "RuntimeEnv",  # noqa: F821
     plugin: RuntimeEnvPlugin,
@@ -238,7 +260,8 @@ async def create_for_plugin_if_needed(
     if plugin.name not in runtime_env or runtime_env[plugin.name] is None:
         return
 
-    plugin.validate(runtime_env)
+    with _attribute_failure_to_plugin(plugin.name, phase="validate"):
+        plugin.validate(runtime_env)
 
     uris = plugin.get_uris(runtime_env)
 
@@ -247,12 +270,16 @@ async def create_for_plugin_if_needed(
             f"No URIs for runtime env plugin {plugin.name}; "
             "create always without checking the cache."
         )
-        await plugin.create(None, runtime_env, context, logger=logger)
+        with _attribute_failure_to_plugin(plugin.name):
+            await plugin.create(None, runtime_env, context, logger=logger)
 
     for uri in uris:
         if uri not in uri_cache:
             logger.debug(f"Cache miss for URI {uri}.")
-            size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
+            with _attribute_failure_to_plugin(plugin.name):
+                size_bytes = await plugin.create(
+                    uri, runtime_env, context, logger=logger
+                )
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
             logger.info(
@@ -262,4 +289,5 @@ async def create_for_plugin_if_needed(
             )
             uri_cache.mark_used(uri, logger=logger)
 
-    plugin.modify_context(uris, runtime_env, context, logger)
+    with _attribute_failure_to_plugin(plugin.name, phase="modify_context"):
+        plugin.modify_context(uris, runtime_env, context, logger)

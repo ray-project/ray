@@ -170,7 +170,17 @@ class PipProcessor:
         ]
         logger.info("Installing pip with version %s", pip_version)
 
-        await check_output_cmd(pip_reinstall_cmd, logger=logger, cwd=cwd, env=pip_env)
+        # This cmd installs exactly one requirement, and its name is built from
+        # the user's own pip_version, so it can be reported as the package that
+        # failed without inspecting pip's output.
+        await check_output_cmd(
+            pip_reinstall_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install_pip",
+            attributed_package=f"pip{pip_version}",
+        )
 
     async def _pip_check(
         self,
@@ -193,6 +203,7 @@ class PipProcessor:
             logger=logger,
             cwd=cwd,
             env=pip_env,
+            phase="dependency_check",
         )
 
         logger.info("Pip check on %s successfully.", path)
@@ -249,7 +260,11 @@ class PipProcessor:
 
         logger.info("Installing python requirements to %s", virtualenv_path)
 
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        # No attributed_package here: this cmd installs the whole requirement
+        # set, and which member of it failed is only stated in pip's output.
+        await check_output_cmd(
+            pip_install_cmd, logger=logger, cwd=cwd, env=pip_env, phase="install"
+        )
 
     async def _run(self):
         path = self._target_dir

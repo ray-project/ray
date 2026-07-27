@@ -388,14 +388,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                           << ", error message: " << reply.error_message();
             RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
                            << serialized_runtime_env;
+            // `reply` is a by-value parameter of this lambda, so the borrowed pointer
+            // stays valid for the whole synchronous callback chain below it.
             callback(false,
                      reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ reply.error_message());
+                     /*setup_error_message*/ reply.error_message(),
+                     /*setup_failure*/ reply.has_setup_failure() ? &reply.setup_failure()
+                                                                 : nullptr);
           } else {
             RAY_LOG(INFO) << "Create runtime env for job " << job_id;
             callback(true,
                      reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ "");
+                     /*setup_error_message*/ "",
+                     /*setup_failure*/ nullptr);
           }
         },
         /*fail_callback=*/
@@ -409,7 +414,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           RAY_LOG(INFO) << error_message;
           RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
                          << serialized_runtime_env;
-          callback(false, "", error_message);
+          // The request never reached the agent, so there is no structured detail.
+          callback(false, "", error_message, /*setup_failure=*/nullptr);
         },
         clock_.SteadyNowMillis() + agent_register_timeout_ms_);
   }

@@ -85,12 +85,18 @@ enum PopWorkerStatus {
 /// \param[in] runtime_env_setup_error_message The error message
 /// when runtime env setup is failed. This should be empty unless status ==
 /// RuntimeEnvCreationFailed.
+/// \param[in] runtime_env_setup_failure Structured detail about the runtime env
+/// setup failure as reported by the agent. Nullptr unless status ==
+/// RuntimeEnvCreationFailed, and may be nullptr even then. It is borrowed from the
+/// agent client's reply for the duration of the call only: every hop that forwards
+/// it does so synchronously, so a receiver that outlives the call must CopyFrom it.
 /// \return true if the worker was used. Otherwise, return false
 /// and the worker will be returned to the worker pool.
 using PopWorkerCallback =
     std::function<bool(const std::shared_ptr<WorkerInterface> &worker,
                        PopWorkerStatus status,
-                       const std::string &runtime_env_setup_error_message)>;
+                       const std::string &runtime_env_setup_error_message,
+                       const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure)>;
 
 struct PopWorkerRequest {
   const rpc::Language language_;

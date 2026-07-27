@@ -14,6 +14,7 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
@@ -76,6 +77,12 @@ class JobErrorType(str, Enum):
     JOB_SUPERVISOR_ACTOR_START_FAILURE = "JOB_SUPERVISOR_ACTOR_START_FAILURE"
     # Job supervisor actor failed to be scheduled
     JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE = "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
+    # Job supervisor actor's worker process never completed registration. Distinct
+    # from JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE, which means the cluster could not
+    # place the actor at all: the remediation is different for each.
+    JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE = (
+        "JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE"
+    )
     # Job supervisor actor failed for unknown exception
     JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
     # Job supervisor actor died
@@ -84,6 +91,11 @@ class JobErrorType(str, Enum):
     JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
     # Job driver script failed due to non-zero exit code
     JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
+    # Job driver exited non-zero, but Ray's own records for the job name an infra
+    # cause (a node died, a worker was OOM-killed) rather than the entrypoint.
+    # The driver still exited non-zero, so this is a narrowing of
+    # JOB_ENTRYPOINT_COMMAND_ERROR, not a separate stage.
+    JOB_DRIVER_INFRA_FAILURE = "JOB_DRIVER_INFRA_FAILURE"
 
 
 class JobFailureStage(str, Enum):
@@ -100,6 +112,23 @@ class JobFailureStage(str, Enum):
     DRIVER_RUN = "DRIVER_RUN"
 
 
+def context_dict_from_proto(message: Any) -> Dict[str, Any]:
+    """Convert a failure-context proto into the dict make_failure_info carries.
+
+    preserving_proto_field_name is required: the rest of the record is written
+    with proto field names, so emitting the JSON camelCase spelling for nested
+    contexts would leave one record using two spellings of the same schema.
+
+    always_print_fields_with_no_presence is left at its default so unset
+    optional fields stay unset rather than arriving downstream as zeroes, which
+    for e.g. an installer exit code is a materially different claim.
+
+    Note that a uint64 field comes back as a JSON string, per the protobuf JSON
+    mapping. That round-trips through the GCS's parse; do not "fix" it to an int.
+    """
+    return message_to_dict(message, preserving_proto_field_name=True)
+
+
 def make_failure_info(
     stage: JobFailureStage,
     *,
@@ -108,6 +137,7 @@ def make_failure_info(
     driver_exit_code: Optional[int] = None,
     termination_reason: Optional[str] = None,
     log_excerpt_ref: Optional[str] = None,
+    infra_cause: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the dict carried on JobInfo.failure_info.
 
@@ -117,8 +147,32 @@ def make_failure_info(
     unrecognised key does not just drop the key -- it fails the parse and leaves
     the job's entire job_info record empty.
 
+    That is also why every nested context dict passed in here must come from
+    MessageToDict on the real proto rather than being hand-built.
+
     None values are omitted rather than written as null so the proto's optional
     fields stay genuinely unset, and HasField() means what it says downstream.
+
+    Args:
+        stage: Which stage of the job's startup or execution failed. The
+            discriminator every consumer reads first.
+        context_key: Field name of the stage-specific context to attach, e.g.
+            "runtime_env". Must name one of JobFailureInfo's oneof branches.
+        context: The context dict itself, passed together with context_key.
+        driver_exit_code: The entrypoint's exit code, when it ran and exited.
+        termination_reason: Raw kernel or runtime termination token, e.g.
+            "oom-kill", when something upstream reported one.
+        log_excerpt_ref: Reference to the captured log excerpt for this failure.
+            A reference rather than the bytes: the output is unbounded, and pip
+            and uv echo index URLs that can carry credentials.
+        infra_cause: An InfraCauseContext dict. Sibling of the stage context
+            rather than one of its branches: a driver that exited non-zero
+            because a node it depended on died is still a DRIVER_RUN failure,
+            it is just not the entrypoint's fault.
+
+    Returns:
+        The failure_info dict, with every unset optional field omitted rather
+        than written as null.
     """
     info: Dict[str, Any] = {"stage": stage.value}
     if driver_exit_code is not None:
@@ -135,6 +189,8 @@ def make_failure_info(
         info["termination_reason"] = termination_reason
     if log_excerpt_ref is not None:
         info["log_excerpt_ref"] = log_excerpt_ref
+    if infra_cause:
+        info["infra_cause"] = infra_cause
     if context_key is not None and context:
         pruned = {k: v for k, v in context.items() if v is not None}
         if pruned:

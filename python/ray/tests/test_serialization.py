@@ -879,5 +879,108 @@ def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypat
     assert expected_message in str(result)
 
 
+def test_runtime_env_setup_failed_error_deserialization(monkeypatch):
+    """RUNTIME_ENV_SETUP_FAILED must carry the agent's structured context onto the
+    exception, not only the flattened message it has always carried.
+    """
+    from ray._private.serialization import SerializationContext
+    from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
+    from ray.exceptions import RuntimeEnvSetupError
+
+    # Bypass __init__ — it registers reducers that expect a connected worker.
+    ctx = SerializationContext.__new__(SerializationContext)
+
+    fake_error_info = RayErrorInfo()
+    fake_error_info.error_type = ErrorType.RUNTIME_ENV_SETUP_FAILED
+    setup_failure = fake_error_info.runtime_env_setup_failed_error
+    setup_failure.error_message = "pip install failed"
+    setup_failure.plugin = "pip"
+    setup_failure.phase = "install"
+    setup_failure.installer_exit_code = 1
+    setup_failure.attempts.add(attempt=1, exit_code=1)
+    monkeypatch.setattr(
+        ctx, "_deserialize_error_info", lambda data, fields: fake_error_info
+    )
+
+    result = ctx._deserialize_object(
+        data=b"",  # content irrelevant — _deserialize_error_info is mocked
+        metadata=str(ErrorType.Value("RUNTIME_ENV_SETUP_FAILED")).encode(),
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert isinstance(result, RuntimeEnvSetupError)
+    assert "pip install failed" in str(result)
+    assert result.setup_failure.plugin == "pip"
+    assert result.setup_failure.phase == "install"
+    assert result.setup_failure.installer_exit_code == 1
+    assert len(result.setup_failure.attempts) == 1
+    # A detached copy, not the sub-message view: the RayErrorInfo it was read from
+    # belongs to the caller and may be reused or cleared, while this exception is
+    # pickled by RayError.to_bytes and outlives it.
+    assert result.setup_failure is not fake_error_info.runtime_env_setup_failed_error
+
+
+def test_worker_startup_failed_error_deserialization(monkeypatch):
+    """WORKER_STARTUP_FAILED becomes WorkerBootstrapError only when a bootstrap
+    context was reported.
+
+    The plain-task path sets this error type with no context at all, so the
+    fallback has to stay RaySystemError -- that is the type callers assert on
+    today, and the gate is what keeps them working.
+    """
+    from ray._private.serialization import SerializationContext
+    from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
+    from ray.exceptions import RaySystemError, WorkerBootstrapError
+
+    ctx = SerializationContext.__new__(SerializationContext)
+    metadata = str(ErrorType.Value("WORKER_STARTUP_FAILED")).encode()
+
+    worker_id = b"\x01\x02\x03\x04"
+    with_context = RayErrorInfo()
+    with_context.error_type = ErrorType.WORKER_STARTUP_FAILED
+    bootstrap_error = with_context.worker_bootstrap_error
+    bootstrap_error.error_message = "Failed to startup worker after retrying 3 times."
+    bootstrap_error.attempts = 3
+    bootstrap_error.worker_id = worker_id
+    bootstrap_error.stderr_ref = "node_id:raylet.err (pid 1)"
+    monkeypatch.setattr(
+        ctx, "_deserialize_error_info", lambda data, fields: with_context
+    )
+
+    result = ctx._deserialize_object(
+        data=b"",
+        metadata=metadata,
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert isinstance(result, WorkerBootstrapError)
+    assert "Failed to startup worker after retrying 3 times." in str(result)
+    assert result.attempts == 3
+    assert result.worker_id == worker_id
+    assert result.stderr_ref == "node_id:raylet.err (pid 1)"
+    # Unset optionals arrive as None rather than as the proto default, because
+    # "not reported" and "reported as empty" are different claims.
+    assert result.stderr_tail is None
+
+    without_context = RayErrorInfo()
+    without_context.error_type = ErrorType.WORKER_STARTUP_FAILED
+    without_context.error_message = "Worker startup failed."
+    monkeypatch.setattr(
+        ctx, "_deserialize_error_info", lambda data, fields: without_context
+    )
+
+    result = ctx._deserialize_object(
+        data=b"",
+        metadata=metadata,
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert type(result) is RaySystemError
+    assert "Worker startup failed." in str(result)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

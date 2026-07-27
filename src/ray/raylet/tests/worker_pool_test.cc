@@ -59,6 +59,8 @@ JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID_2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
 constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
+constexpr std::string_view kBadRuntimeEnvPlugin = "pip";
+constexpr std::string_view kBadRuntimeEnvPhase = "install";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -116,7 +118,13 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
-      callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
+      // Stands in for what the agent reports alongside the error message. It is
+      // borrowed by the callback, which runs synchronously, so a local is enough.
+      rpc::RuntimeEnvFailedContext setup_failure;
+      setup_failure.set_error_message(std::string(kBadRuntimeEnvErrorMsg));
+      setup_failure.set_plugin(std::string(kBadRuntimeEnvPlugin));
+      setup_failure.set_phase(std::string(kBadRuntimeEnvPhase));
+      callback(false, "", std::string(kBadRuntimeEnvErrorMsg), &setup_failure);
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -125,7 +133,7 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else {
         runtime_env_reference[serialized_runtime_env] += 1;
       }
-      callback(true, R"({"dummy":"dummy"})", "");
+      callback(true, R"({"dummy":"dummy"})", "", /*setup_failure=*/nullptr);
     }
   };
 
@@ -379,24 +387,37 @@ class WorkerPoolMock : public WorkerPool {
       bool push_workers = true,
       PopWorkerStatus *worker_status = nullptr,
       int timeout_worker_number = 0,
-      std::string *runtime_env_error_msg = nullptr) {
+      std::string *runtime_env_error_msg = nullptr,
+      rpc::RuntimeEnvFailedContext *runtime_env_setup_failure_out = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
-    this->PopWorker(lease_spec,
-                    [&popped_worker, worker_status, &promise, runtime_env_error_msg](
-                        const std::shared_ptr<WorkerInterface> worker,
-                        PopWorkerStatus status,
-                        const std::string &runtime_env_setup_error_message) -> bool {
-                      popped_worker = worker;
-                      if (worker_status != nullptr) {
-                        *worker_status = status;
-                      }
-                      if (runtime_env_error_msg) {
-                        *runtime_env_error_msg = runtime_env_setup_error_message;
-                      }
-                      promise.set_value(true);
-                      return true;
-                    });
+    this->PopWorker(
+        lease_spec,
+        [&popped_worker,
+         worker_status,
+         &promise,
+         runtime_env_error_msg,
+         runtime_env_setup_failure_out](
+            const std::shared_ptr<WorkerInterface> worker,
+            PopWorkerStatus status,
+            const std::string &runtime_env_setup_error_message,
+            const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) -> bool {
+          popped_worker = worker;
+          if (worker_status != nullptr) {
+            *worker_status = status;
+          }
+          if (runtime_env_error_msg) {
+            *runtime_env_error_msg = runtime_env_setup_error_message;
+          }
+          if (runtime_env_setup_failure_out != nullptr &&
+              runtime_env_setup_failure != nullptr) {
+            // Copied out: the pointer is only borrowed for this call, so the
+            // assertions cannot read it after PopWorkerSync returns.
+            runtime_env_setup_failure_out->CopyFrom(*runtime_env_setup_failure);
+          }
+          promise.set_value(true);
+          return true;
+        });
     if (push_workers) {
       PushWorkers(timeout_worker_number, lease_spec.JobId());
     }
@@ -862,7 +883,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
           /*callback=*/
           [](const std::shared_ptr<WorkerInterface> &worker,
              PopWorkerStatus status,
-             const std::string &runtime_env_setup_error_message) { return false; });
+             const std::string &runtime_env_setup_error_message,
+             const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) {
+            return false;
+          });
 
   // Before starting the worker, it's empty.
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
@@ -1202,7 +1226,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
         lease_spec,
         [](const std::shared_ptr<WorkerInterface> worker,
            PopWorkerStatus status,
-           const std::string &runtime_env_setup_error_message) -> bool { return true; });
+           const std::string &runtime_env_setup_error_message,
+           const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+          return true;
+        });
     std::unique_ptr<ProcessInterface> last_process =
         worker_pool_->LastStartedWorkerProcess();
     RAY_CHECK(last_process->IsValid());
@@ -1217,7 +1244,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
       lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
-         const std::string &runtime_env_setup_error_message) -> bool { return true; });
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        return true;
+      });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
@@ -1244,7 +1274,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
       lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
-         const std::string &runtime_env_setup_error_message) -> bool { return true; });
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        return true;
+      });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(2, worker_pool_->NumPendingStartRequests());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
@@ -1264,7 +1297,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
       lease_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
-         const std::string &runtime_env_setup_error_message) -> bool { return true; });
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        return true;
+      });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
   ASSERT_EQ(2, worker_pool_->NumPendingStartRequests());
@@ -1840,7 +1876,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
       lease_spec,
       [&](const std::shared_ptr<WorkerInterface> worker,
           PopWorkerStatus status,
-          const std::string &runtime_env_setup_error_message) -> bool {
+          const std::string &runtime_env_setup_error_message,
+          const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
         pop_worker_status = status;
         promise.set_value(true);
         return false;
@@ -2218,13 +2255,15 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   const LeaseSpecification lease_spec = ExampleLeaseSpec();
 
   // Pop a worker and don't dispatch.
-  worker_pool_->PopWorker(lease_spec,
-                          [](const std::shared_ptr<WorkerInterface> worker,
-                             PopWorkerStatus status,
-                             const std::string &runtime_env_setup_error_message) -> bool {
-                            // Don't dispatch this worker.
-                            return false;
-                          });
+  worker_pool_->PopWorker(
+      lease_spec,
+      [](const std::shared_ptr<WorkerInterface> worker,
+         PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        // Don't dispatch this worker.
+        return false;
+      });
   // One worker process has been started.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   // No idle workers because no workers pushed.
@@ -2234,24 +2273,28 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   // The worker has been pushed but not dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   // Pop a worker and don't dispatch.
-  worker_pool_->PopWorker(lease_spec,
-                          [](const std::shared_ptr<WorkerInterface> worker,
-                             PopWorkerStatus status,
-                             const std::string &runtime_env_setup_error_message) -> bool {
-                            // Don't dispatch this worker.
-                            return false;
-                          });
+  worker_pool_->PopWorker(
+      lease_spec,
+      [](const std::shared_ptr<WorkerInterface> worker,
+         PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        // Don't dispatch this worker.
+        return false;
+      });
   // The worker is popped but not dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   // Pop a worker and dispatch.
-  worker_pool_->PopWorker(lease_spec,
-                          [](const std::shared_ptr<WorkerInterface> worker,
-                             PopWorkerStatus status,
-                             const std::string &runtime_env_setup_error_message) -> bool {
-                            // Dispatch this worker.
-                            return true;
-                          });
+  worker_pool_->PopWorker(
+      lease_spec,
+      [](const std::shared_ptr<WorkerInterface> worker,
+         PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message,
+         const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) -> bool {
+        // Dispatch this worker.
+        return true;
+      });
   // The worker is popped and dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
@@ -2289,12 +2332,18 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
                        LeaseID::FromRandom(),
                        ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv)));
   std::string error_msg;
+  rpc::RuntimeEnvFailedContext setup_failure;
   popped_worker = worker_pool_->PopWorkerSync(
-      lease_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
+      lease_spec_with_bad_runtime_env, true, &status, 0, &error_msg, &setup_failure);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
   ASSERT_EQ(error_msg, kBadRuntimeEnvErrorMsg);
+  // The agent's structured detail reaches the callback along with the message.
+  // Nothing further down the chain fails loudly if a hop drops it: the failure
+  // still arrives, just with an empty context, so it has to be asserted here.
+  ASSERT_EQ(setup_failure.plugin(), kBadRuntimeEnvPlugin);
+  ASSERT_EQ(setup_failure.phase(), kBadRuntimeEnvPhase);
 
   // Create a lease with available runtime env.
   const auto lease_spec_with_runtime_env =

@@ -241,10 +241,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      const rpc::RuntimeEnvFailedContext *setup_failure) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
+    ASSERT_EQ(setup_failure, nullptr);
     called_times += 1;
   };
 
@@ -269,6 +271,14 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
         rpc::GetOrCreateRuntimeEnvReply reply;
         reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
         reply.set_error_message("the server is not feeling well");
+        auto *setup_failure = reply.mutable_setup_failure();
+        setup_failure->set_error_message("the server is not feeling well");
+        setup_failure->set_plugin("pip");
+        setup_failure->set_phase("install");
+        setup_failure->set_installer_exit_code(1);
+        auto *attempt = setup_failure->add_attempts();
+        attempt->set_attempt(1);
+        attempt->set_exit_code(1);
         response.body() = reply.SerializeAsString();
         response.content_length(response.body().size());
         response.result(http::status::ok);
@@ -296,10 +306,21 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      const rpc::RuntimeEnvFailedContext *setup_failure) {
     ASSERT_FALSE(successful);
     ASSERT_TRUE(serialized_runtime_env_context.empty());
     ASSERT_EQ(setup_error_message, "the server is not feeling well");
+    // The structured detail has to survive the HTTP hop, not just the message:
+    // this callback is the only place the agent's reply is unpacked, so nothing
+    // downstream notices if the sub-message is dropped here.
+    ASSERT_NE(setup_failure, nullptr);
+    ASSERT_EQ(setup_failure->plugin(), "pip");
+    ASSERT_EQ(setup_failure->phase(), "install");
+    ASSERT_EQ(setup_failure->installer_exit_code(), 1);
+    ASSERT_EQ(setup_failure->attempts_size(), 1);
+    ASSERT_EQ(setup_failure->attempts(0).attempt(), 1);
+    ASSERT_EQ(setup_failure->attempts(0).exit_code(), 1);
     called_times += 1;
   };
 
@@ -356,10 +377,12 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      const rpc::RuntimeEnvFailedContext *setup_failure) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
+    ASSERT_EQ(setup_failure, nullptr);
     called_times += 1;
   };
 
@@ -419,10 +442,12 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      const rpc::RuntimeEnvFailedContext *setup_failure) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
+    ASSERT_EQ(setup_failure, nullptr);
     called_times += 1;
   };
 

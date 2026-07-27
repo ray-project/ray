@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/clock.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/runtime_environment.pb.h"
 
@@ -36,10 +37,15 @@ namespace raylet {
 /// \param[in] serialized_runtime_env_context Serialized context.
 /// \param[in] setup_error_message The error message if runtime env creation fails.
 /// It must be only set when successful == false.
+/// \param[in] setup_failure Structured detail about the failure as reported by the
+/// agent, or nullptr when successful == true or the agent reported none. It is
+/// borrowed for the duration of the call only: every hop that forwards it does so
+/// synchronously, so a receiver that outlives the call must CopyFrom it.
 using GetOrCreateRuntimeEnvCallback =
     std::function<void(bool successful,
                        const std::string &serialized_runtime_env_context,
-                       const std::string &setup_error_message)>;
+                       const std::string &setup_error_message,
+                       const rpc::RuntimeEnvFailedContext *setup_failure)>;
 using DeleteRuntimeEnvIfPossibleCallback = std::function<void(bool successful)>;
 
 // Interface to talk to RuntimeEnvManager.

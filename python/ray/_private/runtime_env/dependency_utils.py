@@ -30,7 +30,7 @@ async def check_ray(python: str, cwd: str, logger: logging.Logger):
         - ray is in virtualenv's site-packages.
     """
 
-    async def _get_ray_version_and_path() -> Tuple[str, str]:
+    async def _get_ray_version_and_path(phase: str) -> Tuple[str, str]:
         with tempfile.TemporaryDirectory(
             prefix="check_ray_version_tempfile"
         ) as tmp_dir:
@@ -53,7 +53,7 @@ with open(r"{ray_version_path}", "wt") as f:
             else:
                 env = {}
             output = await check_output_cmd(
-                check_ray_cmd, logger=logger, cwd=cwd, env=env
+                check_ray_cmd, logger=logger, cwd=cwd, env=env, phase=phase
             )
             logger.info(f"try to write ray version information in: {ray_version_path}")
             with open(ray_version_path, "rt") as f:
@@ -62,11 +62,13 @@ with open(r"{ray_version_path}", "wt") as f:
             ray_version, ray_path, *_ = [s.strip() for s in output.split()]
         return ray_version, ray_path
 
-    version, path = await _get_ray_version_and_path()
+    version, path = await _get_ray_version_and_path("ray_version_precheck")
     yield
-    actual_version, actual_path = await _get_ray_version_and_path()
+    actual_version, actual_path = await _get_ray_version_and_path(
+        "ray_version_postcheck"
+    )
     if actual_version != version:
-        raise RuntimeError(
+        error = RuntimeError(
             "Changing the ray version is not allowed: \n"
             f"  current version: {actual_version}, "
             f"  expect version: {version}, "
@@ -75,6 +77,11 @@ with open(r"{ray_version_path}", "wt") as f:
             "Please ensure the dependencies in the runtime_env pip field "
             "do not install a different version of Ray."
         )
+        # This check is about the ray package itself, so the attribution is
+        # structural: it does not come from reading the installer's output.
+        error.phase = "ray_version_conflict"
+        error.attributed_package = "ray"
+        raise error
     if actual_path != path:
         logger.info(
             f"Detected new Ray package with the same version at {actual_path} (vs system {path})."

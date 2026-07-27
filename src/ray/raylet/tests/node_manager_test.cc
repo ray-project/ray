@@ -661,7 +661,10 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   // Complete the RequestWorkerLease rpc with the mock worker.
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  pop_worker_callback(worker,
+                      PopWorkerStatus::OK,
+                      "",
+                      /*runtime_env_setup_failure=*/nullptr);
   EXPECT_TRUE(promise.get_future().get().ok());
 
   // After RequestWorkerLease, a leased worker is ready in the NodeManager.
@@ -733,7 +736,10 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // Prepare a mock worker and check if it is not killed later.
   const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   // Complete the RequestWorkerLease rpc with the mock worker.
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  pop_worker_callback(worker,
+                      PopWorkerStatus::OK,
+                      "",
+                      /*runtime_env_setup_failure=*/nullptr);
   EXPECT_TRUE(promise.get_future().get().ok());
 
   // After RequestWorkerLease, a leased worker is ready in the NodeManager.
@@ -1063,7 +1069,10 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  pop_worker_callback(worker,
+                      PopWorkerStatus::OK,
+                      "",
+                      /*runtime_env_setup_failure=*/nullptr);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
   request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
@@ -1147,7 +1156,10 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {
 
   // Grant the lease, both callbacks should be triggered
   ASSERT_TRUE(pop_worker_callback);
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  pop_worker_callback(worker,
+                      PopWorkerStatus::OK,
+                      "",
+                      /*runtime_env_setup_failure=*/nullptr);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
   ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),

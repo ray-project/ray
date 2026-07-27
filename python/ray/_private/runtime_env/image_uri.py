@@ -42,9 +42,24 @@ with open('/shared/worker_path.txt', 'w') as f:
         stdout, stderr = await process.communicate()
 
         if process.returncode != 0:
-            raise RuntimeError(
-                f"Podman command failed: cmd={cmd}, returncode={process.returncode}, stdout={stdout.decode()}, stderr={stderr.decode()}"
+            # Podman's output goes to the log, not into the message: the message
+            # is carried up as the structured setup failure that the state and
+            # export APIs serve, so it has to stay bounded.
+            logger.error(
+                "Pulling image %s failed with exit code %s.\nstdout:\n%s\nstderr:\n%s",
+                image_uri,
+                process.returncode,
+                stdout.decode(),
+                stderr.decode(),
             )
+            error = RuntimeError(
+                f"Podman command failed with exit code {process.returncode} while "
+                f"pulling image {image_uri}. See the runtime env setup log on "
+                "this node for the podman output."
+            )
+            error.phase = "image_pull"
+            error.returncode = process.returncode
+            raise error
 
         if not os.path.exists(result_file):
             raise FileNotFoundError(

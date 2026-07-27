@@ -4,7 +4,7 @@ import logging
 import subprocess
 import textwrap
 import types
-from typing import List
+from typing import List, Optional
 
 
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
@@ -12,8 +12,16 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
 
     LAST_N_LINES = 50
 
-    def __init__(self, *args, cmd_index=None, **kwargs):
+    def __init__(
+        self, *args, cmd_index=None, phase=None, attributed_package=None, **kwargs
+    ):
         self.cmd_index = cmd_index
+        # Which setup step this command implemented and, when the command
+        # installs exactly one requirement, that requirement. The runtime env
+        # agent reads these as typed values; they are deliberately not part of
+        # __str__, which is user-facing text.
+        self.phase = phase
+        self.attributed_package = attributed_package
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -49,6 +57,8 @@ async def check_output_cmd(
     *,
     logger: logging.Logger,
     cmd_index_gen: types.GeneratorType = itertools.count(1),
+    phase: Optional[str] = None,
+    attributed_package: Optional[str] = None,
     **kwargs,
 ) -> str:
     """Run command with arguments and return its output.
@@ -63,6 +73,14 @@ async def check_output_cmd(
             the first item in cmd.
         logger: The logger instance.
         cmd_index_gen: The cmd index generator, default is itertools.count(1).
+        phase: The name of the setup step this cmd implements, e.g.
+            "install_pip". Attached to the raised error so that a caller can
+            report which step failed without parsing the error message.
+        attributed_package: The requirement this cmd installs, when it installs
+            exactly one and its name comes from the user-submitted runtime env
+            (e.g. "pip==24.0"). Left unset for a cmd that installs a whole
+            requirement set, because which member of the set failed is only
+            visible in the installer's own output.
         **kwargs: All arguments are passed to the create_subprocess_exec.
 
     Returns:
@@ -94,7 +112,11 @@ async def check_output_cmd(
         # for asyncio to timeout properly https://bugs.python.org/issue40607
         raise e
     except BaseException as e:
-        raise RuntimeError(f"Run cmd[{cmd_index}] got exception.") from e
+        error = RuntimeError(f"Run cmd[{cmd_index}] got exception.")
+        # The cmd never ran to completion, so there is no exit code to report;
+        # the phase is the only attribution this path can carry.
+        error.phase = phase
+        raise error from e
     else:
         stdout = stdout.decode("utf-8")
         if stdout:
@@ -103,7 +125,12 @@ async def check_output_cmd(
             logger.info("No output for cmd[%s]", cmd_index)
         if proc.returncode != 0:
             raise SubprocessCalledProcessError(
-                proc.returncode, cmd, output=stdout, cmd_index=cmd_index
+                proc.returncode,
+                cmd,
+                output=stdout,
+                cmd_index=cmd_index,
+                phase=phase,
+                attributed_package=attributed_package,
             )
         return stdout
     finally:
