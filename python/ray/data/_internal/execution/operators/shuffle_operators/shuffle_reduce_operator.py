@@ -39,6 +39,13 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Isolate shuffle reduce workers into a dedicated worker pool so that
+# ReadParquet/Project tasks don't run on the same workers.  Mirrors the
+# map-side isolation (RAY_DATA_SHUFFLE_MAP_WORKER): without this, shared
+# memory pages from object store accesses (mmap'd during combine_chunks)
+# accumulate across task types and inflate reduce worker RSS.
+_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
+
 
 class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     """Reduce phase of a shuffle.
@@ -63,6 +70,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             without being reshaped to `target_max_block_size`.
         reduce_ray_remote_args: Remote args for the reducer tasks.
         name: Display name shown in progress bars and logs.
+        should_emit_empty_partitions: If True (default), an empty partition emits one
+            schema-only placeholder block.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
             ``TaskPoolMapOperator`` directly downstream is fused into this
             reduce: each reduce task applies it to its output blocks before
@@ -85,6 +94,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         name: str = "ShuffleReduce",
+        should_emit_empty_partitions: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -103,6 +113,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
+        self._emit_empty_partitions: bool = should_emit_empty_partitions
 
         # -- Reduce task config & tracking -----------------------------------
         self._reduce_ray_remote_args: Dict[str, Any] = dict(
@@ -138,10 +149,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         remote_args: Dict[str, Any] = {
             "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
             "scheduling_strategy": "SPREAD",
+            "runtime_env": _SHUFFLE_REDUCE_RUNTIME_ENV,
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
+        remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
 
@@ -176,7 +189,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             and isinstance(schema, pa.Schema)
             and not any((m.num_rows or 0) for m in refs.metadata)
         ):
-            self._emit_empty_partition(refs, schema)
+            if self._emit_empty_partitions:
+                self._emit_empty_partition(refs, schema)
+            else:
+                refs.destroy_if_owned()
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
@@ -284,8 +300,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         """Emit one empty output block for an empty partition.
 
         The partition contributed no rows, so there is nothing to reduce; we
-        build the empty block from the schema the map stage propagated onto
-        the bundle and queue it as this partition's single output block.
+        build the empty block from the schema the map stage propagated onto the
+        bundle and queue it as this partition's single output block.  Only
+        reached for schema-preserving reduces (``should_emit_empty_partitions=True``);
+        aggregation disables this path instead of emitting a partial-schema block.
         """
         empty_block = schema.empty_table()
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
