@@ -16,11 +16,13 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     ShuffleManagerAnomalyError,
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
+    _encode_shard,
     _FetchHandler,
     _group_by_manager,
     _NodeGroup,
     _NodeMember,
     _PwriteSink,
+    _read_ipc,
     _SourceRef,
     _threading_server_for,
     _ThreadingServer,
@@ -302,6 +304,21 @@ def test_compute_prefetch_layout():
 
 
 # --------------------------------------------------- error class sanity checks
+# -------------------------------------------------------- shard codec roundtrip
+def test_encode_read_ipc_roundtrip():
+    import pyarrow as pa
+
+    # Multi-chunk table to exercise combine_chunks in _encode_shard.
+    t = pa.concat_tables(
+        [
+            pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+            pa.table({"a": [4, 5], "b": ["p", "q"]}),
+        ]
+    )
+    buf = _encode_shard(t)
+    assert _read_ipc(buf).equals(t.combine_chunks())
+
+
 def test_shuffle_disk_error_is_runtime_error_subclass():
     assert issubclass(ShuffleDiskError, RuntimeError)
     assert not issubclass(ShuffleDiskError, ShuffleManagerAnomalyError)
