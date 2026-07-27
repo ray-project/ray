@@ -69,7 +69,7 @@ export HCCL_OP_EXPANSION_MODE="AIV"
 ## Step 4: Install Ray and Start the Ray Cluster
 
 ```sh
-pip install ray
+pip install ray[llm]
 ```
 
 > **Note:** The image includes Ray version 2.48.0, which does not support NPU. You need to install the latest version of Ray Serve to enable NPU accelerator type support. Daily builds can be obtained from [Daily Releases](https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies). Before installing, confirm that the version includes NPU support.
