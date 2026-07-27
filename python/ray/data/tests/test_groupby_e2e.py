@@ -1174,7 +1174,7 @@ def test_groupby_map_groups_ray_remote_args_fn(
     assert sorted([x["value"] for x in ds.take()]) == [69, 69, 69, 69]
 
 
-def test_groupby_map_groups_ray_remote_args_fn_deprecation_warning():
+def test_map_groups_ray_remote_args_fn_deprecation_warning():
     grouped_ds = ray.data.range(1).groupby("id")
 
     with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):

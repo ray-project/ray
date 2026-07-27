@@ -163,7 +163,7 @@ class DummyProcessorConfig(ProcessorConfig):
     pass
 
 
-def test_processor_does_not_emit_ray_remote_args_fn_deprecation_warning():
+def test_does_not_emit_ray_remote_args_fn_deprecation_warning():
     processor = Processor(
         config=ProcessorConfig(batch_size=64),
         stages=[
