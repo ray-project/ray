@@ -7,10 +7,11 @@ from typing import List, Optional
 
 import aiohttp
 
-import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.protobuf_compat import message_to_json
-from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
@@ -189,19 +190,20 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._session = session
 
 
-class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
-    """Client for publishing ray event batches to GCS."""
+class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
+    """Client for publishing ray task event batches to the dashboard head over HTTP."""
 
     def __init__(
         self,
-        gcs_client: GcsClient,
+        endpoint: str,
         executor: ThreadPoolExecutor,
         timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
-        self._gcs_client = gcs_client
+        self._endpoint = endpoint
         self._executor = executor
-        self._timeout_s = timeout_s
+        self._timeout = aiohttp.ClientTimeout(total=timeout_s)
+        self._session = None
 
         self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
 
@@ -245,24 +247,25 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
                 self._executor,
                 lambda: request.SerializeToString(),
             )
-            status_code = await self._gcs_client.async_add_events(
-                serialized_request, self._timeout_s, self._executor
-            )
 
-            if status_code != dashboard_utils.HTTPStatusCode.OK:
-                logger.error(f"GCS AddEvents failed: {status_code}")
-                return PublishStats(
-                    is_publish_successful=False,
-                    num_events_published=0,
-                    num_events_filtered_out=0,
-                )
+            # Create session on first use (lazy initialization)
+            if not self._session:
+                self._session = aiohttp.ClientSession(timeout=self._timeout)
+            # Propagate the auth token so the POST passes the dashboard's auth middleware.
+            headers = get_auth_headers_if_auth_enabled({})
+            async with self._session.post(
+                self._endpoint,
+                data=serialized_request,
+                headers=headers,
+            ) as resp:
+                resp.raise_for_status()
             return PublishStats(
                 is_publish_successful=True,
                 num_events_published=len(filtered_events),
                 num_events_filtered_out=num_filtered_out,
             )
         except Exception as e:
-            logger.error(f"Failed to send events to GCS: {e}")
+            logger.error(f"Failed to send events to the dashboard head: {e}")
             return PublishStats(
                 is_publish_successful=False,
                 num_events_published=0,
@@ -288,4 +291,6 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
         return events_data
 
     async def close(self) -> None:
-        pass
+        if self._session:
+            await self._session.close()
+            self._session = None
