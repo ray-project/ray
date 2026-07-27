@@ -215,21 +215,26 @@ class _BroadcastHandle:
     def broadcast(self, method_name, *args, **kwargs):
         targets = self._targets
 
+        async def _call(target):
+            method = getattr(target, method_name)
+            if hasattr(method, "remote"):
+                return await method.remote(*args, **kwargs)
+            return await method(*args, **kwargs)
+
         class _Response:
-            async def results_async(self, *, return_exceptions=False):
-                results = []
-                for target in targets:
-                    method = getattr(target, method_name)
-                    try:
-                        if hasattr(method, "remote"):
-                            results.append(await method.remote(*args, **kwargs))
-                        else:
-                            results.append(await method(*args, **kwargs))
-                    except Exception as e:
-                        if not return_exceptions:
-                            raise
-                        results.append(e)
-                return results
+            async def results_async(self, *, timeout_s=None, return_exceptions=False):
+                gather = asyncio.gather(
+                    *[_call(target) for target in targets],
+                    return_exceptions=return_exceptions,
+                )
+                if timeout_s is None:
+                    return list(await gather)
+                try:
+                    return list(await asyncio.wait_for(gather, timeout=timeout_s))
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        "Timed out waiting for broadcast results."
+                    ) from None
 
         return _Response()
 
@@ -563,6 +568,46 @@ async def test_failing_replica_isolation(build_token_tracking_engine):
 
     assert len(outputs) == 2
     assert [name for name, _ in ray.get(healthy.get_event_log.remote())] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slow_replica_broadcast_timeout(monkeypatch, build_token_tracking_engine):
+    """A slow broadcast target is dropped without stalling delivery forever."""
+
+    class SlowTarget:
+        async def on_lifecycle_events(self, events):
+            await asyncio.sleep(60)
+
+    class HealthyTarget:
+        def __init__(self):
+            self.events = []
+
+        async def on_lifecycle_events(self, events):
+            self.events.extend(events)
+
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+        "token_tracking.LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S",
+        0.01,
+    )
+    healthy = HealthyTarget()
+    engine = build_token_tracking_engine(delta_steps(2), SlowTarget(), healthy)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    assert len(outputs) == 2
+    assert [name for name, _ in healthy.events] == [
         "on_request_added",
         "on_prefill_complete",
         "on_decode_progress",

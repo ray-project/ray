@@ -371,6 +371,7 @@ class KVTokenTracker:
         """
         if self._svc is None or self._block_size is None:
             return
+
         for hook_name, args in events:
             if hook_name not in LIFECYCLE_HOOKS:
                 logger.warning("Ignoring unknown lifecycle hook %s", hook_name)

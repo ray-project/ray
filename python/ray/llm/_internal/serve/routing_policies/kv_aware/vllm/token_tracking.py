@@ -7,6 +7,9 @@ from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_llm_router_handle,
     get_worker_id,
@@ -66,7 +69,10 @@ class LifecycleEventForwarder:
                 # to the rest; failures are logged and dropped below.
                 results = await self.handle.broadcast(
                     "on_lifecycle_events", batch
-                ).results_async(return_exceptions=True)
+                ).results_async(
+                    timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+                    return_exceptions=True,
+                )
                 errors = [r for r in results if isinstance(r, Exception)]
                 if errors:
                     logger.warning(

@@ -198,10 +198,20 @@ class TestIngressSynchronization:
         endpoint = await _backend_endpoint(deployed_handle)
 
         # A long generation keeps the request in flight while we observe it.
+        request_errors = []
+
+        def post_chat():
+            try:
+                _post_chat(
+                    endpoint,
+                    max_tokens=1024,
+                    request_id="token-load-inflight-1",
+                )
+            except Exception as e:
+                request_errors.append(e)
+
         request_thread = threading.Thread(
-            target=_post_chat,
-            args=(endpoint,),
-            kwargs={"max_tokens": 1024, "request_id": "token-load-inflight-1"},
+            target=post_chat,
         )
         request_thread.start()
         try:
@@ -216,6 +226,8 @@ class TestIngressSynchronization:
         finally:
             request_thread.join(timeout=300)
         assert not request_thread.is_alive()
+        if request_errors:
+            raise request_errors[0]
 
         async def is_cleared():
             loads = await _broadcast(router, "get_worker_load", worker_id)
