@@ -46,6 +46,13 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Files here are ~3.9 GiB uncompressed with ~69 MiB row groups. The
+        # default bin budget can't fit two row groups, so every one becomes its
+        # own read task (~5.8k tasks for 103 files). 4 GiB packs a file per bin,
+        # matching the whole-file granularity the V1 partitioner produced.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=4294967296
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -113,6 +120,13 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # sf1000 lineitem is read with its full 17-column schema: ~1.16 GiB
+        # uncompressed per file over 1000 files. 1.25 GiB packs ~one file per
+        # bin (~943 read tasks vs ~1000 blocks under V1); the default budget
+        # would produce ~18k tasks.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
   run:
     timeout: 3600
     script: >
@@ -201,6 +215,12 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # ``groupby_benchmark`` reads sf100 lineitem with its full 17-column
+        # schema: ~1.17 GiB uncompressed per file over 100 files. 1.25 GiB packs
+        # ~one file per bin (~95 read tasks), matching the whole-file
+        # granularity of the V1 partitioner. The default budget yields ~2500
+        # read tasks, which starves the downstream shuffle.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -228,6 +248,9 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # Same sf100 lineitem full-schema read as the aggregate variants; see
+        # the note there for why 1.25 GiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -269,6 +292,10 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # Both sides are read with their full schema: ~1.17 GiB uncompressed
+        # per lineitem file. 1.25 GiB packs ~one file per bin (~95 read tasks
+        # vs 100 blocks under V1).
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
   matrix:
@@ -304,7 +331,16 @@
         - RAYTEST_FAIL_ON_SPILLING=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=39000000
+        # No bin budget override here. These datasets are 10-40 MB in total
+        # across 9-27 single-row-group files, so every budget from 64 MiB up
+        # packs them into a single bin -- except `tensors`, whose 37.25 MiB row
+        # groups already exceed the 64 MiB default's two-per-bin threshold and
+        # so land one per bin on their own. Splitting `primitives` (0.45 MiB
+        # per file), `nested_structs` (1.3 MiB) and `objects` (4.2 MiB) needs a
+        # minimum-block-count floor, not a byte budget.
+        #
+        # These datasets are small enough that the footer-reader pool is pure
+        # startup cost; keep it narrow and spread the few files across it.
         - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=22
         - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
         - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
@@ -328,6 +364,17 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # imagenet parquet: 7416 single-row-group files of ~8.15 MiB. The V1
+        # partitioner sized buckets off a 5x encoding-ratio estimate, which
+        # over-counts for already-compressed image bytes, so it landed on ~4
+        # files (~31 MB) per block. The footer path measures the real bytes, so
+        # the default budget produces ~66 MB blocks -- 2x coarser. With
+        # ``equal=True`` the splitter buffers whole blocks, so coarser blocks
+        # mean more read-ahead is thrown away when the consumers stop. 36 MiB
+        # reproduces the ~4-files-per-block granularity.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=37748736
   run:
     timeout: 300
     wait_for_nodes:
@@ -359,6 +406,17 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # No bin budget override: at the default this dataset (513 single-row-
+        # group files of ~88 MB) already packs ~one file per bin, matching the
+        # granularity the V1 partitioner produced.
+        #
+        # This benchmark opens 8 datasets over the same path, so the footer
+        # path costs 8 x 513 footer reads and 8 x 32 reader actors -- work V1
+        # never did, and enough to dominate the ~40s `random_mix` variants.
+        # Narrow the pool; the per-actor IO concurrency still covers 513 files.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
     timeout: 600
@@ -404,6 +462,12 @@
     anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
+      runtime_env:
+        # This benchmark hands in 200 explicit parquet paths, so ListFiles
+        # shards them into 200 tasks of one path each. The footer reader pool is
+        # provisioned per listing task, so the default would stand up 32 actors
+        # to read a single footer. One actor per task is all this shape needs.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=1
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -1443,6 +1507,15 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # q20 projects 4 of lineitem's 17 columns -> ~160 MiB uncompressed per
+        # file. At the default budget that splits each file ~4 ways (400 blocks
+        # vs the 100 the V1 partitioner produced), and the extra blocks become
+        # extra shuffle-map tasks feeding HashAggregate. 192 MiB packs one file
+        # per bin. Per-query value: the same table under q21's 2-column
+        # projection is only ~92 MiB per file.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:

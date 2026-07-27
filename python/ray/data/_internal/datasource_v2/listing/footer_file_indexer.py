@@ -28,9 +28,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# A pool of footer-reading actors spread across the cluster. Footer reads are
-# network-bound, so several actors each driving many concurrent reads keeps IO
-# from bottlenecking on a single node.
+# Footer-reading actors spread across the cluster, provisioned **per ListFiles
+# task**. Footer reads are network-bound, so several actors each driving many
+# concurrent reads keeps IO from bottlenecking on a single node. ``ListFiles``
+# shards user-supplied paths across parallel listing tasks, so a read that hands
+# in many explicit paths stands up this many actors per shard -- lower it for
+# those, rather than assuming it is a cluster-wide total.
 _DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 32)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
@@ -104,7 +107,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
     @property
     def yields_read_units(self) -> bool:
         # list_files already emits bin-packed read units, so ListFiles skips the
-        # partitioner and lists in a single task (global packing + one pool).
+        # partitioner. Packing is per listing task, not global.
         return True
 
     def list_files(

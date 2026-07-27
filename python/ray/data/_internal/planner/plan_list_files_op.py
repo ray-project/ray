@@ -71,9 +71,17 @@ def plan_list_files_op(
     shuffle_config = op.shuffle_config_factory()
 
     # Some indexers (e.g. the footer-based Parquet indexer) already emit
-    # bin-packed read units from ``list_files`` -- they need the whole file
-    # stream on one task to pack globally, and there's nothing left to partition.
+    # bin-packed read units from ``list_files``, so there's nothing left for a
+    # partitioner to do. They still list in parallel: each task bin-packs the
+    # slice of the path list it was handed, which is the same per-task locality
+    # a partitioner gets when listing is split.
     yields_read_units = indexer.yields_read_units
+
+    # One task is required only when shuffle needs a single global RNG over the
+    # whole listing. Note that per-call indexer resources -- the footer indexer's
+    # reader-actor pool -- are provisioned per listing task, so a read handing in
+    # many explicit paths should size that pool accordingly.
+    should_parallelize = shuffle_config is None
 
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
@@ -120,12 +128,7 @@ def plan_list_files_op(
     map_op = MapOperator.create(
         map_transformer,
         _create_input_data_buffer(
-            op,
-            data_context,
-            # A single task is required when shuffle needs one global RNG over
-            # the full listing, or when the indexer bin-packs read units itself
-            # (it must see the whole file stream to pack globally).
-            should_parallelize=shuffle_config is None and not yields_read_units,
+            op, data_context, should_parallelize=should_parallelize
         ),
         data_context,
         name="ListFiles",
