@@ -85,7 +85,7 @@ For the full list, see the [vLLM engine arguments](https://docs.vllm.ai/en/lates
 
 ## Accelerators and placement
 
-Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`. TPUs such as `TPU-V4` and `TPU-V5P` are also supported. `A10` is normalized to `A10G`. An unsupported value raises a validation error.
+Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`. TPUs such as `TPU-V4`, `TPU-V5P`, and `TPU-V6E` are also supported. For topology-aware TPU slices, see {doc}`TPU serving <tpu>`. `A10` is normalized to `A10G`. An unsupported value raises a validation error.
 
 `accelerator_config` is inferred from `accelerator_type` (or from `placement_group_config` bundles) and rarely needs to be set explicitly.
 
