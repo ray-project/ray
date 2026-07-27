@@ -49,15 +49,17 @@ void GcsResourceLoadPuller::Pull(std::vector<rpc::Address> raylet_addresses) {
   for (const auto &address : raylet_addresses) {
     auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(address);
     raylet_client->GetResourceLoad(
-        [this](const Status &status, rpc::GetResourceLoadReply &&reply) {
+        [apply_on_main = apply_on_main_, &main_io_context = main_io_context_](
+            const Status &status, rpc::GetResourceLoadReply &&reply) {
           if (!status.ok()) {
             RAY_LOG_EVERY_N(WARNING, 10)
                 << "Failed to get the resource load: " << status.ToString();
             return;
           }
-          main_io_context_.post(
-              [this, resources = std::move(*reply.mutable_resources())]() mutable {
-                apply_on_main_(std::move(resources));
+          main_io_context.post(
+              [apply_on_main,
+               resources = std::move(*reply.mutable_resources())]() mutable {
+                apply_on_main(std::move(resources));
               },
               "GcsResourceLoadPuller.apply");
         });
