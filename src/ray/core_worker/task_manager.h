@@ -118,8 +118,8 @@ class ObjectRefStream {
    * \param[out] consumed_object_ids Appended with all object ids actually
    * advanced past, including EOF-region refs. The caller is responsible for
    * releasing the owner-side references held for these objects.
-   * \return InvalidArgument if the last requested ref is not ready. Ok
-   * otherwise.
+   * \return InvalidArgument if the last requested ref is not ready, or if the
+   * requested range would exceed max_num_generator_returns. Ok otherwise.
    */
   Status TryReadNextItems(int64_t num_items, std::vector<ObjectID> *consumed_object_ids);
 
@@ -524,7 +524,8 @@ class TaskManager : public TaskManagerInterface {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status InvalidArgument if the last requested ref is not ready. OK
+   * \return Status InvalidArgument if the last requested ref is not ready, or
+   * if the requested range would exceed max_num_generator_returns. OK
    * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)

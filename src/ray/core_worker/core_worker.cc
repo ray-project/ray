@@ -2823,9 +2823,9 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     const std::shared_ptr<const TaskSpecification> current_task =
         worker_context_->GetCurrentTask();
     const bool inline_error = current_task != nullptr &&
-                               current_task->IsStreamingGenerator() &&
-                               object_id == current_task->ReturnId(0) &&
-                               RayObject(nullptr, metadata, {}).IsException();
+                              current_task->IsStreamingGenerator() &&
+                              object_id == current_task->ReturnId(0) &&
+                              RayObject(nullptr, metadata, {}).IsException();
 
     // Allocate a buffer for the return object.
     if (inline_error ||
