@@ -151,7 +151,7 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         if len(sample) == 0:
             return self._user_schema if self._user_schema is not None else pa.schema([])
 
-        sample_paths = sample.paths.tolist()
+        sample_paths: List[str] = sample.paths.tolist()
         filesystem = self._filesystem
 
         if self._user_schema is not None:
