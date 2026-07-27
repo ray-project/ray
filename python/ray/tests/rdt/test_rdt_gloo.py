@@ -542,6 +542,73 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_dst[0], tensor)
 
 
+def test_set_tensor_transport_metadata_before_ref_registered(ray_start_regular):
+    """Regression test for the race where the set_direct_transport_metadata
+    callback runs before the owner registers the ref via add_rdt_ref.
+
+    set_tensor_transport_metadata_and_trigger_queued_operations is invoked from
+    a nogil C++ callback that is not ordered against add_rdt_ref. If it arrives
+    first the object is not yet in _managed_rdt_metadata; the metadata must be
+    stashed and applied when the ref is later registered, rather than raising a
+    KeyError (which escapes the nogil callback as a SIGSEGV). This mirrors
+    test_trigger_out_of_band_tensor_transfer but sets the metadata before the
+    ref is registered.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    tensor = torch.tensor([1, 2, 3])
+    rdt_ref = src_actor.echo.remote(tensor)
+    rdt_ref_id = rdt_ref.hex()
+
+    # Check src_actor has the GPU object
+    ret_val_src = ray.get(src_actor.get_out_of_band_tensors.remote(rdt_ref_id))
+    assert ret_val_src is not None
+    assert len(ret_val_src) == 1
+    assert torch.equal(ret_val_src[0], tensor)
+
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+
+    # echo.remote() already auto-registered the ref on the driver (actor.py calls
+    # add_rdt_ref at submission time). Undo that so we can drive the raced ordering
+    # where the metadata callback arrives before the owner registers the ref.
+    assert rdt_manager.is_managed_object(rdt_ref_id)
+    rdt_manager._managed_rdt_metadata.pop(rdt_ref_id)
+
+    # The metadata callback races ahead of ref registration. Before the fix this
+    # indexed _managed_rdt_metadata for an unregistered obj_id and crashed; now it
+    # must stash the metadata without raising.
+    rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+        rdt_ref_id,
+        CollectiveTransportMetadata(
+            tensor_meta=[(tensor.shape, tensor.dtype)],
+            tensor_device=tensor.device.type,
+        ),
+    )
+    assert not rdt_manager.is_managed_object(rdt_ref_id)
+    assert rdt_ref_id in rdt_manager._pending_tensor_transport_meta
+
+    # The owner registers the ref. The stashed metadata should be applied now.
+    rdt_manager.add_rdt_ref(rdt_ref, src_actor, "GLOO")
+    assert rdt_ref_id not in rdt_manager._pending_tensor_transport_meta
+    assert rdt_manager.get_rdt_metadata(rdt_ref_id).tensor_transport_meta is not None
+
+    # With the metadata already available, the transfer triggers immediately.
+    task_args = (rdt_ref,)
+    rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, task_args)
+
+    # Check dst_actor has the GPU object
+    ret_val_dst = ray.get(
+        dst_actor.get_out_of_band_tensors.remote(rdt_ref_id, timeout=10)
+    )
+    assert ret_val_dst is not None
+    assert len(ret_val_dst) == 1
+    assert torch.equal(ret_val_dst[0], tensor)
+
+
 def test_fetch_rdt_object_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="gloo")
