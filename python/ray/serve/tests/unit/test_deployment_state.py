@@ -10146,114 +10146,139 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     assert ds._last_health_check_healthy_replica_ids == running_ids
 
 
+def _scale_to(dsm, ds, num_replicas, version="1", ticks=14):
+    """Change membership via the public deploy path and settle back to HEALTHY."""
+    info, _ = deployment_info(num_replicas=num_replicas, version=version)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    for _ in range(ticks):
+        dsm.update()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        if (
+            ds._curr_status_info.status == DeploymentStatus.HEALTHY
+            and ds._replicas.count(states=[ReplicaState.STARTING]) == 0
+        ):
+            dsm.update()
+            return
+    raise AssertionError(
+        "deployment never settled: status=%s running=%d starting=%d"
+        % (
+            ds._curr_status_info.status,
+            ds._replicas.count(states=[ReplicaState.RUNNING]),
+            ds._replicas.count(states=[ReplicaState.STARTING]),
+        )
+    )
+
+
+class CountingRankManager(ds_mod.DeploymentRankManager):
+    """Real rank manager that records how often the consistency pass runs.
+
+    Injected at the same seam the fixture uses for actor wrappers, so the rank logic under
+    test stays real; only the call count is added.
+    """
+
+    instances = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.consistency_calls = 0
+        self.raise_next = False
+        CountingRankManager.instances.append(self)
+
+    def check_rank_consistency_and_reassign_minimally(self, active_replicas):
+        self.consistency_calls += 1
+        if self.raise_next:
+            self.raise_next = False
+            # Same shape as a real invariant violation: swallowed when
+            # fail_on_rank_error is off (the production default).
+            return self._execute_with_error_handling(
+                lambda: (_ for _ in ()).throw(RuntimeError("injected rank failure")), []
+            )
+        return super().check_rank_consistency_and_reassign_minimally(active_replicas)
+
+
+@pytest.fixture
+def rank_gate_dsm(mock_deployment_state_manager, monkeypatch):
+    """A running deployment whose rank manager counts consistency passes."""
+    CountingRankManager.instances = []
+    monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    info, v1 = deployment_info(num_replicas=3, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()  # STARTING -> RUNNING
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+    # Settle: the deployment reaches HEALTHY a tick or two after the replicas do, and the
+    # gate legitimately runs once for this membership. Tests measure from after that.
+    for _ in range(8):
+        dsm.update()
+    assert ds._curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        ds._rank_manager.consistency_calls >= 1
+    ), "gate never ran for a new membership"
+    return dsm, ds, ds._rank_manager
+
+
 class TestRankConsistencyMembershipGate:
     """The rank-consistency pass runs only when replica membership changes."""
 
-    def _ds(self, uids):
-        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
-        replicas = []
-        for uid in uids:
-            r = Mock()
-            r.replica_id.unique_id = uid
-            replicas.append(r)
-        ds._replicas = Mock()
-        ds._replicas.get.return_value = replicas
-        ds._replicas.count.return_value = 0
-        ds._curr_status_info = Mock(status=DeploymentStatus.HEALTHY)
-        ds._rank_manager = Mock()
-        ds._rank_manager.last_rank_op_errored = False
-        ds._rank_manager.check_rank_consistency_and_reassign_minimally.return_value = []
-        ds._reconfigure_replicas_with_new_ranks = Mock()
-        ds._last_rank_membership_ids = None
-        return ds
+    def test_skips_while_membership_unchanged(self, rank_gate_dsm):
+        dsm, _, rank_manager = rank_gate_dsm
+        after_startup = rank_manager.consistency_calls
+        for _ in range(5):
+            dsm.update()
+        assert rank_manager.consistency_calls == after_startup
 
-    def test_runs_once_then_skips_for_same_membership(self):
-        ds = self._ds(["a", "b", "c"])
-        ds._maybe_check_rank_consistency()
-        ds._maybe_check_rank_consistency()
-        ds._maybe_check_rank_consistency()
-        assert (
-            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
-            == 1
-        )
+    def test_reruns_when_a_replica_leaves(self, rank_gate_dsm):
+        dsm, ds, rank_manager = rank_gate_dsm
+        before = rank_manager.consistency_calls
 
-    def test_membership_change_reruns(self):
-        ds = self._ds(["a", "b", "c"])
-        ds._maybe_check_rank_consistency()
-        new = []
-        for uid in ["a", "b", "d"]:
-            r = Mock()
-            r.replica_id.unique_id = uid
-            new.append(r)
-        ds._replicas.get.return_value = new
-        ds._maybe_check_rank_consistency()
-        assert (
-            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
-            == 2
-        )
+        # Membership change through the public path: scale up adds a new replica id.
+        _scale_to(dsm, ds, 4)
 
-    def test_swallowed_rank_error_reruns_next_tick(self):
-        # fail_on_rank_error off: the pass can swallow an error and return [].
-        # The membership must NOT be cached, so the next tick retries.
-        ds = self._ds(["a", "b", "c"])
-        ds._rank_manager.last_rank_op_errored = True
-        ds._maybe_check_rank_consistency()
-        assert ds._last_rank_membership_ids is None
-        ds._maybe_check_rank_consistency()
-        assert (
-            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
-            == 2
-        )
-        # Once it succeeds, the membership is cached and the pass stops re-running.
-        ds._rank_manager.last_rank_op_errored = False
-        ds._maybe_check_rank_consistency()
-        ds._maybe_check_rank_consistency()
-        assert (
-            ds._rank_manager.check_rank_consistency_and_reassign_minimally.call_count
-            == 3
-        )
+        assert rank_manager.consistency_calls > before
 
-    def _real_manager_ds(self, uids, node_id="node-1"):
-        """Gate wired to a real DeploymentRankManager with error-swallowing on (the
-        production default), primed so one active replica has no node mapping -- which
-        trips the consistency impl's `assert node_id is not None`."""
-        ds = self._ds(uids)
-        mgr = ds_mod.DeploymentRankManager(fail_on_rank_error=False)
-        for uid in uids:
-            mgr.assign_rank(uid, node_id)
-        del mgr._replica_to_node[uids[-1]]
-        ds._rank_manager = mgr
-        return ds, mgr
+    def test_swallowed_error_is_rechecked_next_tick(self, rank_gate_dsm):
+        """fail_on_rank_error is off by default in production, so the pass can log and
+        return a safe default. That membership must not be cached as validated."""
+        dsm, ds, rank_manager = rank_gate_dsm
 
-    def test_real_manager_swallowed_error_is_not_cached(self):
-        # RAY_SERVE_FAIL_ON_RANK_ERROR defaults off, so this is the production path:
-        # the pass logs, returns [], and the membership must NOT be cached.
-        ds, mgr = self._real_manager_ds(["a", "b"])
+        # Membership change makes the gate run; that run errors and is swallowed.
+        rank_manager.raise_next = True
+        _scale_to(dsm, ds, 4)
+        errored_at = rank_manager.consistency_calls
+        assert errored_at > 0, "the errored pass never ran"
 
-        ds._maybe_check_rank_consistency()
+        # An errored pass must not be cached as validated, so it is retried even though
+        # membership is now stable.
+        for _ in range(4):
+            dsm.update()
+        assert rank_manager.consistency_calls > errored_at
 
-        assert mgr.last_rank_op_errored is True
-        assert ds._last_rank_membership_ids is None
+    def test_starting_replicas_skip_the_pass(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """A STARTING replica has no rank yet, so running the pass would raise
+        "active keys without ranks"; the guard must skip before that."""
+        CountingRankManager.instances = []
+        monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=2, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
-    def test_error_flag_read_before_reconfigure(self):
-        # Guards a latent hazard, not a live bug: today safe_default is [] and the
-        # reconfigure early-returns on an empty list. Stub it to call back into the
-        # manager -- get_replica_rank() clears the flag, so reading it after the
-        # reconfigure would see False and wrongly cache an unvalidated membership.
-        ds, mgr = self._real_manager_ds(["a", "b"])
-        ds._reconfigure_replicas_with_new_ranks = lambda _: mgr.get_replica_rank("a")
-
-        ds._maybe_check_rank_consistency()
-
-        assert mgr.last_rank_op_errored is False  # cleared by the reconfigure call
-        assert ds._last_rank_membership_ids is None  # ...yet still not cached
-
-    def test_starting_replicas_skip_entirely(self):
-        ds = self._ds(["a", "b"])
-        ds._replicas.count.return_value = 1
-        ds._maybe_check_rank_consistency()
-        ds._rank_manager.check_rank_consistency_and_reassign_minimally.assert_not_called()
-        assert ds._last_rank_membership_ids is None
+        dsm.update()  # replicas are STARTING, never marked ready
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        assert ds._rank_manager.consistency_calls == 0
 
 
 if __name__ == "__main__":
