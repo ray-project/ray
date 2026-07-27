@@ -131,10 +131,12 @@ class GcsServer {
     UNKNOWN = 0,
     IN_MEMORY = 1,
     REDIS_PERSIST = 2,
+    ROCKSDB_PERSIST = 3,
   };
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+  static constexpr char kRocksDbStorage[] = "rocksdb";
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
@@ -187,8 +189,13 @@ class GcsServer {
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge);
 
-  /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  /**
+   * @brief Initialize the GCS worker manager and rebuild its dead-worker queue from the
+   * startup snapshot.
+   *
+   * @param gcs_init_data Metadata loaded from the store at startup.
+   */
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,

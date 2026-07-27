@@ -64,6 +64,8 @@ class _DirectRouterReplica:
 def _new_direct_router(handle=None):
     router = LLMRouter.__new__(LLMRouter)
     router._handle = handle or MagicMock()
+    # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
+    router._tokenizer = None
     return router
 
 
@@ -191,6 +193,16 @@ class TestDirectStreamingLLMRouter:
             await router.route(_FakeRequest(b"{}"))
         assert exc_info.value.status_code == 503
         assert "no replicas" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_route_returns_400_on_bad_routing_request(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=ValueError("empty prompt"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 400
+        assert "empty prompt" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_route_returns_503_on_deployment_unavailable(self):
