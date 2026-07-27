@@ -3823,8 +3823,10 @@ class Dataset:
         ``"_1"``.
 
         .. note::
-            The smaller of the two datasets is repartitioned to align the number
-            of rows per block with the larger dataset.
+            Blocks are zipped as they arrive, so the output block boundaries are
+            the union of the input datasets' block boundaries. If the inputs are
+            partitioned differently, the result can have more blocks than either
+            input.
 
         .. note::
             Zipped datasets aren't lineage-serializable. As a result, they can't be used
