@@ -719,6 +719,138 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
+def _push_freshness_window_s(health_check_period_s: float) -> float:
+    """How long a pushed health result stays fresh enough to stand in for a probe."""
+    return max(health_check_period_s * 1.5, 1.0)
+
+
+# Most of a deployment's pushed health going stale at once (by its own
+# configured period) is the signature of controller-side ingest lag, not mass
+# replica failure. Deferring the pull fallback then avoids a probe storm that
+# would deepen the lag and can cascade into false kills; the cap bounds it so
+# a real mass outage still surfaces.
+HEALTH_PUSH_STALL_MIN_TRACKED = 64
+HEALTH_PUSH_STALL_STALE_FRACTION = 0.5
+HEALTH_PUSH_STALL_MAX_DEFER_S = 120.0
+# Expiry is staggered across at most this fraction of the cap. Taken from the cap
+# rather than from the period, which is unbounded relative to it: a long period
+# would otherwise stagger a replica past the start of the episode and cancel it.
+HEALTH_PUSH_STALL_STAGGER_FRACTION = 0.1
+
+
+class ReplicaHealthPushRegistry:
+    """Latest self-health pushed by each replica, keyed by replica unique id.
+
+    Written by the controller ingest path; consumed by the reconcile sweep. A
+    fresh healthy push lets the sweep skip firing a pull probe.
+    """
+
+    _PRUNE_THRESHOLD = 65536
+    _PRUNE_MAX_AGE_S = 600.0
+    _PRUNE_MIN_INTERVAL_S = 30.0
+    _GAP_BUCKET_S = 0.25
+    _GAP_NBUCKETS = 240  # 60s range
+    _GAP_WINDOW_S = 60.0
+
+    def __init__(self):
+        # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
+        self._state: Dict[str, Tuple[float, float, bool, Optional[int]]] = {}
+        # Gap between a replica's consecutive accepted checked_at values = its
+        # actual self-check interval (same clock per replica, skew-free). Held in
+        # two windows so the reported stats track current lag instead of averaging
+        # it away over the controller's lifetime.
+        self._gap_hist = [0] * self._GAP_NBUCKETS
+        self._gap_prev_hist = [0] * self._GAP_NBUCKETS
+        self._gap_max_s = 0.0
+        self._gap_prev_max_s = 0.0
+        self._gap_window_start = 0.0
+        self._gap_count = 0
+        self._last_prune_time = 0.0
+
+    def record(
+        self,
+        replica_unique_id: str,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ):
+        prev = self._state.get(replica_unique_id)
+        if prev is not None and checked_at <= prev[0]:
+            return  # A delayed report must not clobber a newer observation.
+        if prev is not None:
+            gap = checked_at - prev[0]
+            b = int(gap / self._GAP_BUCKET_S)
+            self._gap_hist[b if b < self._GAP_NBUCKETS else self._GAP_NBUCKETS - 1] += 1
+            self._gap_count += 1
+            if gap > self._gap_max_s:
+                self._gap_max_s = gap
+        now = time.time()
+        if (
+            len(self._state) > self._PRUNE_THRESHOLD
+            and now - self._last_prune_time > self._PRUNE_MIN_INTERVAL_S
+        ):
+            # Rate-limited: when everything is fresher than the age cutoff the
+            # prune is a no-op, and re-running the O(N) rebuild on every record
+            # would thrash the ingest path right at the scale it serves.
+            self._last_prune_time = now
+            # Age by controller-clock arrival time (v[1]), immune to replica skew.
+            cutoff = now - self._PRUNE_MAX_AGE_S
+            self._state = {k: v for k, v in self._state.items() if v[1] >= cutoff}
+        self._state[replica_unique_id] = (
+            checked_at,
+            now,
+            healthy,
+            consecutive_failures,
+        )
+
+    def get(
+        self, replica_unique_id: str
+    ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
+        return self._state.get(replica_unique_id)
+
+    def _roll_gap_window(self, now: float) -> None:
+        """Retire the older of the two gap windows.
+
+        Lifetime percentiles go insensitive to a current lag spike once enough
+        samples accumulate, which is exactly when the stats are worth reading.
+        """
+        if now - self._gap_window_start < self._GAP_WINDOW_S:
+            return
+        self._gap_window_start = now
+        self._gap_prev_hist = self._gap_hist
+        self._gap_prev_max_s = self._gap_max_s
+        self._gap_hist = [0] * self._GAP_NBUCKETS
+        self._gap_max_s = 0.0
+
+    def gap_stats(self) -> Dict[str, float]:
+        """Percentiles of the replicas' actual self-check intervals.
+
+        Percentiles and max cover the last window or two; `count` stays
+        cumulative so it reads as a counter.
+        """
+        self._roll_gap_window(time.time())
+        merged = [c + p for c, p in zip(self._gap_hist, self._gap_prev_hist)]
+        total = sum(merged)
+
+        def pct(p):
+            if total <= 0:
+                return 0.0
+            target = p * total
+            cum = 0
+            for i, c in enumerate(merged):
+                cum += c
+                if cum >= target:
+                    return (i + 1) * self._GAP_BUCKET_S
+            return self._GAP_NBUCKETS * self._GAP_BUCKET_S
+
+        return {
+            "count": self._gap_count,
+            "p50_s": pct(0.50),
+            "p99_s": pct(0.99),
+            "max_s": max(self._gap_max_s, self._gap_prev_max_s),
+        }
+
+
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
 
@@ -806,6 +938,16 @@ class ActorReplicaWrapper:
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
+
+        # Latest replica-pushed self-health, consumed by check_health().
+        self._pushed_health: Optional[Tuple[float, float, bool, Optional[int]]] = None
+        self._last_consumed_push_ts: float = 0.0
+        self._last_applied_push_received_at: float = 0.0
+        self._probe_deferred_until: float = 0.0
+        self._last_probe_applied_time: float = 0.0
+        # Stable per-replica fraction; staggers stall-deferral expiry (see
+        # defer_push_fallback_probe).
+        self._probe_defer_jitter: float = random.random()
 
         # Histogram to track routing stats delay from replica to controller
         self._routing_stats_delay_histogram = metrics.Histogram(
@@ -1658,6 +1800,18 @@ class ActorReplicaWrapper:
             # There's already an active health check.
             return False
 
+        # Pushed health is flowing -- probe only once the newest observation we
+        # hold goes stale. Anchored to when it arrived, not to when this loop got
+        # round to it, so a slow reconcile cannot stretch the window.
+        if time.time() - self._last_applied_push_received_at < _push_freshness_window_s(
+            self.health_check_period_s
+        ):
+            return False
+
+        # Staleness is systemic: hold off until the deployment's stall episode caps.
+        if time.time() < self._probe_deferred_until:
+            return False
+
         # If there's no active health check, kick off another and reset
         # the timer if it's been long enough since the last health
         # check. Add some randomness to avoid synchronizing across all
@@ -1700,6 +1854,71 @@ class ActorReplicaWrapper:
         )
         return time_since_last > randomized_period
 
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> None:
+        """Stash the replica's latest pushed self-health observation.
+
+        checked_at is replica-clock (used only for ordering/dedupe);
+        received_at is controller-clock (used for freshness, immune to skew).
+        """
+        if checked_at > self._last_consumed_push_ts:
+            self._pushed_health = (
+                checked_at,
+                received_at,
+                healthy,
+                consecutive_failures,
+            )
+
+    def _take_fresh_pushed_health(self) -> Optional[Tuple[bool, Optional[int]]]:
+        """Consume the pushed self-health observation, if fresh.
+
+        A fresh healthy observation defers the next pull probe; stale ones are
+        dropped so the pull path remains the fallback.
+        """
+        if self._pushed_health is None:
+            return None
+        checked_at, received_at, healthy, consecutive_failures = self._pushed_health
+        self._pushed_health = None
+        self._last_consumed_push_ts = checked_at
+        # Freshness window: 1.5x the period with a 1s floor -- push->ingest->
+        # consume latency must not flip sub-second periods onto the pull path
+        # (two interleaved observers would double-count flaky checks). Measured
+        # against the controller-clock arrival time, immune to replica clock skew.
+        if time.time() - received_at > _push_freshness_window_s(
+            self.health_check_period_s
+        ):
+            return None
+        if received_at < self._last_probe_applied_time:
+            return None  # A probe already reported something newer than this.
+        self._last_applied_push_received_at = received_at
+        return healthy, consecutive_failures
+
+    def defer_push_fallback_probe(self, until: float) -> None:
+        """Hold the push-staleness probe gate closed until `until`; 0 retracts.
+
+        Used when staleness is systemic (controller ingest lag): probing every
+        replica at once would amplify the lag and can cascade into false kills.
+        The caller passes the stall episode's own deadline, so deferral cannot
+        outlive the episode; and because this is not a push, it must not touch
+        _last_applied_push_received_at, which gates whether a probe result is stale.
+
+        One deadline is shared by the whole deployment, so it is staggered per
+        replica -- otherwise every gate opens on the same tick and produces the
+        storm this defers. The offset is a fraction of the cap and only ever
+        shortens the hold, so it can neither outlive the episode nor cancel it.
+        """
+        if not until:
+            self._probe_deferred_until = 0.0
+            return
+        self._probe_deferred_until = until - self._probe_defer_jitter * (
+            HEALTH_PUSH_STALL_MAX_DEFER_S * HEALTH_PUSH_STALL_STAGGER_FRACTION
+        )
+
     def check_health(self) -> bool:
         """Check if the actor is healthy.
 
@@ -1711,6 +1930,52 @@ class ActorReplicaWrapper:
             3) Kicking off a new health check if needed.
         """
         response: ReplicaHealthCheckResponse = self._check_active_health_check()
+        if (
+            response
+            in (
+                ReplicaHealthCheckResponse.SUCCEEDED,
+                ReplicaHealthCheckResponse.APP_FAILURE,
+            )
+            and self._last_health_check_time < self._last_applied_push_received_at
+        ):
+            # This probe was already in flight when a newer push was applied, so it
+            # carries the older observation. ACTOR_CRASHED is exempt: a crash is
+            # authoritative and a dead replica pushes nothing.
+            response = ReplicaHealthCheckResponse.NONE
+            # Keep the latency sample (the probe really did take that long) but not
+            # the failure: the counter tracks what the controller acted on.
+            self._last_health_check_failed = None
+        if response is not ReplicaHealthCheckResponse.NONE:
+            # Watermark by when this probe was started: a push that arrived before
+            # that is strictly older information and must not be consumed next tick
+            # and overwrite the result. One that arrived mid-flight is not.
+            self._last_probe_applied_time = self._last_health_check_time
+        # Consume the pushed observation only when no pull probe resolved this
+        # tick -- otherwise leave it stashed so a fresh push is never discarded
+        # in favor of an older in-flight probe result.
+        pushed = (
+            self._take_fresh_pushed_health()
+            if response is ReplicaHealthCheckResponse.NONE
+            else None
+        )
+        if response is ReplicaHealthCheckResponse.NONE and pushed is not None:
+            # No pull probe resolved this tick; use the pushed observation. The
+            # replica reports its own consecutive-failure count, so mirror it
+            # (robust to dropped/coalesced pushes) before the standard handling.
+            pushed_healthy, pushed_failures = pushed
+            if pushed_healthy:
+                response = ReplicaHealthCheckResponse.SUCCEEDED
+            else:
+                if pushed_failures is not None:
+                    # Mirroring is what paces this: the replica advances its count
+                    # once per period. A push without one falls back to counting per
+                    # push, so no producer may omit it at sub-period cadence.
+                    self._consecutive_health_check_failures = pushed_failures - 1
+                response = ReplicaHealthCheckResponse.APP_FAILURE
+            # Only the probe paths set this, so the failures counter would go silent
+            # for the path the controller now acts on most. No latency: the
+            # controller measured no round trip.
+            self._last_health_check_failed = not pushed_healthy
         if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
             pass
@@ -2112,6 +2377,21 @@ class DeploymentReplica:
     def has_outstanding_check(self) -> bool:
         """True if a health-check or routing-stats ref is in flight (dirty-set poll set)."""
         return self._actor.has_in_flight_health_or_routing_probe
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> None:
+        """Stash the replica's pushed self-health for the next health check."""
+        self._actor.record_pushed_health(
+            checked_at, received_at, healthy, consecutive_failures
+        )
+
+    def defer_push_fallback_probe(self, until: float) -> None:
+        self._actor.defer_push_fallback_probe(until)
 
     def check_health(self) -> bool:
         """Check if the replica is healthy.
@@ -2954,12 +3234,26 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        health_push_registry: Optional[ReplicaHealthPushRegistry] = None,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._health_push_registry = health_push_registry
+        self._push_probes_deferred: bool = False
+        self._push_stall_since: Optional[float] = None
+        self._push_stall_stale: int = 0
+        self._push_stall_total: int = 0
+        self._push_stall_ticks: int = 0
+        self._push_stall_seen: Set[str] = set()
+        self._rr_sampled_ids: Set[str] = set()
+        # Default to the stock period so pushes are not misread as stale on
+        # deployments that have no target info yet (recovery, deletion).
+        self._push_stall_window_s: float = _push_freshness_window_s(
+            DEFAULT_HEALTH_CHECK_PERIOD_S
+        )
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -4919,15 +5213,7 @@ class DeploymentState:
         self._outstanding_dirty_set = still
         n = container.count_state(ReplicaState.RUNNING)
         if n:
-            period = self._reconcile_sweep_period_s()
-            ticks = max(
-                1,
-                int(
-                    CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
-                    * period
-                    / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
-                ),
-            )
+            ticks = self._reconcile_sweep_ticks()
             slice_n = max(1, (n + ticks - 1) // ticks)
             start = self._dirty_set_rr_cursor % n
             sl = container.slice_state(ReplicaState.RUNNING, start, slice_n)
@@ -4939,6 +5225,10 @@ class DeploymentState:
                 if replica.replica_id not in seen:
                     pairs.append((replica, ReplicaState.RUNNING))
                     seen.add(replica.replica_id)
+        # Only the round-robin slice is a representative sample of the bucket; the
+        # in-flight and PENDING_MIGRATION entries above are front-loaded every tick
+        # and are stale-push by construction. The stall tally reads this.
+        self._rr_sampled_ids = {r.replica_id.unique_id for r in sl} if n else set()
         return pairs
 
     def _reconcile_sweep_period_s(self) -> float:
@@ -4961,12 +5251,119 @@ class DeploymentState:
                 DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
             )
 
+    def _reconcile_sweep_ticks(self) -> int:
+        """Control-loop ticks the dirty-set takes to sweep the RUNNING bucket
+        once (see _dirty_set_active_pairs)."""
+        return max(
+            1,
+            int(
+                CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION
+                * self._reconcile_sweep_period_s()
+                / max(CONTROL_LOOP_INTERVAL_S, 1e-3)
+            ),
+        )
+
+    def _advance_push_stall_window(self) -> None:
+        """Finalize the systemic-stall verdict once enough replicas have been
+        sampled across ticks (or a full sweep elapsed), then reset the tally.
+
+        Each tick only health-checks a dirty-set slice (~N/sweep_ticks), well
+        below the guard's min-tracked floor for all but the largest deployments;
+        accumulating across ticks lets the guard reach a deployment-representative
+        sample. A large deployment whose one-tick slice already exceeds the floor
+        still finalizes next tick, so engagement stays prompt where it matters.
+        """
+        self._push_stall_ticks += 1
+        if (
+            self._push_stall_total >= HEALTH_PUSH_STALL_MIN_TRACKED
+            or self._push_stall_ticks >= self._reconcile_sweep_ticks()
+        ):
+            self._finalize_push_stall_verdict()
+            self._push_stall_stale = 0
+            self._push_stall_total = 0
+            self._push_stall_ticks = 0
+            self._push_stall_seen.clear()
+
+    def _finalize_push_stall_verdict(self) -> None:
+        """Set probe-deferral from the accumulated staleness tally.
+
+        Most of this deployment's sampled pushes going stale at once (by its own
+        window) reads as controller-side ingest lag, so fallback probes are
+        deferred -- bounded by HEALTH_PUSH_STALL_MAX_DEFER_S per episode so a
+        genuine mass outage still falls through to probes.
+        """
+        stale, total = self._push_stall_stale, self._push_stall_total
+        if (
+            total < HEALTH_PUSH_STALL_MIN_TRACKED
+            or stale < total * HEALTH_PUSH_STALL_STALE_FRACTION
+        ):
+            self._push_stall_since = None
+            self._push_probes_deferred = False
+            return
+        now = time.time()
+        if self._push_stall_since is None:
+            self._push_stall_since = now
+            logger.warning(
+                f"Pushed health went stale for {stale}/{total} replicas of "
+                f"{self._id} at once; treating as controller-side ingest lag "
+                "and deferring fallback probes for up to "
+                f"{HEALTH_PUSH_STALL_MAX_DEFER_S}s."
+            )
+        self._push_probes_deferred = (
+            now - self._push_stall_since < HEALTH_PUSH_STALL_MAX_DEFER_S
+        )
+
+    def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
+        """Hand the replica's latest pushed self-health to its wrapper.
+
+        Tallies push staleness for this deployment's stall verdict and, while
+        the previous sweep's verdict says staleness is systemic, keeps the
+        replica's probe gate closed until that episode caps.
+        """
+        if self._health_push_registry is None:
+            return
+        replica_id = replica.replica_id.unique_id
+        pushed = self._health_push_registry.get(replica_id)
+        # Re-stamped every visit, including with 0, so an episode that ends early
+        # cannot leave a deadline behind that outlives it. A replica with no entry
+        # is never deferred: probes are its only health signal, and it cannot sway
+        # the verdict either. Both cases must retract, so this precedes the return.
+        if (
+            pushed is not None
+            and self._push_probes_deferred
+            and self._push_stall_since is not None
+        ):
+            replica.defer_push_fallback_probe(
+                self._push_stall_since + HEALTH_PUSH_STALL_MAX_DEFER_S
+            )
+        else:
+            replica.defer_push_fallback_probe(0.0)
+        if pushed is None:
+            return
+        if replica_id in self._rr_sampled_ids and replica_id not in (
+            self._push_stall_seen
+        ):
+            # One sample per replica per window, and only from the round-robin
+            # slice. The dirty set also re-visits every replica with an in-flight
+            # probe each tick, and those are stale-push by construction, so counting
+            # them reads a small failed cohort as fleet-wide ingest lag.
+            self._push_stall_seen.add(replica_id)
+            self._push_stall_total += 1
+            if time.time() - pushed[1] > self._push_stall_window_s:
+                self._push_stall_stale += 1
+        replica.record_pushed_health(*pushed)
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
         transition happened.
         """
+        self._advance_push_stall_window()
+        if self._target_state.info is not None:
+            self._push_stall_window_s = _push_freshness_window_s(
+                self._target_state.info.deployment_config.health_check_period_s
+            )
 
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
@@ -4978,6 +5375,8 @@ class DeploymentState:
         if not self._is_gang_deployment:
             origin: List[ReplicaState] = []
             pairs = self._dirty_set_active_pairs()
+            for replica, _ in pairs:
+                self._apply_pushed_health(replica)
             healths = [replica.check_health() for replica, _ in pairs]
             for (replica, st), is_healthy in zip(pairs, healths):
                 self._record_health_check_metrics(replica)
@@ -5004,9 +5403,14 @@ class DeploymentState:
                 {replica.replica_id for replica in unhealthy_replicas}
             )
         else:
-            for replica in self._replicas.pop(
+            gang_replicas = self._replicas.pop(
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-            ):
+            )
+            # The gang path visits every replica every tick, so the whole pass is
+            # already a representative sample.
+            self._rr_sampled_ids = {r.replica_id.unique_id for r in gang_replicas}
+            for replica in gang_replicas:
+                self._apply_pushed_health(replica)
                 is_healthy = replica.check_health()
                 self._record_health_check_metrics(replica)
                 if is_healthy:
@@ -5885,6 +6289,7 @@ class DeploymentStateManager:
         autoscaling_state_manager: AutoscalingStateManager,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
+        health_push_registry: Optional[ReplicaHealthPushRegistry] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
@@ -5895,6 +6300,7 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._health_push_registry = health_push_registry
 
         self._shutting_down = False
 
@@ -5950,6 +6356,7 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
+            health_push_registry=self._health_push_registry,
         )
 
     def _map_actor_names_to_deployment(

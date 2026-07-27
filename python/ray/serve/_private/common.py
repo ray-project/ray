@@ -1061,6 +1061,11 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+    # Replica-pushed self-health (None = sender does not push health; the
+    # controller then falls back to pull probes).
+    healthy: Optional[bool] = None
+    health_checked_at: Optional[float] = None
+    health_consecutive_failures: Optional[int] = None
 
 
 @dataclass

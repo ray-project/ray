@@ -1,4 +1,5 @@
 import sys
+import time
 from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any, List, Optional, Tuple
@@ -52,6 +53,7 @@ from ray.serve._private.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
+    ReplicaHealthPushRegistry,
     ReplicaStartupStatus,
     ReplicaStateContainer,
 )
@@ -10008,10 +10010,11 @@ class TestDirtySet:
         s._outstanding_dirty_set = set()
         s._dirty_set_rr_cursor = 0
         s._target_state = object()  # .info access raises -> default reconcile period
-        # Bind the real period helper so _dirty_set_active_pairs can call it on the shim.
+        # Bind the real period/ticks helpers so _dirty_set_active_pairs can call them.
         s._reconcile_sweep_period_s = DeploymentState._reconcile_sweep_period_s.__get__(
             s
         )
+        s._reconcile_sweep_ticks = DeploymentState._reconcile_sweep_ticks.__get__(s)
         return s
 
     def test_covers_all_running_within_one_sweep(self):
@@ -10468,3 +10471,500 @@ def test_gang_health_churn_does_not_invalidate_the_memo(mock_deployment_state_ma
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+class TestPushedHealth:
+    """Replica-pushed self-health short-circuits the pull probe; stale or absent
+    pushes fall back to the pull path unchanged."""
+
+    def _wrapper(self):
+        w = ActorReplicaWrapper.__new__(ActorReplicaWrapper)
+        w._actor_handle = Mock()
+        w._actor_handle.check_health.remote.return_value = "probe_ref"
+        w._health_check_ref = None
+        w._last_health_check_time = time.time()
+        w._consecutive_health_check_failures = 0
+        w._healthy = True
+        w._replica_id = "test_replica"
+        w._pushed_health = None
+        w._last_consumed_push_ts = 0.0
+        w._last_applied_push_received_at = 0.0
+        w._probe_deferred_until = 0.0
+        w._last_probe_applied_time = 0.0
+        w._probe_defer_jitter = 0.0
+        w._version = SimpleNamespace(
+            deployment_config=SimpleNamespace(
+                health_check_period_s=10.0, health_check_timeout_s=30.0
+            )
+        )
+        return w
+
+    def test_fresh_healthy_push_defers_pull_probe(self):
+        w = self._wrapper()
+        w._last_health_check_time = 0.0  # probe would fire without the push
+        now = time.time()
+        w.record_pushed_health(now, now, True)
+        assert w.check_health() is True
+        w._actor_handle.check_health.remote.assert_not_called()
+        assert w._health_check_ref is None
+        assert w._last_applied_push_received_at > 0.0  # probe gated while pushes flow
+
+    def test_stale_push_falls_back_to_pull_probe(self):
+        w = self._wrapper()
+        w._last_health_check_time = 0.0
+        w.record_pushed_health(time.time() - 60.0, time.time() - 60.0, True)
+        assert w.check_health() is True
+        w._actor_handle.check_health.remote.assert_called_once()
+
+    def test_unhealthy_pushes_count_toward_threshold(self):
+        w = self._wrapper()
+        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        for i in range(threshold):
+            w.record_pushed_health(time.time() + i * 1e-3, time.time(), False)
+            w.check_health()
+        assert w._healthy is False
+        assert w._consecutive_health_check_failures == threshold
+
+    def test_push_deduped_by_timestamp(self):
+        w = self._wrapper()
+        ts = time.time()
+        w.record_pushed_health(ts, ts, False)
+        w.check_health()
+        w.record_pushed_health(ts, ts, False)  # same observation again
+        w.check_health()
+        assert w._consecutive_health_check_failures == 1
+
+    def test_pushed_count_is_mirrored(self):
+        w = self._wrapper()
+        w.record_pushed_health(time.time(), time.time(), False, 7)
+        w.check_health()
+        assert w._consecutive_health_check_failures == 7
+        assert w._healthy is False
+
+    def test_healthy_push_resets_failure_count(self):
+        w = self._wrapper()
+        w.record_pushed_health(time.time(), time.time(), False)
+        w.check_health()
+        assert w._consecutive_health_check_failures == 1
+        w.record_pushed_health(time.time() + 1e-3, time.time(), True)
+        assert w.check_health() is True
+        assert w._consecutive_health_check_failures == 0
+
+
+class TestPushSystemicStallGuard:
+    """Most of a deployment's pushed health going stale at once (by its own
+    window) reads as controller-side lag: defer fallback probes, bounded so a
+    genuine mass outage still surfaces."""
+
+    def _ds(self, window_s=15.0):
+        from ray.serve._private.deployment_state import ReplicaHealthPushRegistry
+
+        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
+        ds._health_push_registry = ReplicaHealthPushRegistry()
+        ds._push_probes_deferred = False
+        ds._push_stall_since = None
+        ds._push_stall_stale = 0
+        ds._push_stall_total = 0
+        ds._push_stall_seen = set()
+        ds._rr_sampled_ids = set()
+        ds._push_stall_window_s = window_s
+        ds._id = "test-deployment"
+        return ds
+
+    def _seed(self, ds, n, stale_n, age_s=60.0):
+        now = time.time()
+        for i in range(n):
+            received_at = now - age_s if i < stale_n else now
+            ds._health_push_registry._state[f"r{i}"] = (
+                now - age_s,
+                received_at,
+                True,
+                0,
+            )
+
+    def _sweep(self, ds, n, start=0):
+        ds._rr_sampled_ids = {f"r{i}" for i in range(start, start + n)}
+        for i in range(start, start + n):
+            replica = Mock()
+            replica.replica_id.unique_id = f"r{i}"
+            ds._apply_pushed_health(replica)
+
+    def _tally_and_verdict(self, ds, n, stale_n):
+        self._seed(ds, n, stale_n)
+        self._sweep(ds, n)
+        ds._finalize_push_stall_verdict()
+
+    def test_ending_the_episode_retracts_the_deadline(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=80)
+        assert ds._push_probes_deferred
+        # Staleness clears, so the episode ends well before its 120s cap.
+        ds._push_stall_stale = ds._push_stall_total = 0
+        ds._push_stall_seen.clear()
+        self._tally_and_verdict(ds, n=100, stale_n=0)
+        assert not ds._push_probes_deferred
+        replica = Mock()
+        replica.replica_id.unique_id = "r0"
+        ds._apply_pushed_health(replica)
+        # 0 retracts: a replica that stayed dead must not sit out the rest of a
+        # cap that no longer applies.
+        assert replica.defer_push_fallback_probe.call_args.args[0] == 0.0
+
+    def test_deferral_expiry_is_staggered_across_replicas(self):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._probe_defer_jitter = 1.0  # the far end of the stagger
+        until = time.time() + 120.0
+        wrapper.defer_push_fallback_probe(until)
+        # Staggered earlier, never later, so the episode cap still bounds it.
+        assert wrapper._probe_deferred_until < until
+        assert (
+            until - wrapper._probe_deferred_until
+            <= ds_mod.HEALTH_PUSH_STALL_MAX_DEFER_S
+            * ds_mod.HEALTH_PUSH_STALL_STAGGER_FRACTION
+        )
+
+    def test_stagger_cannot_cancel_the_deferral(self):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._version = SimpleNamespace(
+            deployment_config=SimpleNamespace(
+                health_check_period_s=300.0, health_check_timeout_s=30.0
+            )
+        )
+        wrapper._last_health_check_time = 0.0  # a probe would fire but for the defer
+        wrapper._probe_defer_jitter = 1.0  # the far end of the stagger
+        started = time.time()
+        wrapper.defer_push_fallback_probe(
+            started + ds_mod.HEALTH_PUSH_STALL_MAX_DEFER_S
+        )
+        # A long health period must not let the stagger eat the whole episode.
+        assert wrapper._probe_deferred_until > started
+        assert not wrapper._should_start_new_health_check()
+
+    def test_deferral_deadline_is_the_episode_cap(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=80)
+        assert ds._push_probes_deferred
+        replica = Mock()
+        replica.replica_id.unique_id = "r0"
+        ds._apply_pushed_health(replica)
+        until = replica.defer_push_fallback_probe.call_args.args[0]
+        assert until == ds._push_stall_since + ds_mod.HEALTH_PUSH_STALL_MAX_DEFER_S
+
+    def test_replica_that_never_pushed_is_not_deferred(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=80)
+        assert ds._push_probes_deferred
+        replica = Mock()
+        replica.replica_id.unique_id = "never-pushed"
+        ds._apply_pushed_health(replica)
+        # Retracted, not skipped: an entry pruned mid-episode would otherwise keep
+        # the last deadline it was given.
+        assert replica.defer_push_fallback_probe.call_args.args[0] == 0.0
+
+    def test_tally_ignores_the_in_flight_probe_cohort(self):
+        ds = self._ds()
+        self._seed(ds, n=100, stale_n=20)
+        # The dirty set front-loads the 20 stale-push replicas (they are the ones
+        # holding in-flight probes) ahead of a representative slice. Only the slice
+        # may be tallied, or 20% of the fleet reads as fleet-wide lag.
+        ds._rr_sampled_ids = {f"r{i}" for i in range(20, 100)}
+        for i in range(100):
+            replica = Mock()
+            replica.replica_id.unique_id = f"r{i}"
+            ds._apply_pushed_health(replica)
+        assert (ds._push_stall_stale, ds._push_stall_total) == (0, 80)
+        ds._finalize_push_stall_verdict()
+        assert not ds._push_probes_deferred
+
+    def test_tally_counts_each_replica_once_per_window(self):
+        ds = self._ds()
+        self._seed(ds, n=10, stale_n=1)
+        # The dirty set re-polls a probing (stale) replica every tick; without
+        # dedupe those repeats alone would carry the window.
+        for _ in range(50):
+            replica = Mock()
+            replica.replica_id.unique_id = "r0"
+            ds._apply_pushed_health(replica)
+        self._sweep(ds, 10)
+        assert (ds._push_stall_stale, ds._push_stall_total) == (1, 10)
+
+    def test_majority_stale_defers_next_sweep(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=80)
+        assert (ds._push_stall_stale, ds._push_stall_total) == (80, 100)
+        assert ds._push_probes_deferred
+        # Next sweep: every replica's probe gate is held closed.
+        replica = Mock()
+        replica.replica_id.unique_id = "r0"
+        ds._apply_pushed_health(replica)
+        replica.defer_push_fallback_probe.assert_called_once()
+
+    def test_accumulates_across_ticks_below_slice_threshold(self):
+        # Each tick samples only a small slice (< min tracked), but accumulation
+        # across ticks reaches the sample size, so systemic lag still engages.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 1000  # long sweep -> threshold path
+        self._seed(ds, 80, 80)
+        for i in range(8):  # 8 slices of 10 distinct replicas >= MIN_TRACKED
+            self._sweep(ds, 10, start=i * 10)
+            ds._advance_push_stall_window()
+        assert ds._push_probes_deferred
+
+    def test_tiny_deployment_never_engages_even_accumulated(self):
+        # A full sweep accumulates < min tracked -> finalize bails, never defers.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 3
+        for _ in range(3):
+            self._seed(ds, 10, 10)
+            self._sweep(ds, 10)
+            ds._advance_push_stall_window()
+        assert not ds._push_probes_deferred
+
+    def test_large_slice_engages_in_one_tick(self):
+        # A single tick whose slice already exceeds the floor finalizes next
+        # tick -- prompt engagement preserved for large deployments.
+        ds = self._ds()
+        ds._push_stall_ticks = 0
+        ds._reconcile_sweep_ticks = lambda: 50
+        self._seed(ds, 100, 80)
+        self._sweep(ds, 100)
+        ds._advance_push_stall_window()  # total 100 >= floor -> finalized
+        assert ds._push_probes_deferred
+
+    def test_below_min_tracked_never_defers(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=63, stale_n=63)
+        assert not ds._push_probes_deferred
+
+    def test_minority_stale_does_not_defer(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=49)
+        assert not ds._push_probes_deferred
+
+    def test_long_period_deployment_not_stale_by_its_own_window(self):
+        # Entries 60s old are fresh for a deployment whose configured window
+        # exceeds that (cursor review: the verdict must use the deployment's
+        # own period, not the default).
+        ds = self._ds(window_s=90.0)
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_stall_stale == 0
+        assert not ds._push_probes_deferred
+
+    def test_defer_is_bounded_per_episode(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_probes_deferred
+        ds._push_stall_since = time.time() - ds_mod.HEALTH_PUSH_STALL_MAX_DEFER_S - 1
+        ds._finalize_push_stall_verdict()
+        assert not ds._push_probes_deferred
+
+    def test_recovery_clears_the_episode(self):
+        ds = self._ds()
+        self._tally_and_verdict(ds, n=100, stale_n=100)
+        assert ds._push_probes_deferred
+        ds._push_stall_stale = 0
+        ds._push_stall_total = 100
+        ds._finalize_push_stall_verdict()
+        assert not ds._push_probes_deferred
+        assert ds._push_stall_since is None
+
+    def test_defer_holds_wrapper_probe_gate(self):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._last_applied_push_received_at = 0.0
+        wrapper._last_health_check_time = 0.0  # a probe would fire without the defer
+        assert wrapper._should_start_new_health_check()
+        wrapper.defer_push_fallback_probe(time.time() + 60.0)
+        assert not wrapper._should_start_new_health_check()
+
+    def test_defer_expires_with_the_episode_not_a_window_later(self):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._last_applied_push_received_at = 0.0
+        wrapper._last_health_check_time = 0.0
+        # Deadline already past: the gate opens on the spot, with no freshness
+        # window bolted on after the stall episode's cap.
+        wrapper.defer_push_fallback_probe(time.time() - 0.01)
+        assert wrapper._should_start_new_health_check()
+
+    def test_defer_does_not_discard_a_resolving_probe(self, monkeypatch):
+        wrapper = TestPushedHealth()._wrapper()
+        wrapper._health_check_ref = "probe_ref"
+        wrapper._last_health_check_time = time.time()
+        wrapper.defer_push_fallback_probe(time.time() + 60.0)
+        # Deferral is not an observation, so the drop guard must not treat the
+        # probe as superseded -- during a stall its result is all we have.
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+
+        def _failed(ref):
+            raise ds_mod.RayError()
+
+        monkeypatch.setattr(ds_mod.ray, "get", _failed)
+        assert wrapper.check_health() is True  # first failure, under the threshold
+        assert wrapper._consecutive_health_check_failures == 1
+
+
+class TestPushedHealthReviewRegressions:
+    """Regressions for the agent-review findings on the push-health PR."""
+
+    def test_registry_prune_is_rate_limited(self):
+        r = ReplicaHealthPushRegistry()
+        r._PRUNE_THRESHOLD = 2
+        now = time.time()
+        r._state = {f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)}
+        r.record("fresh1", now, True)
+        assert "old0" not in r._state  # over threshold -> pruned
+        r._state.update({f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)})
+        r.record("fresh2", now + 1.0, True)
+        # Within _PRUNE_MIN_INTERVAL_S the O(N) prune must not re-run.
+        assert "old0" in r._state
+
+    def test_gap_stats_track_a_sliding_window(self, monkeypatch):
+        clock = [1000.0]
+        monkeypatch.setattr(time, "time", lambda: clock[0])
+        r = ReplicaHealthPushRegistry()
+        r.record("r1", 100.0, True)
+        r.record("r1", 130.0, True)  # a 30s self-check gap
+        assert r.gap_stats()["max_s"] == 30.0
+        clock[0] += 2 * r._GAP_WINDOW_S  # the window holding it retires
+        stats = r.gap_stats()
+        assert stats["max_s"] == 0.0 and stats["p99_s"] == 0.0
+        assert stats["count"] == 1  # the cumulative counter is unaffected
+
+    def test_in_flight_probe_does_not_overwrite_a_newer_push(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        # A probe is in flight when an unhealthy push lands...
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        now = time.time()
+        w.record_pushed_health(now, now, False, 2)
+        assert w.check_health() is True  # applied, still under the threshold
+        assert w._consecutive_health_check_failures == 2
+        # ...and resolves SUCCEEDED afterwards, carrying the older observation.
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
+        assert w.check_health() is True
+        assert w._consecutive_health_check_failures == 2  # not reset by the stale probe
+
+    def test_in_flight_probe_still_reports_an_actor_crash(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        now = time.time()
+        w.record_pushed_health(now, now, True)
+        assert w.check_health() is True
+        # A crash is authoritative even though a healthy push was just applied.
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+
+        def _crashed(ref):
+            raise ds_mod.RayActorError()
+
+        monkeypatch.setattr(ds_mod.ray, "get", _crashed)
+        assert w.check_health() is False
+
+    def test_push_failure_feeds_the_health_check_metrics(self):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        now = time.time()
+        w.record_pushed_health(now, now, False, 1)
+        assert w.check_health() is True  # under the threshold, still counted
+        assert w.last_health_check_failed is True
+        assert w.last_health_check_latency_ms is None  # no controller round trip
+        w.record_pushed_health(now + 1, now + 1, True)
+        assert w.check_health() is True
+        assert w.last_health_check_failed is False
+
+    def test_dropped_probe_is_not_counted_as_a_failure(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        now = time.time()
+        w.record_pushed_health(now, now, True)
+        assert w.check_health() is True
+        # The in-flight probe resolves failed, but its result is dropped as stale --
+        # the counter must not see a failure the controller ignored.
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+
+        def _failed(ref):
+            raise ds_mod.RayError()
+
+        monkeypatch.setattr(ds_mod.ray, "get", _failed)
+        assert w.check_health() is True
+        assert not w.last_health_check_failed
+
+    def test_probe_applied_beats_a_push_stashed_before_it(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        now = time.time()
+        w.record_pushed_health(now - 5, now - 5, False, 2)  # stashed first...
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = now - 1  # ...before this probe even started
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
+        assert w.check_health() is True  # ...probe resolves this tick and wins
+        assert w._consecutive_health_check_failures == 0
+        # Next tick the stash must not resurrect the older observation.
+        w._health_check_ref = None
+        assert w.check_health() is True
+        assert w._consecutive_health_check_failures == 0
+
+    def test_probe_gate_follows_arrival_not_consumption(self):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._last_health_check_time = 0.0  # a probe would fire but for the push
+        window = ds_mod._push_freshness_window_s(w.health_check_period_s)
+        arrived = time.time() - window + 1.0  # nearly a window old on arrival
+        w.record_pushed_health(arrived, arrived, True)
+        assert w.check_health() is True
+        # Anchored to arrival, so the gate has ~1s left, not a fresh window.
+        assert w._last_applied_push_received_at == arrived
+        assert not w._should_start_new_health_check()
+
+    def test_registry_rejects_out_of_order_reports(self):
+        r = ReplicaHealthPushRegistry()
+        r.record("r1", checked_at=200.0, healthy=True)
+        r.record("r1", checked_at=100.0, healthy=False)  # delayed older report
+        checked_at, _received_at, healthy, _cnt = r.get("r1")
+        assert checked_at == 200.0 and healthy is True
+
+    def test_resolved_probe_does_not_discard_fresh_push(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        # An in-flight probe resolves SUCCEEDED this tick...
+        w._health_check_ref = "probe_ref"
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
+        now = time.time()
+        w.record_pushed_health(now, now, False, 1)
+        assert w.check_health() is True  # probe result wins this tick
+        assert w._pushed_health is not None  # ...but the push stays stashed
+        # Next tick (no probe): the push is consumed.
+        assert w.check_health() is True
+        assert w._consecutive_health_check_failures == 1
+
+
+def test_apply_pushed_health_hands_off_to_wrapper():
+    """DeploymentState routes registry entries to the replica wrapper; absent
+    entries or registry leave the pull path untouched."""
+    ds = DeploymentState.__new__(DeploymentState)
+    ds._health_push_registry = ReplicaHealthPushRegistry()
+    ds._push_probes_deferred = False
+    ds._push_stall_stale = 0
+    ds._push_stall_total = 0
+    ds._push_stall_seen = set()
+    ds._rr_sampled_ids = set()
+    ds._push_stall_window_s = 15.0
+    rep = Mock()
+    rep.replica_id.unique_id = "r1"
+    ds._health_push_registry.record("r1", 123.0, True)
+    DeploymentState._apply_pushed_health(ds, rep)
+    args = rep.record_pushed_health.call_args.args
+    assert args[0] == 123.0 and args[2] is True and args[3] is None
+
+    rep2 = Mock()
+    rep2.replica_id.unique_id = "r2"
+    DeploymentState._apply_pushed_health(ds, rep2)
+    rep2.record_pushed_health.assert_not_called()
+
+    ds._health_push_registry = None
+    DeploymentState._apply_pushed_health(ds, rep2)
+    rep2.record_pushed_health.assert_not_called()
