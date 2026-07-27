@@ -355,6 +355,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
                      metrics_.task_events_stored_gauge);
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
+  InitGcsResourceLoadPuller();
   InitUsageStatsClient();
 
   // Start RPC server when all tables have finished loading initial
@@ -515,7 +516,10 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(),
       *gcs_resource_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+}
 
+void GcsServer::InitGcsResourceLoadPuller() {
+  RAY_CHECK(gcs_node_manager_ && gcs_resource_manager_ && gcs_autoscaler_state_manager_);
   resource_load_puller_ = std::make_unique<GcsResourceLoadPuller>(
       io_context_provider_.GetIOContext<GcsResourceLoadPuller>(),
       io_context_provider_.GetDefaultIOContext(),

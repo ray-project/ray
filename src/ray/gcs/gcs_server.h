@@ -205,6 +205,9 @@ class GcsServer {
   /// Initialize gcs autoscaling manager.
   void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
+  /// Start the periodic resource load pull.
+  void InitGcsResourceLoadPuller();
+
   /// Initialize usage stats client.
   void InitUsageStatsClient();
 
