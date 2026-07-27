@@ -19,21 +19,6 @@ HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = 
     "actors": sum,
 }
 
-
-def _mean(values: List[float]) -> float:
-    return sum(values) / len(values)
-
-
-# Serve gauges whose per-replica values must not be summed when replicas collapse
-# to the node level. Keyed by the sanitized name the recorder sees (":" -> "_",
-# no "ray_" prefix). This lives agent-side because the reduction runs in the
-# reporter agent, a different process than the replica that emits the metric, so
-# a replica-side registration would never reach it.
-NON_ADDITIVE_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
-    # vLLM KV cache utilization is a 0..1 ratio; the node average is meaningful.
-    "vllm_kv_cache_usage_perc": _mean,
-}
-
 _CARDINALITY_LEVEL = None
 _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
 
@@ -90,11 +75,11 @@ class MetricCardinality(str, Enum):
             raise ValueError("No Aggregation function for histogram metrics.")
         # Gauge metrics use metric-specific aggregation, or sum by default so
         # that additive per-replica gauges (running, waiting, ...) collapse to a
-        # correct node total when WorkerId and ReplicaId are dropped.
+        # correct node total when WorkerId and ReplicaId are dropped. A ratio
+        # gauge summed this way overcounts; aggregate those at the query layer
+        # until the metric owner can declare its aggregation.
         if metric_name in HIGH_CARDINALITY_GAUGE_AGGREGATION:
             return HIGH_CARDINALITY_GAUGE_AGGREGATION[metric_name]
-        if metric_name in NON_ADDITIVE_GAUGE_AGGREGATION:
-            return NON_ADDITIVE_GAUGE_AGGREGATION[metric_name]
         return sum
 
     @staticmethod
