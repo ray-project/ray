@@ -831,14 +831,28 @@ class TaskManager : public TaskManagerInterface {
    * eagerly-peeked, never-to-be-produced refs surface the cancellation instead
    * of a generic end-of-stream. Non-cancel no-retry paths do not end the stream
    * here; their terminal error is recorded via FailPendingTask instead.
+   *
+   * \param[in] task_id The task whose retries should be disabled.
+   * \param[in] canceled Whether the task was canceled. When true, also marks
+   * the task canceled and ends a streaming generator stream with
+   * TASK_CANCELLED.
    */
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
    * Update nested ref count info and store the task's return object.
-   * Returns StatusOr<bool> where the bool indicates the object was returned
-   * directly in-memory (not stored in plasma) when true.
+   *
+   * \param[in] object_id The ID of the return object to store.
+   * \param[in] return_object The return object payload and metadata from the
+   * worker.
+   * \param[in] worker_node_id The node where the worker that produced the
+   * return object ran. Used to record plasma pin location when applicable.
+   * \param[in] store_in_plasma Whether the object must be stored in plasma
+   * even if it was returned by value (e.g. on retry after a prior plasma
+   * store).
+   * \return StatusOr<bool> where the bool is true if the object was returned
+   * directly in-memory (not stored in plasma).
    */
   StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
                                   const rpc::ReturnObject &return_object,
