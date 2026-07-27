@@ -1,5 +1,6 @@
 import collections
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
 from typing_extensions import override
 
@@ -10,6 +11,7 @@ from ray.data._internal.execution.bundle_queue import (
     ReorderingBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
     PhysicalOperator,
     RefBundle,
 )
@@ -36,21 +38,38 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data.block import BlockMetadataWithSchema
+
+
+@dataclass
+class _BlockSlice:
+    """A view of the rows ``[offset, offset + num_rows)`` of a block.
+
+    Zipping consumes a slice from the front as rows are paired off, which is
+    done by advancing ``offset`` rather than materializing a new block. The
+    zip task applies the slice locally, so no intermediate objects are ever
+    written to the object store.
+    """
+
+    ref: ray.ObjectRef
+    offset: int
+    # Rows remaining in this slice, or ``None`` until the block's row count has
+    # been resolved (see ``ZipOperator._submit_count_task``).
+    num_rows: Optional[int]
 
 
 class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     """An operator that zips its inputs together in a streaming fashion.
 
     Blocks are processed incrementally as they arrive from all inputs. Whenever
-    a block is available from every input, the operator takes one block from
-    each, aligns them to the minimum row count (splitting larger blocks and
-    carrying the remainder forward as a "leftover"), and submits an asynchronous
-    Ray task that zips the aligned blocks together.
+    a block is available from every input, the operator zips the longest row
+    range they have in common and advances each input past it, carrying the
+    unconsumed remainder forward as an offset into the same block.
 
-    All remote work (splitting and zipping) is submitted as :class:`DataOpTask`s
-    and surfaced through :meth:`get_active_tasks`, so the streaming executor drives
-    them without ever blocking its scheduling loop on ``ray.get``.
+    All remote work is submitted as :class:`OpTask`s and surfaced through
+    :meth:`get_active_tasks`, so the streaming executor drives them without ever
+    blocking its scheduling loop on ``ray.get``.
     """
 
     def __init__(
@@ -69,27 +88,40 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         self._input_buffers: List[FIFOBundleQueue] = [
             FIFOBundleQueue() for _ in range(n)
         ]
-        self._output_buffer: ReorderingBundleQueue = ReorderingBundleQueue()
-        self._staging: List[collections.deque] = [collections.deque() for _ in range(n)]
-        self._block_deques: List[collections.deque] = [
+        # Per-input queue of not-yet-zipped row ranges, in order. The head is the
+        # next range to pair off; a partially consumed head simply carries a
+        # non-zero offset.
+        self._pending: List[Deque[_BlockSlice]] = [
             collections.deque() for _ in range(n)
         ]
-        self._leftovers: List[Optional[Tuple[ray.ObjectRef, int]]] = [None] * n
-        self._awaiting_count: List[bool] = [False] * n
-        self._data_tasks: Dict[int, DataOpTask] = {}
-
-        self._next_task_idx: int = 0
+        # In-flight row-count fetches, keyed by input index. An input with an
+        # entry here is paused until its head's row count resolves.
         self._pending_count_tasks: Dict[int, MetadataOpTask] = {}
-        self._next_meta_task_idx: int = 0
-
+        # In-flight zip tasks, keyed by task index (also the output ordering key).
+        self._data_tasks: Dict[int, DataOpTask] = {}
+        self._next_task_idx: int = 0
+        # Replaced in `start()` once the ordering requirement is known.
+        self._output_buffer: BaseBundleQueue = FIFOBundleQueue()
         self._inputs_fully_delivered: bool = False
-
         self._output_blocks_stats: List[BlockStats] = []
         self._stats: StatsDict = {}
         super().__init__(
             data_context,
             *input_ops,
         )
+
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
+        super().start(options, block_ref_counter)
+        # Zip tasks can complete out of order, so only pay for reordering when
+        # the execution actually requires the input order to be preserved.
+        if options.preserve_order:
+            self._output_buffer = ReorderingBundleQueue()
+        else:
+            self._output_buffer = FIFOBundleQueue()
 
     @property
     @override
@@ -100,6 +132,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     @override
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
+
+    @property
+    def _num_inputs(self) -> int:
+        return len(self._input_buffers)
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
@@ -135,31 +171,31 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def all_inputs_done(self) -> None:
         self._inputs_fully_delivered = True
         self._dispatch_ready_zips()
-        # If row-count tasks are pending, the
-        # check is deferred to the last one's completion callback instead.
         self._validate_if_settled()
         super().all_inputs_done()
 
     def _validate_if_settled(self) -> None:
+        """Raise if the inputs turned out to have different numbers of rows.
+
+        Only meaningful once every input has been delivered and no row count is
+        still being fetched; until then the check is deferred (a pending count
+        task re-runs it from its completion callback).
         """
-        Raise if inputs have unequal row counts, once all inputs are delivered.
-        """
-        if not self._inputs_fully_delivered:
-            return
-        # Defer only while row counts are still being fetched asynchronously; the
-        # check re-runs from the row-count task's completion callback. We must NOT
-        # defer on staged/buffered blocks here: once inputs are fully delivered
-        # and nothing is in flight, `_dispatch_ready_zips` has consumed everything
-        # it can, so any block still left in a buffer, staging deque, block deque,
-        # or leftover slot means the inputs had differing row counts.
-        if any(self._awaiting_count) or self._pending_count_tasks:
+        if not self._inputs_fully_delivered or self._pending_count_tasks:
             return
 
-        has_buffered = any(buf.has_next() for buf in self._input_buffers)
-        has_staged = any(len(s) > 0 for s in self._staging)
-        has_remaining = any(len(d) > 0 for d in self._block_deques)
-        has_leftover = any(leftover is not None for leftover in self._leftovers)
-        if has_buffered or has_staged or has_remaining or has_leftover:
+        # NOTE: Evaluate every input (rather than short-circuiting) so each one
+        # gets the chance to drop trailing empty blocks and, if needed, start its
+        # row-count fetch.
+        has_rows = [self._ensure_head(i) for i in range(self._num_inputs)]
+        if self._pending_count_tasks:
+            # A count fetch was just started; its callback re-runs this check.
+            return
+        if any(has_rows):
+            # Inputs are fully delivered and nothing is in flight, so every row
+            # that could be paired has been. Rows left over on any input mean the
+            # inputs were of different lengths.
+            #
             # TODO(Clark): Support different number of rows via user-directed
             # dropping/padding instead of erroring out.
             raise ValueError("Cannot zip datasets of different number of rows")
@@ -187,149 +223,105 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def throttling_disabled(self) -> bool:
         return False
 
-    def _fill_block_deque(self, input_index: int) -> None:
-        """
-        Stage ready (block_ref, num_rows) entries for the given input.
+    def _ensure_head(self, input_index: int) -> bool:
+        """Make the input's queue head a non-empty slice with a known row count.
 
-        If a block's metadata lacks a row count, a row-count task is submitted asynchronously
-        and staging for this input pauses (to preserve order) until it resolves.
-        """
-        if self._awaiting_count[input_index]:
-            return
+        Pulls in more blocks and drops empty ones as needed.
 
+        Args:
+            input_index: Index of the input to advance.
+
+        Returns:
+            Whether the input has rows ready to zip. ``False`` means the input is
+            exhausted, or its head's row count is still being fetched (in which
+            case a task is in flight and progress resumes from its callback).
+        """
+        if input_index in self._pending_count_tasks:
+            return False
+
+        pending = self._pending[input_index]
         while True:
-            # Refill staging from input bundles until we have something to
-            # process or the buffer is exhausted (skips any bundles that
-            # contribute no blocks, so an empty bundle can't stall the input).
-            while (
-                not self._staging[input_index]
-                and self._input_buffers[input_index].has_next()
-            ):
+            # Pull in the next bundle's blocks, skipping bundles that carry none
+            # (an empty bundle must not stall the input).
+            while not pending and self._input_buffers[input_index].has_next():
                 bundle = self._input_buffers[input_index].get_next()
                 self._metrics.on_input_dequeued(bundle, input_index=input_index)
-                self._staging[input_index].extend(bundle.blocks)
+                pending.extend(
+                    _BlockSlice(entry.ref, 0, entry.metadata.num_rows)
+                    for entry in bundle.blocks
+                )
+            if not pending:
+                return False
 
-            if not self._staging[input_index]:
-                return
-
-            entry = self._staging[input_index][0]
-            num_rows = entry.metadata.num_rows
-            if num_rows is None:
-                # Row count unknown; resolve it asynchronously and pause staging
-                # for this input (to preserve order) until it comes back.
-                self._submit_count_task(input_index, entry.ref)
-                return
-            self._staging[input_index].popleft()
-            # Zero-row blocks carry no rows, so they never need to be paired or
-            # zipped. Drop them here (rather than staging them) so they can't
-            # linger as phantom leftovers and trip row-count validation.
-            if num_rows == 0:
+            head = pending[0]
+            if head.num_rows is None:
+                # Alignment needs the row count on the driver, so fetch it
+                # asynchronously and pause this input until it arrives.
+                self._submit_count_task(input_index, head)
+                return False
+            if head.num_rows == 0:
+                # Empty blocks contribute no rows, so drop them instead of
+                # pairing them off; otherwise they'd linger as phantom leftovers
+                # and trip the row-count validation above.
+                pending.popleft()
                 continue
-            self._block_deques[input_index].append((entry.ref, num_rows))
-            return
+            return True
 
-    def _submit_count_task(self, input_index: int, block_ref: ray.ObjectRef) -> None:
-        """
-        Asynchronously fetch a block's row count without blocking the loop.
-        """
-        self._awaiting_count[input_index] = True
+    def _submit_count_task(self, input_index: int, head: _BlockSlice) -> None:
+        """Asynchronously resolve ``head``'s row count without blocking the loop.
 
+        Only needed for the rare block whose metadata carries no row count.
+        """
         label_selector = self.data_context.execution_options.label_selector
         count_fn = cached_remote_fn(_get_num_rows)
         if label_selector:
             count_fn = count_fn.options(label_selector=label_selector)
-        count_ref = count_fn.remote(block_ref)
-
-        task_index = self._next_meta_task_idx
-        self._next_meta_task_idx += 1
+        count_ref = count_fn.remote(head.ref)
 
         def _on_count_ready() -> None:
-            self._pending_count_tasks.pop(task_index, None)
-            self._awaiting_count[input_index] = False
-            # The count object is ready (the executor only fires this after the
-            # task completes), so this get is a local, non-blocking fetch.
-            num_rows = ray.get(count_ref)
-            entry = self._staging[input_index].popleft()
-            # Skip zero-row blocks (see `_fill_block_deque`); they carry no rows.
-            if num_rows > 0:
-                self._block_deques[input_index].append((entry.ref, num_rows))
-            # Resume making progress now that the row count is known.
+            self._pending_count_tasks.pop(input_index, None)
+            # The executor only fires this once the task has completed, so the
+            # object is already available and this is a local fetch.
+            head.num_rows = ray.get(count_ref)
             self._dispatch_ready_zips()
             self._validate_if_settled()
 
-        self._pending_count_tasks[task_index] = MetadataOpTask(
-            task_index, count_ref, _on_count_ready
+        self._pending_count_tasks[input_index] = MetadataOpTask(
+            input_index, count_ref, _on_count_ready
         )
 
-    def _has_data(self, input_index: int) -> bool:
-        """Check if an input has data available (leftover, deque, or buffer)."""
-        if self._leftovers[input_index] is not None:
-            return True
-        if len(self._block_deques[input_index]) > 0:
-            return True
-        self._fill_block_deque(input_index)
-        return len(self._block_deques[input_index]) > 0
-
-    def _has_data_from_all_inputs(self) -> bool:
-        # Evaluate every input (no short-circuit) so a pending row-count fetch is
-        # kicked off for each input that needs one, letting them run in parallel.
-        results = [self._has_data(i) for i in range(len(self._input_buffers))]
-        return all(results)
-
-    def _pop_next_block(self, input_index: int) -> Tuple[ray.ObjectRef, int]:
-        """Get the next block from an input, checking the leftover slot first."""
-        if self._leftovers[input_index] is not None:
-            ref, num_rows = self._leftovers[input_index]
-            self._leftovers[input_index] = None
-            return ref, num_rows
-        if not self._block_deques[input_index]:
-            self._fill_block_deque(input_index)
-        return self._block_deques[input_index].popleft()
-
     def _dispatch_ready_zips(self) -> None:
+        """Submit a zip task for every row range the inputs currently share.
+
+        Each round zips the longest prefix common to all inputs' heads and
+        advances each head past it, leaving any remainder in place as an offset.
         """
-        Submit zip tasks for every set of blocks ready across all inputs.
+        # NOTE: Build the list first (rather than short-circuiting inside `all`)
+        # so every input can start its row-count fetch, letting them overlap.
+        while all([self._ensure_head(i) for i in range(self._num_inputs)]):
+            heads = [self._pending[i][0] for i in range(self._num_inputs)]
+            num_rows = min(head.num_rows for head in heads)
+            assert num_rows > 0, heads
 
-        While a block is available from every input, takes one block from each,
-        aligns them to the minimum row count (splitting larger blocks and storing
-        the remainder as leftovers), and submits an asynchronous zip task for the
-        aligned blocks. Repeats until some input has no data available.
+            self._submit_zip_task([(head.ref, head.offset) for head in heads], num_rows)
+
+            for input_index, head in enumerate(heads):
+                head.offset += num_rows
+                head.num_rows -= num_rows
+                if head.num_rows == 0:
+                    self._pending[input_index].popleft()
+
+    def _submit_zip_task(
+        self, block_slices: List[Tuple[ray.ObjectRef, int]], num_rows: int
+    ) -> None:
+        """Submit a task zipping ``num_rows`` rows from each of ``block_slices``.
+
+        Args:
+            block_slices: One ``(block_ref, offset)`` per input, identifying where
+                that input's contribution starts.
+            num_rows: How many rows to take from each block, starting at its
+                offset. Equal across inputs, so the rows line up.
         """
-        label_selector = self.data_context.execution_options.label_selector
-
-        split_fn = cached_remote_fn(_split_block_at_row, num_returns=2)
-        if label_selector:
-            split_fn = split_fn.options(label_selector=label_selector)
-
-        while self._has_data_from_all_inputs():
-            block_refs = []
-            block_rows = []
-            for i in range(len(self._input_buffers)):
-                ref, num_rows = self._pop_next_block(i)
-                block_refs.append(ref)
-                block_rows.append(num_rows)
-
-            # Zero-row blocks are dropped in `_fill_block_deque`/`_on_count_ready`
-            # and leftovers always carry >0 rows, so every popped block is
-            # non-empty and `min_rows` is always positive.
-            min_rows = min(block_rows)
-            assert min_rows > 0, block_rows
-
-            # Align blocks to min_rows by splitting any larger blocks, carrying
-            # the tail forward as a leftover for the next alignment round.
-            aligned_refs = []
-            for i in range(len(block_refs)):
-                if block_rows[i] == min_rows:
-                    aligned_refs.append(block_refs[i])
-                else:
-                    head_ref, tail_ref = split_fn.remote(block_refs[i], min_rows)
-                    aligned_refs.append(head_ref)
-                    self._leftovers[i] = (tail_ref, block_rows[i] - min_rows)
-
-            self._submit_zip_task(aligned_refs)
-
-    def _submit_zip_task(self, aligned_refs: List[ray.ObjectRef]) -> None:
-        """Submit an asynchronous task that zips the aligned blocks together."""
         # TODO(ekl): Wire up per-task metrics so the progress bar and
         # task counters reflect zip tasks.
         label_selector = self.data_context.execution_options.label_selector
@@ -340,7 +332,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         task_index = self._next_task_idx
         self._next_task_idx += 1
 
-        gen = zip_fn.remote(*aligned_refs)
+        gen = zip_fn.remote(
+            *[ref for ref, _ in block_slices],
+            offsets=[offset for _, offset in block_slices],
+            num_rows=num_rows,
+        )
 
         def _output_ready_callback(output: RefBundle) -> None:
             # The zip task streams exactly one output block.
@@ -368,28 +364,33 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         )
 
 
-def _split_block_at_row(block: Block, row_index: int) -> Tuple[Block, Block]:
-    """Split a block into head ``[0, row_index)`` and tail ``[row_index, end)``."""
-    accessor = BlockAccessor.for_block(block)
-    head = accessor.slice(0, row_index)
-    tail = accessor.slice(row_index, accessor.num_rows())
-    return head, tail
-
-
 def _zip_blocks_task(
     *blocks: Block,
+    offsets: List[int],
+    num_rows: int,
 ) -> Iterator[Union[Block, bytes]]:
-    """Streaming task that zips ``blocks`` column-wise and yields the result.
+    """Zip the aligned row range of ``blocks`` and yield the resulting block.
+
+    Each block is sliced to ``[offset, offset + num_rows)`` locally before
+    zipping, so misaligned block boundaries are handled without materializing
+    intermediate split blocks in the object store.
 
     Yields the zipped block followed by its pickled ``BlockMetadataWithSchema``,
     per the streaming-generator protocol expected by :class:`DataOpTask`.
     """
     stats = BlockExecStats.builder()
+
     # TODO(Clark): Extend BlockAccessor.zip() to accept N other blocks so we can
     # zip in a single call instead of folding pairwise.
-    result = blocks[0]
-    for other_block in blocks[1:]:
-        result = BlockAccessor.for_block(result).zip(other_block)
+    result = None
+    for block, offset in zip(blocks, offsets):
+        accessor = BlockAccessor.for_block(block)
+        if offset != 0 or accessor.num_rows() != num_rows:
+            block = accessor.slice(offset, offset + num_rows)
+        if result is None:
+            result = block
+        else:
+            result = BlockAccessor.for_block(result).zip(block)
     stats.finish()
 
     from ray.data.block import BlockMetadataWithSchema

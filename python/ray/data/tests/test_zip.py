@@ -508,6 +508,96 @@ def test_zip_streaming_throttling_enabled(ray_start_regular_shared):
     assert not zip_op.throttling_disabled()
 
 
+@pytest.mark.parametrize("preserve_order", [True, False])
+def test_zip_streaming_output_queue_matches_preserve_order(
+    ray_start_regular_shared, preserve_order
+):
+    """The output queue should only reorder when the execution asks for it."""
+    from ray.data._internal.execution.bundle_queue import (
+        FIFOBundleQueue,
+        ReorderingBundleQueue,
+    )
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[1]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[2]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions(preserve_order=preserve_order), noop_counter())
+
+    expected = ReorderingBundleQueue if preserve_order else FIFOBundleQueue
+    assert isinstance(zip_op._output_buffer, expected)
+
+
+def test_zip_streaming_reuses_block_across_offsets(ray_start_regular_shared):
+    """A block spanning several of the other input's blocks is zipped in place.
+
+    Rather than splitting it into new objects, the operator hands the same block
+    ref to each zip task with a different offset, so verify the rows still line
+    up and that only zip tasks (no split tasks) are dispatched.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    # A is a single 10-row block; B splits the same 10 rows across 3 blocks, so
+    # A's block is zipped three times at offsets 0, 3 and 6.
+    input_a = InputDataBuffer(ctx, make_ref_bundles([list(range(10))]))
+    input_b = InputDataBuffer(
+        ctx, make_ref_bundles([[100, 101, 102], [103, 104, 105], [106, 107, 108, 109]])
+    )
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions(preserve_order=True), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    # Three aligned ranges, so three zip tasks and no separate split tasks.
+    assert all(isinstance(t, DataOpTask) for t in zip_op.get_active_tasks())
+    assert zip_op._next_task_idx == 3
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    run_op_tasks_sync(zip_op)
+    assert zip_op.num_active_tasks() == 0
+
+    id_values = []
+    id_1_values = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            id_values.extend(df["id"].tolist())
+            id_1_values.extend(df["id_1"].tolist())
+
+    assert id_values == list(range(10))
+    assert id_1_values == list(range(100, 110))
+
+
 if __name__ == "__main__":
     import sys
 
