@@ -1,3 +1,6 @@
+.. meta::
+   :description: Additional Ray integrations: Joblib, multiprocessing, Ray Collective, Dask-on-Ray, RayDP (Spark), Mars-on-Ray, and Modin.
+
 More Ray ML Libraries
 =====================
 
@@ -27,7 +30,7 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`spark-on-ray`
 - :ref:`mars-on-ray`
 - :ref:`modin-on-ray`
-- `daft <https://www.getdaft.io>`_
+- `daft <https://www.daft.ai>`_
 
 .. _air-ecosystem-map:
 

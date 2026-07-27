@@ -1,0 +1,101 @@
+# Pyrefly config for the Serve type-checking ratchet, deliberately scoped to
+# ray/serve via an explicit --config in the pre-commit hook. The filename is
+# deliberately NOT pyrefly.toml: that name is auto-discovered, and the
+# repo-root pyrefly.toml belongs to the ray/data CI job
+# (ci/lint/pyrefly-check.sh). Paths below are relative to this directory.
+# (See .pre-commit-config.yaml
+# "mypy (ray serve)" hook; this covers the same allowlist).
+project-includes = [
+    "handle.py",
+    "tests/typing_files/check_handle_typing.py",
+    "_private/__init__.py",
+    "_private/api.py",
+    "_private/autoscaling_state.py",
+    "_private/benchmarks/__init__.py",
+    "_private/benchmarks/serialization/__init__.py",
+    "_private/benchmarks/serialization/common.py",
+    "_private/benchmarks/streaming/__init__.py",
+    "_private/benchmarks/streaming/_grpc/__init__.py",
+    "_private/broker.py",
+    "_private/build_app.py",
+    "_private/cluster_node_info_cache.py",
+    "_private/common.py",
+    "_private/config.py",
+    "_private/constants.py",
+    "_private/constants_utils.py",
+    "_private/controller_avatar.py",
+    "_private/controller_health_metrics_tracker.py",
+    "_private/default_impl.py",
+    "_private/deploy_utils.py",
+    "_private/deployment_info.py",
+    "_private/deployment_node.py",
+    "_private/direct_ingress_grpc_util.py",
+    "_private/direct_ingress_http_util.py",
+    "_private/endpoint_state.py",
+    "_private/event_loop_monitoring.py",
+    "_private/exceptions.py",
+    "_private/gang_scheduling_autoscaling_policy.py",
+    "_private/grpc_util.py",
+    "_private/handle_options.py",
+    "_private/haproxy_metrics.py",
+    "_private/haproxy_templates.py",
+    "_private/http_util.py",
+    "_private/local_testing_mode.py",
+    "_private/logging_utils.py",
+    "_private/long_poll.py",
+    "_private/metrics_utils.py",
+    "_private/node_port_manager.py",
+    "_private/proxy_request_response.py",
+    "_private/proxy_response_generator.py",
+    "_private/proxy_router.py",
+    "_private/queue_monitor.py",
+    "_private/replica_response_generator.py",
+    "_private/replica_result.py",
+    "_private/request_ingress_metrics.py",
+    "_private/request_router/__init__.py",
+    "_private/request_router/common.py",
+    "_private/request_router/pow_2_router.py",
+    "_private/request_router/replica_wrapper.py",
+    "_private/rolling_window.py",
+    "_private/serialization.py",
+    "_private/storage/__init__.py",
+    "_private/storage/kv_store.py",
+    "_private/storage/kv_store_base.py",
+    "_private/task_consumer.py",
+    "_private/thirdparty/__init__.py",
+    "_private/tracing_utils.py",
+    "_private/usage.py",
+    "_private/utils.py",
+    "_private/version.py",
+]
+search-path = ["../.."]
+# Pin so results do not depend on the interpreter the hook env was built with
+# (ray supports 3.9+; CI lint containers and dev machines vary).
+python-version = "3.9"
+
+# Equivalent of mypy --ignore-missing-imports: generated/compiled modules whose
+# names only exist at runtime, plus third-party deps that are not installed in
+# the pre-commit env.
+replace-imports-with-any = [
+    "ray._raylet",
+    "ray.serve.generated",
+    "ray.serve.generated.*",
+    "ray.core.generated",
+    "ray.core.generated.*",
+    "ray.cloudpickle.*",
+    "fastapi.*",
+    "grpc.*",
+    "memray",
+    "opentelemetry.*",
+    "numpy",
+    "orjson",
+    "ormsgpack",
+    "packaging.*",
+    "pandas",
+    "pydantic.*",
+    "redis",
+    "requests",
+    "starlette.*",
+    "tornado.*",
+    "uvicorn.*",
+]
