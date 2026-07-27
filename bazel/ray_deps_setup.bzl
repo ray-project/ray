@@ -186,6 +186,14 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:rocksdb.BUILD",
         url = "https://github.com/facebook/rocksdb/archive/refs/tags/v10.6.2.tar.gz",
         sha256 = "14c619b8a10f994aa6061bd12182b20270c4c27c2f3d9cb4376d57f3cd1c5d7f",
+        patches = [
+            # WITH_TSAN=ON injects `-Wl,-pie`, which breaks every CMake
+            # try_compile under the rules_foreign_cc crosstool (clang +
+            # static libc++), aborting configure at find_package(Threads).
+            # `-fsanitize=thread` alone is sufficient for TSan.
+            "@io_ray//thirdparty/patches:rocksdb-tsan-no-pie.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(

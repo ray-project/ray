@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.issue_detection.issue_detector import IssueType
-from ray.data._internal.usage import collector
+from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.execution_callback import UsageCallback
 
 
@@ -36,13 +36,12 @@ def executor():
 def reset_collector(monkeypatch):
     collector.reset_for_testing()
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
-    # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
-    # keep the collector's opt-out gate open. Patch the gate directly instead.
+    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 for driver-created
+    # clusters, so the env var can't keep the opt-out gate open. Patch the gate.
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
-    # The callback reads these module-level cluster metric readers; pin them to
-    # zero so tests never touch the real cluster and deltas are deterministic.
-    monkeypatch.setattr(collector, "cluster_spilled_bytes", lambda: 0)
-    monkeypatch.setattr(collector, "cluster_dead_node_count", lambda: 0)
+    # Prometheus isn't running in tests, so stub the counter query fn;
+    # the readers degrade to None without any network I/O.
+    monkeypatch.setattr(collector, "query_prometheus_counter", lambda promql: None)
     yield
     collector.reset_for_testing()
 
@@ -72,10 +71,15 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Performance deltas are populated from the injected readers; both readers
-    # return 0 at start and end, so the clamped deltas are 0.
-    assert entry["performance"]["bytes_spilled"] == 0
-    assert entry["performance"]["node_deaths"] == 0
+    # Performance carries all four metric fields. Values are None in this
+    # hermetic run (no cluster / Prometheus); the delta math is covered by
+    # test_compute_delta and the query path by the query_prometheus_counter tests.
+    assert set(entry["performance"]) == {
+        "bytes_spilled",
+        "node_deaths",
+        "oom_kills",
+        "unexpected_worker_kills",
+    }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
 
@@ -282,12 +286,103 @@ def test_physical_op_name_without_logical_ops():
 def test_compute_delta():
     """Cluster metric deltas (bytes_spilled, node_deaths) are the non-negative
     increase between start and end samples, or None if either sample is missing."""
-    assert collector.compute_delta(100, 250) == 150
+    assert util.compute_delta(100, 250) == 150
     # Cumulative counters shouldn't go backwards, but clamp to 0 if they do.
-    assert collector.compute_delta(250, 100) == 0
-    assert collector.compute_delta(None, 100) is None
-    assert collector.compute_delta(100, None) is None
-    assert collector.compute_delta(None, None) is None
+    assert util.compute_delta(250, 100) == 0
+    assert util.compute_delta(None, 100) is None
+    assert util.compute_delta(100, None) is None
+    assert util.compute_delta(None, None) is None
+
+
+def test_query_prometheus_counter_sums_results(monkeypatch):
+    """A successful instant query sums the value of every returned series."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "data": {"result": [{"value": [0, "3"]}, {"value": [0, "4"]}]}
+    }
+    monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
+    assert util.query_prometheus_counter("q") == 7
+
+
+@pytest.mark.parametrize(
+    "get_fn",
+    [
+        # Non-200 response.
+        lambda *a, **k: MagicMock(status_code=500),
+        # 200 but no series matched.
+        lambda *a, **k: MagicMock(
+            status_code=200, json=lambda: {"data": {"result": []}}
+        ),
+        # Prometheus unreachable
+        MagicMock(side_effect=util.requests.ConnectionError("no prometheus")),
+        # 200 but malformed response body
+        lambda *a, **k: MagicMock(status_code=200, json=lambda: {"unexpected": 1}),
+    ],
+)
+def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
+    """Each realistic query failure yields None so usage collection never breaks."""
+    monkeypatch.setattr(util.requests, "get", get_fn)
+    assert util.query_prometheus_counter("q") is None
+
+
+def test_session_scoped_metric_query():
+    """The query sums the metric, scoped by SessionName plus any extra labels."""
+    assert (
+        collector._session_scoped_metric_query("m", "sess")
+        == "sum(m{SessionName='sess'})"
+    )
+    assert (
+        collector._session_scoped_metric_query("m", "sess", {"State": "Spilled"})
+        == "sum(m{State='Spilled',SessionName='sess'})"
+    )
+    # No session -> unscoped, but extra labels still apply.
+    assert collector._session_scoped_metric_query("m", None) == "sum(m)"
+    assert (
+        collector._session_scoped_metric_query("m", None, {"State": "Spilled"})
+        == "sum(m{State='Spilled'})"
+    )
+
+
+def test_poller_snapshots():
+    """The poller publishes the latest snapshot every poll and pins the first."""
+    counter = {"v": 100}
+    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    assert p.latest_snapshot() is None and p.first_snapshot() is None
+    p.poll_once()  # first = latest = 100
+    counter["v"] = 500
+    p.poll_once()  # latest = 500, first pinned at 100
+    assert p.first_snapshot() == {"m": 100}
+    assert p.latest_snapshot() == {"m": 500}
+
+
+def test_callback_deltas_from_captured_baseline(monkeypatch):
+    """The callback measures its delta from the baseline it captured at start
+    (latest snapshot minus that baseline)."""
+    counter = {"v": 100}
+    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    monkeypatch.setattr(poller, "_poller", p)
+    p.poll_once()  # latest = 100
+    cb = UsageCallback(MagicMock())
+    cb._baseline_snapshot = p.latest_snapshot()  # baseline = 100
+    counter["v"] = 500
+    p.poll_once()  # latest = 500
+    assert cb._compute_cluster_deltas() == {"m": 400}
+
+
+def test_callback_none_baseline_falls_back_to_first_snapshot(monkeypatch):
+    """A callback whose execution started before any poll completed (None
+    baseline) measures its delta from the poller's first snapshot."""
+    counter = {"v": 100}
+    p = poller.ClusterMetricsPoller({"m": lambda: counter["v"]})
+    monkeypatch.setattr(poller, "_poller", p)
+    cb = UsageCallback(MagicMock())
+    cb._baseline_snapshot = p.latest_snapshot()  # None: no poll completed yet
+    assert cb._baseline_snapshot is None
+    p.poll_once()  # first = latest = 100
+    counter["v"] = 400
+    p.poll_once()  # latest = 400
+    assert cb._compute_cluster_deltas() == {"m": 300}
 
 
 if __name__ == "__main__":
