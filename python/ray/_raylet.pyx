@@ -4492,22 +4492,6 @@ cdef class CoreWorker:
             cpython.Py_DECREF(callback)
         return registered
 
-    def remove_object_out_of_scope_callbacks(self, object_id_binary: bytes):
-        """Remove and fire all out-of-scope callbacks for the given object.
-
-        Firing allows per-callback cleanup (e.g. Py_DECREF). After this
-        call, no further out-of-scope callbacks will fire for this object.
-
-        Args:
-            object_id_binary: The object ID as bytes (from ObjectRef.binary()).
-
-        .. warning::
-            This is an internal Ray API. Do not use it outside of Ray libraries.
-        """
-        cdef CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-        CCoreWorkerProcess.GetCoreWorker() \
-            .RemoveObjectOutOfScopeOrFreedCallbacks(c_object_id)
-
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()

@@ -156,9 +156,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RemoveObjectOutOfScopeOrFreedCallbacks(const ObjectID &object_id) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
   bool AddObjectRefDeletedCallback(
       const ObjectID &object_id, std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);

@@ -260,8 +260,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &object_id,
             void (*callback)(const CObjectID &, void *) nogil,
             void *callback_context)
-        void RemoveObjectOutOfScopeOrFreedCallbacks(
-            const CObjectID &object_id)
         CRayStatus CheckObjectOwnedByUs(const CObjectID &object_id) const
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)

@@ -634,34 +634,6 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_TRUE(*out_of_scope);
 }
 
-TEST_F(ReferenceCountTest, TestRemoveObjectOutOfScopeCallbacks) {
-  ObjectID id = ObjectID::FromRandom();
-  rpc::Address address;
-  address.set_ip_address("1234");
-
-  auto callback_count = std::make_shared<int>(0);
-  auto callback = [&](const ObjectID &object_id) { (*callback_count)++; };
-
-  // Register a callback on an owned, in-scope object.
-  rc->AddOwnedObject(id,
-                     {},
-                     address,
-                     "",
-                     0,
-                     LineageReconstructionEligibility::INELIGIBLE_PUT,
-                     /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
-
-  // Remove fires the callback.
-  rc->RemoveObjectOutOfScopeOrFreedCallbacks(id);
-  ASSERT_EQ(*callback_count, 1);
-
-  // The object going out of scope should not fire the callback again.
-  std::vector<ObjectID> out;
-  rc->RemoveLocalReference(id, &out);
-  ASSERT_EQ(*callback_count, 1);
-}
-
 // Tests call site tracking and ability to update object size.
 TEST_F(ReferenceCountTest, TestReferenceStats) {
   ObjectID id1 = ObjectID::FromRandom();

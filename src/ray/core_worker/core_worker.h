@@ -483,10 +483,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///         a borrowed object owned by another worker).
   Status CheckObjectOwnedByUs(const ObjectID &object_id) const;
 
-  /// Remove and fire all out-of-scope/freed callbacks for `object_id`.
-  /// See ReferenceCounterInterface::RemoveObjectOutOfScopeOrFreedCallbacks.
-  void RemoveObjectOutOfScopeOrFreedCallbacks(const ObjectID &object_id);
-
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
