@@ -438,10 +438,11 @@ def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared
 
     def bundle_with_unknown_rows(values):
         block = pd.DataFrame({"id": values})
-        # Build metadata with num_rows=None to exercise the async fetch path.
+        # Leave out num_rows to exercise the async fetch path. size_bytes still
+        # has to be set, since RefBundle rejects blocks of unknown size.
         metadata = BlockMetadata(
             num_rows=None,
-            size_bytes=None,
+            size_bytes=BlockAccessor.for_block(block).size_bytes(),
             exec_stats=None,
             input_files=None,
         )
