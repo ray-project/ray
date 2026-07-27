@@ -336,7 +336,7 @@ class GcsServer {
   std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 
   /// Client for ClusterResourceManager to use for updating table storage
-  std::unique_ptr<ClusterResourceStorage> cluster_resource_storage_;
+  std::unique_ptr<ClusterResourceStorageInterface> cluster_resource_storage_;
 };
 
 }  // namespace gcs

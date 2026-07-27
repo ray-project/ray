@@ -42,6 +42,7 @@
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/raylet/scheduling/raylet_cluster_resource_storage.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/stats/stats.h"
@@ -537,8 +538,14 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
-  cluster_resource_storage_ = std::make_unique<ClusterResourceStorage>(
-      gcs_table_storage_.get(), io_context_provider_.GetDefaultIOContext());
+  if (GetStorageType() != StorageType::IN_MEMORY) {
+    cluster_resource_storage_ = std::make_unique<ClusterResourceStorage>(
+        gcs_table_storage_.get(), io_context_provider_.GetDefaultIOContext());
+  } else {
+    // when using in-memory storage, we can use the NOOP implementation
+    cluster_resource_storage_ =
+        std::make_unique<ray::raylet::RayletClusterResourceStorage>();
+  }
 
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
