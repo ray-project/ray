@@ -118,6 +118,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         self._pending_count_tasks: Dict[int, MetadataOpTask] = {}
         # In-flight zip tasks, keyed by task index (also the output ordering key).
         self._data_tasks: Dict[int, DataOpTask] = {}
+        # The bundles each in-flight zip task is holding, keyed by task index.
+        # Tracked outside the task's callback so the holds can still be released
+        # if the task is cancelled and the callback never runs.
+        self._task_sources: Dict[int, List[_SourceBundle]] = {}
         self._next_task_idx: int = 0
         # Replaced in `start()` once the ordering requirement is known.
         self._output_buffer: BaseBundleQueue = FIFOBundleQueue()
@@ -294,10 +298,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _do_shutdown(self, force: bool) -> None:
         super()._do_shutdown(force)
-        # Cancelled tasks never run their completion callbacks, so drop them
-        # here to release the block refs they hold.
+        # Cancelled tasks never run their completion callbacks, so release the
+        # bundles they were holding and drop the tasks here. Rows still staged
+        # for zipping are released separately, by `clear_internal_input_queue`.
+        for task_index in list(self._task_sources):
+            self._release_task_holds(task_index)
         self._data_tasks.clear()
         self._pending_count_tasks.clear()
+
+    def _release_task_holds(self, task_index: int) -> None:
+        """Release the holds a zip task kept on the bundles it read."""
+        for source in self._task_sources.pop(task_index, ()):
+            self._release_hold(source)
 
     @override
     def clear_internal_input_queue(self) -> None:
@@ -418,6 +430,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
         task_index = self._next_task_idx
         self._next_task_idx += 1
+        self._task_sources[task_index] = sources
 
         gen = zip_fn.remote(
             *[ref for ref, _ in block_slices],
@@ -441,8 +454,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             self._output_buffer.finalize(key=task_index)
             # The task is done reading its inputs, so they can now be freed
             # (unless another task or unzipped range still holds them).
-            for source in sources:
-                self._release_hold(source)
+            self._release_task_holds(task_index)
 
         self._data_tasks[task_index] = DataOpTask(
             task_index,

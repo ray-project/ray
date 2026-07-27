@@ -660,11 +660,17 @@ def test_zip_streaming_releases_tasks_on_shutdown(ray_start_regular_shared, forc
         zip_op.add_input(input_b.get_next(), 1)
 
     assert zip_op.num_active_tasks() > 0
+    assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
 
     zip_op.shutdown(timer=Timer(), force=force)
+    # Shutdown is always followed by this on the executor's teardown path.
+    zip_op.clear_internal_input_queue()
 
     assert zip_op.num_active_tasks() == 0
     assert zip_op.get_active_tasks() == []
+    # Bundles held only by the cancelled tasks must be released too, otherwise
+    # the metrics queue keeps their blocks pinned in the object store.
+    assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
 
 
 def test_zip_streaming_reuses_block_across_offsets(ray_start_regular_shared):
