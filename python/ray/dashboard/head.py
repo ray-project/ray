@@ -3,7 +3,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -132,6 +132,13 @@ class DashboardHead:
         self.ip = node_ip_address
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
+        # pid -> psutil.Process of a subprocess module. The handles are kept
+        # across metric-record cycles because psutil.Process.cpu_percent() is
+        # measured relative to the previous call on the *same* object: the first
+        # call on a freshly created object always returns a meaningless 0.0.
+        # The reporter agent caches its handles for the same reason, see
+        # https://github.com/ray-project/ray/issues/29848
+        self._subprocess_module_procs: Dict[int, psutil.Process] = {}
         self.proxy_server_url = proxy_server_url
 
         # If the dashboard is started as non-minimal version, http server should
@@ -369,12 +376,18 @@ class DashboardHead:
         }
         assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
         self._record_cpu_mem_metrics_for_proc(self.dashboard_proc)
+        live_pids = set()
         for subprocess_module_handle in subprocess_module_handles:
             assert subprocess_module_handle.process is not None
-            proc = psutil.Process(subprocess_module_handle.process.pid)
+            pid = subprocess_module_handle.process.pid
+            live_pids.add(pid)
             self._record_cpu_mem_metrics_for_proc(
-                proc, subprocess_module_handle.module_cls.__name__
+                self._get_subprocess_module_proc(pid),
+                subprocess_module_handle.module_cls.__name__,
             )
+        # Drop the handles of modules that exited or restarted under a new pid.
+        for stale_pid in self._subprocess_module_procs.keys() - live_pids:
+            del self._subprocess_module_procs[stale_pid]
 
         loop = ray._common.utils.get_or_create_event_loop()
 
@@ -388,6 +401,21 @@ class DashboardHead:
                 float(self._event_loop_lag_s_max)
             )
             self._event_loop_lag_s_max = None
+
+    def _get_subprocess_module_proc(self, pid: int) -> psutil.Process:
+        """Return the cached psutil.Process for pid, creating it if needed.
+
+        Reusing the handle is what gives cpu_percent() a baseline to measure
+        against. See the comment on self._subprocess_module_procs.
+        """
+        proc = self._subprocess_module_procs.get(pid)
+        # is_running() is False once the process is gone, and also once the pid
+        # has been reused by an unrelated process, in which case the cached
+        # handle's baseline no longer describes the process being measured.
+        if proc is None or not proc.is_running():
+            proc = psutil.Process(pid)
+            self._subprocess_module_procs[pid] = proc
+        return proc
 
     def _record_cpu_mem_metrics_for_proc(
         self, proc: psutil.Process, module_name: str = ""
