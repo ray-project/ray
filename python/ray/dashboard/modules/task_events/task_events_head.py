@@ -15,16 +15,15 @@ logger = logging.getLogger(__name__)
 class TaskEventsHead(SubprocessModule):
     """Dashboard-head endpoint that receives task events from per-node aggregators.
 
-    The per-node aggregator agent POSTs an ``AddEventsRequest`` payload (the same
-    proto the aggregator sends to GCS) to this module, which holds the received
-    ``RayEvent``s in memory.
+    The per-node aggregator agent POSTs an ``AddEventsRequest`` payload
+     to this module, which holds the received``RayEvent``s in memory.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO(Task 3): replace this unbounded in-memory buffer with real storage +
-        # GC/eviction. It exists only so the ingestion endpoint has somewhere to put
-        # events for now; nothing reads it yet (State-API serving is a later task).
+        # TODO(karticam): Replace this with an in-memory store of task events.
+        #   This will mimic current GcsTaskManager and will power state API.
+        #   Will be done in future PRs.
         self._events = collections.deque()
 
     @property
@@ -35,12 +34,7 @@ class TaskEventsHead(SubprocessModule):
     def _deserialize_request(
         self, body: bytes
     ) -> events_event_aggregator_service_pb2.AddEventsRequest:
-        """Deserialize the POST body into an ``AddEventsRequest``.
-
-        Kept as a single seam because the on-the-wire encoding between the aggregator
-        and this endpoint is not finalized (binary proto vs JSON). Swap this method to
-        change the wire format without touching the handler.
-        """
+        """Deserialize the binary-proto POST body into an ``AddEventsRequest``."""
         return events_event_aggregator_service_pb2.AddEventsRequest.FromString(body)
 
     @routes.post("/api/task_events")
