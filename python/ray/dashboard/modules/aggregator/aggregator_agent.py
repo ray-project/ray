@@ -18,7 +18,7 @@ from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
-    AsyncGCSTaskEventsPublisherClient,
+    AsyncDashboardHeadPublisherClient,
     AsyncHttpPublisherClient,
 )
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
@@ -143,8 +143,10 @@ class AggregatorAgent(
             self._event_processing_enabled = True
             self._gcs_publisher = RayEventPublisher(
                 name="ray_gcs",
-                publish_client=AsyncGCSTaskEventsPublisherClient(
-                    gcs_client=self._dashboard_agent.gcs_client,
+                publish_client=AsyncDashboardHeadPublisherClient(
+                    # TODO(karticam): wire the dedicated flag (sub-goal b) and resolve the
+                    # dashboard head URL (sub-goal c); this path is inactive until then.
+                    endpoint=None,
                     executor=self._executor,
                 ),
                 event_buffer=self._event_buffer,
