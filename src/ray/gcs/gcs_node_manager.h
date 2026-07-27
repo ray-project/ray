@@ -423,7 +423,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       /*name=*/"node_failure_total",
       /*description=*/"Number of node failures that have happened in the cluster.",
       /*unit=*/"",
-      /*tag_keys=*/{"Reason"}};
+      /*tag_keys=*/{"reason"}};
 
   friend GcsAutoscalerStateManagerTest;
   friend GcsStateTest;
