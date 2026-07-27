@@ -32,7 +32,7 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -40,13 +40,6 @@ from ray.tests.conftest import *  # noqa
 from ray.util.annotations import RayDeprecationWarning
 
 RANDOM_SEED = 123
-
-
-@pytest.fixture(autouse=True, params=[False, True], ids=["shufflev1", "shufflev2"])
-def hash_shuffle_version(request, restore_data_context):
-    """Run every groupby test on both v1 (old actor-based) & v2 shuffle."""
-    DataContext.get_current().use_hash_shuffle_v2 = request.param
-    return request.param
 
 
 def _sort_series_of_lists_elements(s: pd.Series):
@@ -60,6 +53,7 @@ def _sort_series_of_lists_elements(s: pd.Series):
 
 def test_grouped_dataset_repr(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     disable_fallback_to_object_extension,
     target_max_block_size_infinite_or_default,
 ):
@@ -91,6 +85,7 @@ def test_groupby_none(
 
 def test_groupby_errors(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     disable_fallback_to_object_extension,
     target_max_block_size_infinite_or_default,
 ):
@@ -161,7 +156,7 @@ def test_groupby_with_column_expression_udf(
     ]
 
 
-def test_arrow_nan_element(ray_start_regular_shared_2_cpus):
+def test_arrow_nan_element(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.from_items(
         [
             1.0,
@@ -500,6 +495,7 @@ def test_groupby_tabular_sum(
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_e2e(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     batch_format,
     num_parts,
     disable_fallback_to_object_extension,
@@ -528,6 +524,7 @@ def test_as_list_e2e(
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_with_nulls(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     batch_format,
     num_parts,
     disable_fallback_to_object_extension,
@@ -593,7 +590,8 @@ def test_groupby_arrow_multi_agg(
         # NOTE: Hash-shuffle internally converts to pyarrow
         (
             ds_format == "pandas"
-            and configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE
+            and configure_shuffle_method
+            in (ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.HASH_SHUFFLE_V2)
         )
     )
 
@@ -1318,7 +1316,9 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
+def test_groupby_map_groups_with_partial(
+    configure_shuffle_method, disable_fallback_to_object_extension, capsys
+):
     """
     The partial function name should show up as
     +- Sort
@@ -1347,7 +1347,9 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, c
     assert "MapBatches(func)" in captured.out
 
 
-def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
+def test_map_groups_generator_udf(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     """
     Tests that map_groups supports UDFs that return generators (iterators).
     """
