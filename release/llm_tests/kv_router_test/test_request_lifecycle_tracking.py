@@ -137,8 +137,7 @@ class TestLifecycleTracking:
                 "get_lifecycle_snapshot", LIFECYCLE_REQUEST_ID, worker_id
             ).results_async()
             return len(per_replica) == len(replica_ids) and all(
-                reading["lifecycle"] is not None
-                and reading["active_requests"] == 1
+                reading["lifecycle"] is not None and reading["active_requests"] == 1
                 for reading in per_replica
             )
 

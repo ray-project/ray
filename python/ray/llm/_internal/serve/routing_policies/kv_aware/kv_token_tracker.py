@@ -12,6 +12,7 @@ from ray import serve
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     KV_INDEXER_THREADS_KEY,
+    LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.serve._private.common import DeploymentTargetInfo
@@ -125,25 +126,32 @@ class ReservationBroadcastForwarder:
             while not self._reservations.empty():
                 batch.append(self._reservations.get_nowait())
             try:
-                self._broadcast(batch)
+                results = await self._handle.broadcast(
+                    "on_reservations_created", batch
+                ).results_async(
+                    timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+                    return_exceptions=True,
+                )
+                errors = [r for r in results if isinstance(r, Exception)]
+                if errors:
+                    logger.warning(
+                        "KV reservation broadcasts dropped on %d/%d ingress "
+                        "replicas: %s",
+                        len(errors),
+                        len(results),
+                        errors[0],
+                    )
             except Exception as e:
-                logger.warning("Dropping selection service reservation broadcast: %s", e)
+                logger.warning(
+                    "Dropping selection service reservation broadcast: %s", e
+                )
             finally:
                 for _ in batch:
                     self._reservations.task_done()
 
-    def _broadcast(self, reservations: List[ReservationBroadcast]) -> None:
-        scheduled = self._handle.broadcast(
-            "on_reservations_created", reservations
-        )._ensure_scheduled()
-
-        def _log_schedule_failure(future) -> None:
-            try:
-                future.result()
-            except Exception as e:
-                logger.warning("Dropping selection service reservation broadcast: %s", e)
-
-        scheduled.add_done_callback(_log_schedule_failure)
+    async def flush(self) -> None:
+        """Wait until every reported reservation broadcast has been attempted."""
+        await self._reservations.join()
 
     def close(self) -> None:
         if self._delivery_task is not None:
@@ -210,6 +218,9 @@ class KVTokenTracker:
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
+        # Request ids whose completion arrived before their reservation broadcast.
+        # Ordered oldest-first so the stale sweep can bound memory.
+        self._completed_request_ids: "OrderedDict[str, float]" = OrderedDict()
         self._pending_tasks: Set[asyncio.Task] = set()
         self._reservation_forwarder: Optional[ReservationBroadcastForwarder] = None
         self._reservation_updates: asyncio.Queue = asyncio.Queue()
@@ -471,6 +482,7 @@ class KVTokenTracker:
         old = self._requests.pop(request_id, None)
         if old is not None:
             self._untrack_worker_request(request_id, old.worker_id)
+        self._completed_request_ids.pop(request_id, None)
         if self._block_size is None:
             raise RuntimeError(
                 "KV block size is unavailable before worker registration."
@@ -500,18 +512,12 @@ class KVTokenTracker:
             # The selecting ingress receives its own broadcast after it has
             # already booked the atomic reservation. It must skip even if the
             # request already completed locally before the broadcast arrived.
-            if (
-                reservation["source_ingress_replica_rank"]
-                == self._ingress_replica_rank
-            ):
+            if reservation["source_ingress_replica_rank"] == self._ingress_replica_rank:
                 continue
             pending.append(reservation)
         if not pending:
             return
-        if (
-            self._reservation_apply_task is None
-            or self._reservation_apply_task.done()
-        ):
+        if self._reservation_apply_task is None or self._reservation_apply_task.done():
             self._reservation_apply_task = asyncio.create_task(
                 self._apply_reservation_updates()
             )
@@ -522,9 +528,7 @@ class KVTokenTracker:
             batches = [await self._reservation_updates.get()]
             while not self._reservation_updates.empty():
                 batches.append(self._reservation_updates.get_nowait())
-            reservations = [
-                reservation for batch in batches for reservation in batch
-            ]
+            reservations = [reservation for batch in batches for reservation in batch]
             try:
                 await self._apply_reservations(reservations)
             except Exception:
@@ -539,7 +543,10 @@ class KVTokenTracker:
         await self._evict_stale_requests()
         for reservation in reservations:
             request_id = reservation["request_id"]
-            if request_id in self._requests:
+            if (
+                request_id in self._requests
+                or request_id in self._completed_request_ids
+            ):
                 continue
             await self._svc.create_reservation(
                 {
@@ -615,9 +622,16 @@ class KVTokenTracker:
         """Free ``request_id`` from the selection service's active load and the
         local view."""
         state = self._requests.pop(request_id, None)
-        if state is not None:
-            self._untrack_worker_request(request_id, state.worker_id)
-            await self._svc.free_reservation(request_id)
+        self._mark_request_completed(request_id)
+        if state is None:
+            return
+        self._untrack_worker_request(request_id, state.worker_id)
+        await self._svc.free_reservation(request_id)
+
+    def _mark_request_completed(self, request_id: str) -> None:
+        """Remember completions that beat reservation admission on this ingress."""
+        self._completed_request_ids.pop(request_id, None)
+        self._completed_request_ids[request_id] = time.monotonic()
 
     def _untrack_worker_request(self, request_id: str, worker_id: int) -> None:
         """Drop a request from the per-worker reverse index, keeping it in
@@ -633,6 +647,11 @@ class KVTokenTracker:
         past ``REQUEST_TRACKING_TTL_S``, freeing their reservations.
         """
         cutoff = time.monotonic() - REQUEST_TRACKING_TTL_S
+        while self._completed_request_ids:
+            request_id, completed_at = next(iter(self._completed_request_ids.items()))
+            if completed_at > cutoff:
+                break
+            self._completed_request_ids.pop(request_id, None)
         while self._requests:
             request_id, state = next(iter(self._requests.items()))
             if state.created_at > cutoff:

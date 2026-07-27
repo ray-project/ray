@@ -49,7 +49,7 @@ class _NoLongPollTracker(KVTokenTracker):
 
     async def flush_reservation_broadcast(self):
         if self._reservation_forwarder is not None:
-            await self._reservation_forwarder._reservations.join()
+            await self._reservation_forwarder.flush()
 
     async def flush_reservation_updates(self):
         await self._reservation_updates.join()
@@ -125,6 +125,18 @@ class _TrackerBroadcastHandle:
         handle = self
 
         class _Response:
+            async def results_async(self, *, timeout_s=None, return_exceptions=False):
+                gather = asyncio.gather(
+                    *[
+                        getattr(tracker, method_name)(*args)
+                        for tracker in handle._trackers
+                    ],
+                    return_exceptions=return_exceptions,
+                )
+                if timeout_s is None:
+                    return list(await gather)
+                return list(await asyncio.wait_for(gather, timeout=timeout_s))
+
             def _ensure_scheduled(self):
                 task = asyncio.create_task(handle._run(method_name, *args))
                 handle._tasks.add(task)
@@ -140,6 +152,21 @@ class _TrackerBroadcastHandle:
     async def flush(self):
         if self._tasks:
             await asyncio.gather(*self._tasks)
+
+
+class _RecordingSelectionService:
+    """Proxy a real SelectionService while recording reservation attempts."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.create_reservation_calls = []
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    async def create_reservation(self, request):
+        self.create_reservation_calls.append(dict(request))
+        return await self._inner.create_reservation(request)
 
 
 @pytest.mark.asyncio
@@ -307,6 +334,61 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
     finally:
         if tracker._svc is not None:
             await tracker._svc.delete_worker(worker_id)
+
+
+@pytest.mark.asyncio
+async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
+    """A peer that sees completion before reservation admission must not
+    recreate active load when the delayed reservation broadcast is applied."""
+    pytest.importorskip("dynamo.llm")
+    worker_id = get_worker_id("engine-replica-0")
+    token_ids = list(range(64))
+
+    routing = _NoLongPollTracker(ingress_replica_rank=0)
+    peer = _NoLongPollTracker(ingress_replica_rank=1)
+    trackers = (routing, peer)
+    try:
+        for tracker in trackers:
+            tracker._register_block_size(16, "engine-replica-0")
+            await tracker._upsert_worker(
+                worker_id,
+                "engine-replica-0",
+                {
+                    "endpoint": "tcp://127.0.0.1:59998",
+                    "block_size": 16,
+                    "max_num_batched_tokens": 8192,
+                    "dp_rank": 0,
+                },
+            )
+
+        selection = await routing.select_worker(
+            "req-delayed-peer", token_ids, [worker_id], 32
+        )
+        peer._svc = _RecordingSelectionService(peer._svc)
+        descriptor = {
+            "request_id": "req-delayed-peer",
+            "source_ingress_replica_rank": 0,
+            "worker_id": selection["worker_id"],
+            "dp_rank": selection["dp_rank"],
+            "sequence_hashes": [1],
+            "isl_tokens": len(token_ids),
+            "expected_output_tokens": 32,
+            "effective_prefill_tokens": selection["effective_prefill_tokens"],
+        }
+
+        await peer.on_request_completed("req-delayed-peer")
+        await peer.on_reservations_created([descriptor])
+        await peer.flush_reservation_updates()
+
+        assert "req-delayed-peer" not in peer._requests
+        assert _active_requests(peer, worker_id) == 0
+        assert peer._svc.create_reservation_calls == []
+    finally:
+        for tracker in trackers:
+            if tracker._reservation_apply_task is not None:
+                tracker._reservation_apply_task.cancel()
+            if tracker._svc is not None:
+                await tracker._svc.delete_worker(worker_id)
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------

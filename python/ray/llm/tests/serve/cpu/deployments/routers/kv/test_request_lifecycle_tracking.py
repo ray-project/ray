@@ -127,6 +127,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
+        self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
         self._reservation_forwarder = None
         self._svc = MockSelectionService()
@@ -177,6 +178,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
+        self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
         self._reservation_forwarder = None
         self._svc = MockSelectionService()
@@ -622,10 +624,7 @@ async def test_slow_replica_broadcast_timeout(monkeypatch, build_token_tracking_
 
     assert len(outputs) == 2
     assert [name for name, _ in healthy.events] == [
-        "on_request_added",
         "on_prefill_complete",
-        "on_decode_progress",
-        "on_decode_progress",
         "on_request_completed",
     ]
 

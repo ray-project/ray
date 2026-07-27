@@ -1,10 +1,11 @@
 """Tests for token-load state across LLMRouter ingress replicas.
 
-Each ingress owns a local KV selector and books load when it performs atomic
-selection for a request. Engine lifecycle events are still broadcast, but a
-non-routing ingress ignores events for reservations it does not own. Cached KV
-blocks are tracked per replica: every ingress independently subscribes to each
-engine worker's KV-event stream.
+Each ingress owns a local KV selector. The routing ingress atomically selects
+and reserves a worker, then asynchronously broadcasts that already-selected
+reservation so peer ingresses can mirror the same load state. Engine lifecycle
+events are broadcast separately and advance or free reservations admitted
+locally. Cached KV blocks are tracked per replica: every ingress independently
+subscribes to each engine worker's KV-event stream.
 """
 
 import asyncio
