@@ -15,10 +15,10 @@ from ray._common.test_utils import (
 from ray._common.network_utils import build_address
 from ray._private.telemetry.metric_cardinality import (
     WORKER_ID_TAG_KEY,
+    REPLICA_ID_TAG_KEY,
     TASK_OR_ACTOR_NAME_TAG_KEY,
     MetricCardinality,
 )
-
 
 try:
     import prometheus_client
@@ -147,6 +147,83 @@ def test_cardinality_recommended_and_legacy_levels(
     _setup_cluster_for_test, cardinality_level, metric
 ):
     _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric)
+
+
+@pytest.fixture
+def _setup_serve_metric_cluster(request, ray_start_cluster):
+    """Bring up a node and emit a Serve-style gauge (carries ReplicaId) from two
+    replicas, each setting 3.0 with a distinct ReplicaId."""
+    global _CARDINALITY_LEVEL
+    _CARDINALITY_LEVEL = None
+    level = request.param
+    os.environ["RAY_metric_cardinality_level"] = level
+    cluster = ray_start_cluster
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "enable_metrics_collection": True,
+            "metric_cardinality_level": level,
+        }
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Emitter:
+        def __init__(self, replica_id):
+            from ray.util.metrics import Gauge
+
+            self.replica_id = replica_id
+            self.gauge = Gauge(
+                "test_serve_replica_running",
+                description="test serve metric",
+                tag_keys=("model_name", REPLICA_ID_TAG_KEY),
+            )
+
+        def emit(self):
+            self.gauge.set(
+                3.0, tags={"model_name": "m", REPLICA_ID_TAG_KEY: self.replica_id}
+            )
+
+    emitters = [Emitter.remote(f"replica_{i}") for i in range(2)]
+    for _ in range(5):
+        ray.get([e.emit.remote() for e in emitters])
+
+    node_info = ray.nodes()[0]
+    yield build_address(node_info["NodeManagerAddress"], node_info["MetricsExportPort"])
+
+
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize(
+    "_setup_serve_metric_cluster,cardinality_level",
+    [(level, level) for level in ["legacy", "recommended", "low"]],
+    indirect=["_setup_serve_metric_cluster"],
+)
+def test_serve_metric_cardinality(_setup_serve_metric_cluster, cardinality_level):
+    """A metric carrying ReplicaId collapses to one node-level series with both
+    WorkerId and ReplicaId dropped and the values summed, at every level except
+    legacy."""
+    prom_address = _setup_serve_metric_cluster
+
+    def _validate():
+        timeseries = PrometheusTimeseries()
+        samples = fetch_prometheus_metric_timeseries([prom_address], timeseries).get(
+            "ray_test_serve_replica_running"
+        )
+        assert samples, "Serve metric not found in samples"
+        if cardinality_level == "legacy":
+            assert len(samples) == 2, f"Expected 2 per-replica series, got {samples}"
+            for sample in samples:
+                assert sample.labels.get(WORKER_ID_TAG_KEY) is not None
+                assert sample.labels.get(REPLICA_ID_TAG_KEY) is not None
+        else:
+            assert len(samples) == 1, f"Expected 1 node-level series, got {samples}"
+            sample = samples[0]
+            assert sample.labels.get(WORKER_ID_TAG_KEY) is None
+            assert sample.labels.get(REPLICA_ID_TAG_KEY) is None
+            assert sample.value == 6.0, f"Expected summed 6.0, got {sample.value}"
+
+    wait_for_assertion(_validate, timeout=30, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":

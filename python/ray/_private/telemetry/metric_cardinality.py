@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable, Dict, List
+from typing import Callable, Collection, Dict, List, Optional
 
 from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 from ray._private.telemetry.metric_types import MetricType
@@ -8,11 +8,30 @@ from ray._private.telemetry.metric_types import MetricType
 WORKER_ID_TAG_KEY = "WorkerId"
 # Keep in sync with the NameKey in src/ray/stats/tag_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
+# Serve attaches this to every metric emitted inside a replica. It is 1:1 with
+# WorkerId, so a metric that carries it is a Serve metric and drives per-replica
+# cardinality. Its presence is what scopes the reduction to Serve metrics.
+REPLICA_ID_TAG_KEY = "ReplicaId"
 # Aggregation functions for high-cardinality gauge metrics when labels are dropped.
 # Counter and Sum metrics always use sum() aggregation.
 HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
     "tasks": sum,
     "actors": sum,
+}
+
+
+def _mean(values: List[float]) -> float:
+    return sum(values) / len(values)
+
+
+# Serve gauges whose per-replica values must not be summed when replicas collapse
+# to the node level. Keyed by the sanitized name the recorder sees (":" -> "_",
+# no "ray_" prefix). This lives agent-side because the reduction runs in the
+# reporter agent, a different process than the replica that emits the metric, so
+# a replica-side registration would never reach it.
+NON_ADDITIVE_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
+    # vLLM KV cache utilization is a 0..1 ratio; the node average is meaningful.
+    "vllm_kv_cache_usage_perc": _mean,
 }
 
 _CARDINALITY_LEVEL = None
@@ -26,10 +45,12 @@ class MetricCardinality(str, Enum):
     thousands of workers, millions of tasks.
 
     - LEGACY: Keep all labels. This is the default behavior.
-    - RECOMMENDED: Drop high cardinality labels. The set of high cardinality labels
-    are determined internally by Ray and not exposed to users. Currently, this includes
-    the following labels: WorkerId
-    - LOW: Same as RECOMMENDED, but also drop the Name label for tasks and actors.
+    - RECOMMENDED: Drop WorkerId from the metrics Ray marks as high cardinality
+    (tasks, actors). Also drop WorkerId and ReplicaId from Serve metrics (any
+    series that carries a ReplicaId tag), collapsing per-replica series to the
+    node level. Other metrics are untouched.
+    - LOW: Same as RECOMMENDED, and additionally drop the Name label for tasks
+    and actors.
     """
 
     LEGACY = "legacy"
@@ -67,35 +88,57 @@ class MetricCardinality(str, Enum):
         # Histogram metrics are not supported by this method
         if metric_type == MetricType.HISTOGRAM:
             raise ValueError("No Aggregation function for histogram metrics.")
-        # Gauge metrics use metric-specific aggregation or default to first value
+        # Gauge metrics use metric-specific aggregation, or sum by default so
+        # that additive per-replica gauges (running, waiting, ...) collapse to a
+        # correct node total when WorkerId and ReplicaId are dropped.
         if metric_name in HIGH_CARDINALITY_GAUGE_AGGREGATION:
             return HIGH_CARDINALITY_GAUGE_AGGREGATION[metric_name]
-        return lambda values: values[0]
+        if metric_name in NON_ADDITIVE_GAUGE_AGGREGATION:
+            return NON_ADDITIVE_GAUGE_AGGREGATION[metric_name]
+        return sum
 
     @staticmethod
     def get_high_cardinality_metrics() -> List[str]:
         return list(HIGH_CARDINALITY_GAUGE_AGGREGATION.keys())
 
     @staticmethod
-    def get_high_cardinality_labels_to_drop(metric_name: str) -> List[str]:
-        """
-        Get the high cardinality labels of the metric.
+    def get_high_cardinality_labels_to_drop(
+        metric_name: str, tag_keys: Optional[Collection[str]] = None
+    ) -> List[str]:
+        """Get the high cardinality labels to drop for one metric.
+
+        LEGACY drops nothing. Otherwise:
+        - A Serve metric (a series that carries the ReplicaId tag) drops both
+          WorkerId and ReplicaId, so per-replica series collapse to the node
+          level.
+        - The metrics Ray marks as high cardinality (tasks, actors) drop
+          WorkerId, and additionally Name at the LOW level.
+        Every other metric is left untouched.
+
+        Args:
+            metric_name: The name of the metric.
+            tag_keys: The tag keys present on the metric's series. Required to
+                detect a Serve metric. When None, only the name-based rules
+                apply and the result is not cached.
+
+        Returns:
+            The label keys to drop from the metric before export.
         """
         if metric_name in _HIGH_CARDINALITY_LABELS:
             return _HIGH_CARDINALITY_LABELS[metric_name]
 
-        cardinality_level = MetricCardinality.get_cardinality_level()
-        if (
-            cardinality_level == MetricCardinality.LEGACY
-            or metric_name not in MetricCardinality.get_high_cardinality_metrics()
-        ):
-            _HIGH_CARDINALITY_LABELS[metric_name] = []
-            return []
+        level = MetricCardinality.get_cardinality_level()
+        labels: List[str] = []
+        if level != MetricCardinality.LEGACY:
+            if tag_keys is not None and REPLICA_ID_TAG_KEY in tag_keys:
+                labels = [WORKER_ID_TAG_KEY, REPLICA_ID_TAG_KEY]
+            elif metric_name in MetricCardinality.get_high_cardinality_metrics():
+                labels = [WORKER_ID_TAG_KEY]
+                if level == MetricCardinality.LOW:
+                    labels.append(TASK_OR_ACTOR_NAME_TAG_KEY)
 
-        _HIGH_CARDINALITY_LABELS[metric_name] = [WORKER_ID_TAG_KEY]
-        if cardinality_level == MetricCardinality.LOW and metric_name in [
-            "tasks",
-            "actors",
-        ]:
-            _HIGH_CARDINALITY_LABELS[metric_name].append(TASK_OR_ACTOR_NAME_TAG_KEY)
-        return _HIGH_CARDINALITY_LABELS[metric_name]
+        # Skip caching when tag_keys is unknown so a name-only call cannot poison
+        # the entry for a Serve metric whose ReplicaId tag was not yet visible.
+        if tag_keys is not None:
+            _HIGH_CARDINALITY_LABELS[metric_name] = labels
+        return labels

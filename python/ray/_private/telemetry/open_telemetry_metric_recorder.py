@@ -134,9 +134,16 @@ class OpenTelemetryMetricRecorder:
                 else:
                     return []
 
-                # Aggregate by filtered tags (drop high cardinality labels)
+                # Aggregate by filtered tags (drop high cardinality labels).
+                # All series of a metric share one tag schema, so any one is
+                # enough to detect a Serve metric (carries ReplicaId).
+                tag_keys = next(
+                    ({k for k, _ in tag_set} for tag_set in observations), None
+                )
                 high_cardinality_labels = (
-                    MetricCardinality.get_high_cardinality_labels_to_drop(metric_name)
+                    MetricCardinality.get_high_cardinality_labels_to_drop(
+                        metric_name, tag_keys
+                    )
                 )
                 # First, collect all values that share the same filtered tag set
                 values_by_filtered_tags = defaultdict(list)
@@ -337,13 +344,15 @@ class OpenTelemetryMetricRecorder:
                 instrument = self._registered_instruments.get(name)
                 if isinstance(instrument, metrics.Histogram):
                     # Filter out high cardinality labels.
+                    high_cardinality_labels = (
+                        MetricCardinality.get_high_cardinality_labels_to_drop(
+                            name, tags.keys()
+                        )
+                    )
                     filtered_tags = {
                         k: v
                         for k, v in tags.items()
-                        if k
-                        not in MetricCardinality.get_high_cardinality_labels_to_drop(
-                            name
-                        )
+                        if k not in high_cardinality_labels
                     }
                     instrument.record(value, attributes=filtered_tags)
                 else:
@@ -374,8 +383,11 @@ class OpenTelemetryMetricRecorder:
                 return
 
             bucket_midpoints = self._histogram_bucket_midpoints[name]
+            # All data points share one tag schema, so the first is enough to
+            # detect a Serve metric (carries ReplicaId).
+            tag_keys = data_points[0]["tags"].keys() if data_points else None
             high_cardinality_labels = (
-                MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                MetricCardinality.get_high_cardinality_labels_to_drop(name, tag_keys)
             )
 
             for dp in data_points:
