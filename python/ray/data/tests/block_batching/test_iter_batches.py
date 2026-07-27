@@ -14,6 +14,7 @@ from ray.data._internal.block_batching.interfaces import (
     BatchMetadata,
     BatchStageTimings,
     BlockPrefetcher,
+    FinalizedData,
 )
 from ray.data._internal.block_batching.iter_batches import (
     BatchIterator,
@@ -423,7 +424,7 @@ def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
             e = AssertionError("finalize_fn is being run concurrently.")
             q.put(e, block=True)
         semaphore.release()
-        return batch
+        return FinalizedData(data=batch)
 
     # Test that finalize_fn is called in a single thread,
     # even if prefetch_batches is set.
@@ -599,7 +600,7 @@ def test_finalize_fn_runs_after_restore_original_order(ray_start_regular_shared)
         idx = int(batch["foo"].iloc[0])
         with seen_lock:
             seen_by_finalize.append(idx)
-        return batch
+        return FinalizedData(data=batch)
 
     num_blocks = 16
     ref_bundles = ref_bundle_generator(num_blocks=num_blocks, num_rows=1)
@@ -818,7 +819,7 @@ def test_e2e_blocked_attribution_by_scenario(
         # Pass _finalize_fn via _iter_batches (private signature accepts it).
         def slow_finalize(data):
             time.sleep(SLEEP_S)
-            return data
+            return FinalizedData(data=data)
 
         iter_kwargs["_finalize_fn"] = slow_finalize
         ds = ray.data.range(50, override_num_blocks=5)
@@ -827,9 +828,9 @@ def test_e2e_blocked_attribution_by_scenario(
     captured = []
     orig = _StatsManager.update_iteration_metrics
 
-    def spy(stats, dataset_tag):
+    def spy(stats, dataset_tag, split_index):
         captured.append(stats)
-        return orig(stats, dataset_tag)
+        return orig(stats, dataset_tag, split_index)
 
     patches.append(patch.object(_StatsManager, "update_iteration_metrics", spy))
 

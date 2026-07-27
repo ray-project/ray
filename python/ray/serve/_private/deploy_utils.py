@@ -46,11 +46,11 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
-    deployment_config.version = version
+    deployment_config.version = version  # type: ignore[union-attr]
 
     controller_deploy_args = {
         "deployment_name": name,
-        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
+        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),  # type: ignore[union-attr]
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
@@ -115,6 +115,35 @@ def deploy_args_to_deployment_info(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
 
+    if ingress_request_router:
+        if deployment_config.autoscaling_config is not None:
+            raise RayServeException(
+                "autoscaling_config is not supported on an ingress request "
+                "router. It runs one replica per proxy node."
+            )
+        # The controller pins one router replica per proxy node. Proxy and
+        # HAProxyManager run at num_cpus=0, so give the router the same empty
+        # footprint. Drop resource requests that would keep it off a proxy node,
+        # keeping non-resource actor options.
+        ray_actor_options = {
+            k: v
+            for k, v in replica_config.ray_actor_options.items()
+            if k not in {"num_gpus", "memory", "accelerator_type", "resources"}
+        }
+        ray_actor_options["num_cpus"] = 0
+        replica_config.update(
+            ray_actor_options=ray_actor_options,
+            placement_group_bundles=replica_config.placement_group_bundles,
+            placement_group_strategy=replica_config.placement_group_strategy,
+            placement_group_bundle_label_selector=(
+                replica_config.placement_group_bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(
+                replica_config.placement_group_fallback_strategy
+            ),
+            max_replicas_per_node=replica_config.max_replicas_per_node,
+        )
+
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
         deployer_job_id = ray.JobID.from_int(
@@ -123,7 +152,8 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            name=deployment_name, app_name=app_name
+            name=deployment_name,
+            app_name=app_name,  # type: ignore[arg-type]
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,

@@ -1,3 +1,6 @@
+.. meta::
+   :description: End-to-end RLlib tutorial: configure and build an Algorithm, train, checkpoint, evaluate, and deploy a trained policy.
+
 .. _rllib-getting-started:
 
 Getting Started
