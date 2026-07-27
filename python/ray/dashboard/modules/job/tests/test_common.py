@@ -6,14 +6,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
+from ray.core.generated.common_pb2 import JobFailureInfo
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
+    JobFailureStage,
     JobInfo,
     JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
     http_uri_components_to_uri,
+    make_failure_info,
     uri_to_http_components,
     validate_request_type,
 )
@@ -230,6 +233,15 @@ def test_job_info_json_to_proto():
         runtime_env={"pip": ["pkg"]},
         driver_agent_http_address="http://localhost:1234",
         driver_node_id="node_id",
+        failure_info=make_failure_info(
+            JobFailureStage.DRIVER_RUN,
+            driver_exit_code=-9,
+            context_key="driver_run",
+            context={
+                "error_message": "boom",
+                "exception_class": "ValueError",
+            },
+        ),
     )
     info_json = json.dumps(info.to_json())
     info_proto = Parse(info_json, JobsAPIInfo())
@@ -251,6 +263,17 @@ def test_job_info_json_to_proto():
     assert info_proto.error_type == "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
     assert info_proto.driver_agent_http_address == "http://localhost:1234"
     assert info_proto.driver_node_id == "node_id"
+    # failure_info must survive the JSON -> JobsAPIInfo hop. The GCS parses this
+    # same JSON with ignore_unknown_fields=false, so a key here that the proto
+    # does not know silently blanks the entire job_info record.
+    assert info_proto.failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
+    assert info_proto.failure_info.driver_exit_code == -9
+    # A negative returncode means the direct child took signal N.
+    assert info_proto.failure_info.driver_exit_signal == 9
+    assert info_proto.failure_info.WhichOneof("context") == "driver_run"
+    assert info_proto.failure_info.driver_run.exception_class == "ValueError"
+    # Unset optionals inside the context must stay unset, not default-false.
+    assert not info_proto.failure_info.driver_run.HasField("failed_to_start")
 
     minimal_info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi")
     minimal_info_json = json.dumps(minimal_info.to_json())
@@ -265,6 +288,7 @@ def test_job_info_json_to_proto():
         "error_type",
         "driver_agent_http_address",
         "driver_node_id",
+        "failure_info",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
 

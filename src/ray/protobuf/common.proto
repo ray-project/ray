@@ -380,6 +380,33 @@ message ActorDeathCause {
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
+  // Which runtime env plugin failed, e.g. "uv", "pip", "conda", "working_dir",
+  // "container". Raw plugin name rather than an enum so a new plugin is a new
+  // value, not a schema change.
+  optional string plugin = 2;
+  // Which phase of that plugin failed, e.g. "resolve", "download", "install".
+  optional string phase = 3;
+  // The specific requirement that failed, e.g. "torch==2.9.1", when the plugin
+  // can attribute the failure to one.
+  optional string failed_package = 4;
+  // Exit code of the installer process (uv, pip, ...), when one ran.
+  optional int32 installer_exit_code = 5;
+  // Reference to the captured installer stderr.
+  optional string stderr_ref = 6;
+  // One entry per setup attempt. Today only the last attempt survives, so a
+  // failure that succeeded on retry is indistinguishable from one that never
+  // did.
+  repeated RuntimeEnvSetupAttempt attempts = 7;
+}
+
+// One runtime env setup attempt. Retries are kept because the interesting case
+// is a failure that recurs, not the last one to be tried.
+message RuntimeEnvSetupAttempt {
+  // 1-based attempt number.
+  int32 attempt = 1;
+  optional int32 exit_code = 2;
+  optional string error_message = 3;
+  optional uint64 duration_ms = 4;
 }
 
 // Note: ActorUnschedulableContext is used in the export API and state API so it is
@@ -438,6 +465,100 @@ message OomContext {
 }
 
 // ---Actor death contexts end----
+
+// ---Job failure info start----
+
+// Structured detail about why a job failed. Attached to the job record
+// (JobsAPIInfo) and to per-transition job export events.
+//
+// Shaped after ActorDeathCause above: a discriminator plus a oneof of
+// per-stage contexts, reusing the context messages that already exist rather
+// than introducing a parallel vocabulary.
+//
+// Note: this is served by the state and export APIs, so it is public. Any
+// modification must be backward compatible.
+message JobFailureInfo {
+  // Where in the job lifecycle the failure happened. Selects which context
+  // below is set.
+  enum Stage {
+    UNSPECIFIED = 0;
+    SUBMISSION = 1;
+    RUNTIME_ENV_SETUP = 2;
+    WORKER_BOOTSTRAP = 3;
+    SUPERVISOR_START = 4;
+    DRIVER_RUN = 5;
+  }
+
+  Stage stage = 1;
+
+  // How the driver process ended. Both fields are needed: a kernel OOM kill
+  // and `kill -9` are both exit 137, and only the termination reason
+  // distinguishes them.
+  optional int32 driver_exit_code = 2;
+  // The terminating signal, if the process was signalled.
+  optional int32 driver_exit_signal = 3;
+  // Raw kernel or runtime termination token, e.g. "oom-kill". Deliberately a
+  // raw string rather than an `oom_killed` boolean, so that a new termination
+  // kind is a new value rather than a new field.
+  optional string termination_reason = 4;
+
+  oneof context {
+    RuntimeEnvFailedContext runtime_env = 5;
+    WorkerBootstrapContext worker_bootstrap = 6;
+    SupervisorDeathContext supervisor = 7;
+    OomContext oom = 8;
+    DriverRunContext driver_run = 10;
+  }
+
+  // Reference to the captured log excerpt for this failure.
+  optional string log_excerpt_ref = 9;
+}
+
+// A worker that died before completing registration. Distinct from
+// ActorUnschedulableContext, which this path currently borrows and which makes
+// a broken bootstrap script read as a capacity problem.
+message WorkerBootstrapContext {
+  string error_message = 1;
+  // stderr of the worker that failed. Today this is interleaved into
+  // raylet.err, because workers spawned before registration inherit the
+  // raylet's output stream.
+  optional string stderr_tail = 2;
+  // Number of registration attempts made before giving up.
+  optional int32 attempts = 3;
+  optional bytes worker_id = 4;
+  // Not populated today: the raylet sets SIGCHLD to SIG_IGN, so the kernel
+  // reaps workers and waitpid returns ECHILD. Reserved so that adding it later
+  // is not a schema change.
+  optional int32 exit_code = 5;
+}
+
+// Death of the job supervisor actor, as data rather than as its string form.
+message SupervisorDeathContext {
+  string error_message = 1;
+  // The structured death cause, instead of str() of it. Not populated yet:
+  // the supervisor path currently flattens ActorDiedError.cause into an
+  // f-string.
+  optional ActorDeathCause death_cause = 2;
+  // Exception class observed on the supervisor path, e.g. "ActorDiedError".
+  optional string exception_class = 3;
+}
+
+// The entrypoint ran and did not succeed. This is the most common failure
+// stage, and today it carries only a generic message.
+message DriverRunContext {
+  string error_message = 1;
+  // Exception class of the final traceback, e.g. "ModuleNotFoundError", or of
+  // the start-time exception when the entrypoint never began executing.
+  // Not every class ends in Error or Exception, so this is the class as
+  // reported rather than a matched pattern.
+  optional string exception_class = 2;
+  // True when the entrypoint failed to start at all, as opposed to running and
+  // then exiting non-zero. Distinguishes ENTRYPOINT_START_FAILED from
+  // DRIVER_EXITED_NONZERO downstream.
+  optional bool failed_to_start = 3;
+}
+
+// ---Job failure info end----
 
 message ActorUnavailableContext {
   optional bytes actor_id = 1;

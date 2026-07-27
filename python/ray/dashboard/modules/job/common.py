@@ -86,6 +86,62 @@ class JobErrorType(str, Enum):
     JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
 
 
+class JobFailureStage(str, Enum):
+    """Where in the job lifecycle a failure happened.
+
+    Values must match the JobFailureInfo.Stage enum in
+    src/ray/protobuf/common.proto.
+    """
+
+    SUBMISSION = "SUBMISSION"
+    RUNTIME_ENV_SETUP = "RUNTIME_ENV_SETUP"
+    WORKER_BOOTSTRAP = "WORKER_BOOTSTRAP"
+    SUPERVISOR_START = "SUPERVISOR_START"
+    DRIVER_RUN = "DRIVER_RUN"
+
+
+def make_failure_info(
+    stage: JobFailureStage,
+    *,
+    context_key: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
+    driver_exit_code: Optional[int] = None,
+    termination_reason: Optional[str] = None,
+    log_excerpt_ref: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build the dict carried on JobInfo.failure_info.
+
+    Mirrors the JobFailureInfo proto in src/ray/protobuf/common.proto. Keys must
+    match that proto's field names exactly: the GCS parses this JSON into
+    JobsAPIInfo with ignore_unknown_fields left at its default of false, so an
+    unrecognised key does not just drop the key -- it fails the parse and leaves
+    the job's entire job_info record empty.
+
+    None values are omitted rather than written as null so the proto's optional
+    fields stay genuinely unset, and HasField() means what it says downstream.
+    """
+    info: Dict[str, Any] = {"stage": stage.value}
+    if driver_exit_code is not None:
+        info["driver_exit_code"] = driver_exit_code
+        # CPython reports a negative returncode when the *direct* child was
+        # killed by a signal. That is the only signal we can see here: the
+        # entrypoint runs under shell=True, so the direct child is /bin/sh and a
+        # kernel OOM of the Python grandchild arrives as a positive 128+N,
+        # indistinguishable from `kill -9`. Resolving that needs the node's
+        # termination reason, which this process has no access to.
+        if driver_exit_code < 0:
+            info["driver_exit_signal"] = -driver_exit_code
+    if termination_reason is not None:
+        info["termination_reason"] = termination_reason
+    if log_excerpt_ref is not None:
+        info["log_excerpt_ref"] = log_excerpt_ref
+    if context_key is not None and context:
+        pruned = {k: v for k, v in context.items() if v is not None}
+        if pruned:
+            info[context_key] = pruned
+    return info
+
+
 # TODO(aguo): Convert to pydantic model
 @PublicAPI(stability="stable")
 @dataclass
@@ -127,6 +183,16 @@ class JobInfo:
     #: The driver process exit code after the driver executed. Return None if driver
     #: doesn't finish executing
     driver_exit_code: Optional[int] = None
+    #: Structured detail about why the job failed, mirroring the JobFailureInfo
+    #: proto in src/ray/protobuf/common.proto. None unless the job failed.
+    #: Held as a plain dict here, like runtime_env, so that to_json/from_json
+    #: stay a straight round-trip.
+    #:
+    #: NOTE: from_json below is `cls(**json_dict)`, so a record written by a Ray
+    #: that has this field and read by one that does not raises TypeError. That
+    #: is why this field and its JobsAPIInfo counterpart must ship in the same
+    #: release rather than rolling out independently.
+    failure_info: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -356,6 +422,7 @@ class JobInfoStorageClient:
         message: Optional[str] = None,
         driver_exit_code: Optional[int] = None,
         error_type: Optional[JobErrorType] = None,
+        failure_info: Optional[Dict[str, Any]] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = 30,
     ):
@@ -370,6 +437,7 @@ class JobInfoStorageClient:
             message=message,
             driver_exit_code=driver_exit_code,
             error_type=error_type,
+            failure_info=failure_info,
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():

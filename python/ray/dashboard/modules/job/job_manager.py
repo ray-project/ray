@@ -27,8 +27,10 @@ from ray.dashboard.consts import (
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobFailureStage,
     JobInfo,
     JobInfoStorageClient,
+    make_failure_info,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
@@ -228,6 +230,11 @@ class JobManager:
                             JobStatus.FAILED,
                             message=err_msg,
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+                            failure_info=make_failure_info(
+                                JobFailureStage.SUPERVISOR_START,
+                                context_key="supervisor",
+                                context={"error_message": err_msg},
+                            ),
                             timeout=None,
                         )
                         logger.error(err_msg)
@@ -255,6 +262,16 @@ class JobManager:
                                 "failed to get job supervisor."
                             ),
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                            failure_info=make_failure_info(
+                                JobFailureStage.SUPERVISOR_START,
+                                context_key="supervisor",
+                                context={
+                                    "error_message": (
+                                        "Unexpected error occurred: "
+                                        "failed to get job supervisor."
+                                    )
+                                },
+                            ),
                             timeout=None,
                         )
                         break
@@ -277,6 +294,7 @@ class JobManager:
                 )
                 target_job_error_message = ""
                 target_job_error_type: Optional[JobErrorType] = None
+                target_failure_info: Optional[Dict[str, Any]] = None
                 if job_status is not None and job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -287,6 +305,16 @@ class JobManager:
 
                         target_job_error_message = f"runtime_env setup failed: {e}"
                         target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
+                        # Only the flattened message is available here. The
+                        # agent's structured setup_failure (plugin, package,
+                        # installer exit code, per-attempt history) is dropped in
+                        # the raylet at runtime_env_agent_client.cc, whose
+                        # callback signature carries a bare string.
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.RUNTIME_ENV_SETUP,
+                            context_key="runtime_env",
+                            context={"error_message": str(e)},
+                        )
 
                     elif isinstance(e, ActorUnschedulableError):
                         logger.error(
@@ -300,11 +328,41 @@ class JobManager:
                         target_job_error_type = (
                             JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
                         )
+                        # NOTE: this branch is overloaded upstream. A worker that
+                        # crashed before registering is written into
+                        # ActorUnschedulableContext at gcs_actor_manager.cc, the
+                        # same context used for genuine capacity failures, so a
+                        # broken bootstrap script arrives here reading as
+                        # "unschedulable". We cannot separate the two without the
+                        # C++ change, so the stage stays SUPERVISOR_START rather
+                        # than guessing WORKER_BOOTSTRAP from the message text.
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.SUPERVISOR_START,
+                            context_key="supervisor",
+                            context={
+                                "error_message": str(e),
+                                "exception_class": type(e).__name__,
+                            },
+                        )
 
                     elif isinstance(e, ActorDiedError):
                         logger.error(f"Job supervisor actor for {job_id} died: {e}")
                         target_job_error_message = f"Job supervisor actor died: {e}"
                         target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+                        # e.cause is a structured ActorDiedErrorContext that is
+                        # flattened into the f-string above. Carrying it into
+                        # SupervisorDeathContext.death_cause is R6 and is left
+                        # out here deliberately: a hand-built nested proto dict
+                        # that does not match the schema would fail the GCS JSON
+                        # parse and silently blank the whole job_info record.
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.SUPERVISOR_START,
+                            context_key="supervisor",
+                            context={
+                                "error_message": str(e),
+                                "exception_class": type(e).__name__,
+                            },
+                        )
 
                     else:
                         logger.error(
@@ -317,6 +375,14 @@ class JobManager:
                         target_job_error_type = (
                             JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
                         )
+                        target_failure_info = make_failure_info(
+                            JobFailureStage.SUPERVISOR_START,
+                            context_key="supervisor",
+                            context={
+                                "error_message": str(e),
+                                "exception_class": type(e).__name__,
+                            },
+                        )
 
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
@@ -325,6 +391,7 @@ class JobManager:
                         message=target_job_error_message,
                         error_type=target_job_error_type
                         or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                        failure_info=target_failure_info,
                         timeout=None,
                     )
 

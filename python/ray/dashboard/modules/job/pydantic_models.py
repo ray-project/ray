@@ -103,6 +103,14 @@ if PYDANTIC_INSTALLED:
             description="The driver process exit code after the driver executed. "
             "Return None if driver doesn't finish executing.",
         )
+        failure_info: Optional[Dict[str, Any]] = Field(
+            None,
+            description="Structured detail about why the job failed, mirroring the "
+            "JobFailureInfo proto: the lifecycle stage that failed, the driver exit "
+            "code and signal, the kernel termination reason, and a per-stage context. "
+            "None unless the job failed. Additive: an older SDK reading a newer "
+            "cluster ignores this field.",
+        )
 
 else:
     DriverInfo = None

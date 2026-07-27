@@ -5,7 +5,7 @@ import time
 import traceback
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -382,10 +382,14 @@ class RuntimeEnvAgent:
                 runtime_env_config: The configuration for the runtime environment.
 
             Returns:
-                Tuple[bool, str, str]: A tuple containing:
+                Tuple[bool, str, str, List[Dict[str, Any]]]: A tuple containing:
                     - result (bool): Whether the creation was successful
                     - runtime_env_context (str): The serialized context if successful, None otherwise
                     - error_message (str): Error message if failed, None otherwise
+                    - attempts (list): One entry per failed setup attempt, in
+                      order, each with attempt number, error message, duration
+                      and whether it timed out. Empty when setup succeeded
+                      first try.
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
@@ -394,6 +398,11 @@ class RuntimeEnvAgent:
             num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
             error_message = None
             serialized_context = None
+            # One entry per attempt. Previously each retry overwrote the last,
+            # so a failure that recurred N times was indistinguishable from one
+            # that failed once, and the attempt that carried the real cause was
+            # lost if a later attempt failed differently.
+            attempts: List[Dict[str, Any]] = []
             for i in range(num_retries):
                 # Only sleep when retrying.
                 if i != 0:
@@ -401,6 +410,7 @@ class RuntimeEnvAgent:
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
 
+                attempt_start = time.perf_counter()
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
                         runtime_env, runtime_env_config
@@ -416,6 +426,16 @@ class RuntimeEnvAgent:
                     self._logger.exception(err_msg)
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
+                    )
+                    attempts.append(
+                        {
+                            "attempt": i + 1,
+                            "error_message": error_message,
+                            "duration_ms": int(
+                                round((time.perf_counter() - attempt_start) * 1000, 0)
+                            ),
+                            "timed_out": isinstance(e, asyncio.TimeoutError),
+                        }
                     )
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
@@ -435,14 +455,14 @@ class RuntimeEnvAgent:
                     "runtime_env creation failed %d times, giving up.",
                     num_retries,
                 )
-                return False, None, error_message
+                return False, None, error_message, attempts
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, context: %s",
                     serialized_env,
                     serialized_context,
                 )
-                return True, serialized_context, None
+                return True, serialized_context, None, attempts
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -496,10 +516,16 @@ class RuntimeEnvAgent:
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                    cached_reply = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=f"{self._node_prefix}{error_message}",
                     )
+                    # Replaying a cached failure must carry the structured
+                    # context too, otherwise the second and later jobs hitting
+                    # the same broken env get strictly less detail than the
+                    # first one did.
+                    cached_reply.setup_failure.error_message = error_message or ""
+                    return cached_reply
 
             if SLEEP_FOR_TESTING_S:
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
@@ -520,6 +546,7 @@ class RuntimeEnvAgent:
                 successful,
                 serialized_context,
                 error_message,
+                setup_attempts,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
                 setup_timeout_seconds,
@@ -538,7 +565,7 @@ class RuntimeEnvAgent:
                 creation_time_ms,
             )
             # Reply the RPC
-            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+            reply = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
@@ -547,6 +574,18 @@ class RuntimeEnvAgent:
                 if not successful
                 else "",
             )
+            if not successful:
+                # Structured counterpart to error_message. error_message stays
+                # untouched so existing consumers are unaffected.
+                reply.setup_failure.error_message = error_message or ""
+                for a in setup_attempts:
+                    entry = reply.setup_failure.attempts.add()
+                    entry.attempt = a["attempt"]
+                    if a.get("error_message"):
+                        entry.error_message = a["error_message"]
+                    if a.get("duration_ms") is not None:
+                        entry.duration_ms = a["duration_ms"]
+            return reply
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(

@@ -23,7 +23,9 @@ from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JobFailureStage,
     JobInfoStorageClient,
+    make_failure_info,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -464,8 +466,14 @@ class JobSupervisor:
                         message=message,
                         driver_exit_code=return_code,
                         error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
+                        failure_info=make_failure_info(
+                            JobFailureStage.DRIVER_RUN,
+                            driver_exit_code=return_code,
+                            context_key="driver_run",
+                            context={"error_message": message},
+                        ),
                     )
-        except Exception:
+        except Exception as e:
             self._logger.error(
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
@@ -476,6 +484,18 @@ class JobSupervisor:
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
                     error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR,
+                    # The entrypoint never began executing, which is a different
+                    # fault from running and exiting non-zero. driver_exit_code
+                    # stays unset here, as it is today.
+                    failure_info=make_failure_info(
+                        JobFailureStage.DRIVER_RUN,
+                        context_key="driver_run",
+                        context={
+                            "error_message": traceback.format_exc(),
+                            "exception_class": type(e).__name__,
+                            "failed_to_start": True,
+                        },
+                    ),
                 )
             except Exception:
                 self._logger.error(
