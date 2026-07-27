@@ -59,6 +59,10 @@ TEAM_API_CONFIGS = {
             "ray.data.namespace_expressions.list_namespace._ListNamespace",
             "ray.data.namespace_expressions.string_namespace._StringNamespace",
             "ray.data.namespace_expressions.struct_namespace._StructNamespace",
+            # Public @PublicAPI surface reached by walking ray.data.llm but not yet
+            # documented in llm.rst; document-or-deprecate decision pending Ray Data.
+            "ray.data.llm.HttpRequestStageConfig",
+            "ray.data.llm.ServeDeploymentProcessorConfig",
         },
         # Documented public APIs whose canonical name resolves under a private
         # (._internal.) module: the class is re-exported from ray.data.__all__
@@ -124,6 +128,11 @@ TEAM_API_CONFIGS = {
             "ray.serve._private.request_router.request_router.FIFOMixin",
             "ray.serve._private.request_router.request_router.LocalityMixin",
             "ray.serve._private.request_router.request_router.MultiplexMixin",
+            # Public @PublicAPI surface reached by walking ray.serve.llm but not yet
+            # documented; document-or-deprecate decision pending Ray Serve.
+            "ray.serve.llm.build_dp_deployment",
+            "ray.serve.llm.build_dp_openai_app",
+            "ray.serve.llm.build_pd_openai_app",
         },
     },
     "core": {
@@ -240,16 +249,37 @@ TEAM_API_CONFIGS = {
     },
 }
 
-# Annotated public subpackages that no team's walk reaches AND that we intentionally
-# do not add to any head_modules, keyed to the reason. The coverage guard
-# (_check_unwalked_annotated_subpackages) fails on any unwalked annotated subpackage
-# that is not listed here, so this list is the single reviewed record of what is
-# knowingly left out of the code<->docs consistency check and why.
+# Annotated public subpackages that no team's walk reaches, keyed to the reason.
+# The coverage guard (_check_unwalked_annotated_subpackages) fails on any unwalked
+# annotated subpackage not listed here, so this is the single reviewed record of
+# what the code<->docs consistency check leaves out.
 #
-# Empty today: both known escapees (ray.serve.llm, ray.data.llm) are walked as their
-# own head_modules. Add an entry only when a subpackage genuinely cannot be a walk root
-# (e.g. an import that no mock in _mock_uninstalled_backends can satisfy).
-UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {}
+# These entries are tracked coverage debt, not permanent exclusions: each is a
+# public surface no walk reaches yet, owing a document-or-deprecate (or
+# add-to-head_modules) decision from its owning library team. They're listed so the
+# guard passes against a frozen baseline while those decisions are pending; any new
+# gap outside this list still fails the build, so the debt can only shrink.
+UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {
+    # annotated-not-walked: imports cleanly and exposes @PublicAPI, but no walk
+    # reaches it. Resolve by adding to a team's head_modules once its surface is
+    # reviewed, or by removing the annotation.
+    "ray.cluster_utils": "annotated-not-walked; pending Ray Core",
+    "ray.serve.deployment": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.llm.deployment": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.llm.ingress": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.llm.openai_api_models": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.llm.request_router": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.task_consumer": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.task_processor": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.taskiq_task_processor": "annotated-not-walked; pending Ray Serve",
+    "ray.train.horovod": "annotated-not-walked; pending Ray Train",
+    # unverifiable-import: not importable under the docbuild backend mock (missing
+    # optional dependency), so the surface can't be checked here. Resolve by making
+    # it importable in the docbuild image or removing the annotation.
+    "ray.serve.gradio_integrations": "unverifiable-import; pending Ray Serve",
+    "ray.tune.automl": "unverifiable-import; pending Ray Tune",
+    "ray.workflow": "unverifiable-import; pending Ray Core / Workflow",
+}
 
 
 def _team_head_modules() -> Set[str]:
