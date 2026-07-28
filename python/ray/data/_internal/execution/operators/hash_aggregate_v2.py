@@ -63,11 +63,17 @@ def _arrow_agg_meta(
         kind = kind_by_type.get(type(agg))
         if kind is None:
             return None
+        target_col = agg.get_target_column()
+        # Only Count accepts an optional (None) target column, Count() counts
+        # all rows in a group.  Every other kind needs a real column; a missing
+        # target falls back to the Python engine, which raises the proper ValueError.
+        if kind != "count" and not isinstance(target_col, str):
+            return None
         meta.append(
             _AggMeta(
                 kind=kind,
                 name=agg.name,
-                target_col=agg.get_target_column(),
+                target_col=target_col,
                 ignore_nulls=agg._ignore_nulls,
             )
         )
@@ -103,14 +109,13 @@ def _make_vectorized_aggregating_transformer(
         return None
 
     keys = list(key_columns)
-    needed = list(keys) + [m.target_col for m in meta if m.target_col is not None]
 
     def _arrow_transform(block: Block) -> Block:
         block_schema = BlockAccessor.for_block(block).schema()
         for agg in aggregation_fns:
             agg._validate(block_schema)
 
-        if block.num_rows == 0 and not all(c in block_schema.names for c in needed):
+        if block.num_rows == 0:
             return block
 
         specs: List[tuple] = []
@@ -207,8 +212,12 @@ def _make_vectorized_aggregating_reduce_fn(
         null_f = pa.scalar(None, pa.float64())
         one = pa.scalar(1.0)
         cols = {k: merged[k] for k in keys}
+        seen: dict = {}  # duplicate output names -> munged (name, name_2, ...),
         for i, (kind, out, _col, _ignore_nulls) in enumerate(meta):
             comp = _component_names(i, kind)
+            if seen.get(out, 0) > 0:
+                out = f"{out}_{seen[out] + 1}"
+            seen[out] = seen.get(out, 0) + 1
             if kind == "count":
                 (cnt,) = comp
                 cols[out] = pc.cast(merged[cnt], pa.int64())
