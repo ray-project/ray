@@ -443,16 +443,17 @@ def test_nested_engine_kwargs_structured_outputs():
     time.sleep(1)
 
 
-def test_prometheus_autoscaling():
-    """Test that a custom autoscaling policy using Prometheus metrics works
-    end-to-end: deploy with 1 replica, send traffic so p99 TTFT exceeds a
-    trivially low threshold, and verify scale-up to 2 replicas."""
+def test_slo_autoscaling():
+    """SLOAutoscalingPolicy end-to-end on real GPUs. Under sustained load the
+    policy learns per-replica capacity from live p99 TTFT and scales up to hold
+    the latency goal; when load stops the load signal falls to zero and it scales
+    back to min_replicas."""
     import os
     import threading
 
     from openai import OpenAI
     from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
-    from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy
+    from ray.serve.llm.autoscaling import SLOAutoscalingPolicy
 
     prometheus_address = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
 
@@ -463,22 +464,24 @@ def test_prometheus_autoscaling():
         deployment_config=dict(
             autoscaling_config=AutoscalingConfig(
                 min_replicas=1,
-                max_replicas=2,
+                max_replicas=3,
                 initial_replicas=1,
                 upscale_delay_s=5,
-                downscale_delay_s=600,
+                downscale_delay_s=30,
                 policy=AutoscalingPolicy(
-                    policy_function=TTFTAutoscalingPolicy,
+                    policy_function=SLOAutoscalingPolicy,
                     policy_kwargs=dict(
-                        # 1ms threshold: any real request triggers scale-up.
-                        ttft_target_s=0.001,
+                        ttft_target_s=0.5,
                         model_id=model_id,
                         prometheus_address=prometheus_address,
+                        rate_window="30s",
+                        tune_interval_s=15.0,
                     ),
                 ),
             ),
         ),
-        engine_kwargs=dict(enforce_eager=True),
+        # Small batch saturates a replica quickly so latency pressure is real.
+        engine_kwargs=dict(enforce_eager=True, max_num_seqs=8),
     )
 
     app = build_openai_app({"llm_configs": [llm_config]})
@@ -495,9 +498,16 @@ def test_prometheus_autoscaling():
 
     wait_for_condition(server_ready, timeout=120, retry_interval_ms=2000)
 
-    # The p99 TTFT signal is rate()-based, so it needs continuous traffic to
-    # stay non-NaN. Drive sustained load in the background while the autoscaler
-    # reacts; a one-shot burst decays to NaN before scale-up happens.
+    def running_replicas():
+        status = serve.status()
+        for app_status in status.applications.values():
+            for name, dep in app_status.deployments.items():
+                if "LLMServer" in name:
+                    return dep.replica_states.get("RUNNING", 0)
+        return 0
+
+    # Phase 1: sustained load drives p99 TTFT past the goal, so the policy learns
+    # a smaller per-replica capacity and scales up.
     stop = threading.Event()
 
     def generate_load():
@@ -506,35 +516,37 @@ def test_prometheus_autoscaling():
                 client.completions.create(
                     model=model_id,
                     prompt="Write a detailed story. " * 20,
-                    max_tokens=64,
+                    max_tokens=128,
                     temperature=0.8,
                 )
             except Exception:
                 pass
 
-    loaders = [threading.Thread(target=generate_load, daemon=True) for _ in range(4)]
+    loaders = [threading.Thread(target=generate_load, daemon=True) for _ in range(16)]
     for loader in loaders:
         loader.start()
 
     try:
 
-        def scaled_to_two():
-            status = serve.status()
-            for app_status in status.applications.values():
-                for name, dep in app_status.deployments.items():
-                    if "LLMServer" in name:
-                        running = dep.replica_states.get("RUNNING", 0)
-                        print(f"  {name}: {running} running replicas")
-                        return running >= 2
-            return False
+        def scaled_up():
+            n = running_replicas()
+            print(f"  running replicas under load: {n}")
+            return n >= 2
 
-        # rate() over the TTFT histogram needs a couple of samples under load
-        # before it is finite, which takes a couple of scrapes. Scale-up is then
-        # paced by the new replica's startup, so budget for both.
-        wait_for_condition(scaled_to_two, timeout=180, retry_interval_ms=5000)
-        print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")
+        wait_for_condition(scaled_up, timeout=240, retry_interval_ms=5000)
+        print("SLO autoscaling: scaled up under load.")
     finally:
         stop.set()
+
+    # Phase 2: load stops, the concurrency signal falls to zero, and the policy
+    # returns to min_replicas.
+    def scaled_down():
+        n = running_replicas()
+        print(f"  running replicas after load stop: {n}")
+        return n == 1
+
+    wait_for_condition(scaled_down, timeout=240, retry_interval_ms=5000)
+    print("SLO autoscaling: scaled back to min_replicas after load stopped.")
 
     serve.shutdown()
     time.sleep(1)
