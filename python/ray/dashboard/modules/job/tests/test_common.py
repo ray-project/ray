@@ -485,17 +485,20 @@ def test_job_supervisor_actor_class_is_serializable():
     reachable that way breaks job submission entirely -- not the feature that
     introduced it, every job.
 
-    The specific trap this pins: a protobuf enum symbol (`TaskStatus`,
-    `ErrorType`, `FilterPredicate`) is an EnumTypeWrapper instance, not a class,
-    and it is unpicklable:
+    Known-unpicklable things reachable that way include protobuf enum symbols
+    (`TaskStatus`, `ErrorType`, `FilterPredicate`), which are EnumTypeWrapper
+    instances rather than classes:
 
         TypeError: cannot pickle 'google._upb._message.EnumDescriptor' object
 
-    Message classes are fine. Enum *values* are plain ints and fine. Only the
-    wrapper is poison, so enum values must be bound at module scope rather than
-    dereferenced inside a method. Nothing else in the file would catch this --
-    the module imports cleanly and every unit test passes with the wrapper in
-    place; it only fails when Ray tries to ship the actor.
+    Rather than police the list, the infra-attribution code lives at module
+    scope. A module-level function is pickled BY REFERENCE, so its globals are
+    never walked, and it can use protobuf and _raylet symbols freely. Anything
+    moved back onto the class re-opens the hole.
+
+    Nothing else in the suite catches this: the module imports cleanly and every
+    unit test passes with an unpicklable global in place, because it only fails
+    when Ray tries to ship the actor -- at which point no job can start.
     """
     import ray
     from ray import cloudpickle
