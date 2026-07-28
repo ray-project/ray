@@ -284,26 +284,24 @@ class BatchIterator:
 
         self.before_epoch_start()
 
-        try:
-            while True:
-                with self.get_next_batch_context():
-                    blocked_start_s = time.perf_counter()
-                    try:
-                        batch = next(batch_iter)
-                    except StopIteration:
-                        break
-                    blocked_end_s = time.perf_counter()
-                self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
-                with self.yield_batch_context(batch):
-                    yield batch.data
-        finally:
-            self.after_epoch_end()
+        while True:
+            with self.get_next_batch_context():
+                blocked_start_s = time.perf_counter()
+                try:
+                    batch = next(batch_iter)
+                except StopIteration:
+                    break
+                blocked_end_s = time.perf_counter()
+            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
+            with self.yield_batch_context(batch):
+                yield batch.data
+
+        self.after_epoch_end()
 
     def _attribute_blocked_time(
         self, batch: Batch, blocked_start_s: float, blocked_end_s: float
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
-
         Each stage's spans on ``batch.metadata.stage_timings`` are intersected
         with the training thread's blocked window ``[blocked_start_s,
         blocked_end_s]``. Overlapping spans are merged first, so the result
