@@ -315,7 +315,7 @@ TEST(StatusOrTest, AssignmentAcrossStates) {
     EXPECT_EQ(Counted::alive, 0);
   }
   // error <- value via move: the move counterpart of the first case, and the one
-  // that regresses if move assignment sets status_ before AssignValue.
+  // that regresses if move assignment sets status_ before constructing the value.
   {
     Counted::alive = 0;
     {

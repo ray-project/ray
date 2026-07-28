@@ -271,15 +271,6 @@ class StatusOr {
     new (&data_) T(std::forward<Args>(arg)...);
   }
 
-  // Assign value to current status or.
-  template <typename U>
-  void AssignValue(U &&value) {
-    if (ok()) {
-      ClearValue();
-    }
-    MakeValue(std::forward<U>(value));
-  }
-
   // Assign status to current status or.
   void AssignStatus(Status s) {
     if (ok()) {
