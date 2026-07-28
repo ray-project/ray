@@ -11,7 +11,7 @@ from ray.serve.autoscaling_policy import PrometheusQueryMixin
 from ray.serve.config import AutoscalingContext
 from ray.util.annotations import PublicAPI
 
-DEFAULT_RATE_WINDOW = "1m"
+DEFAULT_RATE_WINDOW = "30s"
 
 
 def _p99_query(bucket: str, model_id: str, rate_window: str) -> str:
@@ -50,12 +50,16 @@ def _hit_rate_query(model_id: str, rate_window: str) -> str:
     )
 
 
-DEFAULT_KV_TARGET = 0.9
-DEFAULT_TUNE_INTERVAL_S = 60.0
-DEFAULT_TUNE_STEP_MAX = 1.25
-DEFAULT_TUNE_DEADBAND = 0.1
-DEFAULT_HIT_RATE_DAMP = 0.15
-DEFAULT_CONCURRENCY_FALLBACK = 8.0
+# Control-loop constants. Not user knobs: production-sane defaults that pace the
+# outer tuning loop and bound the learned capacity.
+_KV_TARGET = 0.9
+_TUNE_INTERVAL_S = 30.0
+_TUNE_STEP_MAX = 1.5
+_TUNE_DEADBAND = 0.1
+_HIT_RATE_DAMP = 0.15
+_C_CONCURRENCY_MIN = 1.0
+_C_CONCURRENCY_MAX = 256.0
+_CONCURRENCY_FALLBACK = 8.0
 
 
 @PublicAPI(stability="alpha")
@@ -70,16 +74,15 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
 
     - Concurrency: ``ongoing_requests / c_concurrency``. Absolute, so it composes
       with the scaling factor and does not oscillate on consolidation.
-    - KV cache: ``current_replicas * kv_utilization / kv_target``. Caps the
-      memory-bound decode phase.
+    - KV cache: ``current_replicas * kv_utilization / kv_target``. A fixed
+      ceiling on the memory-bound decode phase, not an SLO.
 
-    Outer loop (every ``tune_interval_s``): learn the capacity from latency.
-    When p99 TTFT is above ``ttft_target_s`` it lowers ``c_concurrency`` so the
-    inner loop provisions more; when TTFT is well below target it raises it. If
-    ``itl_target_s`` is set, p99 ITL tunes ``kv_target`` the same way. Tuning is
-    frozen while replicas are still starting, while traffic is near zero, and
-    when the prefix-cache hit rate swings, since those move latency for reasons
-    that more replicas do not fix.
+    Outer loop (every ``tune_interval_s``): learn the concurrency capacity from
+    latency. When p99 TTFT is above ``ttft_target_s`` it lowers ``c_concurrency``
+    so the inner loop provisions more; when TTFT is well below target it raises
+    it. Tuning is frozen while replicas are still starting, while traffic is near
+    zero, and when the prefix-cache hit rate swings, since those move latency for
+    reasons that more replicas do not fix.
 
     Zero traffic drives the load signals to zero, so the fleet falls to
     ``min_replicas`` with no special case. When Prometheus is unreachable the
@@ -103,23 +106,10 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         )
 
     Args:
-        ttft_target_s: p99 TTFT goal in seconds. The only required latency knob.
-        itl_target_s: p99 inter-token-latency goal in seconds. When set, ITL
-            tunes ``kv_target``; otherwise ``kv_target`` stays fixed as a cap.
+        ttft_target_s: p99 TTFT goal in seconds. The one latency SLO.
         model_id: Scopes every query to this vLLM model. Required.
-        kv_target: Starting KV-cache utilization ceiling, in [0, 1].
-        rate_window: PromQL range for the inner ``rate()`` of the latency and
-            hit-rate queries. Must span at least two samples.
-        tune_interval_s: Minimum seconds between capacity updates.
-        tune_step_max: Largest multiplicative change to a capacity per update.
-        tune_deadband: Skip tuning while latency is within this fraction of goal.
-        hit_rate_damp: Skip one tuning step when the prefix-cache hit rate moves
-            more than this since the last step.
-        c_concurrency_min: Lower bound for the learned concurrency capacity.
-        c_concurrency_max: Upper bound for the learned concurrency capacity.
-        kv_target_min: Lower bound for the learned KV-cache utilization target.
-        kv_target_max: Upper bound for the learned KV-cache utilization target.
         prometheus_address: Prometheus server, ``host:port`` or a full URL.
+            Defaults to the ``RAY_PROMETHEUS_HOST`` environment variable.
         **kwargs: Forwarded to ``PrometheusQueryMixin`` (``fetch_interval_s``,
             ``cache_ttl_s``).
     """
@@ -127,18 +117,7 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
     def __init__(
         self,
         ttft_target_s: float,
-        itl_target_s: Optional[float] = None,
         model_id: Optional[str] = None,
-        kv_target: float = DEFAULT_KV_TARGET,
-        rate_window: str = DEFAULT_RATE_WINDOW,
-        tune_interval_s: float = DEFAULT_TUNE_INTERVAL_S,
-        tune_step_max: float = DEFAULT_TUNE_STEP_MAX,
-        tune_deadband: float = DEFAULT_TUNE_DEADBAND,
-        hit_rate_damp: float = DEFAULT_HIT_RATE_DAMP,
-        c_concurrency_min: float = 1.0,
-        c_concurrency_max: float = 256.0,
-        kv_target_min: float = 0.5,
-        kv_target_max: float = 0.98,
         prometheus_address: Optional[str] = None,
         **kwargs,
     ):
@@ -147,44 +126,29 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
                 "SLOAutoscalingPolicy needs model_id to scope its queries."
             )
         self.ttft_query = _p99_query(
-            "ray_vllm_time_to_first_token_seconds_bucket", model_id, rate_window
-        )
-        self.itl_query = (
-            _p99_query(
-                "ray_vllm_request_time_per_output_token_seconds_bucket",
-                model_id,
-                rate_window,
-            )
-            if itl_target_s is not None
-            else None
+            "ray_vllm_time_to_first_token_seconds_bucket", model_id, DEFAULT_RATE_WINDOW
         )
         self.kv_query = _kv_usage_query(model_id)
-        self.hit_rate_query = _hit_rate_query(model_id, rate_window)
+        self.hit_rate_query = _hit_rate_query(model_id, DEFAULT_RATE_WINDOW)
         self.inflight_query = _inflight_query(model_id)
-        queries = [
-            self.ttft_query,
-            self.kv_query,
-            self.hit_rate_query,
-            self.inflight_query,
-        ]
-        if self.itl_query is not None:
-            queries.append(self.itl_query)
         super().__init__(
             prometheus_address=prometheus_address,
-            prometheus_queries=queries,
+            prometheus_queries=[
+                self.ttft_query,
+                self.kv_query,
+                self.hit_rate_query,
+                self.inflight_query,
+            ],
             **kwargs,
         )
         self.ttft_target_s = ttft_target_s
-        self.itl_target_s = itl_target_s
-        self.kv_target = kv_target
-        self.tune_interval_s = tune_interval_s
-        self.tune_step_max = tune_step_max
-        self.tune_deadband = tune_deadband
-        self.hit_rate_damp = hit_rate_damp
-        self.c_concurrency_min = c_concurrency_min
-        self.c_concurrency_max = c_concurrency_max
-        self.kv_target_min = kv_target_min
-        self.kv_target_max = kv_target_max
+        self.kv_target = _KV_TARGET
+        self.tune_interval_s = _TUNE_INTERVAL_S
+        self.tune_step_max = _TUNE_STEP_MAX
+        self.tune_deadband = _TUNE_DEADBAND
+        self.hit_rate_damp = _HIT_RATE_DAMP
+        self.c_concurrency_min = _C_CONCURRENCY_MIN
+        self.c_concurrency_max = _C_CONCURRENCY_MAX
 
     def _tune(
         self, capacity: float, goal: float, observed: float, lo: float, hi: float
@@ -206,15 +170,13 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         self, ctx: AutoscalingContext
     ) -> Tuple[Union[int, float], Dict[str, Any]]:
         state = dict(ctx.policy_state or {})
-        seed = DEFAULT_CONCURRENCY_FALLBACK
+        seed = _CONCURRENCY_FALLBACK
         if ctx.config is not None:
             seed = float(ctx.config.get_target_ongoing_requests() or seed)
         c_concurrency = state.get("c_concurrency", seed)
-        kv_target = state.get("kv_target", self.kv_target)
 
         metrics = self.prometheus_metrics or {}
         p99_ttft = metrics.get(self.ttft_query)
-        p99_itl = metrics.get(self.itl_query) if self.itl_query else None
         kv_util = metrics.get(self.kv_query)
         hit_rate = metrics.get(self.hit_rate_query)
         inflight = metrics.get(self.inflight_query)
@@ -244,14 +206,6 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
                     self.c_concurrency_min,
                     self.c_concurrency_max,
                 )
-            if p99_itl is not None and self.itl_target_s is not None:
-                kv_target = self._tune(
-                    kv_target,
-                    self.itl_target_s,
-                    p99_itl,
-                    self.kv_target_min,
-                    self.kv_target_max,
-                )
             state["last_tune_s"] = now
             if hit_rate is not None:
                 state["last_hit_rate"] = hit_rate
@@ -265,15 +219,13 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         if inflight is not None:
             load = max(load, inflight)
         desired = load / c_concurrency if c_concurrency > 0 else 0.0
-        if kv_util is not None and ctx.current_num_replicas > 0 and kv_target > 0:
-            desired = max(desired, ctx.current_num_replicas * kv_util / kv_target)
+        if kv_util is not None and ctx.current_num_replicas > 0 and self.kv_target > 0:
+            desired = max(desired, ctx.current_num_replicas * kv_util / self.kv_target)
 
         state.update(
             {
                 "c_concurrency": c_concurrency,
-                "kv_target": kv_target,
                 "p99_ttft_s": p99_ttft,
-                "p99_itl_s": p99_itl,
                 "kv_util": kv_util,
                 "hit_rate": hit_rate,
                 "inflight": inflight,

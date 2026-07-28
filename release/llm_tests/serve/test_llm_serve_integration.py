@@ -474,8 +474,6 @@ def test_slo_autoscaling():
                         ttft_target_s=0.5,
                         model_id=model_id,
                         prometheus_address=prometheus_address,
-                        rate_window="30s",
-                        tune_interval_s=15.0,
                     ),
                 ),
             ),

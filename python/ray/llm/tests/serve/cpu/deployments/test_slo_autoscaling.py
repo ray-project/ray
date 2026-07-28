@@ -42,14 +42,11 @@ def _ctx(
     )
 
 
-def _policy(
-    ttft=None, itl=None, kv=None, hit=None, inflight=None, itl_target_s=None, **kw
-):
+def _policy(ttft=None, kv=None, hit=None, inflight=None, **kw):
     """Build a policy with its metric cache preset; no background fetch thread."""
     pol = SLOAutoscalingPolicy(
         ttft_target_s=2.0,
         model_id="m",
-        itl_target_s=itl_target_s,
         prometheus_address="localhost:9090",
         **kw,
     )
@@ -57,8 +54,6 @@ def _policy(
     vals = {}
     if ttft is not None:
         vals[pol.ttft_query] = ttft
-    if itl is not None and pol.itl_query:
-        vals[pol.itl_query] = itl
     if kv is not None:
         vals[pol.kv_query] = kv
     if hit is not None:
@@ -120,12 +115,6 @@ class TestSelfTuning:
         )
         assert state["c_concurrency"] == 8.0
 
-    def test_itl_tunes_kv_target(self):
-        _, state = _policy(itl=0.1, itl_target_s=0.05, kv=0.3, hit=0.5)(
-            _ctx(current=2, total_requests=16.0)
-        )
-        assert state["kv_target"] < 0.9
-
     def test_rampup_freezes_tuner(self):
         _, state = _policy(ttft=9.0, kv=0.3, hit=0.5)(
             _ctx(current=1, total_requests=16.0, target=4)
@@ -180,16 +169,6 @@ class TestConstruction:
         )
         assert 'model_name="my-org/m"' in pol.ttft_query
         assert 'model_name="my-org/m"' in pol.kv_query
-
-    def test_itl_query_only_when_target_set(self):
-        without = SLOAutoscalingPolicy(
-            ttft_target_s=2.0, model_id="m", prometheus_address="x"
-        )
-        assert without.itl_query is None
-        with_itl = SLOAutoscalingPolicy(
-            ttft_target_s=2.0, itl_target_s=0.05, model_id="m", prometheus_address="x"
-        )
-        assert with_itl.itl_query is not None
 
 
 if __name__ == "__main__":
