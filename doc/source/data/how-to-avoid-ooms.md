@@ -149,10 +149,10 @@ or disable the warning by setting value to -1. (current value: 30)
 
 Unless you specify a value, Ray Data assumes a UDF needs 0 ``memory``. So even if you've set ``memory`` correctly for some APIs, Ray Data can still oversubscribe tasks and actors for the ones you haven't.
 
-To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
+To avoid this, set ``DataContext.get_current().default_map_logical_memory_enabled = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory``
+``DataContext.default_map_logical_memory_enabled``
 :::
 
 ### Start Ray with resource isolation
