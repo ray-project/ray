@@ -30,13 +30,10 @@ def clear_mblt_environment(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def isolate_dev_and_lspci(monkeypatch):
-    """Prevent the real /dev tree and lspci from influencing detection."""
+def isolate_dev_detection(monkeypatch):
+    """Prevent the real /dev tree from influencing detection."""
     monkeypatch.setattr(
         "ray._private.accelerators.mblt._count_mblt_dev_nodes", lambda: 0
-    )
-    monkeypatch.setattr(
-        "ray._private.accelerators.mblt._count_mblt_pci_entries", lambda: 0
     )
     # Default: no qbruntime installed. Individual tests can install the mock.
     monkeypatch.delitem(sys.modules, "qbruntime", raising=False)
@@ -101,14 +98,6 @@ class TestMBLTAcceleratorManager:
         )
         assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 2
 
-    def test_get_current_node_num_accelerators_no_sdk_no_dev_uses_pci(
-        self, monkeypatch
-    ):
-        monkeypatch.setattr(
-            "ray._private.accelerators.mblt._count_mblt_pci_entries", lambda: 3
-        )
-        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 3
-
     def test_get_current_node_num_accelerators_none(self):
         assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 0
 
@@ -136,9 +125,9 @@ class TestMBLTAcceleratorManager:
     def test_get_current_node_accelerator_type_returns_none_when_no_dev(
         self, monkeypatch
     ):
-        # No /dev nodes and no SDK: type detection must NOT guess from lspci,
-        # which cannot disambiguate ARIES vs REGULUS in the absence of a
-        # hwdata entry for Mobilint's vendor ID.
+        # No /dev nodes and no SDK: type detection returns None rather than
+        # guessing the family. ARIES vs REGULUS is only distinguishable from
+        # the kernel driver's /dev node names.
         monkeypatch.setattr(
             "ray._private.accelerators.mblt.glob.glob", lambda *a, **k: []
         )
