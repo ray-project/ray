@@ -70,6 +70,7 @@ def _modify_context_impl(
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
+    logs_dir: Optional[str] = None,
 ):
     context.override_worker_entrypoint = worker_path
 
@@ -94,6 +95,18 @@ def _modify_context_impl(
         # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
         "--userns=keep-id",
     ]
+
+    if logs_dir is not None:
+        ray_tmp_dir_abs = os.path.abspath(ray_tmp_dir)
+        logs_dir_abs = os.path.abspath(logs_dir)
+        try:
+            logs_dir_is_mounted = (
+                os.path.commonpath([ray_tmp_dir_abs, logs_dir_abs]) == ray_tmp_dir_abs
+            )
+        except ValueError:
+            logs_dir_is_mounted = False
+        if not logs_dir_is_mounted:
+            container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
 
     # Environment variables to set in container
     env_vars = dict()
@@ -146,8 +159,9 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     def get_compatible_keys():
         return {"image_uri", "config", "env_vars"}
 
-    def __init__(self, ray_tmp_dir: str):
+    def __init__(self, ray_tmp_dir: str, logs_dir: Optional[str] = None):
         self._ray_tmp_dir = ray_tmp_dir
+        self._logs_dir = logs_dir
 
     async def create(
         self,
@@ -178,6 +192,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._logs_dir,
         )
 
 
@@ -186,8 +201,9 @@ class ContainerPlugin(RuntimeEnvPlugin):
 
     name = "container"
 
-    def __init__(self, ray_tmp_dir: str):
+    def __init__(self, ray_tmp_dir: str, logs_dir: Optional[str] = None):
         self._ray_tmp_dir = ray_tmp_dir
+        self._logs_dir = logs_dir
 
     async def create(
         self,
@@ -226,4 +242,5 @@ class ContainerPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._logs_dir,
         )

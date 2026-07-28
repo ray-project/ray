@@ -774,7 +774,11 @@ class Node:
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
         session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        self._logs_dir = os.path.join(self._session_dir, "logs")
+        default_logs_dir = os.path.normpath(os.path.join(self._session_dir, "logs"))
+        configured_logs_dir = self._ray_params.logs_dir
+        if configured_logs_dir is None and node_to_connect_info is not None:
+            configured_logs_dir = getattr(node_to_connect_info, "logs_dir", None)
+        self._logs_dir = os.path.normpath(configured_logs_dir or default_logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(
@@ -792,6 +796,10 @@ class Node:
             # Create a directory to be used for process log files.
             try_to_create_directory(self._logs_dir)
             try_to_create_directory(old_logs_dir)
+            if self._logs_dir != default_logs_dir:
+                # Preserve the established session_dir/logs path for tools that
+                # have not yet migrated to get_logs_dir_path().
+                try_to_symlink(default_logs_dir, self._logs_dir)
             try_to_create_directory(self._runtime_env_dir)
 
         # Create a symlink to the libtpu tpu_logs directory if it exists.
