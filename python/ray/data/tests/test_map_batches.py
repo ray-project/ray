@@ -849,8 +849,7 @@ def test_map_batches_set_label_selector(ray_start_regular_shared):
         lambda x: x, compute=TaskPoolStrategy(), label_selector=test_selector
     )
     assert (
-        ds_task._plan._logical_plan.dag.ray_remote_args.get("label_selector")
-        == test_selector
+        ds_task._logical_plan.dag.ray_remote_args.get("label_selector") == test_selector
     )
 
     # map_batches with ActorPoolStrategy
@@ -862,28 +861,27 @@ def test_map_batches_set_label_selector(ray_start_regular_shared):
         DummyActor, compute=ActorPoolStrategy(size=1), label_selector=test_selector
     )
     assert (
-        ds_actor._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        ds_actor._logical_plan.dag.ray_remote_args.get("label_selector")
         == test_selector
     )
 
     # Validate label_selector set for dataset flat_map
     ds_flat = ds.flat_map(lambda x: [x], label_selector=test_selector)
     assert (
-        ds_flat._plan._logical_plan.dag.ray_remote_args.get("label_selector")
-        == test_selector
+        ds_flat._logical_plan.dag.ray_remote_args.get("label_selector") == test_selector
     )
 
     # Validate label_selector set for dataset filter
     ds_filter = ds.filter(lambda x: True, label_selector=test_selector)
     assert (
-        ds_filter._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        ds_filter._logical_plan.dag.ray_remote_args.get("label_selector")
         == test_selector
     )
 
     # Validate label_selector set for map_groups
     ds_grouped = ds.groupby("id").map_groups(lambda x: x, label_selector=test_selector)
     assert (
-        ds_grouped._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        ds_grouped._logical_plan.dag.ray_remote_args.get("label_selector")
         == test_selector
     )
 

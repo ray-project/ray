@@ -444,6 +444,7 @@ def _read_datasource_v2(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     compute: Optional[ComputeStrategy] = None,
@@ -495,6 +496,7 @@ def _read_datasource_v2(
         num_gpus,
         memory,
         ctx,
+        label_selector=label_selector,
     )
 
     pruners = _build_pruners(datasource.file_extensions, partition_filter)
@@ -1681,6 +1683,7 @@ def read_parquet(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
+            label_selector=label_selector,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
             partition_filter=partition_filter,

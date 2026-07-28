@@ -2,6 +2,8 @@ import time
 from typing import TYPE_CHECKING, List, Optional
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -259,7 +261,22 @@ def test_read_datasource_label_selector(shutdown_only):
     # Test read_datasource sets label selector correctly
     ds = ray.data.read_datasource(DummyDatasource(), label_selector=test_selector)
 
-    logical_op = ds._plan._logical_plan.dag
+    logical_op = ds._logical_plan.dag
+    assert "label_selector" in logical_op.ray_remote_args
+    assert logical_op.ray_remote_args["label_selector"] == test_selector
+
+
+def test_read_parquet_label_selector(shutdown_only, tmp_path):
+    # Create a dummy parquet file
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    table = pa.Table.from_pandas(df)
+    file_path = str(tmp_path / "dummy.parquet")
+    pq.write_table(table, file_path)
+
+    test_selector = {"instance-type": "spot"}
+    ds = ray.data.read_parquet(file_path, label_selector=test_selector)
+
+    logical_op = ds._logical_plan.dag
     assert "label_selector" in logical_op.ray_remote_args
     assert logical_op.ray_remote_args["label_selector"] == test_selector
 
