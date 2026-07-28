@@ -1,4 +1,7 @@
 import logging
+import sys
+
+import pytest
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import _modify_context_impl
@@ -33,3 +36,7 @@ def test_logs_dir_under_temp_dir_is_not_mounted_twice():
     )
 
     assert context.py_executable.count("-v ") == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
