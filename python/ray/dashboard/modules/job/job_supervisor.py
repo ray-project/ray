@@ -321,8 +321,17 @@ async def _infra_cause_from_task_events(
             # belongs to it rather than to the one it replaces.
             best = (rank, context)
             sample_task_ids = []
-        if len(sample_task_ids) < _INFRA_SAMPLE_TASK_IDS:
-            sample_task_ids.append(events.task_id.hex())
+        # Deduplicated: a retried task appears once per attempt, each attempt a
+        # separate events_by_task entry with the same task_id. Without this, a
+        # single task that failed its default three attempts fills the whole
+        # sample with one id repeated, which reads as three independent
+        # witnesses when there is only one.
+        task_id_hex = events.task_id.hex()
+        if (
+            len(sample_task_ids) < _INFRA_SAMPLE_TASK_IDS
+            and task_id_hex not in sample_task_ids
+        ):
+            sample_task_ids.append(task_id_hex)
 
     if best is None:
         return None
