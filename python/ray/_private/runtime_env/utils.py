@@ -1,10 +1,38 @@
 import asyncio
 import itertools
 import logging
+import re
 import subprocess
 import textwrap
 import types
 from typing import List, Optional
+
+# A package index can carry basic-auth credentials inline, and users routinely
+# pass one that way:
+#
+#     pip install --index-url https://__token__:<token>@example.com/simple ...
+#
+# That URL is an argv element, and CalledProcessError renders the whole argv in
+# its message. The message is shown to the user, written to the agent log, and
+# -- since the runtime env agent began reporting structured setup failures --
+# stored verbatim by whoever consumes the failure, so a token pasted into a
+# runtime env would otherwise come to rest in places the user never chose.
+#
+# Only the userinfo is dropped: the host and path are what make the message
+# useful, and neither is a secret.
+_URL_USERINFO_RE = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.\-]*://)[^/\s@'\"]+@")
+
+
+def redact_url_credentials(text: str) -> str:
+    """Replace inline credentials in any URL in `text` with a placeholder.
+
+    Args:
+        text: Text that may embed URLs of the form scheme://userinfo@host.
+
+    Returns:
+        The same text with every userinfo component replaced by `<redacted>`.
+    """
+    return _URL_USERINFO_RE.sub(r"\g<scheme><redacted>@", text)
 
 
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
@@ -49,7 +77,10 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
                 str_list.append(
                     f"{subtitle}\n{textwrap.indent(last_n_line_str, ' ' * 4)}"
                 )
-        return "\n".join(str_list)
+        # Redact once over the whole message rather than over the argv alone:
+        # an installer echoes the index URL it was given back into its own
+        # output, so stdout and stderr leak the same credential the cmd does.
+        return redact_url_credentials("\n".join(str_list))
 
 
 async def check_output_cmd(
@@ -91,7 +122,7 @@ async def check_output_cmd(
     """
 
     cmd_index = next(cmd_index_gen)
-    logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
+    logger.info("Run cmd[%s] %s", cmd_index, redact_url_credentials(repr(cmd)))
 
     proc = None
     try:
@@ -120,7 +151,9 @@ async def check_output_cmd(
     else:
         stdout = stdout.decode("utf-8")
         if stdout:
-            logger.info("Output of cmd[%s]: %s", cmd_index, stdout)
+            logger.info(
+                "Output of cmd[%s]: %s", cmd_index, redact_url_credentials(stdout)
+            )
         else:
             logger.info("No output for cmd[%s]", cmd_index)
         if proc.returncode != 0:

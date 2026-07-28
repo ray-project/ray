@@ -16,6 +16,7 @@ from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
+    redact_url_credentials,
 )
 from ray._private.test_utils import (
     chdir,
@@ -302,6 +303,65 @@ def test_subprocess_error_with_last_n_lines():
     s = "".join([s.strip() for s in exception_str.splitlines()])
     assert "345" in s
     assert "321" in s
+
+
+def test_redact_url_credentials():
+    # Keep the host and path -- they are what makes the message useful, and
+    # neither is a secret. Drop everything between the scheme and the "@".
+    assert (
+        redact_url_credentials("https://__token__:sekrit@example.com/simple")
+        == "https://<redacted>@example.com/simple"
+    )
+    # A bare username is not itself a credential, but it is not worth telling
+    # the two apart to keep it.
+    assert (
+        redact_url_credentials("https://alice@example.com/x")
+        == "https://<redacted>@example.com/x"
+    )
+    # Two indexes in one cmd: both must go, not just the first.
+    both = redact_url_credentials(
+        "--index-url https://a:b@one.example.com/simple "
+        "--extra-index-url https://c:d@two.example.com/simple"
+    )
+    assert "a:b" not in both and "c:d" not in both
+    assert both.count("<redacted>") == 2
+    # An "@" that is not URL userinfo must not trigger a match, or ordinary
+    # requirements and contact addresses would be mangled into nonsense.
+    for unchanged in ("https://pypi.org/simple", "pkg@1.2.3", "maintainer@example.com"):
+        assert redact_url_credentials(unchanged) == unchanged
+    # A VCS requirement carries userinfo in the same position, so it is covered
+    # too -- "git@github.com" is the ssh user, and a PAT sits in the same slot.
+    assert (
+        redact_url_credentials("git+ssh://git@github.com/o/r")
+        == "git+ssh://<redacted>@github.com/o/r"
+    )
+
+
+def test_subprocess_error_redacts_index_credentials():
+    # THE POINT: this message is rendered into the exception text that the
+    # runtime env agent reports as a structured setup failure, so a token
+    # pasted into a runtime env would otherwise be stored by every consumer of
+    # that failure. Both the argv and the installer's echo of it must be clean.
+    cmd = [
+        "pip",
+        "install",
+        "--index-url",
+        "https://u:tok3n@corp.example.com/s",
+        "torch",
+    ]
+    exception = SubprocessCalledProcessError(
+        1,
+        cmd,
+        output="Looking in indexes: https://u:tok3n@corp.example.com/s\nboom",
+        cmd_index=1,
+    )
+    text = str(exception)
+    assert "tok3n" not in text
+    # Still diagnosable: which index, which command, and the installer's own
+    # output all survive.
+    assert "corp.example.com" in text
+    assert "torch" in text
+    assert "boom" in text
 
 
 @pytest.mark.asyncio

@@ -765,6 +765,7 @@ TEST_F(GcsActorManagerTest, TestWorkerStartupFailedIsNotUnschedulable) {
         finished_actors.emplace_back(result_actor);
       }));
 
+  ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
@@ -804,6 +805,7 @@ TEST_F(GcsActorManagerTest, TestUnschedulableKeepsUnschedulableContext) {
         finished_actors.emplace_back(result_actor);
       }));
 
+  ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();

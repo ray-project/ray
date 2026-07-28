@@ -1373,9 +1373,15 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerAfterDrainingTest) {
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   pool_.callbacks[lease1.GetLeaseSpecification().GetRuntimeEnvHash()].front()(
-      nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
+      nullptr,
+      PopWorkerStatus::WorkerPendingRegistration,
+      "",
+      /*runtime_env_setup_failure*/ nullptr);
   pool_.callbacks[lease1.GetLeaseSpecification().GetRuntimeEnvHash()].back()(
-      nullptr, PopWorkerStatus::RuntimeEnvCreationFailed, "runtime env setup error");
+      nullptr,
+      PopWorkerStatus::RuntimeEnvCreationFailed,
+      "runtime env setup error",
+      /*runtime_env_setup_failure*/ nullptr);
   pool_.callbacks.clear();
   lease_manager_.ScheduleAndGrantLeases();
   // lease1 is spilled and lease2 is cancelled.

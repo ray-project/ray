@@ -432,6 +432,7 @@ def test_infra_cause_failure_info_json_to_proto():
             driver_exit_code=1,
             context_key="driver_run",
             context={"error_message": "driver exited with code 1"},
+            log_excerpt_ref="node_id:job-driver-raysubmit_1.log",
             infra_cause=context_dict_from_proto(infra_cause),
         )
     )
@@ -439,6 +440,9 @@ def test_infra_cause_failure_info_json_to_proto():
     # did exit non-zero, so driver_run stays set alongside it.
     assert failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
     assert failure_info.WhichOneof("context") == "driver_run"
+    # A reference rather than the tail itself: the driver log is unbounded and
+    # this field is served by the state and export APIs.
+    assert failure_info.log_excerpt_ref == "node_id:job-driver-raysubmit_1.log"
     assert failure_info.HasField("infra_cause")
     assert failure_info.infra_cause.error_type == ErrorType.NODE_DIED
     assert failure_info.infra_cause.ray_job_id == b"\x64\x00\x00\x00"
