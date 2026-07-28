@@ -744,7 +744,6 @@ def test_callable_uses_multiplexing_ignores_handle_attrs():
     assert not _callable_uses_multiplexing(Ingress())
 
 
-
 def test_callable_uses_multiplexing_does_not_initialize_handles():
     """Probing must not invoke `__getattr__`, which initializes a handle's Router."""
     from ray.serve._private.utils import _callable_uses_multiplexing
@@ -784,6 +783,7 @@ def test_callable_uses_multiplexing_does_not_initialize_handles():
         f"scan invoked __getattr__ {SlottedIngress.getattr_calls} time(s) on a "
         f"__slots__ callable"
     )
+
 
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
