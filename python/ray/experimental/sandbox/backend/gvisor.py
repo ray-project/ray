@@ -41,14 +41,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sb-gvisor-{sandbox_uuid}"
-        root_dir = os.path.join(
-            "/usr/local/google/home/andrewsy/code/ray-sandboxing/sandboxes", sandbox_id
-        )
-
-        logger.debug(
-            f"Creating gVisor sandbox '{sandbox_id}': root_dir='{root_dir}', runsc_path='{runsc_path}'"
-        )
-        print(f"Creating gVisor sandbox '{sandbox_id}': root_dir='{root_dir}'")
+        root_dir = os.path.join("/tmp/ray/sandboxes", sandbox_id)
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
@@ -76,13 +69,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 run_args.extend(["--network", config.network])
             run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
-            logger.debug(f"Launching gVisor container daemon: {run_args}")
             proc = subprocess.Popen(
                 run_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            time.sleep(0.5)
+            time.sleep(1)  # TODO: remove before merging
             if proc.poll() is not None:
                 _, stderr_str = proc.communicate()
                 raise SandboxCreationError(
@@ -107,11 +99,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc_path = meta["runsc_path"]
             config: SandboxConfig = meta["config"]
             proc = meta.get("proc")
-
-            logger.debug(
-                f"Deleting gVisor sandbox '{sandbox_id}': removing root_dir='{root_dir}'"
-            )
-            print(f"Deleting gVisor sandbox '{sandbox_id}': root_dir='{root_dir}'")
 
             if self._runsc_path_override is None:
                 kill_args = [runsc_path]
@@ -209,11 +196,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 runsc_args.extend(["-env", f"{k}={v}"])
         runsc_args.extend([sandbox_id, "/bin/sh", "-c", wrapped_cmd])
 
-        logger.debug(f"Executing in gVisor sandbox '{sandbox_id}': args={runsc_args}")
-        print(
-            f"Executing command in gVisor sandbox '{sandbox_id}': run_args={runsc_args}"
-        )
-
         start_time = time.time()
         try:
             proc = subprocess.Popen(
@@ -240,14 +222,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            logger.debug(
-                f"gVisor command finished: exit_code={proc.returncode}, duration={duration:.3f}s"
-            )
-            print(
-                f"gVisor command finished: exit_code={proc.returncode}, duration={duration:.3f}s\n"
-                f"  stdout: {stdout_str}\n"
-                f"  stderr: {stderr_str}"
-            )
             return ExecResult(
                 exit_code=proc.returncode,
                 stdout=stdout_str,
@@ -258,17 +232,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             proc.kill()
             proc.communicate()
             duration = time.time() - start_time
-            logger.warning(
-                f"gVisor command timed out after {timeout}s: command='{cmd_str}'"
-            )
-            print(f"gVisor command timed out after {timeout}s: command='{cmd_str}'")
+
             raise SandboxTimeoutError(
                 f"gVisor exec command timed out after {timeout} seconds."
             ) from err
         except Exception as err:
             duration = time.time() - start_time
-            logger.error(f"gVisor exec command failed: {err}")
-            print(f"gVisor exec command failed: {err}")
             raise SandboxError(f"gVisor exec failed: {err}") from err
 
     def write_file(
@@ -277,15 +246,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Write content to a file inside the local gVisor sandbox directory."""
         meta = self._get_meta_or_raise(sandbox_id)
         target_file = self._resolve_path(meta["root_dir"], path)
-        size_bytes = (
-            len(content.encode("utf-8")) if isinstance(content, str) else len(content)
-        )
-        logger.debug(
-            f"Writing file to gVisor sandbox '{sandbox_id}': path='{path}', target='{target_file}', size={size_bytes} bytes"
-        )
-        print(
-            f"Writing file to gVisor sandbox '{sandbox_id}': target='{target_file}' ({size_bytes} bytes)"
-        )
         parent_dir = os.path.dirname(target_file)
         os.makedirs(parent_dir, mode=0o755, exist_ok=True)
 
@@ -300,12 +260,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Read binary content from a file inside the local gVisor sandbox directory."""
         meta = self._get_meta_or_raise(sandbox_id)
         target_file = self._resolve_path(meta["root_dir"], path)
-        logger.debug(
-            f"Reading file from gVisor sandbox '{sandbox_id}': path='{path}', target='{target_file}'"
-        )
-        print(
-            f"Reading file from gVisor sandbox '{sandbox_id}': target='{target_file}'"
-        )
         if not os.path.exists(target_file):
             raise SandboxError(
                 f"File not found: '{path}' inside sandbox '{sandbox_id}'"
