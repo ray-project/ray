@@ -813,6 +813,12 @@ class _ExecutableTaskRecord:
 class CompiledDAG:
     """Experimental class for accelerated execution.
 
+    .. deprecated::
+        Ray Compiled Graph is deprecated and will be removed in a future
+        release. For direct GPU-to-GPU tensor transfer between actors, use
+        Ray Direct Transport (RDT) instead:
+        https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html
+
     This class should not be called directly. Instead, create
     a ray.dag and call experimental_compile().
 

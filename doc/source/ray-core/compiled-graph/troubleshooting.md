@@ -6,6 +6,10 @@ myst:
 
 # Troubleshooting
 
+:::{warning}
+Ray Compiled Graph is deprecated and will be removed in a future release. For direct GPU-to-GPU tensor transfer between actors, use {ref}`Ray Direct Transport (RDT) <direct-transport>` instead.
+:::
+
 This page contains common issues and solutions for Compiled Graph execution.
 
 ## Limitations
