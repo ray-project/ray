@@ -541,7 +541,7 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
         device = torch.device(device)
-        if device.type == "cuda" and device.index is None:
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
             # "cuda" without an index is thread-relative: it resolves to the
             # calling thread's *current* CUDA device. finalize_fn runs on a
             # background fetch thread, so the device on the finalize thread
