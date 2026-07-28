@@ -240,17 +240,28 @@ def _parse_args(
     Replacement for parser.parse_args that handles unknown arguments
     by keeping them in the command list instead of erroring and
     discarding them.
+
+    The returned command is always a suffix of 'args', so the caller can
+    recover the 'uv run' arguments from its length.
     """
-    parser.rargs = args
+    rargs = list(args)
+    parser.rargs = rargs
     parser.largs = []
     options = parser.get_default_values()
     try:
-        parser._process_args(parser.largs, parser.rargs, options)
+        parser._process_args(parser.largs, rargs, options)
     except optparse.BadOptionError as err:
-        # If we hit an argument that is not recognized, we put it
-        # back into the unconsumed arguments
-        parser.rargs = [err.opt_str] + parser.rargs
-    return options, parser.rargs
+        # We hit an argument that is not recognized, so it belongs to the
+        # command rather than to 'uv run'. optparse has already removed it from
+        # rargs, and for the "--opt=value" form it put the bare "value" back, so
+        # we cannot just prepend err.opt_str to recover the original arguments.
+        # Instead, locate the offending argument in args and cut there.
+        boundary = len(args) - len(rargs)
+        if not (rargs and args[boundary] == f"{err.opt_str}={rargs[0]}"):
+            # The argument was removed entirely rather than split at the "=".
+            boundary -= 1
+        return options, list(args[boundary:])
+    return options, rargs
 
 
 def _check_working_dir_files(
@@ -352,19 +363,13 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
-    original_length = len(
-        args_to_parse
-    )  # Save before parsing (parser modifies in-place)
-
     parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, args_to_parse)
+    (options, command) = _parse_args(parser, cmdline[2:])  # Remove 'uv run' prefix
 
-    # Calculate how many arguments were consumed by the parser.
     # Since disable_interspersed_args() is set, parsing stops at the first
-    # unrecognized argument (the command), so all consumed args are uv options.
-    args_consumed = original_length - len(command)
-    uv_run_args = cmdline[: 2 + args_consumed]
+    # argument that is not a uv option, so the returned command is a suffix of
+    # cmdline and everything before it belongs to 'uv run'.
+    uv_run_args = cmdline[: len(cmdline) - len(command)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
