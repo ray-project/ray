@@ -250,7 +250,9 @@ class DeploymentAutoscalingState:
         ):
             return
         self._membership_dirty = False
-        self._running_replicas = running_replicas
+        # Copy: this list is handed to user policies via `AutoscalingContext`, and the
+        # fast path above compares against it.
+        self._running_replicas = list(running_replicas)
         self._running_replica_id_set = set(running_replicas)
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas

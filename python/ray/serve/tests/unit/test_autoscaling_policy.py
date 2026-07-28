@@ -1678,6 +1678,26 @@ class TestMergedTimeseriesCache:
 
         assert state.get_total_num_requests() == pytest.approx(10.0)
 
+    def test_membership_survives_caller_list_mutation(self):
+        """`_running_replicas` is handed to user policies through
+        `AutoscalingContext`, so a policy mutating it in place must not make a real
+        membership change look like a no-op to the unchanged-list fast path."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=state._deployment_id)
+        now = time.time()
+
+        running = [r1, r2]
+        state.update_running_replica_ids(running)
+        self._record_replica(state, r1, 5.0, now)
+        self._record_replica(state, r2, 5.0, now)
+        assert state.get_total_num_requests() == pytest.approx(10.0)
+
+        running.pop()
+        state.update_running_replica_ids([r1])
+
+        assert state.get_total_num_requests() == pytest.approx(5.0)
+
     def test_dropping_stale_handle_metrics_lowers_total(self):
         """Dropping a handle's metrics has to invalidate the cached merge."""
         state = self._create_state()
