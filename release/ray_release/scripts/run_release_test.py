@@ -21,7 +21,7 @@ from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
-from ray_release.result import Result
+from ray_release.result import Result, write_retry_marker
 
 
 @click.command()
@@ -144,6 +144,12 @@ def main(
     except ReleaseTestError as e:
         logger.exception(e)
         return_code = e.exit_code.value
+
+    # glue.run_release_test mutates `result` in place, so will_retry is set even when
+    # the pipeline raised. This runs after the reporters, so the marker always agrees
+    # with what was (or was not) recorded.
+    write_retry_marker(result)
+
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"
