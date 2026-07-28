@@ -1,8 +1,6 @@
 from typing import TYPE_CHECKING, Iterator
 
-from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import Block
-from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
@@ -19,22 +17,13 @@ class ORCDatasource(FileBasedDatasource):
         from pyarrow import orc
 
         orc_file = orc.ORCFile(f)
-
-        # Read one stripe at a time rather than the whole file at once to bound
-        # per-task memory usage on large files. Stripes are accumulated in an
-        # output buffer so that the yielded blocks respect the target block size
-        # (small stripes are coalesced, large ones are split).
-        ctx = DataContext.get_current()
-        output_buffer = BlockOutputBuffer(
-            OutputBlockSizeOption.of(target_max_block_size=ctx.target_max_block_size)
-        )
+        # Read one stripe at a time rather than the whole file to bound per-task
+        # memory usage on large files. Output block shaping (coalescing small
+        # stripes and splitting large ones to the target block size) is handled
+        # by the read operator's BlockMapTransformFn, so no manual buffering is
+        # needed here.
         for stripe_index in range(orc_file.nstripes):
-            batch = orc_file.read_stripe(stripe_index)
-            output_buffer.add_block(pa.Table.from_batches([batch]))
-            yield from output_buffer.iter_ready_blocks()
-
-        output_buffer.finalize()
-        yield from output_buffer.iter_ready_blocks()
+            yield pa.Table.from_batches([orc_file.read_stripe(stripe_index)])
 
     def _open_input_source(
         self,
