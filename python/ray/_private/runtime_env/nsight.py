@@ -46,12 +46,13 @@ def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
 class NsightPlugin(RuntimeEnvPlugin):
     name = "_nsight"
 
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, logs_dir: Optional[str] = None):
         self.nsight_cmd = []
 
-        # replace this with better way to get logs dir
-        session_dir, runtime_dir = os.path.split(resources_dir)
-        self._nsight_dir = Path(session_dir) / "logs" / "nsight"
+        if logs_dir is None:
+            session_dir, _ = os.path.split(resources_dir)
+            logs_dir = os.path.join(session_dir, "logs")
+        self._nsight_dir = Path(logs_dir) / "nsight"
         try_to_create_directory(self._nsight_dir)
 
     async def _check_nsight_script(

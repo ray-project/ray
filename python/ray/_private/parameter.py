@@ -96,6 +96,8 @@ class RayParams:
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process. Must be an absolute path.
+        logs_dir: If provided, it will specify the directory for Ray log files.
+            Must be an absolute path.
         runtime_env_dir_name: If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor: If True, then start a log monitor to
@@ -186,6 +188,7 @@ class RayParams:
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
         proxy_server_url: Optional[str] = None,
+        logs_dir: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -225,6 +228,7 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.logs_dir = logs_dir
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )
@@ -444,6 +448,9 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
+
+        if self.logs_dir is not None and not os.path.isabs(self.logs_dir):
+            raise ValueError("logs_dir must be absolute path or None.")
 
         if self.temp_dir is not None and os.getenv("VIRTUAL_ENV"):
             is_relative = True

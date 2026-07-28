@@ -1,7 +1,6 @@
 """Exporter API for Ray Data operator events."""
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -146,9 +145,7 @@ class LoggerOperatorEventExporter(OperatorEventExporter):
             # The export API is not enabled, so we shouldn't create an exporter
             return None
 
-        log_directory = os.path.join(
-            ray._private.worker._global_node.get_session_dir_path(), "logs"
-        )
+        log_directory = ray._private.worker._global_node.get_logs_dir_path()
 
         try:
             logger = get_export_event_logger(

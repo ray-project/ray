@@ -202,9 +202,7 @@ class TrainStateActor:
         if not export_api_enabled:
             return None, False, False
 
-        log_directory = os.path.join(
-            ray._private.worker._global_node.get_session_dir_path(), "logs"
-        )
+        log_directory = ray._private.worker._global_node.get_logs_dir_path()
         logger = None
         try:
             logger = get_export_event_logger(
