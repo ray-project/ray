@@ -252,6 +252,15 @@ NumPy
    from_numpy
    read_numpy
 
+Orc
+^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_orc
+
 Pandas
 ^^^^^^
 
