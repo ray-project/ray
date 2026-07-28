@@ -49,7 +49,6 @@ from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.modules.aggregator.constants import CONSUMER_TAG_KEY
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
-    override_dashboard_address_to_httpserver,
 )
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
 from ray.util.state import list_nodes
@@ -515,7 +514,7 @@ def httpserver_listen_address():
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD": "True",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -536,14 +535,7 @@ def test_metrics_export_event_aggregator_agent(
     stub = get_event_aggregator_grpc_stub(
         cluster.gcs_address, cluster.head_node.node_id
     )
-    # The external HTTP publisher POSTs to "/"; the dashboard-head publisher POSTs to
-    # "/api/task_events". Redirect the dashboard-head publisher to the same test
-    # httpserver by overriding its InternalKV address so both publish deterministically.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    httpserver.expect_request("/api/task_events", method="POST").respond_with_data(
-        "", status=200
-    )
-    override_dashboard_address_to_httpserver(cluster.gcs_address)
 
     metrics_export_port = cluster.head_node.metrics_export_port
     addr = cluster.head_node.node_ip_address
@@ -643,12 +635,7 @@ def test_metrics_export_event_aggregator_agent(
     )
 
     stub.AddEvents(request)
-    # Both publishers deliver to the test httpserver: the external HTTP publisher to "/"
-    # and the dashboard-head publisher to "/api/task_events".
-    wait_for_condition(
-        lambda: any(req.path == "/" for req, _ in httpserver.log)
-        and any(req.path == "/api/task_events" for req, _ in httpserver.log)
-    )
+    wait_for_condition(lambda: len(httpserver.log) == 1)
 
     wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
@@ -667,13 +654,13 @@ def test_metrics_export_event_aggregator_agent(
         retry_interval_ms=1000,
     )
 
-    expected_dashboard_head_publisher_metrics_values = {
+    expected_gcs_publisher_metrics_values = {
         "ray_aggregator_agent_published_events_total": 2.0,
         "ray_aggregator_agent_queue_dropped_events_total": 1.0,
     }
     wait_for_condition(
         lambda: test_case_publisher_specific_metrics_value_correct(
-            "dashboard_head", expected_dashboard_head_publisher_metrics_values
+            "ray_gcs", expected_gcs_publisher_metrics_values
         ),
         timeout=30,
         retry_interval_ms=1000,

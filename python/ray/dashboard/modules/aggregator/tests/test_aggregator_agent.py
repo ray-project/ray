@@ -51,6 +51,7 @@ from ray.dashboard.modules.aggregator.publisher.configs import (
     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
 )
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.util.state import list_tasks
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
@@ -1245,6 +1246,35 @@ def _create_task_definition_event_with_ids(timestamp, unique_task_name: str):
     return event
 
 
+def _get_task_from_gcs(
+    unique_task_name: str,
+):
+    """Fetch and return the first matching task by task name from GCS, or None."""
+    try:
+        task = list_tasks(filters=[("name", "=", unique_task_name)])
+        if len(task) > 0:
+            return task[0]
+        return None
+    except Exception:
+        return None
+
+
+def _wait_for_and_verify_task_definition_event_in_gcs(
+    unique_task_name: str, sent_event
+):
+    """Wait for the task event to be stored in GCS and verify the fields match the sent event"""
+    wait_for_condition(lambda: _get_task_from_gcs(unique_task_name) is not None)
+    matched_task = _get_task_from_gcs(unique_task_name)
+
+    # Verify fields match
+    expected = sent_event.task_definition_event
+    assert matched_task.name == expected.task_name
+    assert matched_task.attempt_number == expected.task_attempt
+    assert matched_task.task_id == expected.task_id.hex()
+    assert matched_task.job_id == expected.job_id.hex()
+    assert matched_task.parent_task_id == expected.parent_task_id.hex()
+
+
 def override_dashboard_address_to_httpserver(gcs_address):
     """Point the dashboard-head publisher at the test httpserver by overwriting
     DASHBOARD_ADDRESS in InternalKV. The publisher resolves this address lazily on its
@@ -1425,6 +1455,136 @@ def test_aggregator_agent_dashboard_head_filtering_driver_job_events(
         event.event_type != RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT
         for event in _get_dashboard_head_events_from_httpserver(httpserver)
     )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                # Enable both publishers
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_publish_to_both_gcs_and_http(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    agg_stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    # Create an event with a unique task name to filter on
+    unique_task_name = f"gcs_only_task_{uuid.uuid4()}"
+    event = _create_task_definition_event_with_ids(fake_timestamp[0], unique_task_name)
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[event],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    agg_stub.AddEvents(request)
+
+    # Verify HTTP received the event
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert len(req_json) == 1
+    assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
+    assert req_json[0]["taskDefinitionEvent"]["taskName"] == unique_task_name
+
+    # Verify GCS stored the event and fields match
+    _wait_for_and_verify_task_definition_event_in_gcs(unique_task_name, event)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                # Disable HTTP publisher to test GCS filtering in isolation
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "False",
+                # Enable GCS publisher
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_gcs_filtering_driver_job_events(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    """Test that driver job execution events are filtered out and not sent to GCS."""
+    cluster = ray_start_cluster_head_with_env_vars
+    agg_stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    unique_task_name = f"gcs_filter_task_{uuid.uuid4()}"
+
+    task_event = _create_task_definition_event_with_ids(
+        fake_timestamp[0], unique_task_name
+    )
+
+    # This event should be filtered out (DRIVER_JOB_LIFECYCLE_EVENT is NOT in GCS_EXPOSABLE_EVENT_TYPES)
+    driver_job_event = RayEvent(
+        event_id=b"driver_job_1",
+        source_type=RayEvent.SourceType.CORE_WORKER,
+        event_type=RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
+        timestamp=fake_timestamp[0],
+        severity=RayEvent.Severity.INFO,
+        message="driver job execution event - should be filtered",
+        driver_job_lifecycle_event=DriverJobLifecycleEvent(
+            job_id=b"test_job_1",
+            state_transitions=[
+                DriverJobLifecycleEvent.StateTransition(
+                    state=DriverJobLifecycleEvent.State.CREATED,
+                    timestamp=Timestamp(seconds=1234567890),
+                ),
+                DriverJobLifecycleEvent.StateTransition(
+                    state=DriverJobLifecycleEvent.State.FINISHED,
+                    timestamp=Timestamp(seconds=1234567890),
+                ),
+            ],
+        ),
+    )
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[task_event, driver_job_event],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    agg_stub.AddEvents(request)
+
+    # Wait for the task definition event to be stored in GCS (this should succeed)
+    _wait_for_and_verify_task_definition_event_in_gcs(unique_task_name, task_event)
+
+    # Verify that only the task event was processed by GCS, not the driver job event
+    # We can verify this by checking that no other task events are stored beyond our expected one
+    # and ensuring that there were no errors during publishing.
+    # The filtering logic in the GCS publisher should have filtered out the driver job event
+
+    # Ensure HTTP publisher did not send anything (since it's disabled)
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
+        wait_for_condition(lambda: len(httpserver.log) > 0, 1)
+    assert len(httpserver.log) == 0
 
 
 if __name__ == "__main__":

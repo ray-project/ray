@@ -1566,7 +1566,7 @@ def event_routing_config(request, monkeypatch):
     mode = getattr(request, "param", "default")
     # clear envs to ensure default behavior
     monkeypatch.delenv(
-        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", raising=False
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
     )
     monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
 
@@ -1578,7 +1578,7 @@ def event_routing_config(request, monkeypatch):
         monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
         # Ensure aggregator agent publishes to GCS
         monkeypatch.setenv(
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", "True"
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
         )
     yield
 

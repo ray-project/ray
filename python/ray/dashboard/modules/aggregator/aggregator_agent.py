@@ -19,6 +19,7 @@ from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     AsyncDashboardHeadPublisherClient,
+    AsyncGCSTaskEventsPublisherClient,
     AsyncHttpPublisherClient,
 )
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
@@ -60,6 +61,10 @@ EVENTS_EXPORT_ADDR = os.environ.get(
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
+)
+# flag to enable publishing events to GCS
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
 )
 # flag to enable publishing events to the dashboard head
 PUBLISH_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
@@ -107,8 +112,14 @@ class AggregatorAgent(
             thread_name_prefix="aggregator_agent_executor",
         )
 
-        # Task metadata buffer accumulates dropped task attempts for GCS publishing
+        # Task metadata buffers accumulate dropped task attempts to publish. Each
+        # publisher needs its own buffer because reads are destructive
+        # (TaskEventsMetadataBuffer.get() pops), so a shared buffer would split the
+        # dropped attempts across publishers instead of delivering them to both.
         self._task_metadata_buffer = TaskEventsMetadataBuffer(
+            common_metric_tags=self._common_tags
+        )
+        self._dashboard_head_task_metadata_buffer = TaskEventsMetadataBuffer(
             common_metric_tags=self._common_tags
         )
 
@@ -138,6 +149,23 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
+        if PUBLISH_EVENTS_TO_GCS:
+            logger.info("Publishing events to GCS is enabled")
+            self._event_processing_enabled = True
+            self._gcs_publisher = RayEventPublisher(
+                name="ray_gcs",
+                publish_client=AsyncGCSTaskEventsPublisherClient(
+                    gcs_client=self._dashboard_agent.gcs_client,
+                    executor=self._executor,
+                ),
+                event_buffer=self._event_buffer,
+                common_metric_tags=self._common_tags,
+                task_metadata_buffer=self._task_metadata_buffer,
+            )
+        else:
+            logger.info("Publishing events to GCS is disabled")
+            self._gcs_publisher = NoopPublisher()
+
         if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
             logger.info("Publishing events to the dashboard head is enabled")
             self._event_processing_enabled = True
@@ -149,7 +177,7 @@ class AggregatorAgent(
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
-                task_metadata_buffer=self._task_metadata_buffer,
+                task_metadata_buffer=self._dashboard_head_task_metadata_buffer,
             )
         else:
             logger.info("Publishing events to the dashboard head is disabled")
@@ -187,8 +215,12 @@ class AggregatorAgent(
         failed_count = 0
         events_data = request.events_data
 
-        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
+        if PUBLISH_EVENTS_TO_GCS:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
+        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
+            self._dashboard_head_task_metadata_buffer.merge(
+                events_data.task_events_metadata
+            )
 
         for event in events_data.events:
             try:
@@ -220,6 +252,7 @@ class AggregatorAgent(
         try:
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),
+                self._gcs_publisher.run_forever(),
                 self._dashboard_head_publisher.run_forever(),
             )
         finally:
