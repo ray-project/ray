@@ -1,11 +1,20 @@
 import math
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
+    DeploymentHandleSource,
+    DeploymentID,
+    HandleMetricReport,
+    ReplicaID,
+    ReplicaMetricReport,
+    TimeStampedValue,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
@@ -1569,6 +1578,128 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+class TestMergedTimeseriesCache:
+    """The merged ongoing-requests timeseries is cached across control loop ticks,
+    so every mutation of its inputs has to invalidate it."""
+
+    @pytest.fixture(autouse=True)
+    def aggregate_at_controller(self):
+        """The cache only exists on the controller-side aggregation path."""
+        with patch.object(
+            DeploymentAutoscalingState,
+            "_should_aggregate_metrics_at_controller",
+            return_value=True,
+        ):
+            yield
+
+    def _create_state(self) -> DeploymentAutoscalingState:
+        state = DeploymentAutoscalingState(DeploymentID(name="test", app_name="app"))
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=10,
+        )
+        info.deployment_config.gang_scheduling_config = None
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=1)
+        return state
+
+    def _record_replica(
+        self,
+        state: DeploymentAutoscalingState,
+        replica_id: ReplicaID,
+        value: float,
+        timestamp: float,
+    ):
+        state.record_request_metrics_for_replica(
+            ReplicaMetricReport(
+                replica_id=replica_id,
+                aggregated_metrics={RUNNING_REQUESTS_KEY: value},
+                metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp, value)]},
+                timestamp=timestamp,
+            )
+        )
+
+    def test_report_after_unchanged_membership_update(self):
+        """A report arriving after the unchanged-list fast path must reach the total."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        now = time.time()
+
+        state.update_running_replica_ids([r1])
+        # Equal (but distinct) list: takes the fast path.
+        state.update_running_replica_ids([r1])
+        # Populate the cache so the report below has to invalidate it.
+        assert state.get_total_num_requests() == 0.0
+        self._record_replica(state, r1, 5.0, now)
+
+        assert state.get_total_num_requests() == pytest.approx(5.0)
+
+    def test_late_report_from_stopped_replica_is_excluded(self):
+        """A report racing on_replica_stopped must not inflate the total."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=state._deployment_id)
+        now = time.time()
+
+        state.update_running_replica_ids([r1, r2])
+        self._record_replica(state, r1, 5.0, now)
+        self._record_replica(state, r2, 5.0, now)
+        assert state.get_total_num_requests() == pytest.approx(10.0)
+
+        state.on_replica_stopped(r1)
+        assert state.get_total_num_requests() == pytest.approx(5.0)
+
+        self._record_replica(state, r1, 7.0, now)
+        assert state.get_total_num_requests() == pytest.approx(5.0)
+
+    def test_stop_then_unchanged_membership_update_rebuilds(self):
+        """on_replica_stopped diverges the running set from `_running_replicas`, so
+        the next update has to rebuild even though the list is unchanged."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=state._deployment_id)
+        now = time.time()
+
+        running = [r1, r2]
+        state.update_running_replica_ids(running)
+        self._record_replica(state, r1, 5.0, now)
+        self._record_replica(state, r2, 5.0, now)
+
+        state.on_replica_stopped(r1)
+        state.update_running_replica_ids(running)
+        self._record_replica(state, r1, 5.0, now)
+
+        assert state.get_total_num_requests() == pytest.approx(10.0)
+
+    def test_dropping_stale_handle_metrics_lowers_total(self):
+        """Dropping a handle's metrics has to invalidate the cached merge."""
+        state = self._create_state()
+        now = time.time()
+
+        state.record_request_metrics_for_handle(
+            HandleMetricReport(
+                deployment_id=state._deployment_id,
+                handle_id="h1",
+                actor_id="dead_actor",
+                handle_source=DeploymentHandleSource.PROXY,
+                aggregated_queued_requests=3.0,
+                queued_requests=[TimeStampedValue(now, 3.0)],
+                aggregated_metrics={},
+                metrics={},
+                timestamp=now,
+            )
+        )
+        assert state.get_total_num_requests() == pytest.approx(3.0)
+
+        state.drop_stale_handle_metrics(alive_serve_actor_ids=set())
+        assert state.get_total_num_requests() == 0.0
 
 
 if __name__ == "__main__":

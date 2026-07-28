@@ -106,10 +106,13 @@ class DeploymentAutoscalingState:
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: Sequence[ReplicaID] = []
         self._running_replica_id_set: Set[ReplicaID] = set()
+        # Set when a stop drops a replica that `_running_replicas` still lists, so
+        # the next membership update can't take the unchanged-list fast path.
+        self._membership_dirty: bool = False
         self._cached_running_replica_strs: Set[str] = set()
         # Running-requests series per running replica, kept in sync as reports
         # arrive so each control loop tick doesn't rescan every replica.
-        self._running_replica_running_requests: Dict[ReplicaID, TimeSeries] = {}
+        self._running_requests_by_replica: Dict[ReplicaID, TimeSeries] = {}
         # Bumped whenever the inputs to the merged ongoing-requests timeseries
         # change (replica/handle reports, running set); gates the merge cache.
         self._metrics_version: int = 0
@@ -207,10 +210,13 @@ class DeploymentAutoscalingState:
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         self._replica_metrics.pop(replica_id, None)
-        # Defensive: keep a late report from re-adding the stopped replica
-        # before the next membership update.
-        self._running_replica_id_set.discard(replica_id)
-        if self._running_replica_running_requests.pop(replica_id, None) is not None:
+        # Defensive: keep a late report from re-adding the stopped replica before
+        # the next membership update. `_running_replicas` still lists it because it
+        # feeds policy inputs, so flag the divergence for the equality fast path.
+        if replica_id in self._running_replica_id_set:
+            self._running_replica_id_set.remove(replica_id)
+            self._membership_dirty = True
+        if self._running_requests_by_replica.pop(replica_id, None) is not None:
             self._metrics_version += 1
 
     def get_num_replicas_lower_bound(self) -> int:
@@ -236,18 +242,20 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: Sequence[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         # Called every control loop tick; membership is usually unchanged, so skip the
-        # O(replicas) rebuild and keep the merge cache valid. Compared element-wise
-        # because the caller memoizes a tuple, which never equals a stored list.
-        if len(running_replicas) == len(self._running_replicas) and all(
-            a == b for a, b in zip(running_replicas, self._running_replicas)
+        # set/dict rebuilds and keep the merge cache valid. Compared element-wise because
+        # the caller memoizes a tuple; a preceding stop forces the rebuild via the flag.
+        if not self._membership_dirty and (
+            len(running_replicas) == len(self._running_replicas)
+            and all(a == b for a, b in zip(running_replicas, self._running_replicas))
         ):
             return
+        self._membership_dirty = False
         self._running_replicas = running_replicas
         self._running_replica_id_set = set(running_replicas)
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
         }
-        self._running_replica_running_requests = {
+        self._running_requests_by_replica = {
             replica_id: self._replica_metrics[replica_id].metrics[RUNNING_REQUESTS_KEY]
             for replica_id in running_replicas
             if replica_id in self._replica_metrics
@@ -302,13 +310,12 @@ class DeploymentAutoscalingState:
             # Only reports from running replicas feed the merged timeseries.
             if replica_id in self._running_replica_id_set:
                 if RUNNING_REQUESTS_KEY in replica_metric_report.metrics:
-                    self._running_replica_running_requests[
+                    self._running_requests_by_replica[
                         replica_id
                     ] = replica_metric_report.metrics[RUNNING_REQUESTS_KEY]
                     self._metrics_version += 1
                 elif (
-                    self._running_replica_running_requests.pop(replica_id, None)
-                    is not None
+                    self._running_requests_by_replica.pop(replica_id, None) is not None
                 ):
                     self._metrics_version += 1
 
@@ -473,7 +480,7 @@ class DeploymentAutoscalingState:
         Returns:
             List of timeseries data.
         """
-        return list(self._running_replica_running_requests.values())
+        return list(self._running_requests_by_replica.values())
 
     def _collect_handle_queued_requests(self) -> List[TimeSeries]:
         """Collect queued requests timeseries from all handles.
@@ -702,10 +709,11 @@ class DeploymentAutoscalingState:
             # Add queued timeseries
             ongoing_requests_timeseries.extend(queued_timeseries)
 
-            (
-                self._merged_ongoing_requests_timeseries,
-                self._merged_ongoing_requests_window_start,
-            ) = self._merge_timeseries(ongoing_requests_timeseries)
+            merged, window_start = self._merge_timeseries(ongoing_requests_timeseries)
+            # Copy: a single-series merge returns that input list by reference, and
+            # the cache outlives the tick that built it.
+            self._merged_ongoing_requests_timeseries = list(merged)
+            self._merged_ongoing_requests_window_start = window_start
             self._merged_ongoing_requests_version = self._metrics_version
 
         # Aggregate and add running requests to total
