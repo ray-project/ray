@@ -226,8 +226,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.74 \
-    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
 argcomplete==3.5.3 \
     --hash=sha256:2ab2c4a215c59fd6caaff41a869480a23e8f6a5f910b266c1808037f4e375b61 \
@@ -548,6 +549,7 @@ certifi==2026.4.22 \
     #   geventhttpclient
     #   httpcore
     #   httpx
+    #   kubernetes
     #   requests
     #   sentry-sdk
 cffi==1.17.1 \
@@ -835,7 +837,6 @@ colorama==0.4.6 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
-    #   log-symbols
     #   sacrebleu
     #   tqdm-multiprocess
 colorful==0.5.8 \
@@ -1888,7 +1889,6 @@ gitpython==3.1.47 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
-    #   anyscale
     #   wandb
 google-api-core==2.30.3 \
     --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
@@ -1945,6 +1945,7 @@ google-auth==2.39.0 \
     #   google-cloud-secret-manager
     #   google-cloud-storage
     #   gsutil
+    #   kubernetes
 google-auth-httplib2==0.3.1 \
     --hash=sha256:0af542e815784cb64159b4469aa5d71dd41069ba93effa006e1916b1dcd88e55 \
     --hash=sha256:682356a90ef4ba3d06548c37e9112eea6fc00395a11b0303a644c1a86abc275c
@@ -2801,6 +2802,13 @@ kombu==5.6.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   celery
+kubernetes==24.2.0 \
+    --hash=sha256:9900f12ae92007533247167d14cdee949cd8c7721f88b4a7da5f5351da3834cd \
+    --hash=sha256:da19d58865cf903a8c7b9c3691a2e6315d583a98f0659964656dfdf645bf7e49
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   anyscale
 lightning-utilities==0.15.3 \
     --hash=sha256:6c55f1bee70084a1cbeaa41ada96e4b3a0fea5909e844dd335bd80f5a73c5f91 \
     --hash=sha256:792ae0204c79f6859721ac7f386c237a33b0ed06ba775009cb894e010a842033
@@ -2848,13 +2856,6 @@ locust==2.18.0 \
     --hash=sha256:55036b2601ad7a2725885ceafb28f90390128a9a5dc631809da462f53b37cd56 \
     --hash=sha256:f8d668c2c33518c705664bc869791d58fc98ba8f1aadbf2335be36e4e681feae
     # via -r release/ray_release/byod/requirements_ml_byod_3.10.in
-log-symbols==0.0.14 \
-    --hash=sha256:4952106ff8b605ab7d5081dd2c7e6ca7374584eff7086f499c06edd1ce56dcca \
-    --hash=sha256:cf0bbc6fe1a8e53f0d174a716bc625c4f87043cc21eb55dd8a740cfe22680556
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   anyscale
 lxml==6.1.0 \
     --hash=sha256:00750d63ef0031a05331b9223463b1c7c02b9004cef2346a5b2877f0f9494dd2 \
     --hash=sha256:022981127642fe19866d2907d76241bb07ed21749601f727d5d5dd1ce5d1b773 \
@@ -5308,6 +5309,7 @@ python-dateutil==2.9.0.post0 \
     #   botocore
     #   celery
     #   jupyter-client
+    #   kubernetes
     #   matplotlib
     #   pandas
     #   typepy
@@ -5437,6 +5439,7 @@ pyyaml==6.0.3 \
     #   huggingface-hub
     #   jupyter-events
     #   jupytext
+    #   kubernetes
     #   peft
     #   pytorch-lightning
     #   ray
@@ -5702,6 +5705,7 @@ requests==2.33.1 \
     #   google-cloud-storage
     #   google-oauth
     #   jupyterlab-server
+    #   kubernetes
     #   locust
     #   msal
     #   ray
@@ -5717,6 +5721,7 @@ requests-oauthlib==2.0.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-auth-oauthlib
+    #   kubernetes
 retry-decorator==1.1.1 \
     --hash=sha256:e1e8ad02e518fe11073f2ea7d80b6b8be19daa27a60a1838aff7c731ddcf2ebe
     # via
@@ -6220,6 +6225,7 @@ six==1.17.0 \
     #   google-apitools
     #   google-oauth
     #   gsutil
+    #   kubernetes
     #   oauth2client
     #   opencensus
     #   petastorm
@@ -6252,13 +6258,6 @@ soupsieve==2.8.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   beautifulsoup4
-spinners==0.0.24 \
-    --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
-    --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   anyscale
 sqlitedict==2.1.0 \
     --hash=sha256:03d9cfb96d602996f1d4c2db2856f1224b96a9c431bdd16e78032a72940f9e8c
     # via lm-eval
@@ -6910,6 +6909,7 @@ urllib3==1.26.20 \
     #   anyscale
     #   botocore
     #   geventhttpclient
+    #   kubernetes
     #   requests
     #   sentry-sdk
 utilsforecast==0.2.15 \
@@ -7073,6 +7073,7 @@ websocket-client==1.9.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   jupyter-server
+    #   kubernetes
 websockets==15.0.1 \
     --hash=sha256:0701bc3cfcb9164d04a14b149fd74be7347a530ad3bbf15ab2c678a2cd3dd9a2 \
     --hash=sha256:0a34631031a8f05657e8e90903e656959234f3a04552259458aac0b0f9ae6fd9 \
