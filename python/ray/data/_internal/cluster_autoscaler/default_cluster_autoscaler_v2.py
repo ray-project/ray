@@ -249,7 +249,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
         # Track the last non-empty explicit request so low-utilization heartbeats
-        # can keep it alive briefly without turning allocated remaining-share
+        # can keep it alive briefly without turning reserved remaining-share
         # resources into explicit autoscaler demand.
         self._last_non_empty_resource_request: List[ResourceDict] = []
         self._last_non_empty_request_time: Optional[float] = None
@@ -277,9 +277,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._autoscaling_enabled = is_autoscaling_enabled()
 
         # Register with the coordinator immediately so the actor knows about this
-        # requester before the first ``get_allocated_resources call``. The cached value
-        # returned by ``get_allocated_resources`` (and thus ``get_total_resources``) will
-        # be empty until the actor responds with the first allocation (cold-start).
+        # requester before the first ``get_reserved_resources`` call. The cached value
+        # returned by ``get_reserved_resources`` (and thus ``get_total_resources``) will
+        # be empty until the actor responds with the first reservation (cold-start).
         self._send_resource_request([])
 
     def try_trigger_scaling(self):
@@ -421,7 +421,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         """Get total resources available from the autoscaling coordinator."""
-        resources = self._autoscaling_coordinator.get_allocated_resources()
+        resources = self._autoscaling_coordinator.get_reserved_resources()
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))
