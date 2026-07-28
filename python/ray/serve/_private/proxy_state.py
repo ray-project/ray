@@ -11,7 +11,7 @@ from ray import ObjectRef
 from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
@@ -288,7 +288,7 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except RayActorError:
+        except (RayActorError, ActorUnschedulableError):
             # The actor is dead, so it's ready for shutdown.
             return True
         except GetTimeoutError:
@@ -314,15 +314,24 @@ class ActorProxyWrapper(ProxyWrapper):
 
     def kill(self):
         """Kills the proxy actor after graceful shutdown."""
-        # Prevent multiple concurrent kill attempts
-        if self.is_shutdown():
-            return
+        try:
+            # Prevent multiple concurrent kill attempts
+            if self.is_shutdown():
+                ray.kill(self._actor_handle, no_restart=True)
+                return
 
-        shutdown_ref = self._actor_handle.shutdown.remote()
-        ray.get(shutdown_ref, timeout=5)
+            shutdown_ref = self._actor_handle.shutdown.remote()
+            ray.get(shutdown_ref, timeout=5)
+        except Exception as e:
+            logger.warning(
+                f"Graceful shutdown of proxy actor on {self._node_id} failed: {e}"
+            )
 
         # Shutdown completed successfully, now kill the actor
-        ray.kill(self._actor_handle, no_restart=True)
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except Exception as e:
+            logger.warning(f"Force kill of proxy actor failed: {e}")
 
 
 class ProxyState:
