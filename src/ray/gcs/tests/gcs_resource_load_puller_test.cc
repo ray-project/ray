@@ -91,14 +91,15 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
 
   void PullOnPullThread(GcsResourceLoadPuller &puller,
                         std::vector<rpc::Address> raylet_addresses) {
-    std::promise<void> done;
+    auto done = std::make_shared<std::promise<void>>();
+    auto future = done->get_future();
     pull_io_thread_.GetIoService().post(
-        [&puller, &done, raylet_addresses = std::move(raylet_addresses)]() mutable {
+        [&puller, done, raylet_addresses = std::move(raylet_addresses)]() mutable {
           puller.Pull(std::move(raylet_addresses));
-          done.set_value();
+          done->set_value();
         },
         "GcsResourceLoadPullerTest.pull");
-    done.get_future().wait();
+    future.wait();
   }
 
   InstrumentedIOContextWithThread pull_io_thread_;
