@@ -52,7 +52,9 @@ class DefaultIQLTorchRLModule(DefaultSACTorchRLModule, DefaultIQLRLModule):
             output[QF_TARGET_PREDS] = torch.min(
                 output[QF_TARGET_PREDS],
                 self._qf_forward_train_helper(
-                    batch_curr, encoder=self.target_qf_twin_encoder, head=self.qf_twin
+                    batch_curr,
+                    encoder=self.target_qf_twin_encoder,
+                    head=self.target_qf_twin,
                 ),
             )
 

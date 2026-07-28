@@ -67,7 +67,9 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
                                                  uint64_t,
                                                  const rpc::StatusCallback &,
                                                  int64_t = -1) override {}
-  Status SyncRegisterActor(const TaskSpecification &) override { return Status::OK(); }
+  Status SyncRegisterActor(const TaskSpecification &) override {
+    return sync_register_actor_status_;
+  }
   void AsyncKillActor(
       const ActorID &, bool, bool, const rpc::StatusCallback &, int64_t = -1) override {}
   void AsyncCreateActor(
@@ -132,6 +134,7 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
   // Callbacks for AsyncCreateActor and AsyncRegisterActor
   rpc::ClientCallback<rpc::CreateActorReply> async_create_actor_callback_;
   rpc::StatusCallback async_register_actor_callback_;
+  Status sync_register_actor_status_ = Status::OK();
 };
 
 }  // namespace gcs
