@@ -41,6 +41,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta.datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -4734,6 +4735,69 @@ class Dataset:
             overwrite_kwargs=overwrite_kwargs,
         )
 
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "error",
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+        **write_kwargs,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to a Delta Lake table.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("/tmp/my-delta-table")  # doctest: +SKIP
+            >>> ds.write_delta("/tmp/my-delta-table", mode="overwrite")  # doctest: +SKIP
+
+        Args:
+            path: Path to the Delta table.
+            mode: Determines how to handle an existing table. One of
+                ``"append"`` (default), ``"overwrite"``, ``"error"``, or
+                ``"ignore"``. ``"error"`` raises if the table already exists;
+                ``"ignore"`` is a no-op if the table already exists.
+            partition_cols: Column names by which to partition the table.
+                Files are written in Hive partition style.
+            filesystem: The pyarrow filesystem implementation to write to.
+                By default, the filesystem is automatically selected based on
+                the scheme of ``path``.
+            schema: Explicit schema for the table. If not provided, the
+                schema is inferred from the first non-empty block written.
+            schema_mode: ``"error"`` (default) rejects incoming columns not
+                present in the existing table schema. ``"merge"`` adds them.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write
+                tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently.
+                By default, concurrency is dynamically decided based on the
+                available resources.
+            **write_kwargs: Additional keyword arguments passed through to
+                the underlying ``deltalake`` write, e.g. ``compression``,
+                ``write_statistics``, ``target_file_size_bytes``,
+                ``storage_options``.
+        """
+        datasink = DeltaDatasink(
+            path,
+            mode=mode,
+            partition_cols=partition_cols,
+            filesystem=filesystem,
+            schema=schema,
+            schema_mode=schema_mode,
+            **write_kwargs,
+        )
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
