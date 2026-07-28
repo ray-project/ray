@@ -75,17 +75,25 @@ def _tensor_array(tensor_type, values):
     return tensor_type.wrap_array(storage)
 
 
-def make_chunked_tensor_table(rows, width, chunks):
+def make_chunked_tensor_table(rows, width, chunks, *, single_chunk=False):
     """A multi-chunk ``ArrowTensorTypeV2`` column + the dense reference values.
 
     Empty slices are inserted (as in the PR tests) so the chunk layout is
     realistic: a leading empty chunk, a mid empty chunk, and a trailing one.
+
+    With ``single_chunk=True`` the column is one contiguous chunk instead, so
+    ``take_table`` never reaches the chunked path and the fast-path switch is
+    inert -- the control arm that shows no regression when the fast path is
+    ineligible (mirrors the PR's ``single-chunk control``).
     """
     from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
 
     tensor_type = ArrowTensorTypeV2((width,), pa.float32())
     values = np.arange(rows * width, dtype=np.float32).reshape(rows, width)
     array = _tensor_array(tensor_type, values)
+    if single_chunk:
+        column = pa.chunked_array([array], type=tensor_type)
+        return pa.table({"tensor": column}), values
     boundaries = np.linspace(0, rows, chunks + 1, dtype=np.int64)
     arrays = [
         array.slice(int(boundaries[i]), int(boundaries[i + 1] - boundaries[i]))
@@ -137,7 +145,9 @@ def correctness_check(table, values, indices):
 
 
 def bench_timing(args):
-    table, values = make_chunked_tensor_table(args.rows, args.width, args.chunks)
+    table, values = make_chunked_tensor_table(
+        args.rows, args.width, args.chunks, single_chunk=args.single_chunk
+    )
     rng = np.random.default_rng(0)
     indices = rng.integers(0, args.rows, size=args.batch, dtype=np.int64)
 
@@ -152,18 +162,33 @@ def bench_timing(args):
         lambda: _take_once(table, indices), args.iters, args.warmup
     )
 
+    control = args.single_chunk
+    if control:
+        label_before, label_after = "control: ENABLE=0", "control: ENABLE=1"
+        eligible = "single-chunk (fast path ineligible)"
+    else:
+        label_before, label_after = "before (full-concat)", "after (per-chunk)"
+        eligible = f"fast-path-eligible={row_bytes >= MIN_FAST_ROW_BYTES}"
+    # Report the ratio by min: the min is stable across runs and across
+    # in-process vs separate-process measurement, while the mean is noisier.
+    ratio = before_min / after_min
+    summary = (
+        f"\n{'ratio' if control else 'speedup'} (by min): {ratio:.2f}x  "
+        f"({before_min * 1e3:.2f} ms -> {after_min * 1e3:.2f} ms)"
+        + ("  [control: ~1.0 = no regression]" if control else "")
+    )
+
     lines = [
         f"config: rows={args.rows} width={args.width} "
-        f"({row_bytes} B/row, fast-path-eligible={row_bytes >= MIN_FAST_ROW_BYTES}) "
+        f"({row_bytes} B/row, {eligible}) "
         f"chunks={table.column('tensor').num_chunks} batch={args.batch} "
         f"iters={args.iters}",
         correctness_check(table, values, indices),
         "",
         f"{'arm':<22}{'mean (ms)':>12}{'min (ms)':>12}",
-        f"{'before (full-concat)':<22}{before_mean * 1e3:>12.2f}{before_min * 1e3:>12.2f}",
-        f"{'after (per-chunk)':<22}{after_mean * 1e3:>12.2f}{after_min * 1e3:>12.2f}",
-        f"\nspeedup: {before_mean / after_mean:.2f}x  "
-        f"({before_mean * 1e3:.2f} ms -> {after_mean * 1e3:.2f} ms)",
+        f"{label_before:<22}{before_mean * 1e3:>12.2f}{before_min * 1e3:>12.2f}",
+        f"{label_after:<22}{after_mean * 1e3:>12.2f}{after_min * 1e3:>12.2f}",
+        summary,
     ]
     return "\n".join(lines)
 
@@ -192,7 +217,9 @@ def _mem_arm(args, arm):
     import gc
 
     enabled = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
-    table, _ = make_chunked_tensor_table(args.rows, args.width, args.chunks)
+    table, _ = make_chunked_tensor_table(
+        args.rows, args.width, args.chunks, single_chunk=args.single_chunk
+    )
     rng = np.random.default_rng(0)
     indices = rng.integers(0, args.rows, size=args.batch, dtype=np.int64)
     gc.collect()
@@ -222,6 +249,8 @@ def bench_memory(args):
         ("--batch", str(args.batch)),
         ("--iters", str(args.iters)),
     ]
+    if args.single_chunk:
+        rows.append(("--single-chunk",))
     results = {}
     for arm, val in (("before", "0"), ("after", "1")):
         env = {**os.environ, "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE": val}
@@ -274,6 +303,12 @@ def main():
         "--no-mem",
         action="store_true",
         help="skip the per-arm peak-RSS subprocess measurement",
+    )
+    p.add_argument(
+        "--single-chunk",
+        action="store_true",
+        help="control arm: one contiguous chunk (fast path ineligible) -- "
+        "expect before ~= after (no regression)",
     )
     p.add_argument(
         "--mem-arm", choices=["before", "after"], default=None, help=argparse.SUPPRESS
