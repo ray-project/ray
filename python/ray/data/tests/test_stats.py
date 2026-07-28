@@ -2225,7 +2225,6 @@ import ray
 
 ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
 ds.set_name("train")
-ds._set_uuid("1234")
 
 split = ds.streaming_split(1)[0]
 
@@ -2236,8 +2235,15 @@ for epoch in range({num_epochs}):
     # Need to run the code as s sub process, because the executor
     # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
+    match = re.search(
+        r"Starting execution of Dataset (train_[A-Za-z0-9]+)_0",
+        out,
+    )
+    assert match is not None
+    dataset_id_prefix = match.group(1)
+
     for i in range(num_epochs):
-        dataset_id = f"train_1234_{i}"
+        dataset_id = f"{dataset_id_prefix}_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 

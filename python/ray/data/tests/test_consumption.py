@@ -192,7 +192,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     uuid = ds._get_uuid()
-    plan_uuid = ds._uuid
 
     serialized_ds = ds.serialize_lineage()
 
@@ -201,11 +200,23 @@ def test_dataset_lineage_serialization(shutdown_only):
 
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
-    assert ds._get_uuid() == uuid
-    assert ds._uuid == plan_uuid
+    assert ds._get_uuid() != uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
+
+
+def test_dataset_lineage_serialization_legacy_dataset_id(
+    ray_start_regular, restore_data_context
+):
+    """Legacy mode preserves the Dataset UUID during lineage serialization."""
+    context = ray.data.DataContext.get_current()
+    context.use_legacy_dataset_ids = True
+
+    ds = ray.data.range(1)
+    original_uuid = ds._get_uuid()
+    restored_ds = Dataset.deserialize_lineage(ds.serialize_lineage())
+    assert restored_ds._get_uuid() == original_uuid
 
 
 def test_dataset_lineage_serialization_unsupported(shutdown_only):
