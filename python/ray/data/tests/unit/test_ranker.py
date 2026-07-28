@@ -38,10 +38,7 @@ def test_default_ranker():
     assert ranks == [(1, 1024), (0, 1024)]
 
 
-# `int` satisfies the `Comparable` bound at runtime, but pyrefly rejects the
-# specialization because builtin `int.__lt__` is typed narrower than the
-# `Comparable` protocol. Suppress rather than loosen the shared protocol.
-class IntRanker(Ranker[int]):  # pyrefly: ignore[bad-specialization]
+class IntRanker(Ranker[int]):
     """Ranker that returns integer rankings."""
 
     def rank_operator(
