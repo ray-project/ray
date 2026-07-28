@@ -124,9 +124,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   void SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Arrange for the GCS to destroy the actor once all references to it
-  /// (including lineage refs) are deleted. Call this only after the actor's
-  /// registration has resolved: an earlier report reaches the GCS before the
-  /// registration and is dropped as a report for an unknown actor.
+  /// (including lineage refs) are deleted. Arm only once the actor's
+  /// registration has resolved: a report that reaches the GCS before its
+  /// registration is dropped as a report for an unknown actor. The sync
+  /// registration path arms this even after a client-side timeout, where the
+  /// registration did not resolve; a report that outruns it leaks the
+  /// late-registered actor until its owner exits (accepted, see
+  /// CoreWorker::CreateActor).
   void NotifyGCSWhenActorRefDeleted(const ActorID &actor_id);
 
   /// Create connection to actor and send all pending tasks.

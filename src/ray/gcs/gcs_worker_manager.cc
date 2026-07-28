@@ -106,11 +106,12 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              RAY_LOG(ERROR).WithField(worker_id).WithField(node_id).WithField(
                  "worker_address", worker_ip_address)
                  << "Failed to report worker failure";
-             // Nothing retains this worker, so drop the index entry that the
-             // retention list would otherwise never evict.
-             if (!is_duplicate_death_report) {
-               dead_worker_ids_.erase(worker_id);
-             }
+             // The death index entry is kept even though the retention list will
+             // never evict it: the listeners above already acted on this death,
+             // so forgetting it would re-admit registrations from this dead
+             // owner. Table writes are assumed reliable elsewhere (the actor
+             // table put is RAY_CHECK_OK'd), so this retains at most one
+             // WorkerID per failed write.
            } else {
              if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
                ray_metric_unintentional_worker_failures_.Record(1);

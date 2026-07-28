@@ -246,14 +246,9 @@ class GcsActorManagerTest : public ::testing::Test {
     return gcs_actor_manager_->registered_actors_.contains(actor_id);
   }
 
-  void KillOwnerWorker(const NodeID &node_id,
-                       const WorkerID &worker_id,
-                       const std::string &worker_ip,
-                       rpc::WorkerExitType exit_type,
-                       const std::string &exit_detail) {
+  void KillOwnerWorker(const NodeID &node_id, const WorkerID &worker_id) {
     dead_workers_.insert(worker_id);
-    gcs_actor_manager_->OnWorkerDead(
-        node_id, worker_id, worker_ip, exit_type, exit_detail);
+    gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   }
 
   void OnNodeDead(const NodeID &node_id) {
@@ -2675,11 +2670,7 @@ TEST_F(GcsActorManagerTest, TestRegisterAfterOwnerDeathIsRejected) {
   const auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  KillOwnerWorker(owner_node_id,
-                  owner_worker_id,
-                  "127.0.0.1",
-                  rpc::WorkerExitType::SYSTEM_ERROR,
-                  "owner worker process has died.");
+  KillOwnerWorker(owner_node_id, owner_worker_id);
   drain_io_context();
 
   auto status = CallRegisterActor(request);
@@ -2691,6 +2682,19 @@ TEST_F(GcsActorManagerTest, TestRegisterAfterOwnerDeathIsRejected) {
   auto node_request = GenRegisterActorRequest(job_id, /*max_restarts=*/0);
   OnNodeDead(NodeID::FromBinary(node_request.task_spec().caller_address().node_id()));
   ASSERT_TRUE(CallRegisterActor(node_request).IsInvalid());
+
+  // Detached actors are rejected too: their creation task also comes from the
+  // dead caller, so exempting them would park an actor nothing ever creates.
+  auto detached_request = GenRegisterActorRequest(job_id,
+                                                  /*max_restarts=*/0,
+                                                  /*detached=*/true,
+                                                  /*name=*/"detached_rejected",
+                                                  /*ray_namespace=*/"test_namespace");
+  KillOwnerWorker(
+      NodeID::FromBinary(detached_request.task_spec().caller_address().node_id()),
+      WorkerID::FromBinary(detached_request.task_spec().caller_address().worker_id()));
+  drain_io_context();
+  ASSERT_TRUE(CallRegisterActor(detached_request).IsInvalid());
 
   // The name must still be usable: a rejected registration that reserved it
   // would make this second attempt fail with AlreadyExists.

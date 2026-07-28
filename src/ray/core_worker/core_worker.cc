@@ -2281,7 +2281,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     // Detached actors are not ref counted. Armed even when the registration
     // failed, for the reason above plus the client side deadline on this call: a
     // timed out registration may still land later. For a failure the GCS itself
-    // produced, such as AlreadyExists, this costs one ignored report.
+    // produced, such as AlreadyExists, this costs one ignored report. For a
+    // timeout, the report can also be processed before the still-queued
+    // registration and be dropped, and the late registration then leaks until
+    // this worker exits. Arming is still strictly better: unarmed, every
+    // late-landing registration leaks, not just the overtaken ones.
     if (!is_detached) {
       actor_task_submitter_->NotifyGCSWhenActorRefDeleted(actor_id);
     }

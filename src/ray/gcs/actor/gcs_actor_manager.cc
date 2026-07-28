@@ -318,7 +318,13 @@ void GcsActorManager::HandleReportActorRefDeleted(
     rpc::ReportActorRefDeletedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto actor_id = ActorID::FromBinary(request.actor_id());
-  if (!registered_actors_.contains(actor_id)) {
+  auto it = registered_actors_.find(actor_id);
+  if (it == registered_actors_.end()) {
+    // Never registered or already destroyed. This branch also consumes a report
+    // that outran its own still-queued registration (only reachable when a sync
+    // registration timed out client-side and released the handle); that
+    // registration then leaks until its owner exits (accepted, see the arming
+    // comment in CoreWorker::CreateActor).
     RAY_LOG(INFO).WithField(actor_id)
         << "Ignoring a ref-deleted report for an actor that was never registered "
            "or is already destroyed";
@@ -333,7 +339,7 @@ void GcsActorManager::HandleReportActorRefDeleted(
   int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
   DestroyActor(
       actor_id,
-      GenActorRefDeletedCause(GetActorTableData(actor_id)),
+      GenActorRefDeletedCause(&it->second->GetActorTableData()),
       /*force_kill=*/false,
       [reply, send_reply_callback]() {
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -718,7 +724,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   // the cleanup that destroys an owner's actors has already scanned past this one
   // and nothing is guaranteed to look at it again. Detached actors are rejected
   // too, since their creation task also comes from the dead caller. Rejecting
-  // instead of registering keeps the name free.
+  // instead of registering keeps the name free. Both death indexes are bounded,
+  // so this check is best-effort: a registration admitted after its owner's
+  // death was evicted is only reclaimed when a GCS restart re-arms the poll.
   const auto &caller_address = request.task_spec().caller_address();
   const auto owner_node_id = NodeID::FromBinary(caller_address.node_id());
   const auto owner_worker_id = WorkerID::FromBinary(caller_address.worker_id());
