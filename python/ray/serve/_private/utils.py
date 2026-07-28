@@ -67,14 +67,8 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: probed with `inspect.getattr_static` because a plain `getattr` has SIDE
-    # EFFECTS on objects with a dynamic `__getattr__`: `DeploymentHandle.__getattr__`
-    # returns `options(method_name=...)`, which eagerly initializes the handle's
-    # Router (and with it a controller long-poll subscription and a metric-report
-    # stream). Probing must not construct anything. `getattr_static` never invokes
-    # `__getattr__`/`__getattribute__` and reads the marker the decorator sets
-    # directly on the wrapper. The `is True` check is kept so a stray truthy
-    # attribute of the same name cannot register as a positive.
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
     def _has_marker(obj: Any) -> bool:
         try:
             return (
@@ -97,11 +91,8 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        # `object.__getattribute__` rather than `getattr`: the latter falls back to
-        # `__getattr__` when the attribute is missing (e.g. a `__slots__` class), which
-        # is exactly the side-effecting path this function must avoid.
-        # `inspect.getattr_static` is not usable for `__dict__` -- it returns the
-        # getset descriptor rather than the instance mapping.
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
         try:
             instance_vars = object.__getattribute__(callable_obj, "__dict__")
         except AttributeError:
