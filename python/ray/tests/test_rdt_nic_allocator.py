@@ -23,12 +23,23 @@ def _reset_acquired_nic_state():
     nic_allocator._acquired_nic = None
 
 
-def _make_sysfs(tmp_path, devices):
-    """Build a fake /sys/class/infiniband tree: {device: [ports]}."""
+def _make_sysfs(tmp_path, devices, states=None):
+    """Build a fake /sys/class/infiniband tree: {device: [ports]}.
+
+    Each port gets a ``state`` file containing "4: ACTIVE" by default,
+    matching a healthy link. Pass ``states={(dev, port): "1: DOWN"}`` to
+    override specific ports, or map to None to omit the state file
+    entirely (simulating an unreadable/missing sysfs entry).
+    """
+    states = states or {}
     root = tmp_path / "infiniband"
     for dev, ports in devices.items():
         for port in ports:
-            (root / dev / "ports" / str(port)).mkdir(parents=True)
+            port_dir = root / dev / "ports" / str(port)
+            port_dir.mkdir(parents=True)
+            state = states.get((dev, port), "4: ACTIVE")
+            if state is not None:
+                (port_dir / "state").write_text(state)
     return str(root)
 
 
@@ -57,6 +68,45 @@ def test_discover_rdma_nics_missing_root(monkeypatch):
     monkeypatch.setattr(
         nic_allocator, "_INFINIBAND_SYSFS_ROOT", "/nonexistent/infiniband"
     )
+    assert discover_rdma_nics() == []
+
+
+def test_discover_rdma_nics_excludes_down_ports(tmp_path, monkeypatch):
+    """A DOWN port must never be handed out for exclusive pinning -- doing
+    so would steer UCX at a device that can't move data, which is worse
+    than the unpinned default this feature must never regress below."""
+    sysfs_root = _make_sysfs(
+        tmp_path,
+        {"mlx5_0": [1, 2]},
+        states={("mlx5_0", 2): "1: DOWN"},
+    )
+    monkeypatch.setattr(nic_allocator, "_INFINIBAND_SYSFS_ROOT", sysfs_root)
+    assert discover_rdma_nics() == ["mlx5_0:1"]
+
+
+def test_discover_rdma_nics_excludes_unreadable_state(tmp_path, monkeypatch):
+    """A port with a missing/unreadable state file is treated as inactive,
+    not active -- fail open by excluding a possibly-fine port rather than
+    risking a pin to a possibly-dead one."""
+    sysfs_root = _make_sysfs(
+        tmp_path,
+        {"mlx5_0": [1, 2]},
+        states={("mlx5_0", 2): None},
+    )
+    monkeypatch.setattr(nic_allocator, "_INFINIBAND_SYSFS_ROOT", sysfs_root)
+    assert discover_rdma_nics() == ["mlx5_0:1"]
+
+
+def test_discover_rdma_nics_all_down_yields_empty(tmp_path, monkeypatch):
+    """If every port is down, discovery must return no NICs rather than
+    falling back to pinning something -- acquire_nic_for_current_actor's
+    empty-list check then correctly leaves UCX unpinned."""
+    sysfs_root = _make_sysfs(
+        tmp_path,
+        {"mlx5_0": [1]},
+        states={("mlx5_0", 1): "1: DOWN"},
+    )
+    monkeypatch.setattr(nic_allocator, "_INFINIBAND_SYSFS_ROOT", sysfs_root)
     assert discover_rdma_nics() == []
 
 

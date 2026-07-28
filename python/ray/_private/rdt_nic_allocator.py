@@ -44,20 +44,43 @@ _INFINIBAND_SYSFS_ROOT = "/sys/class/infiniband"
 _acquired_nic: Optional[str] = None
 
 
+def _port_is_active(port_path: str) -> bool:
+    """Whether the RDMA port at ``port_path`` is link-active.
+
+    Reads the sysfs ``state`` file (e.g. ``"4: ACTIVE"`` or ``"1: DOWN"``).
+    A port that's cabled-but-down, administratively disabled, or otherwise
+    unusable must never be handed out for exclusive pinning: doing so would
+    steer UCX at a device that can't move data, which is strictly worse
+    than the unpinned default this feature is meant to never regress below.
+    Any I/O error (missing/unreadable file, unexpected format) is treated
+    as inactive -- consistent with failing open by excluding a possibly-
+    fine port, rather than risking pinning to a possibly-dead one.
+    """
+    try:
+        with open(os.path.join(port_path, "state")) as f:
+            return "ACTIVE" in f.read()
+    except OSError:
+        return False
+
+
 def discover_rdma_nics() -> List[str]:
-    """Enumerate port-qualified RDMA device names (e.g. ``mlx5_0:1``).
+    """Enumerate port-qualified, link-active RDMA device names (e.g.
+    ``mlx5_0:1``).
 
     Scans ``/sys/class/infiniband``, which remains mounted inside
     containers/pods where regular netdevs are network-namespaced away (the
     same surface ``_is_efa_available`` relies on). Returns a deterministic
     sorted list so a device index always maps to the same physical NIC on a
-    node; empty on hosts without RDMA devices (including non-Linux).
+    node; empty on hosts without RDMA devices (including non-Linux). Ports
+    that aren't link-active (see ``_port_is_active``) are excluded.
     """
     nics = []
     for dev_path in sorted(glob.glob(os.path.join(_INFINIBAND_SYSFS_ROOT, "*"))):
         dev = os.path.basename(dev_path)
         ports = sorted(glob.glob(os.path.join(dev_path, "ports", "*")))
         for port_path in ports:
+            if not _port_is_active(port_path):
+                continue
             nics.append(f"{dev}:{os.path.basename(port_path)}")
     return nics
 
