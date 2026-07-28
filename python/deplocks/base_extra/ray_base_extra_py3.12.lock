@@ -150,8 +150,9 @@ anyio==4.13.0 \
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   httpx
     #   jupyter-server
-anyscale==0.26.74 \
-    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   -r docker/base-extra/requirements.in
@@ -306,6 +307,7 @@ certifi==2026.4.22 \
     #   anyscale
     #   httpcore
     #   httpx
+    #   kubernetes
     #   requests
 cffi==1.17.1 \
     --hash=sha256:045d61c734659cc045141be4bae381a41d89b741f795af1dd018bfb532fd0df8 \
@@ -525,7 +527,6 @@ colorama==0.4.6 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   anyscale
-    #   log-symbols
 comm==0.2.3 \
     --hash=sha256:2dc8048c10962d55d7ad693be1e7045d891b7ce8d999c97963a5e3e99c055971 \
     --hash=sha256:c615d91d75f7f04f095b30d1c1711babd43bdc6419c1be9886a85f2f4e489417
@@ -875,18 +876,6 @@ fsspec==2023.12.1 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   adlfs
-gitdb==4.0.11 \
-    --hash=sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4 \
-    --hash=sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b
-    # via
-    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
-    #   gitpython
-gitpython==3.1.47 \
-    --hash=sha256:489f590edfd6d20571b2c0e72c6a6ac6915ee8b8cd04572330e3842207a78905 \
-    --hash=sha256:dba27f922bd2b42cb54c87a8ab3cb6beb6bf07f3d564e21ac848913a05a8a3cd
-    # via
-    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
-    #   anyscale
 google-api-core==2.30.3 \
     --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
     --hash=sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b
@@ -927,6 +916,7 @@ google-auth==2.39.0 \
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
     #   google-cloud-storage
+    #   kubernetes
 google-auth-httplib2==0.3.1 \
     --hash=sha256:0af542e815784cb64159b4469aa5d71dd41069ba93effa006e1916b1dcd88e55 \
     --hash=sha256:682356a90ef4ba3d06548c37e9112eea6fc00395a11b0303a644c1a86abc275c
@@ -1394,9 +1384,9 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   ipywidgets
-log-symbols==0.0.14 \
-    --hash=sha256:4952106ff8b605ab7d5081dd2c7e6ca7374584eff7086f499c06edd1ce56dcca \
-    --hash=sha256:cf0bbc6fe1a8e53f0d174a716bc625c4f87043cc21eb55dd8a740cfe22680556
+kubernetes==24.2.0 \
+    --hash=sha256:9900f12ae92007533247167d14cdee949cd8c7721f88b4a7da5f5351da3834cd \
+    --hash=sha256:da19d58865cf903a8c7b9c3691a2e6315d583a98f0659964656dfdf645bf7e49
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   anyscale
@@ -1782,6 +1772,12 @@ oauth2client==4.1.3 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   anyscale
+oauthlib==3.3.1 \
+    --hash=sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9 \
+    --hash=sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1
+    # via
+    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
+    #   requests-oauthlib
 packaging==26.1 \
     --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
     --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
@@ -2105,6 +2101,7 @@ python-dateutil==2.9.0.post0 \
     #   arrow
     #   botocore
     #   jupyter-client
+    #   kubernetes
 python-json-logger==4.1.0 \
     --hash=sha256:132994765cf75bf44554be9aa49b06ef2345d23661a96720262716438141b6b2 \
     --hash=sha256:b396b9e3ed782b09ff9d6e4f1683d46c83ad0d35d2e407c09a9ebbf038f88195
@@ -2189,6 +2186,7 @@ pyyaml==6.0.3 \
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   anyscale
     #   jupyter-events
+    #   kubernetes
 pyzmq==27.1.0 \
     --hash=sha256:01c0e07d558b06a60773744ea6251f769cd79a41a97d11b8bf4ab8f034b0424d \
     --hash=sha256:01f9437501886d3a1dd4b02ef59fb8cc384fa718ce066d52f175ee49dd5b7ed8 \
@@ -2307,8 +2305,16 @@ requests==2.33.1 \
     #   google-cloud-storage
     #   google-oauth
     #   jupyterlab-server
+    #   kubernetes
     #   msal
+    #   requests-oauthlib
     #   smart-open
+requests-oauthlib==2.0.0 \
+    --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
+    --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
+    # via
+    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
+    #   kubernetes
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -2476,6 +2482,7 @@ six==1.17.0 \
     #   -r docker/base-deps/requirements.in
     #   anyscale
     #   google-oauth
+    #   kubernetes
     #   oauth2client
     #   python-dateutil
     #   rfc3339-validator
@@ -2486,24 +2493,12 @@ smart-open==6.2.0 \
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   -r docker/base-deps/requirements.in
     #   anyscale
-smmap==5.0.3 \
-    --hash=sha256:4d9debb8b99007ae47165abc08670bd74cb74b5227dda7f643eccc4e9eb5642c \
-    --hash=sha256:c106e05d5a61449cf6ba9a1e650227ecfb141590d2a98412103ff35d89fc7b2f
-    # via
-    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
-    #   gitdb
 soupsieve==2.8.3 \
     --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
     --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   beautifulsoup4
-spinners==0.0.24 \
-    --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
-    --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
-    # via
-    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
-    #   anyscale
 stack-data==0.6.3 \
     --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
     --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
@@ -2623,6 +2618,7 @@ urllib3==1.26.20 \
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   anyscale
     #   botocore
+    #   kubernetes
     #   requests
 wcwidth==0.6.0 \
     --hash=sha256:1a3a1e510b553315f8e146c54764f4fb6264ffad731b3d78088cdb1478ffbdad \
@@ -2649,6 +2645,7 @@ websocket-client==1.9.0 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   jupyter-server
+    #   kubernetes
 websockets==15.0.1 \
     --hash=sha256:0701bc3cfcb9164d04a14b149fd74be7347a530ad3bbf15ab2c678a2cd3dd9a2 \
     --hash=sha256:0a34631031a8f05657e8e90903e656959234f3a04552259458aac0b0f9ae6fd9 \

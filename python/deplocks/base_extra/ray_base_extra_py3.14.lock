@@ -150,9 +150,9 @@ anyio==4.13.0 \
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.14.lock
     #   httpx
     #   jupyter-server
-anyscale==0.26.103 \
-    --hash=sha256:37cd073d45c79fc62605fccf33bea9ac6a0c8ebc35781aa6ff9ffb0c4d6f89f3 \
-    --hash=sha256:76ac0765936e376cbfc13b89a2fb4f543c5aa48111a6d9f377bcafd84c4b06b4
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.14.lock
     #   -r docker/base-extra/requirements.in
