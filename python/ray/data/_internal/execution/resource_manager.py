@@ -211,6 +211,45 @@ class ResourceManager:
 
             used_object_store = self._estimate_object_store_memory_usage(op, state)
 
+            # Temporary: verify BlockRefCounter matches queue-based accounting.
+            # When all downstream ops are eligible (no LimitOp/OutputSplitter),
+            # BlockRefCounter should equal the sum of all known block locations.
+            # If they diverge while downstream has pending tasks, the new
+            # BRC-based backpressure ratio would differ from the old queue-based
+            # ratio. Log any divergence so release tests can surface it.
+            try:
+                if not isinstance(op, InputDataBuffer) and all(
+                    self.is_op_eligible(dep) for dep in op.output_dependencies
+                ):
+                    brc_bytes = self._mem_op_outputs.get(op, 0)
+                    internal_out = op.metrics.obj_store_mem_internal_outqueue
+                    topo_queue = state.output_queue_bytes()
+                    ds_inqueue = sum(
+                        dep.metrics.obj_store_mem_internal_inqueue
+                        for dep in op.output_dependencies
+                    )
+                    ds_pending = sum(
+                        dep.metrics.obj_store_mem_pending_task_inputs or 0
+                        for dep in op.output_dependencies
+                    )
+                    queue_based_total = (
+                        internal_out + topo_queue + ds_inqueue + ds_pending
+                    )
+                    divergence = brc_bytes - queue_based_total
+                    if divergence != 0 and ds_pending > 0:
+                        logger.warning(
+                            f"BRC-DIVERGE {op.name}: "
+                            f"divergence={divergence}B, "
+                            f"brc={brc_bytes}, "
+                            f"queue_based={queue_based_total} "
+                            f"(internal_out={internal_out}, "
+                            f"topo_queue={topo_queue}, "
+                            f"ds_inqueue={ds_inqueue}, "
+                            f"ds_pending={ds_pending})"
+                        )
+            except (TypeError, AttributeError):
+                pass
+
             op_usage = op_usage.copy(object_store_memory=used_object_store)
             op_running_usage = op_running_usage.copy(
                 object_store_memory=used_object_store
