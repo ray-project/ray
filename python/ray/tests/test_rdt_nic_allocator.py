@@ -7,6 +7,8 @@ import pytest
 import ray
 from ray._private import rdt_nic_allocator as nic_allocator
 from ray._private.rdt_nic_allocator import (
+    _KV_NAMESPACE,
+    _KV_STATE_KEY,
     RDT_NIC_PINNING_ENV_VAR,
     _NICAllocatorImpl,
     acquire_nic_for_current_actor,
@@ -113,6 +115,18 @@ def test_discover_rdma_nics_all_down_yields_empty(tmp_path, monkeypatch):
 class TestNICAllocatorLogic:
     """Drive the allocator's underlying class directly, no cluster needed."""
 
+    @pytest.fixture(autouse=True)
+    def _force_kv_uninitialized(self, monkeypatch):
+        # These tests exercise pure in-memory logic and must behave the
+        # same regardless of whether some other test in this session left
+        # Ray's internal KV client initialized. Forcing it uninitialized
+        # here keeps _load_persisted_state/_persist_state as no-ops, same
+        # as a genuinely cluster-free instantiation.
+        monkeypatch.setattr(
+            "ray.experimental.internal_kv._internal_kv_initialized",
+            lambda: False,
+        )
+
     def _allocator(self):
         # The actor class is wrapped lazily in ray.remote() only when a real
         # allocator handle is needed; here we exercise the plain
@@ -163,6 +177,73 @@ class TestNICAllocatorLogic:
         alloc.acquire("node1", "actorB")
         alloc.release_all_for_node("node1")
         assert all(v is None for v in alloc.snapshot()["node1"].values())
+
+
+class _FakeKV:
+    """In-memory stand-in for Ray's internal KV store, keyed by (key, ns)."""
+
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key, *, namespace=None):
+        return self.store.get((key, namespace))
+
+    def put(self, key, value, *args, namespace=None, **kwargs):
+        self.store[(key, namespace)] = value
+        return False
+
+
+class TestNICAllocatorPersistence:
+    """Verify state survives across allocator instances via the KV store."""
+
+    @pytest.fixture(autouse=True)
+    def _fake_kv(self, monkeypatch):
+        kv = _FakeKV()
+        monkeypatch.setattr(
+            "ray.experimental.internal_kv._internal_kv_initialized", lambda: True
+        )
+        monkeypatch.setattr("ray.experimental.internal_kv._internal_kv_get", kv.get)
+        monkeypatch.setattr("ray.experimental.internal_kv._internal_kv_put", kv.put)
+        self.kv = kv
+        yield
+
+    def test_state_survives_across_instances(self):
+        """A second instance (standing in for a restarted/re-created
+        allocator) must rehydrate exactly what the first one persisted."""
+        first = _NICAllocatorImpl()
+        first.register_node("node1", ["mlx5_0:1", "mlx5_1:1"])
+        nic = first.acquire("node1", "actorA")
+        assert nic == "mlx5_0:1"
+
+        second = _NICAllocatorImpl()
+        assert second.snapshot() == first.snapshot()
+        # The surviving assignment must still be respected: a new actor
+        # can't be handed the NIC actorA already holds.
+        assert second.acquire("node1", "actorB") == "mlx5_1:1"
+
+    def test_release_is_persisted(self):
+        first = _NICAllocatorImpl()
+        first.register_node("node1", ["mlx5_0:1"])
+        first.acquire("node1", "actorA")
+        first.release("node1", "actorA")
+
+        second = _NICAllocatorImpl()
+        assert second.snapshot()["node1"]["mlx5_0:1"] is None
+
+    def test_corrupt_kv_state_falls_back_to_empty(self):
+        """A corrupt/unparseable persisted value must not crash startup --
+        degrade to an empty registry, same as no KV entry at all."""
+        self.kv.store[(_KV_STATE_KEY, _KV_NAMESPACE)] = b"not valid json {{{"
+        alloc = _NICAllocatorImpl()
+        assert alloc.snapshot() == {}
+
+    def test_kv_uninitialized_yields_empty_registry(self, monkeypatch):
+        """No live cluster (KV never initialized): starts empty, no crash."""
+        monkeypatch.setattr(
+            "ray.experimental.internal_kv._internal_kv_initialized", lambda: False
+        )
+        alloc = _NICAllocatorImpl()
+        assert alloc.snapshot() == {}
 
 
 def test_acquire_noop_when_disabled(monkeypatch):

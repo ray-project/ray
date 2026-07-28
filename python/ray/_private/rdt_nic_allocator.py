@@ -20,6 +20,7 @@ paying that cost when RDT/NIXL was never used.
 """
 
 import glob
+import json
 import logging
 import os
 from typing import Dict, List, Optional
@@ -32,6 +33,13 @@ NIC_ALLOCATOR_NAME = "_ray_rdt_nic_allocator"
 NIC_ALLOCATOR_NAMESPACE = "_ray_rdt"
 
 RDT_NIC_PINNING_ENV_VAR = "RAY_RDT_NIC_PINNING"
+
+# Internal KV namespace/key the allocator persists its assignments under, so
+# a restarted (or freshly re-created, after get_if_exists) actor recovers
+# the same state instead of silently starting from an empty registry while
+# surviving actors still hold NICs the new instance has never heard of.
+_KV_NAMESPACE = b"rdt_nic_allocator"
+_KV_STATE_KEY = "state"
 
 # Overridable for testing.
 _INFINIBAND_SYSFS_ROOT = "/sys/class/infiniband"
@@ -100,11 +108,70 @@ class _NICAllocatorImpl:
     ``_get_or_create_allocator`` below, so simply importing this module
     (e.g. from a shutdown hook, to check ``_acquired_nic``) never pays the
     cost of Ray actor-class registration when NIC pinning was never used.
+
+    Assignments are persisted to Ray's internal KV store (GCS-backed) after
+    every mutation and reloaded on ``__init__``. Without this, a restarted
+    -- or freshly re-created via ``get_if_exists`` -- allocator would start
+    with an empty registry while actors elsewhere in the cluster keep
+    running with ``UCX_NET_DEVICES`` pointing at NICs the new instance has
+    no memory of, letting it hand the same NIC out twice.
     """
 
     def __init__(self):
         # node_id -> {nic_name -> owning actor_id or None}
-        self._nics: Dict[str, Dict[str, Optional[str]]] = {}
+        self._nics: Dict[str, Dict[str, Optional[str]]] = self._load_persisted_state()
+
+    def _load_persisted_state(self) -> Dict[str, Dict[str, Optional[str]]]:
+        """Best-effort rehydration from the KV store.
+
+        Falls back to an empty registry -- never raises -- so that (a) a
+        plain unit-test instantiation with no live cluster still works, and
+        (b) a missing/corrupt KV entry degrades to "start fresh" rather
+        than crashing allocator startup.
+        """
+        from ray.experimental.internal_kv import (
+            _internal_kv_get,
+            _internal_kv_initialized,
+        )
+
+        if not _internal_kv_initialized():
+            return {}
+        try:
+            raw = _internal_kv_get(_KV_STATE_KEY, namespace=_KV_NAMESPACE)
+            return json.loads(raw) if raw else {}
+        except Exception:
+            logger.warning(
+                "Failed to load persisted RDT NIC allocator state; "
+                "starting with an empty registry.",
+                exc_info=True,
+            )
+            return {}
+
+    def _persist_state(self) -> None:
+        """Best-effort write-through of the full registry to the KV store.
+
+        Called synchronously at the end of every mutating method, so a
+        caller that receives a successful response is guaranteed the
+        assignment was already durable before the method returned -- not
+        just updated in this process's memory.
+        """
+        from ray.experimental.internal_kv import (
+            _internal_kv_initialized,
+            _internal_kv_put,
+        )
+
+        if not _internal_kv_initialized():
+            return
+        try:
+            _internal_kv_put(
+                _KV_STATE_KEY, json.dumps(self._nics), namespace=_KV_NAMESPACE
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist RDT NIC allocator state; a crash before "
+                "the next successful persist could lose this update.",
+                exc_info=True,
+            )
 
     def register_node(self, node_id: str, nic_names: List[str]) -> None:
         """Record the NICs available on a node.
@@ -114,6 +181,7 @@ class _NICAllocatorImpl:
         """
         if node_id not in self._nics:
             self._nics[node_id] = dict.fromkeys(nic_names)
+            self._persist_state()
 
     def acquire(self, node_id: str, actor_id: str) -> Optional[str]:
         """Return an exclusive NIC for ``actor_id`` on ``node_id``.
@@ -132,19 +200,28 @@ class _NICAllocatorImpl:
         for nic, owner in node_nics.items():
             if owner is None:
                 node_nics[nic] = actor_id
+                self._persist_state()
                 return nic
         return None
 
     def release(self, node_id: str, actor_id: str) -> None:
         """Free every NIC held by ``actor_id`` on ``node_id``."""
+        changed = False
         for nic, owner in self._nics.get(node_id, {}).items():
             if owner == actor_id:
                 self._nics[node_id][nic] = None
+                changed = True
+        if changed:
+            self._persist_state()
 
     def release_all_for_node(self, node_id: str) -> None:
         """Reclaim all NICs on a node, e.g. after the node died."""
-        for nic in self._nics.get(node_id, {}):
-            self._nics[node_id][nic] = None
+        node_nics = self._nics.get(node_id)
+        if not node_nics:
+            return
+        for nic in node_nics:
+            node_nics[nic] = None
+        self._persist_state()
 
     def snapshot(self) -> Dict[str, Dict[str, Optional[str]]]:
         """Full view of current assignments, for debugging/observability."""
@@ -163,21 +240,57 @@ def _get_nic_allocator_actor_cls():
     return _NICAllocatorActorCls
 
 
+def _get_head_node_id() -> Optional[str]:
+    """Best-effort hex node ID of the cluster's head node, or None.
+
+    Used only to bias allocator placement (see _get_or_create_allocator);
+    any failure here just means the allocator gets scheduled normally.
+    """
+    from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+
+    try:
+        for node in ray.nodes():
+            if HEAD_NODE_RESOURCE_NAME in node.get("Resources", {}):
+                return node["NodeID"]
+    except Exception:
+        logger.debug("Failed to look up head node id.", exc_info=True)
+    return None
+
+
 def _get_or_create_allocator() -> "ray.actor.ActorHandle":
     try:
         return ray.get_actor(NIC_ALLOCATOR_NAME, namespace=NIC_ALLOCATOR_NAMESPACE)
     except ValueError:
-        # get_if_exists resolves concurrent creation races atomically.
-        return (
-            _get_nic_allocator_actor_cls()
-            .options(
-                name=NIC_ALLOCATOR_NAME,
-                namespace=NIC_ALLOCATOR_NAMESPACE,
-                lifetime="detached",
-                get_if_exists=True,
-            )
-            .remote()
+        # get_if_exists resolves concurrent creation races atomically. Even
+        # if this races with another caller and a different one "wins" the
+        # creation, both end up pointed at the same persisted KV state, so
+        # there's no correctness gap from the race itself.
+        options = dict(
+            name=NIC_ALLOCATOR_NAME,
+            namespace=NIC_ALLOCATOR_NAMESPACE,
+            lifetime="detached",
+            get_if_exists=True,
+            # Restarts alone would be pointless without KV persistence
+            # above (a restarted actor would just start empty again); with
+            # it, this lets Ray recover the allocator in place instead of
+            # always falling through to creating a brand new actor here.
+            max_restarts=-1,
         )
+        head_node_id = _get_head_node_id()
+        if head_node_id is not None:
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+            # Correlates the allocator's failure domain with "the whole
+            # cluster is going down" rather than an arbitrary worker node
+            # dying independently. soft=True: if the head node is
+            # unschedulable for some reason, fall back to normal placement
+            # rather than failing allocator creation outright -- KV
+            # persistence means correctness doesn't depend on where this
+            # actually lands.
+            options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                head_node_id, soft=True
+            )
+        return _get_nic_allocator_actor_cls().options(**options).remote()
 
 
 def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
