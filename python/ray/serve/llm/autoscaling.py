@@ -14,12 +14,13 @@ from ray.util.annotations import PublicAPI
 DEFAULT_RATE_WINDOW = "30s"
 
 
-def _p99_query(bucket: str, model_id: str, rate_window: str) -> str:
-    """p99 of a vLLM latency histogram, scoped to one model."""
+def _ttft_query(model_id: str) -> str:
+    """p99 time-to-first-token for one model, over DEFAULT_RATE_WINDOW."""
     selector = f'{{model_name="{model_id}"}}'
     return (
-        "histogram_quantile(0.99, "
-        f"sum(rate({bucket}{selector}[{rate_window}])) by (le))"
+        "histogram_quantile(0.99, sum(rate("
+        f"ray_vllm_time_to_first_token_seconds_bucket{selector}[{DEFAULT_RATE_WINDOW}]"
+        ")) by (le))"
     )
 
 
@@ -41,12 +42,13 @@ def _inflight_query(model_id: str) -> str:
     )
 
 
-def _hit_rate_query(model_id: str, rate_window: str) -> str:
-    """Prefix-cache hit rate over ``rate_window``, in [0, 1]."""
+def _hit_rate_query(model_id: str) -> str:
+    """Prefix-cache hit rate over DEFAULT_RATE_WINDOW, in [0, 1]."""
     selector = f'{{model_name="{model_id}"}}'
+    w = DEFAULT_RATE_WINDOW
     return (
-        f"sum(rate(ray_vllm_prefix_cache_hits_total{selector}[{rate_window}])) / "
-        f"sum(rate(ray_vllm_prefix_cache_queries_total{selector}[{rate_window}]))"
+        f"sum(rate(ray_vllm_prefix_cache_hits_total{selector}[{w}])) / "
+        f"sum(rate(ray_vllm_prefix_cache_queries_total{selector}[{w}]))"
     )
 
 
@@ -125,11 +127,9 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
             raise ValueError(
                 "SLOAutoscalingPolicy needs model_id to scope its queries."
             )
-        self.ttft_query = _p99_query(
-            "ray_vllm_time_to_first_token_seconds_bucket", model_id, DEFAULT_RATE_WINDOW
-        )
+        self.ttft_query = _ttft_query(model_id)
         self.kv_query = _kv_usage_query(model_id)
-        self.hit_rate_query = _hit_rate_query(model_id, DEFAULT_RATE_WINDOW)
+        self.hit_rate_query = _hit_rate_query(model_id)
         self.inflight_query = _inflight_query(model_id)
         super().__init__(
             prometheus_address=prometheus_address,
@@ -142,29 +142,20 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
             **kwargs,
         )
         self.ttft_target_s = ttft_target_s
-        self.kv_target = _KV_TARGET
-        self.tune_interval_s = _TUNE_INTERVAL_S
-        self.tune_step_max = _TUNE_STEP_MAX
-        self.tune_deadband = _TUNE_DEADBAND
-        self.hit_rate_damp = _HIT_RATE_DAMP
-        self.c_concurrency_min = _C_CONCURRENCY_MIN
-        self.c_concurrency_max = _C_CONCURRENCY_MAX
 
-    def _tune(
-        self, capacity: float, goal: float, observed: float, lo: float, hi: float
-    ) -> float:
-        """Nudge a capacity toward the goal, bounded per step and to [lo, hi].
+    def _tune(self, capacity: float, p99_ttft: float) -> float:
+        """Nudge the concurrency capacity toward the TTFT goal.
 
-        A latency above goal shrinks the capacity so the inner loop adds
-        replicas; a latency below goal grows it so the loop removes them.
+        TTFT above the goal shrinks the capacity so the inner loop adds replicas;
+        TTFT below the goal grows it. Bounded per step and to the capacity range.
         """
-        if observed <= 0:
+        if p99_ttft <= 0:
             return capacity
-        ratio = goal / observed
-        if abs(ratio - 1.0) <= self.tune_deadband:
+        ratio = self.ttft_target_s / p99_ttft
+        if abs(ratio - 1.0) <= _TUNE_DEADBAND:
             return capacity
-        ratio = min(max(ratio, 1.0 / self.tune_step_max), self.tune_step_max)
-        return min(max(capacity * ratio, lo), hi)
+        ratio = min(max(ratio, 1.0 / _TUNE_STEP_MAX), _TUNE_STEP_MAX)
+        return min(max(capacity * ratio, _C_CONCURRENCY_MIN), _C_CONCURRENCY_MAX)
 
     def __call__(
         self, ctx: AutoscalingContext
@@ -190,22 +181,16 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         hit_rate_stable = (
             hit_rate is None
             or "last_hit_rate" not in state
-            or abs(hit_rate - state["last_hit_rate"]) <= self.hit_rate_damp
+            or abs(hit_rate - state["last_hit_rate"]) <= _HIT_RATE_DAMP
         )
         if (
-            now - state.get("last_tune_s", 0.0) >= self.tune_interval_s
+            now - state.get("last_tune_s", 0.0) >= _TUNE_INTERVAL_S
             and not ramping
             and has_traffic
             and hit_rate_stable
         ):
             if p99_ttft is not None:
-                c_concurrency = self._tune(
-                    c_concurrency,
-                    self.ttft_target_s,
-                    p99_ttft,
-                    self.c_concurrency_min,
-                    self.c_concurrency_max,
-                )
+                c_concurrency = self._tune(c_concurrency, p99_ttft)
             state["last_tune_s"] = now
             if hit_rate is not None:
                 state["last_hit_rate"] = hit_rate
@@ -219,16 +204,8 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         if inflight is not None:
             load = max(load, inflight)
         desired = load / c_concurrency if c_concurrency > 0 else 0.0
-        if kv_util is not None and ctx.current_num_replicas > 0 and self.kv_target > 0:
-            desired = max(desired, ctx.current_num_replicas * kv_util / self.kv_target)
+        if kv_util is not None and ctx.current_num_replicas > 0:
+            desired = max(desired, ctx.current_num_replicas * kv_util / _KV_TARGET)
 
-        state.update(
-            {
-                "c_concurrency": c_concurrency,
-                "p99_ttft_s": p99_ttft,
-                "kv_util": kv_util,
-                "hit_rate": hit_rate,
-                "inflight": inflight,
-            }
-        )
+        state["c_concurrency"] = c_concurrency
         return float(math.ceil(desired)), state
