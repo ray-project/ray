@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import aiohttp
 
+import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.authentication.http_token_authentication import (
@@ -191,6 +192,108 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         If a session is set explicitly, it will be used and managed by close().
         """
         self._session = session
+
+
+class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
+    """Client for publishing ray event batches to GCS."""
+
+    def __init__(
+        self,
+        gcs_client: GcsClient,
+        executor: ThreadPoolExecutor,
+        timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
+    ) -> None:
+        super().__init__()
+        self._gcs_client = gcs_client
+        self._executor = executor
+        self._timeout_s = timeout_s
+
+        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
+
+    async def publish(
+        self,
+        batch: PublishBatch,
+    ) -> PublishStats:
+        events = batch.events
+        task_events_metadata = batch.task_events_metadata
+        has_dropped_task_attempts = (
+            task_events_metadata and task_events_metadata.dropped_task_attempts
+        )
+        if not events and not has_dropped_task_attempts:
+            # Nothing to publish -> success but nothing published
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=0,
+            )
+
+        # Filter events based on exposable event types
+        filtered_events = [e for e in events if self._can_expose_event(e)]
+        num_filtered_out = len(events) - len(filtered_events)
+
+        if not filtered_events and not has_dropped_task_attempts:
+            # all events filtered out and no task events metadata -> success but nothing published
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=num_filtered_out,
+            )
+
+        try:
+            events_data = self._create_ray_events_data(
+                filtered_events, task_events_metadata
+            )
+            request = events_event_aggregator_service_pb2.AddEventsRequest(
+                events_data=events_data
+            )
+            serialized_request = await get_or_create_event_loop().run_in_executor(
+                self._executor,
+                lambda: request.SerializeToString(),
+            )
+            status_code = await self._gcs_client.async_add_events(
+                serialized_request, self._timeout_s, self._executor
+            )
+
+            if status_code != dashboard_utils.HTTPStatusCode.OK:
+                logger.error(f"GCS AddEvents failed: {status_code}")
+                return PublishStats(
+                    is_publish_successful=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
+            return PublishStats(
+                is_publish_successful=True,
+                num_events_published=len(filtered_events),
+                num_events_filtered_out=num_filtered_out,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send events to GCS: {e}")
+            return PublishStats(
+                is_publish_successful=False,
+                num_events_published=0,
+                num_events_filtered_out=0,
+            )
+
+    def _create_ray_events_data(
+        self,
+        event_batch: List[events_base_event_pb2.RayEvent],
+        task_events_metadata: Optional[
+            events_event_aggregator_service_pb2.TaskEventsMetadata
+        ] = None,
+    ) -> events_event_aggregator_service_pb2.RayEventsData:
+        """
+        Helper method to create RayEventsData from event batch and metadata.
+        """
+        events_data = events_event_aggregator_service_pb2.RayEventsData()
+        events_data.events.extend(event_batch)
+
+        if task_events_metadata:
+            events_data.task_events_metadata.CopyFrom(task_events_metadata)
+
+        return events_data
+
+    async def close(self) -> None:
+        pass
 
 
 class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
