@@ -318,15 +318,24 @@ class ActorProxyWrapper(ProxyWrapper):
 
     def kill(self):
         """Kills the proxy actor after graceful shutdown."""
-        # Prevent multiple concurrent kill attempts
-        if self.is_shutdown():
-            return
+        try:
+            # Prevent multiple concurrent kill attempts
+            if self.is_shutdown():
+                ray.kill(self._actor_handle, no_restart=True)
+                return
 
-        shutdown_ref = self._actor_handle.shutdown.remote()
-        ray.get(shutdown_ref, timeout=5)
+            shutdown_ref = self._actor_handle.shutdown.remote()
+            ray.get(shutdown_ref, timeout=5)
+        except Exception as e:
+            logger.warning(
+                f"Graceful shutdown of proxy actor on {self._node_id} failed: {e}"
+            )
 
         # Shutdown completed successfully, now kill the actor
-        ray.kill(self._actor_handle, no_restart=True)
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except Exception as e:
+            logger.warning(f"Force kill of proxy actor failed: {e}")
 
 
 class ProxyState:
