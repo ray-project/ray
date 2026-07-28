@@ -419,17 +419,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-steps",
         type=int,
-        default=1000,
+        default=1600,
         help=(
-            "Sized for a ~2h two-arm run at roughly 1.5s/step. Measure the real "
-            "step time first (a short run with --num-preemptions 0) before "
-            "changing this, since the budget is linear in it."
+            "Sized for a ~1.8h two-arm run at the 1.13s/step measured for "
+            "vit_b_16 on 8xT4. The budget is linear in step time, so re-measure "
+            "with `--num-preemptions 0` before changing the model or worker "
+            "count, and keep `--checkpoint-interval` at about a quarter of this."
         ),
     )
     parser.add_argument(
         "--checkpoint-interval",
         type=int,
-        default=250,
+        default=400,
         help=(
             "Periodic checkpoint interval in steps. A preemption lands at a "
             "random point in the interval, so the baseline loses this/2 on "
@@ -492,6 +493,16 @@ def main():
 
     assert jit["completed"], f"jit arm did not finish: {jit['error']}"
     assert baseline["completed"], f"baseline arm did not finish: {baseline['error']}"
+
+    if not args.num_preemptions:
+        # Calibration run: nothing was preempted, so there is nothing to compare.
+        # `mean_step_time_s` above is the number to size `--target-steps` with.
+        logger.info(
+            "No preemptions were injected; skipping the comparison assertions. "
+            "Measured %.2fs/step.",
+            baseline["mean_step_time_s"],
+        )
+        return
 
     # The just-in-time checkpoint has to actually have been taken, otherwise the
     # arms are identical and the comparison is meaningless.
