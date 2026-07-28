@@ -64,29 +64,19 @@ class TestConfigureKvEvents:
         assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "0"
         assert llm_config.runtime_env["env_vars"]["EXISTING_ENV"] == "value"
 
-    def test_native_offload_enables_self_describing_events(self):
-        """The resolved native connector emits complete CPU-tier KV events."""
-        extra_config = {"offload_prompt_only": False}
-        vllm_config = SimpleNamespace(
-            cache_config=SimpleNamespace(
-                kv_offloading_size=2.0,
-                kv_offloading_backend="native",
-            ),
-            kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
-        )
-
-        enable_native_kv_offload_events(vllm_config)
-
-        assert extra_config == {
-            "offload_prompt_only": False,
-            "self_describing_kv_events": True,
-        }
-
-    def test_no_offload_is_unchanged(self):
+    @pytest.mark.parametrize(
+        "offload_size, expected",
+        [
+            (2.0, {"existing": "value", "self_describing_kv_events": True}),
+            (None, {"existing": "value"}),
+        ],
+    )
+    def test_native_offload_event_configuration(self, offload_size, expected):
+        """Only native CPU offload enables complete CPU-tier KV events."""
         extra_config = {"existing": "value"}
         vllm_config = SimpleNamespace(
             cache_config=SimpleNamespace(
-                kv_offloading_size=None,
+                kv_offloading_size=offload_size,
                 kv_offloading_backend="native",
             ),
             kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
@@ -94,7 +84,7 @@ class TestConfigureKvEvents:
 
         enable_native_kv_offload_events(vllm_config)
 
-        assert extra_config == {"existing": "value"}
+        assert extra_config == expected
 
     @pytest.mark.parametrize(
         "engine_kwargs, local_rank, expected_port, expected_replay_port",

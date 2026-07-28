@@ -10,10 +10,15 @@ import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
+from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.serve.llm.request_router import KVAwareRouter
 
-from utils import _TestKVAwareRouter, patch_ingress
+from utils import (
+    _TestKVAwareRouter,
+    build_kv_app,
+    discover_replica_endpoints,
+    patch_ingress,
+)
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -151,27 +156,10 @@ class TestKvEvents:
         # Swap the ingress for the introspection LLMRouter so the embedded
         # tracker's state is reachable over the deployment handle.
         with patch_ingress():
-            app = build_openai_app({"llm_configs": [llm_config]})
+            app = build_kv_app(llm_config)
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
-
-    async def _discover_replicas(self, handle):
-        """Map each replica's full id to its backend HTTP endpoint."""
-        endpoints = {}
-        for _ in range(100):
-            async with handle.choose_replica() as selection:
-                replica = selection._replica
-                if replica.backend_http_endpoint is not None:
-                    replica_id = replica.replica_id.to_full_id_str()
-                    endpoints[replica_id] = replica.backend_http_endpoint
-            if len(endpoints) == NUM_REPLICAS:
-                return endpoints
-            await asyncio.sleep(0.5)
-        raise AssertionError(
-            f"Expected {NUM_REPLICAS} replicas with backend endpoints, "
-            f"found {len(endpoints)}."
-        )
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)
@@ -182,7 +170,9 @@ class TestKvEvents:
         worker."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
 
-        replica_endpoints = await self._discover_replicas(deployed_handle)
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
 
         # Each replica advertises its KV-events endpoint via record_routing_stats;
         # the controller propagates it on the LongPoll replica snapshot and the
@@ -268,7 +258,9 @@ class TestKvEvents:
         """Ensure chat template is applied: a chat request scores the same overlap as
         the prompt rendered with the model's chat template and tokenized as raw text."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
-        replica_endpoints = await self._discover_replicas(deployed_handle)
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
 
         async def all_registered():
             registered = await router.get_kv_event_worker_replicas.remote()
@@ -349,27 +341,10 @@ class TestKvOffload:
             log_engine_metrics=False,
         )
         with patch_ingress():
-            app = build_openai_app({"llm_configs": [llm_config]})
+            app = build_kv_app(llm_config)
             handle = serve.run(app, name="kv_offload_gpu_test")
         yield handle
         serve.shutdown()
-
-    async def _discover_replicas(self, handle):
-        endpoints = {}
-        for _ in range(100):
-            async with handle.choose_replica() as selection:
-                replica = selection._replica
-                if replica.backend_http_endpoint is not None:
-                    endpoints[
-                        replica.replica_id.to_full_id_str()
-                    ] = replica.backend_http_endpoint
-            if len(endpoints) == NUM_REPLICAS:
-                return endpoints
-            await asyncio.sleep(0.5)
-        raise AssertionError(
-            f"Expected {NUM_REPLICAS} replicas with backend endpoints, "
-            f"found {len(endpoints)}."
-        )
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)
@@ -378,7 +353,9 @@ class TestKvOffload:
         router = serve.get_deployment_handle(
             "LLMRouter", app_name="kv_offload_gpu_test"
         )
-        replica_endpoints = await self._discover_replicas(deployed_handle)
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
 
         async def all_registered():
             registered = await router.get_kv_event_worker_replicas.remote()
@@ -499,7 +476,7 @@ class TestKvScoring:
             ),
             log_engine_metrics=False,
         )
-        app = build_openai_app({"llm_configs": [llm_config]})
+        app = build_kv_app(llm_config)
         handle = serve.run(app, name="kv_scoring_gpu_test")
         yield handle
         serve.shutdown()

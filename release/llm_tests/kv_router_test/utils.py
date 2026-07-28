@@ -7,6 +7,7 @@ name the engine resolves is unchanged) that records booked lifecycle events and
 exposes the tracker's state as handle-callable methods.
 """
 
+import asyncio
 from contextlib import contextmanager
 from dataclasses import asdict
 import sys
@@ -67,6 +68,25 @@ def build_kv_config(*, request_router_class, kv_events_port_base, num_replicas=1
 def build_kv_app(llm_config):
     """The Serve app for ``llm_config``; call inside ``patch_ingress``."""
     return build_openai_app({"llm_configs": [llm_config]})
+
+
+async def discover_replica_endpoints(handle, expected_replicas):
+    """Map each replica id to its direct-ingress HTTP endpoint."""
+    endpoints = {}
+    for _ in range(100):
+        async with handle.choose_replica() as selection:
+            replica = selection._replica
+            if replica.backend_http_endpoint is not None:
+                endpoints[
+                    replica.replica_id.to_full_id_str()
+                ] = replica.backend_http_endpoint
+        if len(endpoints) == expected_replicas:
+            return endpoints
+        await asyncio.sleep(0.5)
+    raise AssertionError(
+        f"Expected {expected_replicas} replicas with backend endpoints, "
+        f"found {len(endpoints)}."
+    )
 
 
 class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
