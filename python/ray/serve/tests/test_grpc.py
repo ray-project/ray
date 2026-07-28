@@ -12,7 +12,6 @@ from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
@@ -81,9 +80,8 @@ def test_serving_grpc_requests(ray_cluster):
     # Ensures another custom defined method is responding correctly.
     ping_grpc_another_method(channel, app_name)
 
-    if not RAY_SERVE_ENABLE_HA_PROXY:
-        # Ensure Streaming method is responding correctly.
-        ping_grpc_streaming(channel, app_name)
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app_name)
 
     serve.run(g2)
 
