@@ -327,7 +327,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
 
 def test_filter_fields_preserves_schema_column_order():
     """filter_fields must emit columns in StateSchema order, not set order."""
-    data = {col: None for col in TaskState.list_columns(detail=True)}
+    data = {col: None for col in reversed(TaskState.list_columns(detail=True))}
 
     for detail in (True, False):
         expected = TaskState.list_columns(detail=detail)
