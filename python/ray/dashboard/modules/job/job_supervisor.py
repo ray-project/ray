@@ -100,6 +100,22 @@ _INFRA_ACTOR_DEATH_REASONS = {
     ActorDiedErrorContext.WORKER_DIED: ErrorType.WORKER_DIED,
 }
 
+# Resolved here, at import, rather than referenced from inside JobSupervisor.
+#
+# `ray.remote` rebinds the class as `_modify_class.<locals>.Class`, which is
+# defined in a local scope, so cloudpickle serialises the class BY VALUE and
+# walks the globals every method references. A protobuf enum symbol such as
+# `TaskStatus` is an EnumTypeWrapper -- an object, not a class -- and it is not
+# picklable:
+#
+#     TypeError: cannot pickle 'google._upb._message.EnumDescriptor' object
+#
+# The enum *values* are plain ints, so binding them once at module scope keeps
+# the wrapper out of every method's global set. Message classes (InfraCauseContext,
+# GetTaskEventsRequest, ...) pickle fine and are used directly.
+_FILTER_PREDICATE_EQUAL = FilterPredicate.EQUAL
+_TASK_STATUS_FINISHED = TaskStatus.FINISHED
+
 
 def _infra_cause_from_actor_death(
     death_cause: ActorDeathCause,
@@ -501,7 +517,7 @@ class JobSupervisor:
             filters=GetTaskEventsRequest.Filters(
                 job_filters=[
                     GetTaskEventsRequest.Filters.JobIdFilter(
-                        predicate=FilterPredicate.EQUAL,
+                        predicate=_FILTER_PREDICATE_EQUAL,
                         job_id=JobID(hex_to_binary(ray_job_id)).binary(),
                     )
                 ],
@@ -521,7 +537,7 @@ class JobSupervisor:
             events.task_id
             for events in reply.events_by_task
             if events.HasField("state_updates")
-            and TaskStatus.FINISHED in events.state_updates.state_ts_ns
+            and _TASK_STATUS_FINISHED in events.state_updates.state_ts_ns
         }
 
         best = None

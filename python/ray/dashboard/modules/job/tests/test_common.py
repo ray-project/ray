@@ -476,6 +476,34 @@ def test_get_all_jobs_filters_out_none_job_info():
         asdict(job_info)  # This should not raise an exception
 
 
+def test_job_supervisor_actor_class_is_serializable():
+    """JobSupervisor must survive cloudpickle, or no job can start at all.
+
+    `ray.remote` rebinds the class as `_modify_class.<locals>.Class`. Because
+    that is defined in a local scope, cloudpickle serialises it BY VALUE, which
+    means walking the globals referenced by every method. Anything unpicklable
+    reachable that way breaks job submission entirely -- not the feature that
+    introduced it, every job.
+
+    The specific trap this pins: a protobuf enum symbol (`TaskStatus`,
+    `ErrorType`, `FilterPredicate`) is an EnumTypeWrapper instance, not a class,
+    and it is unpicklable:
+
+        TypeError: cannot pickle 'google._upb._message.EnumDescriptor' object
+
+    Message classes are fine. Enum *values* are plain ints and fine. Only the
+    wrapper is poison, so enum values must be bound at module scope rather than
+    dereferenced inside a method. Nothing else in the file would catch this --
+    the module imports cleanly and every unit test passes with the wrapper in
+    place; it only fails when Ray tries to ship the actor.
+    """
+    import ray
+    from ray import cloudpickle
+    from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+
+    cloudpickle.dumps(ray.remote(JobSupervisor))
+
+
 if __name__ == "__main__":
     import sys
 
