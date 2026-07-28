@@ -1006,7 +1006,7 @@ class RDTManager:
             src_actor = None
 
         if src_actor is None and not is_one_sided_transport(tensor_transport):
-            raise ValueError(
+            raise RuntimeError(
                 f"Driver-side ray.put with tensor transport {tensor_transport!r} "
                 "is unsupported. Use a one-sided transport such as NIXL."
             )
