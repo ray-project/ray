@@ -79,7 +79,7 @@ def test_basic(cluster_nodes):
         expire_after_s=req1_timeout,
     )
     mock_request_resources.assert_called_once_with(req1)
-    res1 = as_coordinator.get_allocated_resources("requester1")
+    res1 = as_coordinator.get_reserved_resources("requester1")
 
     def _remove_head_node_resources(res):
         for r in res:
@@ -109,7 +109,7 @@ def test_basic(cluster_nodes):
         request_remaining=True,
     )
     mock_request_resources.assert_called_with(req1 + req2)
-    res2 = as_coordinator.get_allocated_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2")
     _remove_head_node_resources(res2)
     assert res2 == req2 + [{"CPU": 5, "GPU": 3, "object_store_memory": 800}]
 
@@ -121,10 +121,10 @@ def test_basic(cluster_nodes):
         expire_after_s=req1_timeout,
     )
     mock_request_resources.assert_called_with(req1_updated + req2)
-    res1 = as_coordinator.get_allocated_resources("requester1")
+    res1 = as_coordinator.get_reserved_resources("requester1")
     _remove_head_node_resources(res1)
     assert res1 == req1_updated
-    res2 = as_coordinator.get_allocated_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2")
     _remove_head_node_resources(res2)
     assert res2 == req2 + [{"CPU": 4, "GPU": 2, "object_store_memory": 600}]
 
@@ -132,8 +132,8 @@ def test_basic(cluster_nodes):
     mocked_time = req1_timeout + 0.1
     as_coordinator._tick()
     mock_request_resources.assert_called_with(req2)
-    res1 = as_coordinator.get_allocated_resources("requester1")
-    res2 = as_coordinator.get_allocated_resources("requester2")
+    res1 = as_coordinator.get_reserved_resources("requester1")
+    res2 = as_coordinator.get_reserved_resources("requester2")
     _remove_head_node_resources(res1)
     _remove_head_node_resources(res2)
     assert res1 == []
@@ -143,8 +143,8 @@ def test_basic(cluster_nodes):
     mocked_time = req2_timeout + 0.1
     as_coordinator._tick()
     mock_request_resources.assert_called_with([])
-    res1 = as_coordinator.get_allocated_resources("requester1")
-    res2 = as_coordinator.get_allocated_resources("requester2")
+    res1 = as_coordinator.get_reserved_resources("requester1")
+    res2 = as_coordinator.get_reserved_resources("requester2")
     _remove_head_node_resources(res1)
     _remove_head_node_resources(res2)
     assert res1 == []
@@ -152,7 +152,7 @@ def test_basic(cluster_nodes):
 
     # Test canceling a request
     as_coordinator.cancel_request("requester2")
-    res2 = as_coordinator.get_allocated_resources("requester2")
+    res2 = as_coordinator.get_reserved_resources("requester2")
     _remove_head_node_resources(res2)
     assert res2 == []
 
@@ -197,8 +197,8 @@ def test_double_allocation_with_multiple_request_remaining():
     )
 
     # Get allocated resources
-    res1 = coordinator.get_allocated_resources("requester1")
-    res2 = coordinator.get_allocated_resources("requester2")
+    res1 = coordinator.get_reserved_resources("requester1")
+    res2 = coordinator.get_reserved_resources("requester2")
 
     # After allocating specific requests (req1 and req2):
     # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
@@ -309,7 +309,7 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
 
         def check_allocated_resources():
             allocated = ray.get(
-                as_coordinator.get_allocated_resources.remote(requester_id)
+                as_coordinator.get_reserved_resources.remote(requester_id)
             )
             allocated = [
                 {
@@ -387,8 +387,8 @@ def autoscaling_coordinator_actor(ray_start_regular_shared):
     ray.kill(actor)
 
 
-def test_get_allocated_resources_eventually_consistent(autoscaling_coordinator_actor):
-    """get_allocated_resources eventually reflects a submitted request_resources call."""
+def test_get_reserved_resources_eventually_consistent(autoscaling_coordinator_actor):
+    """get_reserved_resources eventually reflects a submitted request_resources call."""
     coordinator = DefaultAutoscalingCoordinator(
         "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
     )
@@ -396,13 +396,13 @@ def test_get_allocated_resources_eventually_consistent(autoscaling_coordinator_a
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
 
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1}],
         retry_interval_ms=100,
         timeout=5,
     )
 
 
-def test_get_allocated_resources_returns_cached_while_pending(
+def test_get_reserved_resources_returns_cached_while_pending(
     autoscaling_coordinator_actor, monkeypatch
 ):
     """Returns the last cached value without blocking when a ref is still in-flight."""
@@ -412,7 +412,7 @@ def test_get_allocated_resources_returns_cached_while_pending(
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1}],
         retry_interval_ms=100,
         timeout=5,
     )
@@ -425,10 +425,10 @@ def test_get_allocated_resources_returns_cached_while_pending(
 
     coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
     # Should return the stale cached value, not block.
-    assert coordinator.get_allocated_resources() == [{"CPU": 1}]
+    assert coordinator.get_reserved_resources() == [{"CPU": 1}]
 
 
-def test_get_allocated_resources_returns_cached_on_actor_error(
+def test_get_reserved_resources_returns_cached_on_actor_error(
     autoscaling_coordinator_actor, monkeypatch
 ):
     """Actor errors fall back to the cached value, log a warning, and never raise.
@@ -441,7 +441,7 @@ def test_get_allocated_resources_returns_cached_on_actor_error(
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1}],
         retry_interval_ms=100,
         timeout=5,
     )
@@ -454,35 +454,35 @@ def test_get_allocated_resources_returns_cached_on_actor_error(
     monkeypatch.setattr(ray, "get", Mock(side_effect=ray.exceptions.RayActorError()))
 
     # Must return the last cached value, not raise.
-    assert coordinator.get_allocated_resources() == [{"CPU": 1}]
+    assert coordinator.get_reserved_resources() == [{"CPU": 1}]
 
     # Recovery: submit a new request after the error and verify it eventually
     # resolves, proving the coordinator can communicate with the actor again.
     monkeypatch.undo()
     coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 2}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 2}],
         retry_interval_ms=100,
         timeout=5,
     )
 
 
 def test_cancel_request_makes_get_return_empty(autoscaling_coordinator_actor):
-    """After cancel_request, get_allocated_resources eventually returns []."""
+    """After cancel_request, get_reserved_resources eventually returns []."""
     coordinator = DefaultAutoscalingCoordinator(
         "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
     )
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1}],
         retry_interval_ms=100,
         timeout=5,
     )
 
     coordinator.cancel_request()
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [],
+        lambda: coordinator.get_reserved_resources() == [],
         retry_interval_ms=100,
         timeout=5,
     )
@@ -499,7 +499,7 @@ def test_non_ray_errors_propagate(autoscaling_coordinator_actor, monkeypatch):
 
     coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1}],
         retry_interval_ms=100,
         timeout=5,
     )
@@ -510,7 +510,7 @@ def test_non_ray_errors_propagate(autoscaling_coordinator_actor, monkeypatch):
     )
 
     with pytest.raises(ValueError, match="unexpected local error"):
-        coordinator.get_allocated_resources()
+        coordinator.get_reserved_resources()
 
 
 def test_coordinator_accepts_zero_resource_for_missing_resource_type(
@@ -525,7 +525,7 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
     coordinator.request_resources(resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1)
 
     wait_for_condition(
-        lambda: coordinator.get_allocated_resources() == [{"CPU": 1, "GPU": 0}],
+        lambda: coordinator.get_reserved_resources() == [{"CPU": 1, "GPU": 0}],
         retry_interval_ms=100,
         timeout=5,
     )
@@ -743,8 +743,8 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
         request_remaining=True,
     )
 
-    train = coord.get_allocated_resources("train")
-    val = coord.get_allocated_resources("val")
+    train = coord.get_reserved_resources("train")
+    val = coord.get_reserved_resources("val")
     assert {"CPU": 4} in train and {"CPU": 4} in val
     # Training bucket: 2 x 8 - 4 explicit = 12 leftover, all to train.
     assert sum(a["CPU"] for a in train if a != {"CPU": 4}) == 12
@@ -767,7 +767,7 @@ def test_unlabeled_requester_only_sees_none_bucket():
         request_remaining=True,
     )
 
-    alloc = coord.get_allocated_resources("anon")
+    alloc = coord.get_reserved_resources("anon")
     total_cpu = sum(a["CPU"] for a in alloc)
     assert total_cpu == 2, (
         f"unlabeled requester should only see the 2-CPU None bucket; got "
@@ -791,8 +791,8 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
         request_remaining=True,
     )
 
-    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
-    anon_total = sum(a["CPU"] for a in coord.get_allocated_resources("anon"))
+    train_total = sum(a["CPU"] for a in coord.get_reserved_resources("train"))
+    anon_total = sum(a["CPU"] for a in coord.get_reserved_resources("anon"))
     # Training bucket: 2 x 8 = 16 CPU; anon gets none of it.
     assert train_total == 16
     # Default bucket: 1 x 2 = 2 CPU; train gets none of it.
@@ -810,7 +810,7 @@ def test_label_selector_unmatched_yields_no_allocation():
         expire_after_s=10,
         request_remaining=True,
     )
-    assert coord.get_allocated_resources("ghost") == []
+    assert coord.get_reserved_resources("ghost") == []
 
 
 def test_label_selector_partial_fit_when_demand_exceeds_capacity():
@@ -824,7 +824,7 @@ def test_label_selector_partial_fit_when_demand_exceeds_capacity():
         expire_after_s=10,
     )
     # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
-    assert coord.get_allocated_resources("val") == [{"CPU": 3}]
+    assert coord.get_reserved_resources("val") == [{"CPU": 3}]
 
 
 def test_full_tick_exercises_update_merge_reallocate():
@@ -853,7 +853,7 @@ def test_full_tick_exercises_update_merge_reallocate():
     )
     # Before the join: only 4 CPU in the training bucket; 1 used explicitly,
     # 3 leftover go to train.
-    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
+    train_total = sum(a["CPU"] for a in coord.get_reserved_resources("train"))
     assert train_total == 4
 
     # A new training node joins the cluster.
@@ -867,7 +867,7 @@ def test_full_tick_exercises_update_merge_reallocate():
     )
     # Without a tick, the coordinator still sees the old snapshot.
     coord._tick()
-    train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
+    train_total = sum(a["CPU"] for a in coord.get_reserved_resources("train"))
     # Now: 4 + 8 = 12 total; 1 explicit + 11 leftover.
     assert train_total == 12
 
@@ -896,8 +896,8 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
         request_remaining=True,
     )
 
-    train_idle_alloc = coord.get_allocated_resources("train_idle")
-    val_active_alloc = coord.get_allocated_resources("val_active")
+    train_idle_alloc = coord.get_reserved_resources("train_idle")
+    val_active_alloc = coord.get_reserved_resources("val_active")
 
     # Training bucket: 2 x 8 = 16 CPU, all leftover, all to train_idle.
     train_idle_cpu = sum(a.get("CPU", 0) for a in train_idle_alloc)
