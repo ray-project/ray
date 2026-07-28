@@ -144,6 +144,13 @@ class LLMRouter(_LLMRouter):
 
     async def get_kv_overlap_blocks(self, token_ids):
         """(Test only) Per-worker device-tier KV overlap blocks for a sequence."""
+        scores = await self.get_kv_overlap_scores(token_ids)
+        return {
+            worker_id: score["device_blocks"] for worker_id, score in scores.items()
+        }
+
+    async def get_kv_overlap_scores(self, token_ids):
+        """(Test only) Per-worker overlap across every KV storage tier."""
         svc = self._kv_token_tracker._svc
         if svc is None:
             return {}
@@ -154,7 +161,7 @@ class LLMRouter(_LLMRouter):
                 "token_ids": list(token_ids),
             }
         )
-        return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
+        return {worker["worker_id"]: worker for worker in scores["workers"]}
 
     async def get_worker_active_requests(self, worker_id):
         """(Test only) In-flight requests the service tracks as active load on

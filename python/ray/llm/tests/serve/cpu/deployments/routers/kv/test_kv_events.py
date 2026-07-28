@@ -9,6 +9,7 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     configure_kv_events_for_kv_routing,
+    enable_native_kv_offload_events,
     get_kv_event_routing_stats,
     resolve_kv_event_source_endpoint,
 )
@@ -41,9 +42,16 @@ def ray_instance():
 
 
 class TestConfigureKvEvents:
-    def test_configure_enables_events_and_pins_seed(self):
-        """KV-aware config turns on engine ZMQ KV events and pins the hash seed."""
-        llm_config = make_kv_aware_llm_config()
+    def test_configure_enables_events_and_pins_runtime_env(self):
+        """KV-aware config enables events and required vLLM process settings."""
+        llm_config = make_kv_aware_llm_config(
+            runtime_env={
+                "env_vars": {
+                    "EXISTING_ENV": "value",
+                    "VLLM_USE_SIMPLE_KV_OFFLOAD": "1",
+                }
+            }
+        )
         configure_kv_events_for_kv_routing(llm_config)
 
         assert llm_config.engine_kwargs["kv_events_config"] == {
@@ -53,6 +61,40 @@ class TestConfigureKvEvents:
             "replay_endpoint": "tcp://*:6557",
         }
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
+        assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "0"
+        assert llm_config.runtime_env["env_vars"]["EXISTING_ENV"] == "value"
+
+    def test_native_offload_enables_self_describing_events(self):
+        """The resolved native connector emits complete CPU-tier KV events."""
+        extra_config = {"offload_prompt_only": False}
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(
+                kv_offloading_size=2.0,
+                kv_offloading_backend="native",
+            ),
+            kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
+        )
+
+        enable_native_kv_offload_events(vllm_config)
+
+        assert extra_config == {
+            "offload_prompt_only": False,
+            "self_describing_kv_events": True,
+        }
+
+    def test_no_offload_is_unchanged(self):
+        extra_config = {"existing": "value"}
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(
+                kv_offloading_size=None,
+                kv_offloading_backend="native",
+            ),
+            kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
+        )
+
+        enable_native_kv_offload_events(vllm_config)
+
+        assert extra_config == {"existing": "value"}
 
     @pytest.mark.parametrize(
         "engine_kwargs, local_rank, expected_port, expected_replay_port",

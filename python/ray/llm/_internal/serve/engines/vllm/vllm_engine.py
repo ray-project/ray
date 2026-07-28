@@ -58,6 +58,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
+    enable_native_kv_offload_events,
     get_kv_event_routing_stats,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
@@ -564,6 +565,8 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_engine_config.parallel_config.placement_group = placement_group
+        if is_kv_aware(self.llm_config):
+            enable_native_kv_offload_events(vllm_engine_config)
 
         _clear_current_platform_cache()
 
