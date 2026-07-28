@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 from typing import List
 
 from ray._common.network_utils import get_all_interfaces_ip
@@ -1080,15 +1081,25 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
 
-# Feature flag to include high-cardinality source tags on Serve controller metrics.
-# Disable this to keep deployment/application tags while dropping source identifiers
-# like replica IDs from controller-emitted metrics.
+# High-cardinality source tags (like replica IDs) on Serve controller metrics.
+# The cluster-wide RAY_metric_cardinality_level is the canonical control: the
+# `low` level drops these tags, matching how it reduces other Serve metrics.
 #
-# The default follows the cluster-wide RAY_metric_cardinality_level: the `low`
-# level drops these tags, matching how `low` reduces other Serve metrics. Setting
-# this env var explicitly overrides the level.
+# RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS is a deprecated alias.
+# When set explicitly it still wins, for backwards compatibility.
+_CONTROLLER_HIGH_CARDINALITY_TAGS_ENV = (
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS"
+)
+if _CONTROLLER_HIGH_CARDINALITY_TAGS_ENV in os.environ:
+    warnings.warn(
+        f"`{_CONTROLLER_HIGH_CARDINALITY_TAGS_ENV}` is deprecated. Set "
+        "`RAY_metric_cardinality_level=low` to drop high-cardinality tags from "
+        "Serve controller metrics.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
-    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+    _CONTROLLER_HIGH_CARDINALITY_TAGS_ENV,
     "0" if MetricCardinality.get_cardinality_level() == MetricCardinality.LOW else "1",
 )
 
