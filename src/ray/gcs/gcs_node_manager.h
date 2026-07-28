@@ -15,6 +15,7 @@
 #pragma once
 
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -52,15 +53,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   /// \param observability_publisher Publishes node-related errors to the observability
   /// stream (`PublishError`). Must be non-null for a live GCS server.
-  GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
-                 GcsTableStorage *gcs_table_storage,
-                 instrumented_io_context &io_context,
-                 rpc::RayletClientPool *raylet_client_pool,
-                 const ClusterID &cluster_id,
-                 observability::RayEventRecorderInterface &ray_event_recorder,
-                 const std::string &session_name,
-                 pubsub::ObservabilityPublisher *observability_publisher,
-                 ClockInterface &clock);
+  GcsNodeManager(
+      pubsub::GcsPublisher *gcs_publisher,
+      GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
+      rpc::RayletClientPool *raylet_client_pool,
+      const ClusterID &cluster_id,
+      observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name,
+      pubsub::ObservabilityPublisher *observability_publisher,
+      ClockInterface &clock,
+      std::function<bool()> is_leader_fn = []() { return true; });
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -217,6 +220,27 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Cache the local head node in-memory while passive (called by
+  /// LeaderGatedNodeInfoHandler). Only the head node may be cached.
+  ///
+  /// \param node_info The local head node info to cache.
+  void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+    RAY_CHECK(node_info.is_head_node())
+        << "CachePassiveLocalNode must only cache the local head node.";
+    // The handler's passive check and this call are not atomic: leader election
+    // may promote this GCS in between. If we are already the leader, the promotion
+    // path owns node registration, so drop the now-redundant cache.
+    if (is_leader_fn_()) {
+      return;
+    }
+    NodeID node_id = NodeID::FromBinary(node_info.node_id());
+    RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
+                     "registration in-memory. node_id: "
+                  << node_id;
+    absl::MutexLock lock(&mutex_);
+    passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+  }
 
   std::string DebugString() const;
 
@@ -405,6 +429,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
   ClockInterface &clock_;
+  const std::function<bool()> is_leader_fn_;
+  std::shared_ptr<rpc::GcsNodeInfo> passive_local_node_;
 
   // Debug info.
   enum CountType {
