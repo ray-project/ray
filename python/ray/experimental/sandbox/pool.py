@@ -3,10 +3,10 @@ import time
 from typing import List, Optional
 
 import ray
-from ray.sandbox.backend.factory import SandboxBackendFactory
-from ray.sandbox.config import SandboxConfig
-from ray.sandbox.exceptions import SandboxTimeoutError
-from ray.sandbox.sandbox import Sandbox
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxTimeoutError
+from ray.experimental.sandbox.sandbox import Sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class SandboxPoolActor:
     def __init__(self, size: int, config: SandboxConfig):
         self.size = size
         self.config = config
-        self.backend = SandboxBackendFactory.get_backend(config.backend)
+        self.backend = GVisorSandboxBackend()
         self.available_ids: List[str] = []
         self.busy_ids: List[str] = []
         self._initialize_pool()
@@ -103,7 +103,7 @@ class SandboxPool:
     def acquire(self, timeout: float = 30.0) -> Sandbox:
         """Acquire a ready warm sandbox instance from the pool."""
         sb_id = ray.get(self.actor.acquire.remote(timeout=timeout))
-        backend = SandboxBackendFactory.get_backend(self.config.backend)
+        backend = GVisorSandboxBackend()
         return Sandbox(sandbox_id=sb_id, backend=backend, config=self.config)
 
     def release(self, sandbox: Sandbox, recycle: bool = True) -> None:

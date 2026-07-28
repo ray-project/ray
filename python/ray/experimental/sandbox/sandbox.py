@@ -1,8 +1,12 @@
 import asyncio
 from typing import Dict, List, Optional, Union
 
-from ray.sandbox.backend.base import BaseSandboxBackend, ExecResult, SandboxStatus
-from ray.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.backend.base import (
+    BaseSandboxBackend,
+    ExecResult,
+    SandboxStatus,
+)
+from ray.experimental.sandbox.config import SandboxConfig
 
 
 class Sandbox:
@@ -102,4 +106,4 @@ class Sandbox:
         self.delete()
 
     def __repr__(self) -> str:
-        return f"Sandbox(id='{self.sandbox_id}', backend='{self.config.backend}')"
+        return f"Sandbox(id='{self.sandbox_id}')"

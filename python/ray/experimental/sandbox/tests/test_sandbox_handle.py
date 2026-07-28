@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
-from ray.sandbox.backend.base import ExecResult
-from ray.sandbox.config import SandboxConfig
-from ray.sandbox.sandbox import Sandbox
+from ray.experimental.sandbox.backend.base import ExecResult
+from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.sandbox import Sandbox
 
 
 def test_sandbox_context_manager_and_exec():

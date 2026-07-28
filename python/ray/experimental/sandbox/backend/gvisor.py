@@ -7,9 +7,13 @@ import time
 import uuid
 from typing import Dict, List, Optional, Union
 
-from ray.sandbox.backend.base import BaseSandboxBackend, ExecResult, SandboxStatus
-from ray.sandbox.config import GVisorSandboxConfig, SandboxConfig
-from ray.sandbox.exceptions import (
+from ray.experimental.sandbox.backend.base import (
+    BaseSandboxBackend,
+    ExecResult,
+    SandboxStatus,
+)
+from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
     SandboxNotFoundError,
@@ -28,26 +32,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
-        if not isinstance(config, GVisorSandboxConfig):
-            gvisor_config = GVisorSandboxConfig(
-                backend="gvisor",
-                image=config.image,
-                cpu=config.cpu,
-                memory=config.memory,
-                env=config.env,
-                work_dir=config.work_dir,
-                ttl_seconds=config.ttl_seconds,
-                labels=config.labels,
-                timeout_seconds=config.timeout_seconds,
-            )
-        else:
-            gvisor_config = config
-
-        runsc_path = self._runsc_path_override or gvisor_config.runsc_path
+        runsc_path = self._runsc_path_override or config.runsc_path
         if self._runsc_path_override is None and not shutil.which(runsc_path):
             raise SandboxCreationError(
                 f"gVisor executable '{runsc_path}' not found in PATH. "
-                "Please install gVisor (runsc) on the node to use the 'gvisor' backend."
+                "Please install gVisor (runsc) on the node."
             )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
@@ -63,7 +52,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            work_dir_path = os.path.join(root_dir, gvisor_config.work_dir.lstrip("/"))
+            work_dir_path = os.path.join(root_dir, config.work_dir.lstrip("/"))
             os.makedirs(work_dir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             raise SandboxCreationError(
@@ -76,15 +65,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._prepare_oci_bundle(
                 root_dir=root_dir,
                 work_dir_path=work_dir_path,
-                container_cwd=gvisor_config.work_dir,
+                container_cwd=config.work_dir,
                 runsc_path=runsc_path,
-                env_dict=gvisor_config.env,
+                env_dict=config.env,
             )
             run_args = [runsc_path]
-            if gvisor_config.rootless:
+            if config.rootless:
                 run_args.append("--rootless")
-            if gvisor_config.network:
-                run_args.extend(["--network", gvisor_config.network])
+            if config.network:
+                run_args.extend(["--network", config.network])
             run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
             logger.debug(f"Launching gVisor container daemon: {run_args}")
@@ -103,7 +92,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self._sandbox_meta[sandbox_id] = {
             "root_dir": root_dir,
             "work_dir": work_dir_path,
-            "config": gvisor_config,
+            "config": config,
             "runsc_path": runsc_path,
             "proc": proc,
             "status": SandboxStatus.RUNNING,
@@ -116,7 +105,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if meta:
             root_dir = meta["root_dir"]
             runsc_path = meta["runsc_path"]
-            config: GVisorSandboxConfig = meta["config"]
+            config: SandboxConfig = meta["config"]
             proc = meta.get("proc")
 
             logger.debug(
@@ -156,7 +145,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_meta_or_raise(sandbox_id)
-        config: GVisorSandboxConfig = meta["config"]
+        config: SandboxConfig = meta["config"]
         runsc_path = meta["runsc_path"]
         root_dir = meta["root_dir"]
 
