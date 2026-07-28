@@ -11,10 +11,12 @@ head_node:
     instance_type: m5.4xlarge
 
 worker_nodes:
-    # The benchmark terminates worker instances to inject preemptions, so
-    # `max_nodes` leaves room for replacements while the run recovers.
+    # 8 x g4dn.xlarge = 8 T4s, one per worker, so a single preempted instance
+    # takes out 1/8 of the group. The benchmark terminates instances to inject
+    # preemptions, so `max_nodes` leaves room for replacements to come up while
+    # the dead ones are still being reaped.
     - name: train-worker-node
       instance_type: g4dn.xlarge
-      min_nodes: 2
-      max_nodes: 4
+      min_nodes: 8
+      max_nodes: 10
       market_type: ON_DEMAND

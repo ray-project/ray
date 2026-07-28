@@ -10,10 +10,19 @@ schedule, and compares how much work each arm has to redo:
   preemption is first observed (the checkpoint-and-continue pattern). On a
   preemption it resumes from that just-in-time checkpoint, replaying ~nothing.
 
-The headline metric is ``wasted_steps`` -- steps executed beyond the target,
-i.e. pure recompute. It is measured by counting every step executed across all
-attempts and subtracting the target, so it is immune to cluster/network noise.
-End-to-end wall-clock time is reported alongside it.
+The headline metrics are ``wasted_steps`` -- steps executed beyond the target,
+i.e. pure recompute -- and ``wasted_gpu_seconds``, which scales that by the
+worker count because a single preempted node forces the whole group to restart
+and redo the same work. Both are measured by counting every step executed
+across all attempts and subtracting the target, so they are immune to how long
+the autoscaler took to replace an instance. End-to-end wall-clock time is
+reported alongside them, but it is dominated by node replacement and is the
+noisier signal.
+
+A preemption lands at a random point in the checkpoint interval, so over
+several preemptions the baseline loses ``checkpoint_interval / 2`` steps each
+on average, while the ``jit`` arm only loses the steps taken during the drain
+grace window.
 
 Preemptions are injected with ``EC2InstanceTerminatorWithGracePeriod``, which
 drains a node through the GCS with ``DRAIN_NODE_REASON_PREEMPTION`` and a real
@@ -52,10 +61,18 @@ STORAGE_PATH = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "/mnt/cluster_storage
 # Mirrors the hardcoded `grace_period_s` default of
 # `EC2InstanceTerminatorWithGracePeriod`; we cannot currently override it (see
 # the TODO in `run_arm`). Recorded in the results so a run's numbers can be read
-# against the window they were measured with. The just-in-time checkpoint has to
-# finish inside this window, so keep the model small enough that a save fits
-# comfortably alongside the watcher's poll interval.
+# against the window they were measured with.
+#
+# This is the hard budget for the just-in-time checkpoint: the watcher poll
+# (~5s) plus the checkpoint save+upload must fit inside it, or the node is gone
+# before the checkpoint commits and the `jit` arm degrades to the baseline.
+# `vit_b_16` is ~86M params (~0.35GB), which uploads in a few seconds; going
+# much larger (e.g. `vit_l_16` at ~1.2GB) eats most of the window.
 GRACE_PERIOD_S = 30
+
+# Image size for the synthetic batches. Matches what the torchvision ImageNet
+# classifiers expect.
+IMAGE_SIZE = 224
 
 # The `jit` arm should never redo more work than the baseline. Allow a small
 # slack for the step that was in flight when the node went away.
@@ -65,12 +82,20 @@ WASTED_STEPS_SLACK = 5
 # ==== Workload ====
 
 
-def create_model(hidden_dim: int, num_layers: int) -> nn.Module:
-    layers: List[nn.Module] = [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
-    for _ in range(num_layers - 1):
-        layers += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
-    layers.append(nn.Linear(hidden_dim, 10))
-    return nn.Sequential(*layers)
+def create_model(model_name: str) -> nn.Module:
+    """Build a torchvision classifier.
+
+    A real architecture (rather than a stack of Linear layers) makes each step
+    represent genuine training work, so `wasted_steps` translates into GPU-time
+    that a user would actually lose.
+    """
+    import torchvision.models as tv_models
+
+    if not hasattr(tv_models, model_name):
+        raise ValueError(f"Unknown torchvision model: {model_name}")
+    # `weights=None` -- we measure recompute, not accuracy, so random init is
+    # fine and avoids downloading weights onto every worker.
+    return getattr(tv_models, model_name)(weights=None)
 
 
 @ray.remote(num_cpus=0)
@@ -87,16 +112,35 @@ class StepTracker:
         self._jit_checkpoints = 0
 
     def record_attempt(self, resumed_from_step: int) -> None:
+        now = time.time()
         self._attempts.append(
-            {"resumed_from_step": resumed_from_step, "started_at": time.time()}
+            {
+                "resumed_from_step": resumed_from_step,
+                "started_at": now,
+                "last_step_at": now,
+            }
         )
 
     def record_step(self) -> None:
         self._executed_steps += 1
+        if self._attempts:
+            self._attempts[-1]["last_step_at"] = time.time()
 
     def record_jit_checkpoint(self, step: int) -> None:
         self._jit_checkpoints += 1
         logger.info("Just-in-time checkpoint saved at step %d", step)
+
+    def _mean_step_time_s(self) -> float:
+        """Mean seconds per step, excluding time spent restarting.
+
+        Summing each attempt's own span (rather than dividing end-to-end time)
+        leaves out the minutes spent waiting for the autoscaler to replace a
+        preempted node, so this reflects training throughput only.
+        """
+        if not self._executed_steps:
+            return 0.0
+        training_s = sum(a["last_step_at"] - a["started_at"] for a in self._attempts)
+        return training_s / self._executed_steps
 
     def summary(self) -> Dict:
         return {
@@ -104,6 +148,7 @@ class StepTracker:
             "num_attempts": len(self._attempts),
             "resumed_from_steps": [a["resumed_from_step"] for a in self._attempts],
             "jit_checkpoints": self._jit_checkpoints,
+            "mean_step_time_s": self._mean_step_time_s(),
         }
 
 
@@ -115,21 +160,21 @@ def train_func(config: Dict):
     whole grace window, so the `saved_on_preemption` guard keeps this to one
     extra checkpoint instead of one per step.
 
-    Note that `report` is a barrier across all ranks. The preemption watcher
-    fans the signal out to *every* worker, so all ranks reach this report and
-    the just-in-time checkpoint commits even though only some nodes are being
-    preempted.
+    The watcher fans the signal out to *every* worker, not just the ones on the
+    doomed node -- but as independent RPCs, so ranks can observe it on different
+    steps. Since `report` is an all-rank barrier, the decision is all-reduced
+    (see `any_rank_preempted`) so the ranks stay in lockstep.
     """
     target_steps = config["target_steps"]
     checkpoint_interval = config["checkpoint_interval"]
-    step_duration_s = config["step_duration_s"]
     use_jit_checkpoint = config["use_jit_checkpoint"]
     tracker = ray.get_actor(config["tracker_name"])
+    is_rank_0 = ray.train.get_context().get_world_rank() == 0
 
-    model = create_model(config["hidden_dim"], config["num_layers"])
+    model = create_model(config["model"])
     model = ray.train.torch.prepare_model(model)
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    loss_fn = nn.MSELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    loss_fn = nn.CrossEntropyLoss()
 
     start_step = 0
     checkpoint = ray.train.get_checkpoint()
@@ -142,11 +187,22 @@ def train_func(config: Dict):
         optimizer.load_state_dict(state["optimizer"])
         start_step = state["step"] + 1
 
-    if ray.train.get_context().get_world_rank() == 0:
+    if is_rank_0:
         ray.get(tracker.record_attempt.remote(start_step))
     logger.info("Attempt starting at step %d (target %d)", start_step, target_steps)
 
     def save_checkpoint(step: int, metrics: Dict):
+        """Report a checkpoint from rank 0 only.
+
+        `report` is an all-rank barrier, so every rank must call it the same
+        number of times -- but only rank 0 needs to upload. Under DDP all ranks
+        hold identical weights, so uploading from every rank would multiply the
+        checkpoint traffic by `num_workers` for no benefit, and the just-in-time
+        save has to fit inside the drain grace period.
+        """
+        if not is_rank_0:
+            ray.train.report(metrics, checkpoint=None)
+            return
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(
                 {
@@ -160,9 +216,36 @@ def train_func(config: Dict):
                 metrics, checkpoint=ray.train.Checkpoint.from_directory(tmpdir)
             )
 
+    # Synthetic batches: this benchmark measures recomputed work, not accuracy,
+    # so fixed random tensors keep step time deterministic and avoid a data
+    # dependency. The forward/backward is the real model's, which is what makes
+    # a "wasted step" cost real GPU time.
     device = ray.train.torch.get_device()
-    batch = torch.randn(config["batch_size"], config["hidden_dim"], device=device)
-    target = torch.randn(config["batch_size"], 10, device=device)
+    batch = torch.randn(config["batch_size"], 3, IMAGE_SIZE, IMAGE_SIZE, device=device)
+    target = torch.randint(0, 1000, (config["batch_size"],), device=device)
+
+    preempt_flag = torch.zeros(1, device=device)
+
+    def any_rank_preempted() -> bool:
+        """Whether *any* rank has observed the preemption yet.
+
+        `get_preemption_info()` is per-worker state and the watcher fans the
+        signal out with independent RPCs, so ranks can observe it on different
+        steps. Since `report` is an all-rank barrier, the decision to take a
+        just-in-time checkpoint has to be collective -- otherwise one rank
+        reports and the others don't, and the barrier deadlocks. All-reduce the
+        flag so every rank agrees on the same step. (This mirrors what a real
+        coordinated emergency checkpoint has to do.)
+        """
+        local = ray.train.get_preemption_info() is not None
+        if (
+            not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
+            return local
+        preempt_flag[0] = 1.0 if local else 0.0
+        torch.distributed.all_reduce(preempt_flag, op=torch.distributed.ReduceOp.MAX)
+        return preempt_flag.item() > 0
 
     saved_on_preemption = False
     for step in range(start_step, target_steps):
@@ -171,28 +254,28 @@ def train_func(config: Dict):
         loss = loss_fn(model(batch), target)
         loss.backward()
         optimizer.step()
-        time.sleep(step_duration_s)
 
-        if ray.train.get_context().get_world_rank() == 0:
+        if is_rank_0:
             ray.get(tracker.record_step.remote())
 
         # Just-in-time checkpoint on the first observed preemption, then keep
-        # training until the node is actually reclaimed.
-        if (
-            use_jit_checkpoint
-            and not saved_on_preemption
-            and ray.train.get_preemption_info() is not None
-        ):
+        # training until the node is actually reclaimed. Every rank evaluates
+        # this identically, so they stay in lockstep on the `report` barrier.
+        if use_jit_checkpoint and not saved_on_preemption and any_rank_preempted():
             saved_on_preemption = True
             save_checkpoint(step, {"step": step, "jit": True})
-            if ray.train.get_context().get_world_rank() == 0:
+            if is_rank_0:
                 ray.get(tracker.record_jit_checkpoint.remote(step))
             continue
 
+        # Only checkpoint steps report. Train V2 does not persist metrics that
+        # aren't attached to a checkpoint, so a metrics-only `report` would be a
+        # no-op that still pays for the all-rank barrier and the controller
+        # draining a size-1 result queue (~2s/step in an earlier run of this
+        # benchmark). Progress is visible from the checkpoint reports, and the
+        # benchmark's own counters live in `StepTracker`, not `Result.metrics`.
         if step % checkpoint_interval == 0 or step == target_steps - 1:
             save_checkpoint(step, {"step": step, "jit": False})
-        else:
-            ray.train.report({"step": step, "jit": False})
 
 
 # ==== Harness ====
@@ -224,9 +307,17 @@ def wait_for_worker_nodes(num_nodes: int, timeout_s: int = 900) -> None:
     )
 
 
-def run_arm(arm: str, args: argparse.Namespace) -> Dict:
-    """Run one arm end to end and return its metrics."""
-    logger.info("=== Running arm '%s' ===", arm)
+def run_arm(arm: str, use_jit_checkpoint: bool, args: argparse.Namespace) -> Dict:
+    """Run one arm end to end and return its metrics.
+
+    Both arms share this path deliberately: the preemption schedule, failure
+    budgets, model, and step target must be identical for the comparison to mean
+    anything, so `use_jit_checkpoint` is the only thing that differs between
+    them. It selects the checkpoint-and-continue branch inside `train_func`.
+    """
+    logger.info(
+        "=== Running arm '%s' (use_jit_checkpoint=%s) ===", arm, use_jit_checkpoint
+    )
     wait_for_worker_nodes(args.num_workers)
 
     tracker_name = f"step_tracker_{arm}"
@@ -258,11 +349,9 @@ def run_arm(arm: str, args: argparse.Namespace) -> Dict:
         train_loop_config={
             "target_steps": args.target_steps,
             "checkpoint_interval": args.checkpoint_interval,
-            "step_duration_s": args.step_duration_s,
-            "hidden_dim": args.hidden_dim,
-            "num_layers": args.num_layers,
+            "model": args.model,
             "batch_size": args.batch_size,
-            "use_jit_checkpoint": arm == "jit",
+            "use_jit_checkpoint": use_jit_checkpoint,
             "tracker_name": tracker_name,
         },
         scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=True),
@@ -294,13 +383,19 @@ def run_arm(arm: str, args: argparse.Namespace) -> Dict:
     ray.kill(resource_killer)
     ray.kill(tracker)
 
+    wasted_steps = max(0, summary["executed_steps"] - args.target_steps)
     metrics = {
         "arm": arm,
         "completed": completed,
         "error": error,
         "e2e_time": e2e_time,
         # Steps executed beyond the target == work redone after a preemption.
-        "wasted_steps": max(0, summary["executed_steps"] - args.target_steps),
+        "wasted_steps": wasted_steps,
+        # A preempted node forces *every* worker to restart and redo the same
+        # steps, so the cost to the cluster scales with the worker count.
+        "wasted_gpu_seconds": (
+            wasted_steps * summary["mean_step_time_s"] * args.num_workers
+        ),
         **summary,
     }
     logger.info("Arm '%s' metrics: %s", arm, metrics)
@@ -309,30 +404,53 @@ def run_arm(arm: str, args: argparse.Namespace) -> Dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num-workers", type=int, default=2)
-    parser.add_argument("--target-steps", type=int, default=600)
+    parser.add_argument("--num-workers", type=int, default=8)
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="vit_b_16",
+        help=(
+            "torchvision classifier to train. `vit_b_16` (~86M params, ~0.35GB "
+            "checkpoint) keeps the just-in-time save well inside the drain "
+            "grace period. `vit_l_16` (~304M) stresses that window and is much "
+            "slower on g4dn, where the gradient all-reduce dominates step time."
+        ),
+    )
+    parser.add_argument(
+        "--target-steps",
+        type=int,
+        default=1000,
+        help=(
+            "Sized for a ~2h two-arm run at roughly 1.5s/step. Measure the real "
+            "step time first (a short run with --num-preemptions 0) before "
+            "changing this, since the budget is linear in it."
+        ),
+    )
     parser.add_argument(
         "--checkpoint-interval",
         type=int,
-        default=100,
+        default=250,
         help=(
-            "Periodic checkpoint interval in steps. The baseline loses up to "
-            "this much work per preemption; the jit arm loses ~none, so the "
-            "gap grows with this value."
+            "Periodic checkpoint interval in steps. A preemption lands at a "
+            "random point in the interval, so the baseline loses this/2 on "
+            "average per preemption while the jit arm loses only the steps "
+            "taken during the grace window. The gap grows with this value."
         ),
     )
-    parser.add_argument("--step-duration-s", type=float, default=0.2)
-    parser.add_argument("--hidden-dim", type=int, default=1024)
-    parser.add_argument("--num-layers", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--num-preemptions", type=int, default=2)
+    parser.add_argument("--num-preemptions", type=int, default=4)
     parser.add_argument(
         "--kill-delay-s",
         type=int,
-        default=90,
+        default=300,
         help="Wait before the first preemption so the run builds up work to lose.",
     )
-    parser.add_argument("--kill-interval-s", type=int, default=120)
+    parser.add_argument(
+        "--kill-interval-s",
+        type=int,
+        default=600,
+        help="Spacing between preemptions; spreads them across the run.",
+    )
     return parser.parse_args()
 
 
@@ -342,8 +460,8 @@ def main():
 
     # Run the baseline first so both arms see a cluster that has already been
     # through node replacement.
-    baseline = run_arm("baseline", args)
-    jit = run_arm("jit", args)
+    baseline = run_arm("baseline", use_jit_checkpoint=False, args=args)
+    jit = run_arm("jit", use_jit_checkpoint=True, args=args)
 
     steps_saved = baseline["wasted_steps"] - jit["wasted_steps"]
     time_saved = baseline["e2e_time"] - jit["e2e_time"]
@@ -360,7 +478,13 @@ def main():
         "time_saved_pct": (
             100.0 * time_saved / baseline["e2e_time"] if baseline["e2e_time"] else 0.0
         ),
-        "estimated_time_saved_s": steps_saved * args.step_duration_s,
+        # Recompute avoided, in GPU-seconds across the whole worker group. This
+        # is the headline cost number: unlike `time_saved_s` it isn't polluted
+        # by how long the autoscaler took to replace the preempted instances.
+        "gpu_seconds_saved": (
+            baseline["wasted_gpu_seconds"] - jit["wasted_gpu_seconds"]
+        ),
+        "estimated_time_saved_s": steps_saved * baseline["mean_step_time_s"],
         "config": dict(vars(args), grace_period_s=GRACE_PERIOD_S),
     }
     logger.info("Preemption benchmark results: %s", results)
