@@ -15,6 +15,7 @@
 #include "ray/gcs_rpc_client/accessor.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -83,6 +84,35 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   ASSERT_TRUE(cached_node->has_death_info());
   ASSERT_EQ(cached_node->death_info().reason(), rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   ASSERT_EQ(cached_node->death_info().reason_message(), "Test termination reason");
+}
+
+TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching) {
+  NodeInfoAccessor accessor;
+  // By default, leadership should be assumed true.
+  ASSERT_TRUE(accessor.IsGcsLeader());
+
+  // Verify manual updates modify the leadership status correctly.
+  accessor.is_gcs_leader_.store(false);
+  ASSERT_FALSE(accessor.IsGcsLeader());
+
+  accessor.is_gcs_leader_.store(true);
+  ASSERT_TRUE(accessor.IsGcsLeader());
+}
+
+// Default behavior guard for the leader-election feature.
+//
+// When leader election is disabled (the default), the client must behave exactly
+// like the pre-feature GCS client: it always considers itself the leader and does
+// not depend on the new `is_leader` CheckAliveReply field. This is what keeps a
+// cluster running with the feature off (including during a rolling upgrade before
+// the flag is flipped) identical to legacy.
+TEST(NodeInfoAccessorTest, TestLeaderElectionDisabledByDefault) {
+  ASSERT_FALSE(RayConfig::instance().LEADER_ELECT())
+      << "LEADER_ELECT must default to false for single-head behavior.";
+  NodeInfoAccessor accessor;
+  ASSERT_TRUE(accessor.IsGcsLeader())
+      << "With LEADER_ELECT disabled the client must always report itself as "
+         "leader, regardless of any is_leader value in CheckAlive replies.";
 }
 
 }  // namespace gcs

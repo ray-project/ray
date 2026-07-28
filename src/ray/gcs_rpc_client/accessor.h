@@ -266,6 +266,9 @@ class NodeInfoAccessor {
 
   /// Check if the GCS server is currently the active leader based on the cached status
   /// updated from GCS CheckAlive replies.
+  ///
+  /// \return True if the GCS server is believed to be the active leader, false if it
+  /// is currently in passive (read-only) mode.
   virtual bool IsGcsLeader() const;
 
   /// Reestablish subscription.
