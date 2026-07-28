@@ -68,8 +68,10 @@ class MBLTAcceleratorManager(AcceleratorManager):
         1. qb Runtime's Python binding
            (``qbruntime.get_available_device_numbers()``). This is the
            authoritative source on a node where qb Runtime is installed.
-        2. If qb Runtime is unavailable (``ImportError`` or runtime error),
-           count the ``/dev/aries[0-9]*`` and ``/dev/regulus-npu*`` character
+        2. If qb Runtime is unavailable -- not installed, unable to import or
+           initialize (a broken SDK may raise ``OSError``/``RuntimeError`` and
+           not just ``ImportError``), or failing at runtime -- count the
+           ``/dev/aries[0-9]*`` and ``/dev/regulus-npu*`` character
            devices created by the Mobilint kernel driver. REGULUS exposes one
            NPU node per card alongside auxiliary ``/dev/regulus-usb`` paths
            that are intentionally excluded from the count.
@@ -82,6 +84,19 @@ class MBLTAcceleratorManager(AcceleratorManager):
             logger.debug(
                 "qbruntime is not installed; falling back to /dev and lspci "
                 "for MBLT detection"
+            )
+            return _count_mblt_dev_nodes() or _count_mblt_pci_entries()
+        except Exception as e:
+            # A partially broken SDK install can fail to import ``qbruntime``
+            # with more than ``ImportError`` -- e.g. a native library load
+            # failure surfacing as ``OSError``/``RuntimeError`` during package
+            # initialization. This runs on the Ray node startup path, so any
+            # such failure must degrade to /dev and lspci detection rather than
+            # propagate and abort node startup.
+            logger.debug(
+                "qbruntime import failed (%s); falling back to /dev and lspci "
+                "for MBLT detection",
+                e,
             )
             return _count_mblt_dev_nodes() or _count_mblt_pci_entries()
 
