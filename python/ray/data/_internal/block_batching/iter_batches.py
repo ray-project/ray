@@ -302,6 +302,7 @@ class BatchIterator:
         self, batch: Batch, blocked_start_s: float, blocked_end_s: float
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
+
         Each stage's spans on ``batch.metadata.stage_timings`` are intersected
         with the training thread's blocked window ``[blocked_start_s,
         blocked_end_s]``. Overlapping spans are merged first, so the result
