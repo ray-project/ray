@@ -329,7 +329,7 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             shutdown_ref = self._actor_handle.shutdown.remote()
             ray.get(shutdown_ref, timeout=5)
-        except ray.exceptions.ActorUnschedulableError:
+        except ActorUnschedulableError:
             # The actor was never scheduled because its target node died while creation was pending.
             # We can safely swallow this error and proceed to force kill the handle.
             logger.info(
