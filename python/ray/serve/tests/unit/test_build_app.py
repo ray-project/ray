@@ -744,6 +744,47 @@ def test_callable_uses_multiplexing_ignores_handle_attrs():
     assert not _callable_uses_multiplexing(Ingress())
 
 
+def test_callable_uses_multiplexing_does_not_initialize_handles():
+    """Probing must not invoke `__getattr__`, which initializes a handle's Router."""
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class FakeHandle:
+        # Mirrors DeploymentHandle: any attribute access builds an initialized handle.
+        getattr_calls = 0
+
+        def __getattr__(self, name):
+            FakeHandle.getattr_calls += 1
+            return FakeHandle()
+
+    class Ingress:
+        def __init__(self):
+            self._backend = FakeHandle()
+
+    assert not _callable_uses_multiplexing(Ingress())
+    assert FakeHandle.getattr_calls == 0, (
+        f"scan invoked __getattr__ {FakeHandle.getattr_calls} time(s), which "
+        f"initializes real DeploymentHandles as a side effect"
+    )
+
+    # No instance `__dict__`: `getattr(obj, "__dict__", {})` would hit `__getattr__`.
+    class SlottedIngress:
+        __slots__ = ("_backend",)
+        getattr_calls = 0
+
+        def __init__(self):
+            self._backend = None
+
+        def __getattr__(self, name):
+            SlottedIngress.getattr_calls += 1
+            return "side effect"
+
+    assert not _callable_uses_multiplexing(SlottedIngress())
+    assert SlottedIngress.getattr_calls == 0, (
+        f"scan invoked __getattr__ {SlottedIngress.getattr_calls} time(s) on a "
+        f"__slots__ callable"
+    )
+
+
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
     [
