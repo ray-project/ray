@@ -214,7 +214,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             )
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"(output_ratio={output_ratio:.2f}, {output_size_bytes=}, "
+                f"({output_ratio=}, {output_size_bytes=}, "
                 f"{downstream_input_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result

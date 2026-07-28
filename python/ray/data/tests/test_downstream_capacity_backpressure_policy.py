@@ -278,10 +278,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        queue_ratio = self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        output_ratio = self._set_output_ratio(
+            op, op_state, rm, output_size=1100, downstream_input=100
         )
-        assert queue_ratio > 2.0
+        assert output_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -310,10 +310,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        queue_ratio = self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=100
+        output_ratio = self._set_output_ratio(
+            op, op_state, rm, output_size=1100, downstream_input=100
         )
-        assert queue_ratio > 2.0
+        assert output_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
