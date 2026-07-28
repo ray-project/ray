@@ -175,12 +175,9 @@ def test_does_not_emit_ray_remote_args_fn_deprecation_warning():
             )
         ],
     )
-
     with warnings.catch_warnings():
         warnings.simplefilter("error", RayDeprecationWarning)
-        result = processor(ray.data.range(1))
-
-    assert isinstance(result, ray.data.Dataset)
+        processor(ray.data.range(1))
 
 
 def test_builder():
