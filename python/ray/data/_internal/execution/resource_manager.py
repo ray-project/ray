@@ -218,8 +218,17 @@ class ResourceManager:
             # BRC-based backpressure ratio would differ from the old queue-based
             # ratio. Log any divergence so release tests can surface it.
             try:
-                if not isinstance(op, InputDataBuffer) and all(
-                    self.is_op_eligible(dep) for dep in op.output_dependencies
+                # Skip InputDataBuffer (no BRC tracking), ops with ineligible
+                # downstream (expected divergence from blocks in ineligible op
+                # internal state), and ops whose downstream has multiple inputs
+                # (ds_pending would include blocks from other upstreams).
+                has_multi_input_downstream = any(
+                    len(dep.input_dependencies) > 1 for dep in op.output_dependencies
+                )
+                if (
+                    not isinstance(op, InputDataBuffer)
+                    and not has_multi_input_downstream
+                    and all(self.is_op_eligible(dep) for dep in op.output_dependencies)
                 ):
                     brc_bytes = self._mem_op_outputs.get(op, 0)
                     internal_out = op.metrics.obj_store_mem_internal_outqueue
@@ -246,6 +255,28 @@ class ResourceManager:
                             f"topo_queue={topo_queue}, "
                             f"ds_inqueue={ds_inqueue}, "
                             f"ds_pending={ds_pending})"
+                        )
+            except (TypeError, AttributeError):
+                pass
+
+            # Temporary: compare old (queue-based) and new (BRC-based) usage.
+            # Old: output_queue_bytes + ineligible downstream op_usage
+            # New: get_mem_op_outputs(include_ineligible_downstream=True)
+            try:
+                if not isinstance(op, InputDataBuffer):
+                    old_usage = state.output_queue_bytes()
+                    old_usage += sum(
+                        self.get_op_usage(dep).object_store_memory
+                        for dep in self._get_downstream_ineligible_ops(op)
+                    )
+                    new_usage = self.get_mem_op_outputs(
+                        op, include_ineligible_downstream=True
+                    )
+                    if old_usage != new_usage:
+                        logger.warning(
+                            f"USAGE-DIVERGE {op.name}: "
+                            f"old={old_usage}B, new={new_usage}B, "
+                            f"delta={new_usage - old_usage}B"
                         )
             except (TypeError, AttributeError):
                 pass
