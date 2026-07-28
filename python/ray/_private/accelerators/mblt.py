@@ -1,7 +1,6 @@
 import glob
 import logging
 import os
-import subprocess
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -28,13 +27,6 @@ NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_MBLT_RT_VISIBLE_
 # nodes that must not be counted as additional cards.
 _MBLT_ARIES_DEV_GLOB = "/dev/aries[0-9]*"
 _MBLT_REGULUS_DEV_GLOB = "/dev/regulus-npu*"
-
-# PCI vendor ID for Mobilint, used as a count fallback when neither the
-# Python SDK nor the kernel driver is available. Mobilint's vendor ID is not
-# in the standard ``pci.ids`` hwdata, so the lspci output for a Mobilint card
-# is typically ``Device 209f:0000`` with no human-readable family name; this
-# fallback is therefore only used to count cards, not to identify the SKU.
-_MBLT_PCI_FILTER = ("lspci", "-d", "209f:", "-nn")
 
 
 class MBLTAcceleratorManager(AcceleratorManager):
@@ -75,36 +67,34 @@ class MBLTAcceleratorManager(AcceleratorManager):
            devices created by the Mobilint kernel driver. REGULUS exposes one
            NPU node per card alongside auxiliary ``/dev/regulus-usb`` paths
            that are intentionally excluded from the count.
-        3. If the driver has not loaded yet, count rows of Mobilint's PCI
-           vendor ID via ``lspci -d 209f:``.
         """
         try:
             from qbruntime import get_available_device_numbers
         except ImportError:
             logger.debug(
-                "qbruntime is not installed; falling back to /dev and lspci "
+                "qbruntime is not installed; falling back to /dev "
                 "for MBLT detection"
             )
-            return _count_mblt_dev_nodes() or _count_mblt_pci_entries()
+            return _count_mblt_dev_nodes()
         except Exception as e:
             # A partially broken SDK install can fail to import ``qbruntime``
             # with more than ``ImportError`` -- e.g. a native library load
             # failure surfacing as ``OSError``/``RuntimeError`` during package
             # initialization. This runs on the Ray node startup path, so any
-            # such failure must degrade to /dev and lspci detection rather than
+            # such failure must degrade to /dev detection rather than
             # propagate and abort node startup.
             logger.debug(
-                "qbruntime import failed (%s); falling back to /dev and lspci "
+                "qbruntime import failed (%s); falling back to /dev "
                 "for MBLT detection",
                 e,
             )
-            return _count_mblt_dev_nodes() or _count_mblt_pci_entries()
+            return _count_mblt_dev_nodes()
 
         try:
             return len(get_available_device_numbers())
         except Exception as e:
             logger.debug("qbruntime.get_available_device_numbers() failed: %s", e)
-            return _count_mblt_dev_nodes() or _count_mblt_pci_entries()
+            return _count_mblt_dev_nodes()
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
@@ -173,17 +163,3 @@ def _count_mblt_dev_nodes() -> int:
         except Exception:
             continue
     return count
-
-
-def _count_mblt_pci_entries() -> int:
-    """Count Mobilint NPUs visible on the PCI bus via ``lspci -d 209f:``."""
-    try:
-        out = subprocess.check_output(
-            _MBLT_PCI_FILTER, text=True, stderr=subprocess.DEVNULL, timeout=5
-        ).strip()
-    except Exception as e:
-        logger.debug("Failed to query lspci for Mobilint NPUs: %s", e)
-        return 0
-    if not out:
-        return 0
-    return len(out.splitlines())
