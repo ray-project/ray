@@ -67,13 +67,22 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
+    # NOTE: probed with `inspect.getattr_static` because a plain `getattr` has SIDE
+    # EFFECTS on objects with a dynamic `__getattr__`: `DeploymentHandle.__getattr__`
+    # returns `options(method_name=...)`, which eagerly initializes the handle's
+    # Router (and with it a controller long-poll subscription and a metric-report
+    # stream). Probing must not construct anything. `getattr_static` never invokes
+    # `__getattr__`/`__getattribute__` and reads the marker the decorator sets
+    # directly on the wrapper. The `is True` check is kept so a stray truthy
+    # attribute of the same name cannot register as a positive.
     def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
 
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if _has_marker(callable_obj):
@@ -88,7 +97,16 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
+        # `object.__getattribute__` rather than `getattr`: the latter falls back to
+        # `__getattr__` when the attribute is missing (e.g. a `__slots__` class), which
+        # is exactly the side-effecting path this function must avoid.
+        # `inspect.getattr_static` is not usable for `__dict__` -- it returns the
+        # getset descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
             if _has_marker(attr):
                 return True
 

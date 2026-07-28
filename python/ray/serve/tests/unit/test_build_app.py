@@ -744,6 +744,58 @@ def test_callable_uses_multiplexing_ignores_handle_attrs():
     assert not _callable_uses_multiplexing(Ingress())
 
 
+
+def test_callable_uses_multiplexing_does_not_initialize_handles():
+    """The instance-attribute scan must not read attributes with `getattr`.
+
+    `DeploymentHandle.__getattr__` is not inert: it returns
+    `options(method_name=...)`, which eagerly initializes the handle's Router, and
+    with it a controller long-poll subscription and a metric-report stream. Probing
+    for the multiplex marker with a plain `getattr` therefore built a Router on every
+    ingress replica holding a handle, which at scale measurably degraded the
+    controller. The marker must be read statically instead.
+    """
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class FakeHandle:
+        # Mirrors DeploymentHandle: any attribute access returns a new, initialized
+        # handle. Counts accesses so the test fails if the scan probes it at all.
+        getattr_calls = 0
+
+        def __getattr__(self, name):
+            FakeHandle.getattr_calls += 1
+            return FakeHandle()
+
+    class Ingress:
+        def __init__(self):
+            self._backend = FakeHandle()
+
+    assert not _callable_uses_multiplexing(Ingress())
+    assert FakeHandle.getattr_calls == 0, (
+        f"scan invoked __getattr__ {FakeHandle.getattr_calls} time(s), which "
+        f"initializes real DeploymentHandles as a side effect"
+    )
+
+    # A callable with no instance __dict__ (``__slots__``) must also be probed
+    # without falling back to ``__getattr__``, which plain
+    # ``getattr(obj, "__dict__", {})`` would do.
+    class SlottedIngress:
+        __slots__ = ("_backend",)
+        getattr_calls = 0
+
+        def __init__(self):
+            self._backend = None
+
+        def __getattr__(self, name):
+            SlottedIngress.getattr_calls += 1
+            return "side effect"
+
+    assert not _callable_uses_multiplexing(SlottedIngress())
+    assert SlottedIngress.getattr_calls == 0, (
+        f"scan invoked __getattr__ {SlottedIngress.getattr_calls} time(s) on a "
+        f"__slots__ callable"
+    )
+
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
     [
