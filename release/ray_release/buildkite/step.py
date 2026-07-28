@@ -146,10 +146,6 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    num_retries = test.get("run", {}).get("num_retries")
-    if num_retries:
-        step["retry"]["automatic"][0]["limit"] = num_retries
-
     step["commands"] = [" ".join(cmd)]
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
@@ -164,6 +160,14 @@ def get_step(
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
+
+    # Set after the env update above so a per-test environment cannot clobber it.
+    num_retries = test.get("run", {}).get("num_retries")
+    if num_retries:
+        step["retry"]["automatic"][0]["limit"] = num_retries
+        # Keep the in-job view of the retry budget aligned with Buildkite's, so
+        # ray_release.result.should_retry knows which attempt is the last one.
+        step["env"]["BUILDKITE_MAX_RETRIES"] = str(num_retries)
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")

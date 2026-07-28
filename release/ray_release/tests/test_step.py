@@ -39,6 +39,8 @@ def test_get_step(mock):
         step = get_step(_stub_test({}), run_id=2)
     assert step["label"] == "test with spaces (None) (2)"
     assert step["retry"]["automatic"][0]["limit"] == 3
+    # run_release_test.sh reads this to know whether the current attempt is the last.
+    assert step["env"]["BUILDKITE_MAX_RETRIES"] == "3"
     assert "commands" in step
     first_command = shlex.split(step["commands"][0])
     assert first_command[0] == "./release/run_release_test.sh"
