@@ -352,7 +352,8 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_profile_events_per_task": 10,
   "task_events_max_num_profile_events_buffer_on_worker": 20,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
   }
@@ -366,6 +367,8 @@ class TaskEventBufferTestDifferentDestination
     const auto [to_gcs, to_aggregator] = GetParam();
     std::string to_gcs_str = to_gcs ? "true" : "false";
     std::string to_aggregator_str = to_aggregator ? "true" : "false";
+    // Keep the recorder disabled so the buffer's own aggregator send path (exercised by
+    // to_aggregator) is not taken over by RayTaskEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
@@ -373,6 +376,7 @@ class TaskEventBufferTestDifferentDestination
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
