@@ -318,14 +318,24 @@ class ActorProxyWrapper(ProxyWrapper):
 
     def kill(self):
         """Kills the proxy actor after graceful shutdown."""
-        try:
-            # Prevent multiple concurrent kill attempts
-            if self.is_shutdown():
+        # Prevent multiple concurrent kill attempts
+        if self.is_shutdown():
+            try:
                 ray.kill(self._actor_handle, no_restart=True)
-                return
+            except Exception as e:
+                logger.warning(f"Force kill of proxy actor failed: {e}")
+            return
 
+        try:
             shutdown_ref = self._actor_handle.shutdown.remote()
             ray.get(shutdown_ref, timeout=5)
+        except ray.exceptions.ActorUnschedulableError:
+            # The actor was never scheduled because its target node died while creation was pending.
+            # We can safely swallow this error and proceed to force kill the handle.
+            logger.info(
+                f"Proxy actor on {self._node_id} was unschedulable (node likely died). "
+                "Skipping graceful shutdown."
+            )
         except Exception as e:
             logger.warning(
                 f"Graceful shutdown of proxy actor on {self._node_id} failed: {e}"
