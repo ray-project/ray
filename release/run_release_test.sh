@@ -25,11 +25,14 @@ reason() {
 
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-"python ray_release/scripts/run_release_test.py"}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
-BUILDKITE_MAX_RETRIES=1
+BUILDKITE_MAX_RETRIES=${BUILDKITE_MAX_RETRIES:-1}
 BUILDKITE_RETRY_CODE=79
-BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
+BUILDKITE_TIME_LIMIT_FOR_RETRY=${BUILDKITE_TIME_LIMIT_FOR_RETRY:-10800} # 3 hours
+# The test process touches this file when it decides Buildkite should try again.
+# It, not the exit code, is what drives the retry -- see ray_release/result.py.
+RELEASE_TEST_RETRY_MARKER=${RELEASE_TEST_RETRY_MARKER:-/tmp/release_test_retry}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_RETRY_MARKER
 
 if [[ -n "${RAY_COMMIT_OF_WHEEL-}" ]]; then
   git config --global --add safe.directory /workdir
@@ -82,6 +85,9 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
   if [[ -z "${NO_ARTIFACTS}" ]]; then
     rm -rf "${RELEASE_RESULTS_DIR:?}"/* || true
   fi
+
+  # A marker from a previous attempt in this job must not leak into this one.
+  rm -f "${RELEASE_TEST_RETRY_MARKER}"
 
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
@@ -156,7 +162,8 @@ else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
 fi
 
-if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then
+if [[ -f "${RELEASE_TEST_RETRY_MARKER}" ]]; then
+  echo "The test asked for another attempt; exiting with the Buildkite retry code."
   exit "$BUILDKITE_RETRY_CODE"
 else
   exit "$EXIT_CODE"

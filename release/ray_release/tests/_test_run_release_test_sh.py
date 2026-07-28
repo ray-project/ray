@@ -3,6 +3,8 @@ import sys
 
 import click
 
+from ray_release.result import Result, should_retry, write_retry_marker
+
 
 @click.command()
 @click.argument("state_file", type=str)
@@ -26,17 +28,19 @@ def main(
     with open(state_file, "wt") as fp:
         fp.write(str(state))
 
-    if state == 1:
-        print(f"Exiting with status: {exit_1}")
-        sys.exit(exit_1)
+    exit_codes = {1: exit_1, 2: exit_2, 3: exit_3}
+    if state not in exit_codes:
+        return
 
-    if state == 2:
-        print(f"Exiting with status: {exit_2}")
-        sys.exit(exit_2)
+    exit_code = exit_codes[state]
+    print(f"Exiting with status: {exit_code}")
 
-    if state == 3:
-        print(f"Exiting with status: {exit_3}")
-        sys.exit(exit_3)
+    # Same handshake as scripts/run_release_test.py, using the same logic.
+    result = Result(return_code=exit_code, runtime=0)
+    result.will_retry = should_retry(result)
+    write_retry_marker(result)
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

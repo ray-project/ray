@@ -24,6 +24,14 @@ def setup(tmpdir):
     ] = "python ray_release/tests/_test_run_release_test_sh.py"
     os.environ["OVERRIDE_SLEEP_TIME"] = "0"
     os.environ["MAX_RETRIES"] = "3"
+    os.environ["RELEASE_TEST_RETRY_MARKER"] = os.path.join(tmpdir, "retry_marker")
+    # The fake test script imports ray_release; make sure it resolves under bazel.
+    os.environ["PYTHONPATH"] = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..")
+    )
+    # should_retry() reads these; give the fake script a real retry budget.
+    os.environ["BUILDKITE_TIME_LIMIT_FOR_RETRY"] = "10800"
+    os.environ.pop("BUILDKITE_RETRY_COUNT", None)
 
     yield state_file, test_script
 
@@ -109,9 +117,49 @@ def test_repeat(setup):
             ExitCode.COMMAND_ALERT,
             ExitCode.SUCCESS,
         )
-        == 79  # BUILDKITE_RETRY_CODE
+        == ExitCode.COMMAND_ALERT.value
     )
     assert _read_state(state_file) == 2
+
+
+@pytest.mark.parametrize(
+    "exit_code",
+    [
+        ExitCode.COMMAND_ERROR,
+        ExitCode.COMMAND_ALERT,
+        ExitCode.PREPARE_ERROR,
+        ExitCode.CONFIG_ERROR,
+        ExitCode.CLI_ERROR,
+        ExitCode.FETCH_RESULT_ERROR,
+    ],
+)
+def test_non_infra_failures_are_not_retried(setup, exit_code):
+    """These must surface their own exit code, not the Buildkite retry code."""
+    state_file, test_script = setup
+
+    assert (
+        _run_script(test_script, state_file, exit_code, exit_code, exit_code)
+        == exit_code.value
+    )
+    assert _read_state(state_file) == 1
+
+
+@pytest.mark.parametrize(
+    "exit_code",
+    [
+        ExitCode.SETUP_ERROR,
+        ExitCode.CLUSTER_RESOURCE_ERROR,
+        ExitCode.ANYSCALE_ERROR,
+        ExitCode.CLUSTER_STARTUP_TIMEOUT,
+    ],
+)
+def test_infra_failures_ask_for_a_retry(setup, exit_code):
+    state_file, test_script = setup
+
+    assert (
+        _run_script(test_script, state_file, exit_code, exit_code, exit_code)
+        == 79  # BUILDKITE_RETRY_CODE
+    )
 
 
 def test_parameters(setup):
