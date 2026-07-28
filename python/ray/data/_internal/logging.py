@@ -106,8 +106,7 @@ def get_log_directory() -> Optional[str]:
     if global_node is None:
         return None
 
-    session_dir = global_node.get_session_dir_path()
-    return os.path.join(session_dir, "logs", "ray-data")
+    return os.path.join(global_node.get_logs_dir_path(), "ray-data")
 
 
 class SessionFileHandler(logging.Handler):

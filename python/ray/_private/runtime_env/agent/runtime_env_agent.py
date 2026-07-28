@@ -175,6 +175,7 @@ class RuntimeEnvAgent:
         logging_params: dict,
         gcs_client: GcsClient,
         temp_dir: str,
+        logs_dir: str,
         address: str,
         runtime_env_agent_port: int,
     ):
@@ -186,6 +187,7 @@ class RuntimeEnvAgent:
                 :func:`setup_component_logger` to configure the agent logger.
             gcs_client: GCS client used to fetch package data.
             temp_dir: Temporary directory used by plugins (e.g. container plugin).
+            logs_dir: Directory used for Ray log files.
             address: IP address that the agent is listening on, used for logging.
             runtime_env_agent_port: Port that the agent is listening on, used for
                 logging.
@@ -226,12 +228,12 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_client
         )
-        self._container_plugin = ContainerPlugin(temp_dir)
+        self._container_plugin = ContainerPlugin(temp_dir, logs_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
-        self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
-        self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
-        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
+        self._nsight_plugin = NsightPlugin(self._runtime_env_dir, logs_dir)
+        self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir, logs_dir)
+        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir, logs_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to

@@ -173,6 +173,7 @@ if __name__ == "__main__":
         logging_params=logging_params,
         gcs_client=gcs_client,
         temp_dir=args.temp_dir,
+        logs_dir=args.log_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
     )

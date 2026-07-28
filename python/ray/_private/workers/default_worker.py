@@ -98,6 +98,13 @@ parser.add_argument(
     help="Specify the path of the temporary directory use by Ray process.",
 )
 parser.add_argument(
+    "--logs-dir",
+    required=False,
+    type=str,
+    default=None,
+    help="Specify the path of the directory used for Ray log files.",
+)
+parser.add_argument(
     "--load-code-from-local",
     default=False,
     action="store_true",
@@ -230,6 +237,7 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
+        logs_dir=args.logs_dir,
         metrics_agent_port=args.metrics_agent_port,
         runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,

@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.parameter import RayParams
 from ray._private.test_utils import check_call_ray
 
 
@@ -57,16 +58,22 @@ def test_tempdir_commandline(delete_default_temp_dir):
     temp_dir = os.path.join(
         "/tmp/test", uuid.uuid4().hex[:-10]
     )  # truncate the uuid to avoid the socket path length limit
+    logs_dir = os.path.join("/tmp/test", uuid.uuid4().hex[:-10])
     check_call_ray(
         [
             "start",
             "--head",
             "--temp-dir=" + temp_dir,
+            "--logs-dir=" + logs_dir,
             "--port",
             "0",
         ]
     )
     assert os.path.exists(temp_dir), "Specified temp dir not found."
+    assert os.path.exists(logs_dir), "Specified logs dir not found."
+    if sys.platform != "win32":
+        compatibility_path = os.path.join(temp_dir, "session_latest", "logs")
+        assert os.path.realpath(compatibility_path) == os.path.realpath(logs_dir)
     assert not os.path.exists(
         ray._common.utils.get_default_ray_temp_dir()
     ), "Default temp dir should not exist."
@@ -75,6 +82,7 @@ def test_tempdir_commandline(delete_default_temp_dir):
         temp_dir,
         ignore_errors=True,
     )
+    shutil.rmtree(logs_dir, ignore_errors=True)
 
 
 def test_tempdir_long_path():
@@ -86,6 +94,64 @@ def test_tempdir_long_path():
         )
         with pytest.raises(OSError):
             ray.init(_temp_dir=temp_dir)  # path should be too long
+
+
+def test_logs_dir_must_be_absolute():
+    with pytest.raises(ValueError, match="logs_dir must be absolute"):
+        RayParams(logs_dir="relative/logs")
+
+
+def test_custom_logs_dir(ray_start_cluster, request):
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+    head_temp_dir = os.path.join(base_dir, "head-tmp")
+    head_logs_dir = os.path.join(base_dir, "head-logs")
+    worker_temp_dir = os.path.join(base_dir, "worker-tmp")
+    worker_logs_dir = os.path.join(base_dir, "worker-logs")
+
+    cluster = ray_start_cluster
+    head_node = cluster.add_node(
+        num_cpus=1,
+        temp_dir=head_temp_dir,
+        logs_dir=head_logs_dir,
+    )
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        temp_dir=worker_temp_dir,
+        logs_dir=worker_logs_dir,
+    )
+    cluster.wait_for_nodes()
+
+    assert head_node.get_logs_dir_path() == head_logs_dir
+    assert worker_node.get_logs_dir_path() == worker_logs_dir
+    assert head_node.get_runtime_env_dir_path().startswith(head_temp_dir)
+    assert worker_node.get_runtime_env_dir_path().startswith(worker_temp_dir)
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+    node_logs_dirs = {
+        node_info.temp_dir: node_info.logs_dir
+        for node_info in gcs_client.get_all_node_info().values()
+    }
+    assert node_logs_dirs[head_temp_dir] == head_logs_dir
+    assert node_logs_dirs[worker_temp_dir] == worker_logs_dir
+
+    if sys.platform != "win32":
+        for cluster_node, logs_dir in (
+            (head_node, head_logs_dir),
+            (worker_node, worker_logs_dir),
+        ):
+            compatibility_path = os.path.join(
+                cluster_node.get_session_dir_path(), "logs"
+            )
+            assert os.path.islink(compatibility_path)
+            assert os.path.realpath(compatibility_path) == os.path.realpath(logs_dir)
+
+    for logs_dir in (head_logs_dir, worker_logs_dir):
+        wait_for_condition(
+            lambda logs_dir=logs_dir: os.path.exists(
+                os.path.join(logs_dir, "raylet.out")
+            )
+        )
 
 
 def test_raylet_tempfiles(shutdown_only):
