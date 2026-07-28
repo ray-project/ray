@@ -72,8 +72,7 @@ class MBLTAcceleratorManager(AcceleratorManager):
             from qbruntime import get_available_device_numbers
         except ImportError:
             logger.debug(
-                "qbruntime is not installed; falling back to /dev "
-                "for MBLT detection"
+                "qbruntime is not installed; falling back to /dev " "for MBLT detection"
             )
             return _count_mblt_dev_nodes()
         except Exception as e:
