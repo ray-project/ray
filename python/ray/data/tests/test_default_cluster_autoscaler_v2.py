@@ -204,9 +204,9 @@ class TestClusterAutoscaling:
             or gpu_util >= scale_up_threshold
             or mem_util >= scale_up_threshold
         )
-        resources_allocated = autoscaler.get_total_resources()
+        resources_reserved = autoscaler.get_total_resources()
         if not should_scale_up:
-            assert resources_allocated == ExecutionResources.zero()
+            assert resources_reserved == ExecutionResources.zero()
         else:
             expected_num_resource_spec1_requested = 2 + scale_up_delta
             expected_num_resource_spec2_requested = 1 + scale_up_delta
@@ -225,7 +225,7 @@ class TestClusterAutoscaling:
                 ),
             )
 
-            assert resources_allocated == expected_resources
+            assert resources_reserved == expected_resources
 
     def test_get_node_resource_spec_and_count_from_zero(self):
         """Test that get_node_resource_spec_and_count can discover node types
@@ -299,8 +299,8 @@ class TestClusterAutoscaling:
         autoscaler.try_trigger_scaling()
 
         # Should request scale_up_delta nodes of each type
-        # Verify via get_total_resources which returns what was allocated
-        resources_allocated = autoscaler.get_total_resources()
+        # Verify via get_total_resources which returns what was reserved
+        resources_reserved = autoscaler.get_total_resources()
         expected_resources = ExecutionResources(
             cpu=resource_spec1.cpu * scale_up_delta
             + resource_spec2.cpu * scale_up_delta,
@@ -309,15 +309,15 @@ class TestClusterAutoscaling:
             memory=resource_spec1.mem * scale_up_delta
             + resource_spec2.mem * scale_up_delta,
         )
-        assert resources_allocated == expected_resources
+        assert resources_reserved == expected_resources
 
-    def test_low_utilization_sends_current_allocation(self):
-        """Test that low utilization sends current allocation.
+    def test_low_utilization_sends_current_reservation(self):
+        """Test that low utilization sends current reservation.
 
         Test scenario:
-        1. Dataset has already been allocated resources (1 nodes)
+        1. Dataset has already been reserved resources (1 nodes)
         2. Utilization is low (0%, below default threshold)
-        3. Should send current allocation to preserve resource footprint
+        3. Should send current reservation to preserve resource footprint
         """
         utilization: ExecutionResources = ...
 
@@ -355,7 +355,7 @@ class TestClusterAutoscaling:
         """Below the scale-up threshold, the last explicit request is resent briefly.
 
         This avoids immediately dropping explicit autoscaler demand (and avoids
-        re-submitting ``get_allocated_resources()`` shapes as explicit demand).
+        re-submitting ``get_reserved_resources()`` shapes as explicit demand).
         """
         current_time = {"t": 0.0}
 
@@ -711,10 +711,10 @@ class TestClusterAutoscaling:
 
         autoscaler.try_trigger_scaling()
 
-        resources_allocated = autoscaler.get_total_resources()
-        assert resources_allocated.cpu == node_spec.cpu * expected_nodes
-        assert resources_allocated.gpu == node_spec.gpu * expected_nodes
-        assert resources_allocated.memory == node_spec.mem * expected_nodes
+        resources_reserved = autoscaler.get_total_resources()
+        assert resources_reserved.cpu == node_spec.cpu * expected_nodes
+        assert resources_reserved.gpu == node_spec.gpu * expected_nodes
+        assert resources_reserved.memory == node_spec.mem * expected_nodes
 
     def test_try_scale_up_respects_resource_limits_heterogeneous_nodes(self):
         """Test that smaller bundles are included even when larger bundles exceed limits.
@@ -757,7 +757,7 @@ class TestClusterAutoscaling:
 
         autoscaler.try_trigger_scaling()
 
-        resources_allocated = autoscaler.get_total_resources()
+        resources_reserved = autoscaler.get_total_resources()
         # With delta=1:
         #   - Active bundles: 1 small (4 CPUs) - existing nodes, always included
         #   - Pending bundles: 1 small (4 CPUs) + 1 large (8 CPUs) - scale-up delta
@@ -768,18 +768,18 @@ class TestClusterAutoscaling:
         #   - Add large: 8 + 8 = 16 CPUs ✗ (exceeds limit)
         # Result: 2 small bundles (8 CPUs)
         # Ray autoscaler would see: need 2 small nodes, have 1 → spin up 1 more
-        assert resources_allocated.cpu == 8, (
-            f"Expected 8 CPUs (2 small node bundles), got {resources_allocated.cpu}. "
+        assert resources_reserved.cpu == 8, (
+            f"Expected 8 CPUs (2 small node bundles), got {resources_reserved.cpu}. "
             "Smaller bundles should be included even when larger ones exceed limits."
         )
-        assert resources_allocated.gpu == 0
-        assert resources_allocated.memory == 4 * GiB
+        assert resources_reserved.gpu == 0
+        assert resources_reserved.memory == 4 * GiB
 
     def test_try_scale_up_existing_nodes_prioritized_over_delta(self):
         """Test that existing node bundles are prioritized over scale-up delta bundles.
 
         This tests a scenario where:
-        - Large existing node: 1 node at 6 CPUs (currently allocated)
+        - Large existing node: 1 node at 6 CPUs (currently reserved)
         - Small node type available: can add nodes at 2 CPUs each
         - User limit: 8 CPUs
         - Scale-up delta: 2 (want to add 2 small nodes)
@@ -820,7 +820,7 @@ class TestClusterAutoscaling:
 
         autoscaler.try_trigger_scaling()
 
-        resources_allocated = autoscaler.get_total_resources()
+        resources_reserved = autoscaler.get_total_resources()
         # Active bundles: 1 large (6 CPUs) - must be included
         # Pending bundles: 2 large (12 CPUs) + 2 small (4 CPUs) = delta requests
         # After capping to 8 CPUs:
@@ -830,14 +830,14 @@ class TestClusterAutoscaling:
         #   - Add small: 6 + 2 = 8 CPUs ✓
         #   - Add another small: 8 + 2 = 10 CPUs ✗
         # Result: 1 large (active) + 1 small (delta) = 8 CPUs
-        assert resources_allocated.cpu == 8, (
-            f"Expected 8 CPUs (1 existing large + 1 delta small), got {resources_allocated.cpu}. "
+        assert resources_reserved.cpu == 8, (
+            f"Expected 8 CPUs (1 existing large + 1 delta small), got {resources_reserved.cpu}. "
             "Existing node bundles should always be included before scale-up delta."
         )
         # Verify we have the large node's resources (it must be included)
-        assert resources_allocated.memory >= large_node_spec.mem, (
+        assert resources_reserved.memory >= large_node_spec.mem, (
             f"Existing large node (mem={large_node_spec.mem}) should be included. "
-            f"Got total memory={resources_allocated.memory}"
+            f"Got total memory={resources_reserved.memory}"
         )
 
     def test_try_scale_up_logs_info_message(self, propagate_logs, caplog):
