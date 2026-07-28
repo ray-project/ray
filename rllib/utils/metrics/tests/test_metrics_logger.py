@@ -511,7 +511,7 @@ def test_edge_cases(root_logger):
     with pytest.raises(ValueError):
         root_logger.log_value("invalid_window_ema", 0.1, window=2, ema_coeff=0.1)
 
-    # Test value persistance after reduce
+    # Test value persistence after reduce
     root_logger.log_value("clear_test", 0.1)
     root_logger.log_value("clear_test", 0.2)
     results = root_logger.reduce()

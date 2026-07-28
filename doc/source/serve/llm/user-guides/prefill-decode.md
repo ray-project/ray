@@ -208,7 +208,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 
 - **Choose the right backend**: Use NIXLConnector for simpler deployments. Use LMCacheConnectorV1 when you need advanced caching or multiple storage backends.
 - **Monitor KV transfer overhead**: Ensure that the benefits of disaggregation outweigh the network transfer costs. Monitor latency and throughput.
-- **Scale independently**: Take advantage of independent scaling by monitoring resource utilization for each phase separately.
+- **Scale independently**: Monitor resource utilization for each phase separately and scale each one on its own.
 - **Test with realistic workloads**: Validate performance improvements with your actual traffic patterns before production deployment.
 - **Ensure network connectivity**: For NIXLConnector, verify that prefill and decode instances can communicate over the network.
 - **Secure etcd access**: For LMCacheConnectorV1, ensure your etcd server is properly secured and accessible only to authorized services.

@@ -11,7 +11,6 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
-    PrepareImageStageConfig,
     PrepareMultimodalStageConfig,
     TokenizerStageConfig,
 )
@@ -45,11 +44,11 @@ def test_vllm_engine_processor(
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
         tokenize_stage=TokenizerStageConfig(enabled=True),
         detokenize_stage=DetokenizeStageConfig(enabled=True),
-        prepare_image_stage=PrepareImageStageConfig(enabled=True),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True),
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
-        "PrepareImageStage",
+        "PrepareMultimodalStage",
         "ChatTemplateStage",
         "TokenizeStage",
         "vLLMEngineStage",
@@ -111,7 +110,7 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
         chat_template_stage=ChatTemplateStageConfig(enabled=True),
         tokenize_stage=TokenizerStageConfig(enabled=True),
         detokenize_stage=DetokenizeStageConfig(enabled=True),
-        prepare_image_stage=PrepareImageStageConfig(enabled=True),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True),
     )
     processor = ProcessorBuilder.build(config)
     stage = processor.get_stage_by_name("vLLMEngineStage")
@@ -138,7 +137,7 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
             chat_template_stage=ChatTemplateStageConfig(enabled=True),
             tokenize_stage=TokenizerStageConfig(enabled=True),
             detokenize_stage=DetokenizeStageConfig(enabled=True),
-            prepare_image_stage=PrepareImageStageConfig(enabled=True),
+            prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True),
         )
 
 
@@ -451,9 +450,7 @@ def test_classification_model(gpu_type):
         processor_config,
         preprocess=lambda row: dict(
             prompt="This is a great educational content.",
-            pooling_params=dict(
-                truncate_prompt_tokens=-1,
-            ),
+            tokenization_kwargs={"truncation": True, "max_length": 512},
         ),
         postprocess=lambda row: {
             "probs": float(row["embeddings"][0])
@@ -468,78 +465,6 @@ def test_classification_model(gpu_type):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("probs" in out for out in outs)
-
-
-@pytest.mark.parametrize("use_nested_config", [True, False])
-def test_legacy_vision_model(
-    gpu_type, model_smolvlm_256m, use_nested_config, image_asset
-):
-    image_url, _ = image_asset
-    processor_config = dict(
-        model_source=model_smolvlm_256m,
-        task_type="generate",
-        engine_kwargs=dict(
-            # Skip CUDA graph capturing to reduce startup time.
-            enforce_eager=True,
-            # CI uses T4 GPU which does not support bfloat16.
-            dtype="half",
-        ),
-        batch_size=16,
-        accelerator_type=gpu_type,
-        concurrency=1,
-    )
-
-    if use_nested_config:
-        processor_config.update(
-            prepare_image_stage=PrepareImageStageConfig(enabled=True),
-            chat_template_stage=ChatTemplateStageConfig(enabled=True),
-            tokenize_stage=TokenizerStageConfig(enabled=False),
-            detokenize_stage=DetokenizeStageConfig(enabled=False),
-        )
-    else:
-        processor_config.update(
-            apply_chat_template=True,
-            has_image=True,
-            tokenize=False,
-            detokenize=False,
-        )
-
-    processor = build_processor(
-        vLLMEngineProcessorConfig(**processor_config),
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are an assistant"},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Say {row['val']} words about this image.",
-                        },
-                        {
-                            "type": "image",
-                            "image": image_url,
-                        },
-                    ],
-                },
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=50,
-            ),
-        ),
-        postprocess=lambda row: {
-            "resp": row["generated_text"],
-        },
-    )
-
-    ds = ray.data.range(60)
-    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = processor(ds)
-    ds = ds.materialize()
-    outs = ds.take_all()
-    assert len(outs) == 60
-    assert all("resp" in out for out in outs)
 
 
 @pytest.mark.parametrize("input_raw_image_data", [True, False])

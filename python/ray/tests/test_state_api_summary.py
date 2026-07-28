@@ -70,30 +70,35 @@ async def test_api_manager_summary_tasks(state_api_manager):
             [
                 generate_task_event(
                     id=ids[0].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[1].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[2].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[3].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.RUNNING,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[4].binary(),
+                    name="",
                     func_or_class=second_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.ACTOR_TASK,
@@ -355,6 +360,22 @@ def test_task_summary(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
+
+    # Test custom task name
+    task_wait_for_dep.options(name="custom_task_name").remote(
+        run_long_time_task.remote()
+    )
+
+    def verify_custom_name():
+        task_summary = summarize_tasks()
+        task_summary = task_summary["cluster"]["summary"]
+        assert "custom_task_name" in task_summary
+        assert (
+            task_summary["custom_task_name"]["state_counts"]["PENDING_ARGS_AVAIL"] >= 1
+        )
+        return True
+
+    wait_for_condition(verify_custom_name)
 
     """
     Test CLI

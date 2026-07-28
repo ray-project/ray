@@ -55,17 +55,19 @@ def construct_train_func(
     fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
+
     Args:
         train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        config (Optional[Dict]): Configurations to pass into
-            ``train_func``. If None then an empty Dict will be created.
+        config: Configurations to pass into ``train_func``. If None then an
+            empty Dict will be created.
         train_func_context: Context manager for user's `train_func`, which executes
             backend-specific logic before and after the training function.
-        fn_arg_name (Optional[str]): The name of training function to use for error
-            messages.
+        fn_arg_name: The name of training function to use for error messages.
+
     Returns:
         A valid training function.
+
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
@@ -147,6 +149,16 @@ def time_monotonic():
     return time.monotonic()
 
 
+def time_seconds():
+    """Wall-clock time in seconds since the epoch.
+
+    Separate from `time_monotonic` because preemption deadlines from Ray Core
+    are epoch-based timestamps, not monotonic. Wrapped here so it can be mocked
+    in tests.
+    """
+    return time.time()
+
+
 def _copy_doc(copy_func):
     def wrapped(func):
         func.__doc__ = copy_func.__doc__
@@ -185,6 +197,12 @@ def get_module_name(obj: object) -> str:
 
 def get_callable_name(fn: Callable) -> str:
     """Returns a readable name for any callable.
+
+    Args:
+        fn: The callable to extract a name from.
+
+    Returns:
+        A human-readable name for the callable.
 
     Examples:
 

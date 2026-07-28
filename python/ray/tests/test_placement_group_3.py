@@ -647,7 +647,11 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
             return False
         return True
 
-    wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
+    wait_for_condition(
+        is_usage_updated,
+        timeout=3 * AUTOSCALER_UPDATE_INTERVAL_S,
+        retry_interval_ms=1000,
+    )
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
@@ -660,12 +664,17 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
 
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
-    # Wait long enough until the usage is propagated to GCS.
-    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
+
+    def is_pg_usage_propagated():
+        demand_output = get_ray_status_output(cluster.address)
+        cpu_usage = demand_output["usage"].split("\n")[0]
+        return cpu_usage == "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
+
+    wait_for_condition(
+        is_pg_usage_propagated,
+        timeout=3 * AUTOSCALER_UPDATE_INTERVAL_S,
+        retry_interval_ms=1000,
+    )
 
 
 def test_placement_group_removal_leak_regression(ray_start_cluster):

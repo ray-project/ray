@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.experiment import Experiment
+    from ray.tune.experiment import Experiment, Trial
 
 
 @DeveloperAPI
@@ -46,6 +46,9 @@ class SearchAlgorithm:
             config: Tune config dict.
             **spec: Any kwargs for forward compatibility.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
+
+        Returns:
+            True if the search properties were set successfully, False otherwise.
         """
         if self._metric and metric:
             return False
@@ -68,7 +71,7 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def next_trial(self):
+    def next_trial(self) -> Optional["Trial"]:
         """Returns single Trial object to be queued into the TrialRunner.
 
         Returns:

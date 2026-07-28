@@ -44,22 +44,14 @@ The following are ways to address these issues:
 According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#very-technical-details), `def` endpoint functions are called in a separate threadpool, so you might observe many requests running at the same time inside one replica, and this scenario might cause OOM or resource starvation. In this case, you can try to use `async def` to control the workload performance.
 :::
 
-Are you using `async def` in your callable? If you are using `asyncio` and
-hitting the same queuing issue mentioned above, you might want to increase
-`max_ongoing_requests`. By default, Serve sets this to a low value (5) to ensure clients receive proper backpressure.
-You can increase the value in the deployment decorator; for example,
-`@serve.deployment(max_ongoing_requests=1000)`.
+Are you using `async def` in your callable? If you are using `asyncio` and hitting the same queuing issue mentioned above, you might want to increase `max_ongoing_requests`. By default, Serve sets this to a low value (5) to ensure clients receive proper backpressure. You can increase the value in the deployment decorator; for example, `@serve.deployment(max_ongoing_requests=1000)`.
 
 (serve-performance-e2e-timeout)=
 ### Set an end-to-end request timeout
 
 By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. Set an end-to-end timeout, so slow requests can be terminated and retried.
 
-You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` parameter
-in the `http_options` field of the Serve config. HTTP Proxies wait for that many
-seconds before terminating an HTTP request. This config is global to your Ray cluster,
-and you can't update it during runtime. Use [client-side retries](serve-best-practices-http-requests)
-to retry requests that time out due to transient failures.
+You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` parameter in the `http_options` field of the Serve config. HTTP Proxies wait for that many seconds before terminating an HTTP request. This config is global to your Ray cluster, and you can't update it during runtime. Use [client-side retries](serve-best-practices-http-requests) to retry requests that time out due to transient failures.
 
 :::{note}
 Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
@@ -244,7 +236,7 @@ When HAProxy mode is enabled:
 
 #### Prerequisites
 
-HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+HAProxy must be available on every node that runs a Serve proxy. On Linux, `pip install "ray[serve]"` installs the [`ray-haproxy`](https://pypi.org/project/ray-haproxy/) package, which ships a prebuilt HAProxy binary that Serve uses automatically. To use a different binary, set `RAY_SERVE_HAPROXY_BINARY_PATH` to its absolute path.
 
 #### Enabling HAProxy
 
@@ -279,7 +271,7 @@ ray start --head  # or ray start --address=<head-ip>:6379 on workers
 
 #### Installing HAProxy manually (example)
 
-If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
+Some platforms have no `ray-haproxy` wheel, such as non-glibc Linux, macOS, and Windows. On those platforms, install HAProxy 2.8 from source on every node. These steps are provided as an example only.
 
 The following steps are for Ubuntu/Debian:
 ```bash
@@ -326,12 +318,10 @@ By default, when one deployment calls another via a `DeploymentHandle`, requests
 
 ## Debugging performance issues in controller
 
-The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
-including receiving autoscaling metrics from other Ray Serve components.
-If the Serve Controller becomes overloaded
-(symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
-you can tune the following environment variables:
+The Serve Controller runs on the Ray head node and is responsible for a variety of tasks, including receiving autoscaling metrics from other Ray Serve components. If the Serve Controller becomes overloaded (symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks), you can tune the following environment variables:
 
 - `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
 - `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.
 - `RAY_SERVE_MAX_CACHED_HANDLES`: The maximum number of cached deployment handles (defaults to `100`). Each handle maintains a long poll connection to the controller, so limiting the cache size reduces controller overhead. Decrease this value if you're experiencing controller overload due to many handles.
+
+To get a quantitative view of controller health, query the GET `/api/serve/applications/` endpoint and inspect the [`controller_health_metrics`](../api/doc/ray.serve.schema.ControllerHealthMetrics.rst) field on the response. It exposes rolling-window statistics ([`DurationStats`](../api/doc/ray.serve.schema.DurationStats.rst): mean, std, min, max) for control-loop duration and component update latencies (deployment, application, proxy, and node state managers), along with the event-loop delay (actual vs. expected sleep — positive values indicate the loop is falling behind), the count of pending asyncio tasks, and the delay between when autoscaling metrics are generated and when they reach the controller. High `event_loop_delay_s` or growing `loop_duration_s.mean` are the clearest signals that the Controller is overloaded and the tuning knobs above should be applied.

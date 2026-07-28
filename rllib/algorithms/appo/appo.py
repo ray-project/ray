@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 OLD_ACTION_DIST_KEY = "old_action_dist"
+# Mean and variance of the IMPACT clipped IS ratio
+# (`clip(pi_behaviour / pi_old_target, 0, 2)`)
+LEARNER_RESULTS_MEAN_IS_KEY = "mean_IS"
+LEARNER_RESULTS_VAR_IS_KEY = "var_IS"
 
 
 class APPOConfig(IMPALAConfig):

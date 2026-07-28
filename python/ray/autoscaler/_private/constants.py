@@ -76,6 +76,11 @@ AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S = env_integer(
     "AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S", 30 * 60
 )
 
+# The window during which the recoverable cloud resource availability score linearly recovers from 0.0 to 1.0.
+RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S = env_integer(
+    "RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S", 600
+)
+
 AUTOSCALER_REPORT_PER_NODE_STATUS = (
     env_integer("AUTOSCALER_REPORT_PER_NODE_STATUS", 1) == 1
 )

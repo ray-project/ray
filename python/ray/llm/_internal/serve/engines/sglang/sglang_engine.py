@@ -10,6 +10,7 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 
 import copy
 import json
+import logging
 import signal
 import time
 import uuid
@@ -17,9 +18,12 @@ from typing import (
     Any,
     AsyncGenerator,
     List,
+    Literal,
     Optional,
     Union,
 )
+
+from pydantic import BaseModel
 
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -39,8 +43,49 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
-    _merge_replica_actor_and_child_actor_bundles,
+    _add_openai_models_retrieve_route,
 )
+
+logger = logging.getLogger(__name__)
+
+
+class SGLangPauseConfig(BaseModel):
+    """SGLang-specific configuration for pause operation."""
+
+    mode: Literal["abort", "in_place", "retract"] = "abort"
+    """Pause mode:
+    - "abort" (default): Terminate all in-flight requests immediately.
+    - "in_place": Freeze requests in queue, preserve kv cache.
+    - "retract": Freeze requests in queue, free corresponding KV cache.
+    """
+
+
+class SGLangSleepConfig(BaseModel):
+    """SGLang-specific configuration for sleep operation"""
+
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
+
+    """Sleep tags:
+    - "kv_cache": Discard KV cache
+    - "weights": Offload to CPU RAM
+    - "cuda_graph": Discard CUDA graph
+    - None: Discard/Offload everything
+    """
+
+
+class SGLangWakeupConfig(BaseModel):
+    """SGLang-specific configuration for wakeup operation"""
+
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
+    """Optional tags to selectively wake up components:
+    - "kv_cache": Restore KV cache only
+    - "weights": Restore weights only
+    - "cuda_graph": Restore CUDA graph only
+    - None: Restore everything
+    """
+
+
+_SLEEP_TAGS: frozenset[str] = frozenset({"kv_cache", "weights", "cuda_graph"})
 
 
 class SGLangServer:
@@ -48,14 +93,45 @@ class SGLangServer:
 
         self._llm_config = llm_config
         self.engine_kwargs = llm_config.engine_kwargs
+        self._is_paused = False
+        self._sleeping_tags: set[str] = set()
 
         try:
-            import sglang
+            from sglang.srt.ray.engine import RayEngine as Engine
         except ImportError as e:
             raise ImportError(
-                "SGLang is not installed or failed to import. Please run "
-                "`pip install sglang[all]` to install required dependencies."
+                "SGLang with Ray backend is not installed or failed to import. "
+                "Please run `pip install sglang[all, ray]` to install required "
+                "dependencies."
             ) from e
+
+        # Route SGLang engine metrics through Ray's metric agent (Ray's
+        # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
+        # actors and auto-wires the Ray-backed stat_loggers when enable_metrics
+        # is set.
+        if self._llm_config.log_engine_metrics:
+            self.engine_kwargs["enable_metrics"] = True
+            # Tag engine metrics with the Serve deployment/replica so the
+            # out-of-process scheduler series can be grouped per deployment
+            # (they can't be joined to the Serve counter on WorkerId).
+            from ray import serve
+            from ray.serve.exceptions import RayServeException
+
+            try:
+                rid = serve.get_replica_context().replica_id
+                self.engine_kwargs.setdefault(
+                    "extra_metric_labels",
+                    {
+                        "application": rid.deployment_id.app_name,
+                        "deployment": rid.deployment_id.name,
+                        "replica": rid.unique_id,
+                    },
+                )
+            except RayServeException:
+                logger.warning(
+                    "No Serve replica context; SGLang metrics will not carry "
+                    "deployment/replica labels."
+                )
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
@@ -68,7 +144,7 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            self.engine = Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -201,6 +277,53 @@ class SGLangServer:
         # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
         # this integration does not run. Keep the protocol hook as a no-op.
         return
+
+    async def __serve_build_asgi_app__(self) -> Any:
+        """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
+
+        When ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING`` is set, Ray Serve serves the
+        engine's own ASGI app (behind HAProxy) instead of routing every request
+        through the Python ingress. SGLang builds that app in ``launch_server``; here
+        we wire the same app to this replica's in-process ``Engine``.
+
+        Two adjustments are needed relative to ``launch_server``:
+
+        - Force single-tokenizer mode so the app lifespan skips the multi-tokenizer
+          shared-memory bootstrap, which only exists under ``launch_server``.
+        - Skip SGLang's built-in warmup (``skip_server_warmup``), because the
+          default warmup issues a request to ``server_args.port``, which is not
+          where Ray Serve listens. Skipping it also transitions the tokenizer
+          manager's status to ``Up``, which the ``/health`` endpoints require.
+        """
+        # TODO(sgl-project/sglang#31356): replace this module-global wiring with a
+        # per-instance app builder once SGLang provides one.
+        from sglang.srt.entrypoints.http_server import (
+            _GlobalState,
+            app,
+            set_global_state,
+        )
+
+        # Mirror launch_server: _GlobalState.scheduler_info is the first scheduler's
+        # info, which the Engine exposes as _scheduler_init_result.scheduler_infos.
+        scheduler_info = self.engine._scheduler_init_result.scheduler_infos[0]
+
+        set_global_state(
+            _GlobalState(
+                tokenizer_manager=self.engine.tokenizer_manager,
+                template_manager=self.engine.template_manager,
+                scheduler_info=scheduler_info,
+            )
+        )
+        # Copy ``server_args`` so we don't mutate the engine's own instance.
+        server_args = copy.copy(self.engine.server_args)
+        server_args.skip_server_warmup = True
+        app.is_single_tokenizer_mode = True
+        app.server_args = server_args
+        app.warmup_thread_kwargs = {"server_args": server_args}
+        # Match the OpenAiIngress surface: SGLang's native app lists models at
+        # GET /v1/models but has no single-model retrieve route.
+        _add_openai_models_retrieve_route(app, self._llm_config)
+        return app
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
@@ -587,25 +710,27 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
-
+            # RayEngine spawns all tp/pp SchedulerActors onto a single bundle
+            # per node (it indexes the PG with `bundle_for_node[node_idx]` and
+            # reuses that same bundle_idx for every rank on that node). Default
+            # to one bundle with all local GPUs; multi-node deployments must
+            # provide an explicit placement_group_config with one bundle per
+            # node (each containing that node's share of GPUs).
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": num_devices,
             }
 
             if ray_actor_options.get("num_gpus"):
-                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+                replica_bundle["GPU"] += ray_actor_options["num_gpus"]
 
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
                 replica_bundle["memory"] = ray_actor_options["memory"]
 
-            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-                child_actor_bundles=child_bundles,
-                replica_actor_bundle=replica_bundle,
-            )
-            pg_strategy = "PACK"
+            pg_bundles = [replica_bundle]
+            pg_strategy = "STRICT_PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
             pg_strategy = pg_config.get("placement_group_strategy", "PACK")
@@ -631,3 +756,99 @@ class SGLangServer:
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the SGlang server
+
+        This halts generation/encoding requests while keeping model weights in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Options parsed into SGLangPauseConfig.
+                - mode (str): "abort" (default), "in_place", or "retract"
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangPauseConfig(**kwargs)
+        from sglang.srt.managers.io_struct import PauseGenerationReqInput
+
+        await self.engine.tokenizer_manager.pause_generation(
+            PauseGenerationReqInput(mode=config.mode)
+        )
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the SGLang server after pause.
+
+        Args:
+            **kwargs: Reserved for future options.
+        """
+        assert self.engine is not None, "server is not initialized"
+        from sglang.srt.managers.io_struct import ContinueGenerationReqInput
+
+        await self.engine.tokenizer_manager.continue_generation(
+            ContinueGenerationReqInput()
+        )
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check whether the SGLang server is currently paused.
+
+        Returns:
+            True if the server is paused, False otherwise.
+        """
+        return self._is_paused
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put SGLang server to sleep.
+
+        Args:
+            **kwargs: Options parsed into SGLangSleepConfig
+                - tags (List[str], optional): Components to put to sleep.
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangSleepConfig(**kwargs)
+
+        # release_memory_occupation() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        from sglang.srt.entrypoints.engine import ReleaseMemoryOccupationReqInput
+
+        obj = ReleaseMemoryOccupationReqInput(tags=config.tags)
+        await self.engine.tokenizer_manager.release_memory_occupation(obj, None)
+        self._sleeping_tags |= set(config.tags) if config.tags else set(_SLEEP_TAGS)
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the SGLang server from sleep mode.
+
+        Args:
+            **kwargs: Options parsed into SGLangWakeupConfig
+                - tags (List[str], optional): Components to wake up.
+        """
+
+        assert self.engine is not None, "server is not initialized"
+        config = SGLangWakeupConfig(**kwargs)
+        # resume_memory_occupation() release_memory_occupation() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        from sglang.srt.entrypoints.engine import ResumeMemoryOccupationReqInput
+
+        obj = ResumeMemoryOccupationReqInput(tags=config.tags)
+        await self.engine.tokenizer_manager.resume_memory_occupation(obj, None)
+
+        if config.tags is None:
+            self._sleeping_tags.clear()
+        else:
+            self._sleeping_tags -= set(config.tags)
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the SGLang server is currently sleeping.
+
+        Returns:
+            True if any component is currently offloaded/discarded, False otherwise.
+        """
+        return bool(self._sleeping_tags)
+
+    async def reset_prefix_cache(self, timeout: Optional[float] = None) -> None:
+        assert self.engine is not None, "server is not initialized"
+        # flush_cache() calls loop.run_until_complete() internally, which fails
+        # inside an async context. Await the underlying coroutine directly.
+        await self.engine.tokenizer_manager.flush_cache()

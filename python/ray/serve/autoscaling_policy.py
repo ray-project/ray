@@ -336,7 +336,7 @@ def _core_replica_queue_length_policy(
     return desired_num_replicas, {}
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[Union[int, float], Dict[str, Any]]:

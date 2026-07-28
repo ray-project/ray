@@ -442,6 +442,8 @@ class BaseTrainer(abc.ABC):
             path: The path to the experiment directory of the Train experiment.
                 This can be either a local directory (e.g., ~/ray_results/exp_name)
                 or a remote URI (e.g., s3://bucket/exp_name).
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem`` to use. If not
+                provided, the filesystem is auto-resolved from ``path``.
 
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from

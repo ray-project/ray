@@ -56,11 +56,11 @@ def _mk_read_files(tmp_path: Path) -> ReadFiles:
     )
 
     return ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
         parallelism=-1,
+        input_dependencies=[list_files_op],
     )
 
 
@@ -89,11 +89,11 @@ def _mk_partitioned_read_files(tmp_path: Path) -> ReadFiles:
     )
 
     return ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
         parallelism=-1,
+        input_dependencies=[list_files_op],
     )
 
 

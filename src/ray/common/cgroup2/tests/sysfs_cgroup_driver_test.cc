@@ -35,8 +35,8 @@ TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfEmptyMountFile) {
 
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfMalformedMountFile) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0");
   temp_mount_file.AppendLine("oopsie");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
@@ -46,7 +46,7 @@ TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfMalformedMountFile) {
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledFailsIfCgroupv1MountedAndCgroupv2NotMounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
@@ -55,8 +55,8 @@ TEST(SysFsCgroupDriverTest,
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledFailsIfCgroupv1MountedAndCgroupv2Mounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
@@ -65,7 +65,7 @@ TEST(SysFsCgroupDriverTest,
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
   TempFile temp_fallback_mount_file;
-  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0");
   SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   EXPECT_TRUE(s.ok()) << s.ToString();
@@ -73,7 +73,7 @@ TEST(SysFsCgroupDriverTest,
 
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   EXPECT_TRUE(s.ok()) << s.ToString();
