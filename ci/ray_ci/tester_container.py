@@ -16,7 +16,7 @@ from ray_release.test import Test, TestResult
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 # We will run each flaky test this number of times per CI job independent of pass/fail.
-RUN_PER_FLAKY_TEST = 1
+RUN_PER_FLAKY_TEST = 500
 
 
 class TesterContainer(Container):
@@ -239,7 +239,7 @@ class TesterContainer(Container):
             commands.append("unset CC CXX")
         # note that we run tests serially within each docker, since we already use
         # multiple dockers to shard tests
-        test_cmd = "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
+        test_cmd = "bazel test --jobs=8 --config=ci $(./ci/run/bazel_export_options) "
         if self.build_type == "debug":
             test_cmd += "--config=ci-debug "
         if self.build_type == "asan":
