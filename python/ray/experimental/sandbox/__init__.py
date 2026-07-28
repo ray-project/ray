@@ -1,7 +1,11 @@
 import asyncio
 from typing import Optional
 
-from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
+from ray.experimental.sandbox.backend.base import (
+    BaseSandboxBackend,
+    ExecResult,
+    SandboxStatus,
+)
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     GVisorSandboxConfig,
@@ -17,16 +21,22 @@ from ray.experimental.sandbox.exceptions import (
 from ray.experimental.sandbox.sandbox import Sandbox
 
 
-def create(config: Optional[SandboxConfig] = None, **kwargs) -> Sandbox:
+def create(
+    config: Optional[SandboxConfig] = None,
+    backend: Optional[BaseSandboxBackend] = None,
+    **kwargs,
+) -> Sandbox:
     """Create a new Sandbox environment using gVisor.
 
     Args:
         config: Optional SandboxConfig instance.
-        **kwargs: Fields corresponding to SandboxConfig parameters.
+        backend: Optional custom BaseSandboxBackend instance. If None, defaults to GVisorSandboxBackend.
+        **kwargs: Fields corresponding to SandboxConfig parameters or backend overrides.
 
     Returns:
         A Sandbox instance.
     """
+    runsc_path_override = kwargs.pop("runsc_path_override", None)
     if config is None:
         config = SandboxConfig(**kwargs)
     elif kwargs:
@@ -34,14 +44,20 @@ def create(config: Optional[SandboxConfig] = None, **kwargs) -> Sandbox:
             if hasattr(config, k):
                 setattr(config, k, v)
 
-    backend_impl = GVisorSandboxBackend()
-    sandbox_id = backend_impl.create_sandbox(config)
-    return Sandbox(sandbox_id=sandbox_id, backend=backend_impl, config=config)
+    if backend is None:
+        backend = GVisorSandboxBackend(runsc_path_override=runsc_path_override)
+
+    sandbox_id = backend.create_sandbox(config)
+    return Sandbox(sandbox_id=sandbox_id, backend=backend, config=config)
 
 
-async def create_async(config: Optional[SandboxConfig] = None, **kwargs) -> Sandbox:
+async def create_async(
+    config: Optional[SandboxConfig] = None,
+    backend: Optional[BaseSandboxBackend] = None,
+    **kwargs,
+) -> Sandbox:
     """Asynchronously create a new Sandbox environment using gVisor."""
-    return await asyncio.to_thread(create, config=config, **kwargs)
+    return await asyncio.to_thread(create, config=config, backend=backend, **kwargs)
 
 
 __all__ = [

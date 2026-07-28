@@ -1,6 +1,9 @@
+import pytest
+
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
@@ -9,10 +12,13 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     config = GVisorSandboxConfig(
         work_dir="/workspace",
         runsc_path="/bin/sh",
+        cpu=1.0,
+        memory="512Mi",
     )
 
     sandbox_id = backend.create_sandbox(config)
     assert sandbox_id.startswith("ray-sb-gvisor-")
+    assert sandbox_id in backend._sandbox_actors
     assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
     # Test file write and read
@@ -28,6 +34,13 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     # Test delete
     backend.delete_sandbox(sandbox_id)
     assert backend.get_status(sandbox_id) == SandboxStatus.TERMINATED
+    assert sandbox_id not in backend._sandbox_actors
+
+
+def test_gvisor_backend_not_found():
+    backend = GVisorSandboxBackend(runsc_path_override="/bin/sh")
+    with pytest.raises(SandboxNotFoundError):
+        backend.exec_command("nonexistent-id", "echo 'hi'")
 
 
 def test_create_sandbox_helper():
@@ -36,3 +49,4 @@ def test_create_sandbox_helper():
     sb = create(work_dir="/workspace")
     assert sb.config.work_dir == "/workspace"
     assert sb.config.runsc_path == "runsc"
+    sb.delete()
