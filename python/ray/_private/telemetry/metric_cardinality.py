@@ -25,13 +25,14 @@ _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
 
 class MetricCardinality(str, Enum):
     """Cardinality level configuration for all Ray metrics (ray_tasks, ray_actors,
-    etc.). This configurtion is used to determine whether to globally drop high
+    etc.). This configuration is used to determine whether to globally drop high
     cardinality labels. This is important for high scale clusters that might consist
-    thousands of workers, millions of tasks.
+    of thousands of workers and millions of tasks.
 
-    - LEGACY: Keep all labels. This is the default behavior.
+    - LEGACY: Keep all labels. This was the default behavior before `recommended`.
     - RECOMMENDED: Drop WorkerId from the metrics Ray marks as high cardinality
-    (tasks, actors). Serve metrics and other metrics are untouched.
+    (tasks, actors). This is the default behavior. Serve metrics and other
+    metrics are untouched.
     - LOW: Same as RECOMMENDED, and additionally drop the Name label for tasks
     and actors, and drop WorkerId and ReplicaId from Serve metrics (any series
     that carries a ReplicaId tag), collapsing per-replica series to the node

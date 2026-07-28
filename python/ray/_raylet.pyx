@@ -1339,14 +1339,25 @@ async def _async_wait_for_object_consumed(
     Waits on the generator's asyncio.Event, which the core worker sets from every
     path that can relieve backpressure (consumption, owner death, report
     failure). No-op when the per-task option is disabled."""
+    cdef:
+        c_bool backpressured
     event = context.backpressure_event
-    while context.waiter.get().IsBackpressured():
+    # Take the waiter mutex without the GIL. Sync waiters call check_signals
+    # (which needs the GIL) after waiting under the same mutex; holding both in
+    # opposite order deadlocks.
+    with nogil:
+        backpressured = context.waiter.get().IsBackpressured()
+    while backpressured:
         # Clear before re-checking so a wake-up delivered between the check and
         # the await is not lost.
         event.clear()
-        if not context.waiter.get().IsBackpressured():
+        with nogil:
+            backpressured = context.waiter.get().IsBackpressured()
+        if not backpressured:
             break
         await event.wait()
+        with nogil:
+            backpressured = context.waiter.get().IsBackpressured()
 
 
 async def _async_reserve_actor_generator_slot(
@@ -1358,13 +1369,21 @@ async def _async_reserve_actor_generator_slot(
     Waits on the generator's asyncio.Event, which the core worker sets whenever
     actor-wide budget may have freed (consumption, a sibling task releasing its
     slot, owner death)."""
-    cdef int64_t num_objects = context.num_objects_per_yield
+    cdef:
+        int64_t num_objects = context.num_objects_per_yield
+        c_bool reserved
     event = context.backpressure_event
     while True:
         # Clear before attempting so a wake-up delivered while we attempt (and
         # fail) is not lost.
         event.clear()
-        if context.actor_backpressure_metadata.get().TryReserveSlot(num_objects):
+        # Take the actor-wide waiter mutex without the GIL. Sync generators call
+        # ReserveActorWideSlot -> check_signals (needs GIL) under that mutex;
+        # holding both locks in opposite order deadlocks.
+        with nogil:
+            reserved = context.actor_backpressure_metadata.get().TryReserveSlot(
+                num_objects)
+        if reserved:
             break
         await event.wait()
 

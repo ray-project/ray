@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 import numpy as np
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -157,4 +158,8 @@ def _read_fragments(
     scanner_options["fragments"] = fragments
     scanner = lance_ds.scanner(**scanner_options)
     for batch in scanner.to_reader():
-        yield pyarrow.Table.from_batches([batch])
+        table = pyarrow.Table.from_batches([batch])
+        # When you unpickle untrusted data, attackers can execute arbitrary code. To
+        # avoid exposing our users, raise unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        yield table

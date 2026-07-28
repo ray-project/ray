@@ -1,4 +1,5 @@
 import os
+import pickle
 
 import lance
 import pyarrow as pa
@@ -14,6 +15,7 @@ from ray.data._internal.datasource.lance_datasink import (
     LanceDatasink,
     _write_fragment,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
 
@@ -22,6 +24,24 @@ pytestmark = pytest.mark.skipif(
     Version(lance.__version__) <= Version("0.3.19"),
     reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
 )
+
+
+def test_read_lance_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    path = os.path.join(str(tmp_path), "trusted.lance")
+    lance.write_dataset(table, path)
+
+    rows = ray.data.read_lance(path).take_all()
+
+    assert rows == [{"col": {"key": "value"}}]
 
 
 @pytest.mark.parametrize(
@@ -44,7 +64,7 @@ pytestmark = pytest.mark.skipif(
     "batch_size",
     [None, 100],
 )
-def test_lance_read_basic(fs, data_path, batch_size):
+def test_lance_read_basic(fs, data_path, batch_size, ray_start_regular_shared):
     df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
@@ -98,7 +118,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_read_with_scanner_fragments(data_path):
+def test_lance_read_with_scanner_fragments(data_path, ray_start_regular_shared):
     table = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
@@ -115,7 +135,7 @@ def test_lance_read_with_scanner_fragments(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_read_many_files(data_path):
+def test_lance_read_many_files(data_path, ray_start_regular_shared):
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
     num_rows = 1024
@@ -130,7 +150,7 @@ def test_lance_read_many_files(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_write(data_path):
+def test_lance_write(data_path, ray_start_regular_shared):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
     ray.data.range(10).map(
@@ -171,7 +191,7 @@ def test_lance_write(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_write_create_errors_if_exists(data_path):
+def test_lance_write_create_errors_if_exists(data_path, ray_start_regular_shared):
     table_path = os.path.join(data_path, "my_table")
     ds = ray.data.range(10)
 
@@ -197,7 +217,7 @@ def test_lance_write_create_errors_if_exists(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_write_append_errors_if_missing(data_path):
+def test_lance_write_append_errors_if_missing(data_path, ray_start_regular_shared):
     table_path = os.path.join(data_path, "missing_table")
     # APPEND surfaces Lance's own "not found" error. We don't pin the message,
     # since it can change across Lance versions.
@@ -212,7 +232,7 @@ def test_lance_write_append_errors_if_missing(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_write_min_rows_per_file(data_path):
+def test_lance_write_min_rows_per_file(data_path, ray_start_regular_shared):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
     ray.data.range(10).map(
@@ -228,7 +248,7 @@ def test_lance_write_min_rows_per_file(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_write_max_rows_per_file(data_path):
+def test_lance_write_max_rows_per_file(data_path, ray_start_regular_shared):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
     ray.data.range(10).map(
@@ -244,7 +264,7 @@ def test_lance_write_max_rows_per_file(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_lance_read_with_version(data_path):
+def test_lance_read_with_version(data_path, ray_start_regular_shared):
     # Write an initial dataset (version 1)
     df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
@@ -308,7 +328,7 @@ def mock_lance_write(monkeypatch):
     return captured, _FakeLanceDatasink
 
 
-def test_write_lance_passes_namespace_args(mock_lance_write):
+def test_write_lance_passes_namespace_args(mock_lance_write, ray_start_regular_shared):
     captured, fake_lance_datasink_cls = mock_lance_write
     table_id = ["db", "table"]
     namespace_impl = "dir"
@@ -382,6 +402,28 @@ def test_write_fragment_only_materializes_stream_when_retrying(
             "max_backoff_s": 0,
         },
     )
+
+
+def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    path = os.path.join(str(tmp_path), "exploit.lance")
+    lance.write_dataset(table, path)
+
+    ds = ray.data.read_lance(path)
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 if __name__ == "__main__":
