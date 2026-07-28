@@ -15,12 +15,12 @@ from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.exceptions import GetTimeoutError
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
+from ray.train._internal.worker_group import WorkerGroup as V1WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
-from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
@@ -247,7 +247,7 @@ class _TorchBackend(Backend):
 
             # PyTorch distributed backends require LOCAL_RANK and other env vars
             # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
-            if is_v2_enabled():
+            if not isinstance(worker_group, V1WorkerGroup):
                 worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
@@ -286,5 +286,5 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
-        if not is_v2_enabled():
+        if isinstance(worker_group, V1WorkerGroup):
             worker_group.execute(_set_torch_distributed_env_vars)
