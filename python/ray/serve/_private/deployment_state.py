@@ -65,6 +65,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
+    RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -5755,6 +5756,11 @@ class DeploymentStateManager:
 
         self._shutting_down = False
 
+        # Dependency ordered shutdown state.
+        self._shutdown_tiers: Optional[List[List[DeploymentID]]] = None
+        self._shutdown_tier_idx: int = 0
+        self._shutdown_tier_started_at: Optional[float] = None
+
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
@@ -5952,16 +5958,114 @@ class DeploymentStateManager:
         Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
 
-        Once shutdown signal is received, it will also prevent any new
-        deployments or replicas from being created.
+        Deployments are torn down in best effort dependency order. Callers are
+        deleted before the callees they depend on to reduce the chances of dead
+        handle errors.
 
-        One can send multiple shutdown signals but won't effectively make any
-        difference compare to calling it once.
+        This method is re-entrant. Deletion tiers are computed once on the
+        first call. Every later call advances through the tiers as earlier
+        tiers drain. Once the shutdown signal is received it also prevents any
+        new deployments or replicas from being created.
         """
         self._shutting_down = True
 
-        for deployment_state in self._deployment_states.values():
-            deployment_state.delete()
+        if self._shutdown_tiers is None:
+            self._shutdown_tiers = self._shutdown_deletion_tiers()
+            self._shutdown_tier_idx = 0
+            self._shutdown_tier_started_at = time.time()
+
+        self._advance_shutdown()
+
+    def _advance_shutdown(self):
+        """
+        Delete the current shutdown tier, advancing as tiers drain.
+
+        Deletes every deployment in the current tier and waits for the tier to
+        be fully gone from _deployment_states before moving to the next one.
+        If a tier does not drain within RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S it is
+        force advanced past.
+        """
+        while self._shutdown_tier_idx < len(self._shutdown_tiers):
+            tier = [
+                deployment_id
+                for deployment_id in self._shutdown_tiers[self._shutdown_tier_idx]
+                if deployment_id in self._deployment_states
+            ]
+            if tier:
+                for deployment_id in tier:
+                    self._deployment_states[deployment_id].delete()
+
+                waited = time.time() - self._shutdown_tier_started_at
+                if waited <= RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S:
+                    # Wait for this tier to drain before deleting the next tier
+                    # of deployments.
+                    return
+
+                logger.warning(
+                    f"Shutdown tier {self._shutdown_tier_idx} did not drain "
+                    f"within {RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S}s, force "
+                    f"advancing past {[str(d) for d in tier]} to avoid hanging "
+                    "shutdown.",
+                    extra={"log_to_stderr": False},
+                )
+
+            # Tier fully drained or force advanced, move to the next one.
+            self._shutdown_tier_idx += 1
+            self._shutdown_tier_started_at = time.time()
+
+    def _shutdown_deletion_tiers(self) -> List[List[DeploymentID]]:
+        """
+        Compute best effort reverse topological deletion tiers.
+
+        Builds a directed graph over currently tracked deployments derived from
+        each deployment's outbound handle usage (best effort). Runs Kahn's
+        algorithm keyed on the number of callers. Nodes with in degree 0 are
+        ingress and roots called by nothing, so they are emitted first and
+        leaf or downstream deployments last. Each Kahn wave becomes one
+        deletion tier.
+
+        Returns:
+            A list of tiers, each a list of DeploymentIDs, in deletion order.
+        """
+        ids = list(self._deployment_states.keys())
+        id_set = set(ids)
+
+        callees: Dict[DeploymentID, Set[DeploymentID]] = {i: set() for i in ids}
+        in_degree: Dict[DeploymentID, int] = {i: 0 for i in ids}
+
+        for caller in ids:
+            outbound = self._deployment_states[caller].get_outbound_deployments()
+            if not outbound:
+                continue
+            for callee in outbound:
+                if callee == caller or callee not in id_set:
+                    continue
+                if callee not in callees[caller]:
+                    callees[caller].add(callee)
+                    in_degree[callee] += 1
+
+        remaining = dict(in_degree)
+        queue = [i for i in ids if remaining[i] == 0]
+        tiers: List[List[DeploymentID]] = []
+        emitted = 0
+
+        while queue:
+            tiers.append(queue)
+            emitted += len(queue)
+            next_queue: List[DeploymentID] = []
+            for caller in queue:
+                for callee in callees[caller]:
+                    remaining[callee] -= 1
+                    if remaining[callee] == 0:
+                        next_queue.append(callee)
+            queue = next_queue
+
+        # Whatever Kahn's algorithm did not emit is part of a dependency cycle,
+        # so tear them down together as a final tier.
+        if emitted < len(ids):
+            tiers.append([i for i in ids if remaining[i] > 0])
+
+        return tiers
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
@@ -5969,6 +6073,10 @@ class DeploymentStateManager:
         Check there are no deployment states.
         """
         return self._shutting_down and len(self._deployment_states) == 0
+
+    def is_shutting_down(self) -> bool:
+        """Whether a full instance shutdown is in progress."""
+        return self._shutting_down
 
     def delete_checkpoint(self) -> None:
         """Delete the deployment state checkpoint from KV store."""
