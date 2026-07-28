@@ -27,25 +27,26 @@ steps:
     tags: cibase
 
   - name: oss-ci-base_test-aarch64
+    label: "wanda: oss-ci-base_test-aarch64-py{{array.python}}"
     wanda: ci/docker/base.test.aarch64.wanda.yaml
+    array:
+      python:
+        - "3.10"
+        - "3.12"
+    env:
+      PYTHON: "{{array.python}}"
     instance_type: builder-arm64
 
   - name: oss-ci-base_build-aarch64
+    label: "wanda: oss-ci-base_build-aarch64-py{{array.python}}"
     wanda: ci/docker/base.build.aarch64.wanda.yaml
-    depends_on: oss-ci-base_test-aarch64
+    array:
+      python:
+        - "3.10"
+        - "3.12"
     env:
-      PYTHON: "3.10"
-    instance_type: builder-arm64
-
-  - name: oss-ci-base_test-aarch64-py312
-    wanda: ci/docker/base.test.aarch64-py312.wanda.yaml
-    instance_type: builder-arm64
-
-  - name: oss-ci-base_build-aarch64-py312
-    wanda: ci/docker/base.build.aarch64-py312.wanda.yaml
-    depends_on: oss-ci-base_test-aarch64-py312
-    env:
-      PYTHON: "3.12"
+      PYTHON: "{{array.python}}"
+    depends_on: oss-ci-base_test-aarch64($)
     instance_type: builder-arm64
 
   - name: oss-ci-base_ml-multipy
