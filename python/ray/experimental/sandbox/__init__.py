@@ -14,7 +14,6 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
-from ray.experimental.sandbox.pool import SandboxPool
 from ray.experimental.sandbox.sandbox import Sandbox
 
 
@@ -49,7 +48,6 @@ __all__ = [
     "create",
     "create_async",
     "Sandbox",
-    "SandboxPool",
     "SandboxConfig",
     "GVisorSandboxConfig",
     "ExecResult",
