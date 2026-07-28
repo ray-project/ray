@@ -203,8 +203,8 @@ def _setup_serve_metric_cluster(request, ray_start_cluster):
 )
 def test_serve_metric_cardinality(_setup_serve_metric_cluster, cardinality_level):
     """A metric carrying ReplicaId collapses to one node-level series with both
-    WorkerId and ReplicaId dropped and the values summed, at every level except
-    legacy."""
+    WorkerId and ReplicaId dropped and the values summed, at the low level only.
+    Legacy and recommended keep the per-replica series."""
     prom_address = _setup_serve_metric_cluster
 
     def _validate():
@@ -213,17 +213,17 @@ def test_serve_metric_cardinality(_setup_serve_metric_cluster, cardinality_level
             "ray_test_serve_replica_running"
         )
         assert samples, "Serve metric not found in samples"
-        if cardinality_level == "legacy":
-            assert len(samples) == 2, f"Expected 2 per-replica series, got {samples}"
-            for sample in samples:
-                assert sample.labels.get(WORKER_ID_TAG_KEY) is not None
-                assert sample.labels.get(REPLICA_ID_TAG_KEY) is not None
-        else:
+        if cardinality_level == "low":
             assert len(samples) == 1, f"Expected 1 node-level series, got {samples}"
             sample = samples[0]
             assert sample.labels.get(WORKER_ID_TAG_KEY) is None
             assert sample.labels.get(REPLICA_ID_TAG_KEY) is None
             assert sample.value == 6.0, f"Expected summed 6.0, got {sample.value}"
+        else:
+            assert len(samples) == 2, f"Expected 2 per-replica series, got {samples}"
+            for sample in samples:
+                assert sample.labels.get(WORKER_ID_TAG_KEY) is not None
+                assert sample.labels.get(REPLICA_ID_TAG_KEY) is not None
 
     wait_for_assertion(_validate, timeout=30, retry_interval_ms=1000)
 
@@ -257,9 +257,11 @@ def test_unit_legacy_drops_nothing(set_level):
     assert _drop("vllm_foo", _SERVE_TAGS) == []
 
 
-@pytest.mark.parametrize("level", ["recommended", "low"])
-def test_unit_serve_metric_drops_worker_and_replica_id(set_level, level):
-    set_level(level)
+def test_unit_serve_metric_drops_ids_at_low_only(set_level):
+    # recommended keeps the tags; only low collapses per-replica series.
+    set_level("recommended")
+    assert _drop("vllm_foo", _SERVE_TAGS) == []
+    set_level("low")
     assert _drop("vllm_foo", _SERVE_TAGS) == [WORKER_ID_TAG_KEY, REPLICA_ID_TAG_KEY]
 
 
@@ -282,7 +284,7 @@ def test_unit_tasks_actors_follow_existing_rules(set_level):
 
 def test_unit_name_only_call_is_not_cached(set_level):
     # A call without tag_keys must not poison the cache for a Serve metric.
-    set_level("recommended")
+    set_level("low")
     assert _drop("vllm_foo", None) == []
     assert _drop("vllm_foo", _SERVE_TAGS) == [WORKER_ID_TAG_KEY, REPLICA_ID_TAG_KEY]
 

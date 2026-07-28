@@ -31,11 +31,11 @@ class MetricCardinality(str, Enum):
 
     - LEGACY: Keep all labels. This is the default behavior.
     - RECOMMENDED: Drop WorkerId from the metrics Ray marks as high cardinality
-    (tasks, actors). Also drop WorkerId and ReplicaId from Serve metrics (any
-    series that carries a ReplicaId tag), collapsing per-replica series to the
-    node level. Other metrics are untouched.
+    (tasks, actors). Serve metrics and other metrics are untouched.
     - LOW: Same as RECOMMENDED, and additionally drop the Name label for tasks
-    and actors.
+    and actors, and drop WorkerId and ReplicaId from Serve metrics (any series
+    that carries a ReplicaId tag), collapsing per-replica series to the node
+    level.
     """
 
     LEGACY = "legacy"
@@ -93,11 +93,11 @@ class MetricCardinality(str, Enum):
         """Get the high cardinality labels to drop for one metric.
 
         LEGACY drops nothing. Otherwise:
-        - A Serve metric (a series that carries the ReplicaId tag) drops both
-          WorkerId and ReplicaId, so per-replica series collapse to the node
-          level.
         - The metrics Ray marks as high cardinality (tasks, actors) drop
           WorkerId, and additionally Name at the LOW level.
+        - At the LOW level only, a Serve metric (a series that carries the
+          ReplicaId tag) drops both WorkerId and ReplicaId, so per-replica
+          series collapse to the node level.
         Every other metric is left untouched.
 
         Args:
@@ -114,13 +114,15 @@ class MetricCardinality(str, Enum):
 
         level = MetricCardinality.get_cardinality_level()
         labels: List[str] = []
-        if level != MetricCardinality.LEGACY:
-            if tag_keys is not None and REPLICA_ID_TAG_KEY in tag_keys:
-                labels = [WORKER_ID_TAG_KEY, REPLICA_ID_TAG_KEY]
-            elif metric_name in MetricCardinality.get_high_cardinality_metrics():
+        if metric_name in MetricCardinality.get_high_cardinality_metrics():
+            if level != MetricCardinality.LEGACY:
                 labels = [WORKER_ID_TAG_KEY]
                 if level == MetricCardinality.LOW:
                     labels.append(TASK_OR_ACTOR_NAME_TAG_KEY)
+        elif level == MetricCardinality.LOW and (
+            tag_keys is not None and REPLICA_ID_TAG_KEY in tag_keys
+        ):
+            labels = [WORKER_ID_TAG_KEY, REPLICA_ID_TAG_KEY]
 
         # Skip caching when tag_keys is unknown so a name-only call cannot poison
         # the entry for a Serve metric whose ReplicaId tag was not yet visible.
