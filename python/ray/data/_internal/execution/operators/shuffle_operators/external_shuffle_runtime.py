@@ -480,15 +480,15 @@ class ShuffleManager:
 
 
 @ray.remote(num_cpus=0)
-def _cleanup_shuffle_dir(base_dir: str, expected_node_id: str) -> None:
-    """Best-effort ``rmtree`` of a per-shuffle ``base_dir``. Submitted with
-    ``NodeAffinity(soft=True)``, so we might land off-target; no-op in that
-    case."""
+def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str, expected_node_id: str) -> None:
+    """Best-effort ``rmtree`` of this shuffle's map + reduce staging dirs.
+    NodeAffinity(soft=True) may land us off-target; no-op then."""
     if ray.get_runtime_context().get_node_id() != expected_node_id:
         return
     import shutil
 
-    shutil.rmtree(base_dir, ignore_errors=True)
+    shutil.rmtree(map_dir, ignore_errors=True)
+    shutil.rmtree(reduce_dir, ignore_errors=True)
 
 
 # =============================================================================
@@ -541,7 +541,7 @@ class _ShuffleConnection:
         self,
         sources: List[Tuple[str, List[Tuple[int, int]]]],
         out_file_obj: "_PwriteSink",
-        chunk_size: int = 64 * 1024,
+        chunk_size: int = 4 * 1024 * 1024,
     ) -> None:
         """Single FETCH whose entire response streams into ``out_file_obj``
         as a flat sequence of ``(u32 len + ipc_bytes)*`` records, one record
@@ -664,9 +664,12 @@ class ShuffleHandle(TypedDict, total=False):
     """
 
     path: str
-    # each partition can have multiple ranges, thus index field is like:
-    # [partition id, [(offset0, length0), (offset1, length1), ...]
-    index: Dict[int, List[Tuple[int, int]]]
+    # CSR per-partition range index (3 int64 arrays; see _index_to_csr).
+    # Partition ``p``: ``zip(index_off[a:b], index_len[a:b])``,
+    # ``a=index_part_start[p]``, ``b=index_part_start[p+1]``.
+    index_off: "np.ndarray"
+    index_len: "np.ndarray"
+    index_part_start: "np.ndarray"
     shuffle_id: str
     node_id: str
     token: str
@@ -788,7 +791,16 @@ class _PwriteSink:
         total = 0
         n_total = len(mv)
         while total < n_total:
-            total += os.pwrite(self._fd, mv[total:], self._pos + total)
+            n = os.pwrite(self._fd, mv[total:], self._pos + total)
+            if n <= 0:
+                # POSIX pwrite of a nonzero buffer should return >0 or raise;
+                # 0 can happen on some FUSE / network filesystems and would
+                # spin this loop forever.
+                raise OSError(
+                    f"pwrite returned {n} on fd {self._fd} "
+                    f"(offset={self._pos + total}, remaining={n_total - total})"
+                )
+            total += n
         self._pos += total
         return total
 
@@ -937,38 +949,72 @@ def _chunk_members_by_bytes(
 
 
 # fetch helpers
+def _handle_batch_size(handles, batch_bytes):
+    """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
+
+    Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 16
+    bytes of CSR arrays), so in-flight handle memory stays constant regardless
+    of #mappers/#partitions.
+    """
+    if not handles:
+        return 1
+    probe = handles[0]
+    if not isinstance(probe, dict):
+        probe = ray.get(probe)
+    try:
+        npart = int(probe.get("num_partitions") or len(probe["index_part_start"]) - 1)
+    except Exception:
+        npart = 1
+    per_handle = max(1, npart * 16)
+    return max(1, min(len(handles), batch_bytes // per_handle))
+
+
 def _handles_to_sources(
     handles: List["ShuffleHandle"],
     partition_id: int,
+    batch_bytes: int = 64 * 1024 * 1024,
 ) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
     """Extract per-partition source refs from a reducer's input handles.
 
-    Skips handles that produced zero bytes for this partition. Also picks
-    the first non-None output schema (for the empty-partition fallback).
+    Resolves handle refs in ≈``batch_bytes`` batches, slices this partition's
+    ranges out of each handle's CSR arrays, then frees the batch — so in-flight
+    handle memory stays constant, not O(maps × partitions). Skips handles with
+    zero bytes for this partition; picks the first non-None schema.
     """
-    # Batch-resolve all ObjectRefs up front — sequential ray.get in the
-    # loop below would cost one round-trip per mapper.
-    refs = [h for h in handles if not isinstance(h, dict)]
-    if refs:
-        resolved = iter(ray.get(refs))
-        handles = [h if isinstance(h, dict) else next(resolved) for h in handles]
-
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None
-    for h in handles:
-        if output_schema is None:
-            output_schema = h.get("schema")
-        ranges = h["index"].get(partition_id) or []
-        if ranges:
-            sources.append(
-                _SourceRef(
-                    shuffle_id=h["shuffle_id"],
-                    node_id=h["node_id"],
-                    token=h["token"],
-                    path=h["path"],
-                    ranges=ranges,
+    if not handles:
+        return sources, output_schema
+
+    k = _handle_batch_size(handles, batch_bytes)
+    for start in range(0, len(handles), k):
+        batch = handles[start : start + k]
+        refs = [h for h in batch if not isinstance(h, dict)]
+        vals = iter(ray.get(refs)) if refs else iter(())
+        resolved = [h if isinstance(h, dict) else next(vals) for h in batch]
+        for h in resolved:
+            if output_schema is None:
+                output_schema = h.get("schema")
+            # CSR slice: only this partition's ranges materialize as Python
+            # objects; the rest stay as (zero-copy) numpy buffers.
+            ps = h["index_part_start"]
+            s = int(ps[partition_id])
+            e = int(ps[partition_id + 1])
+            if e > s:
+                offs = h["index_off"][s:e].tolist()
+                lens = h["index_len"][s:e].tolist()
+                sources.append(
+                    _SourceRef(
+                        shuffle_id=h["shuffle_id"],
+                        node_id=h["node_id"],
+                        token=h["token"],
+                        path=h["path"],
+                        ranges=list(zip(offs, lens)),
+                    )
                 )
-            )
+        # Free this batch's resolved handles before resolving the next, so
+        # in-flight handle memory stays ≈ batch_bytes regardless of #mappers.
+        del resolved, vals
     return sources, output_schema
 
 
