@@ -48,7 +48,7 @@ class IntRanker(Ranker[int]):
         resource_manager: ResourceManager,
     ) -> int:
         """Return integer ranking."""
-        return int(resource_manager.get_op_usage(op).object_store_memory)
+        return resource_manager.get_op_usage(op).object_store_memory
 
 
 def test_generic_types():
