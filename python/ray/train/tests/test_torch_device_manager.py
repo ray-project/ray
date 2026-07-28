@@ -20,8 +20,14 @@ from ray.air._internal.device_manager import (
 from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 from ray.cluster_utils import Cluster
 from ray.train import ScalingConfig, TrainingFailedError
+from ray.train._internal.worker_group import WorkerGroup
 from ray.train.torch import TorchTrainer
-from ray.train.torch.config import _validate_tpu_resources
+from ray.train.torch.config import (
+    TorchConfig,
+    _set_torch_distributed_env_vars,
+    _TorchBackend,
+    _validate_tpu_resources,
+)
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if NPU_TORCH_PACKAGE_AVAILABLE:
@@ -154,6 +160,28 @@ def test_npu_device_manager(ray_2_node_2_npus):
         # but the torch npu is actually not available
         with pytest.raises(TrainingFailedError):
             trainer.fit()
+
+
+def test_torch_backend_with_v1_worker_group():
+    worker_group = MagicMock(spec=WorkerGroup)
+    worker_group.get_resources_per_worker.return_value = {}
+    worker_group.execute_single.return_value = ("127.0.0.1", 1234)
+    worker_group.__len__.return_value = 1
+
+    backend = _TorchBackend()
+    config = TorchConfig()
+    with (
+        patch.object(dist, "is_available", return_value=True),
+        patch.object(ray, "get"),
+    ):
+        backend.on_start(worker_group, config)
+
+    executed_functions = [call.args[0] for call in worker_group.execute.call_args_list]
+    assert _set_torch_distributed_env_vars not in executed_functions
+
+    worker_group.execute.reset_mock()
+    backend.on_training_start(worker_group, config)
+    worker_group.execute.assert_called_once_with(_set_torch_distributed_env_vars)
 
 
 @pytest.mark.skipif(
