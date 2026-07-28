@@ -3,9 +3,10 @@ from __future__ import annotations
 import bisect
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, List, Optional, Tuple, cast
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ChunkMetadata,
     ParquetRowGroupChunkMetadata,
     create_chunk_metadata,
 )
@@ -217,26 +218,30 @@ class OnlineBinPacker:
         # (With splitting off the item is a single unit, so this reduces to the
         # original Next Fit.)
         cap = self._cap
-        if self._heavy_path != item.path:
+        if self._heavy_path != item.path or self._heavy_bin is None:
             if self._heavy_bin is not None:
                 self._output.append(self._heavy_bin.seal())
-            self._heavy_path, self._heavy_bin = item.path, _OpenBin()
+            self._heavy_path = item.path
+            self._heavy_bin = _OpenBin()
+        heavy_bin = self._heavy_bin
         units = self._units(item)
         prefix = _prefix_sums(units)
         start = 0
         while start < len(units):
-            end = _largest_prefix_fit(prefix, start, cap - self._heavy_bin.used_bytes)
+            end = _largest_prefix_fit(prefix, start, cap - heavy_bin.used_bytes)
             if end == start:  # nothing fits the open bin
-                if self._heavy_bin.items:  # seal it and retry on a fresh bin
-                    self._output.append(self._heavy_bin.seal())
-                    self._heavy_bin = _OpenBin()
+                if heavy_bin.items:  # seal it and retry on a fresh bin
+                    self._output.append(heavy_bin.seal())
+                    heavy_bin = _OpenBin()
+                    self._heavy_bin = heavy_bin
                     continue
                 end = start + 1  # empty bin, lone unit > cap -> relaxation
-            self._heavy_bin.add(_subitem(item, len(units), start, end))
+            heavy_bin.add(_subitem(item, len(units), start, end))
             start = end
             if start < len(units):  # remnant remains -> bin is full, seal
-                self._output.append(self._heavy_bin.seal())
-                self._heavy_bin = _OpenBin()
+                self._output.append(heavy_bin.seal())
+                heavy_bin = _OpenBin()
+                self._heavy_bin = heavy_bin
 
     # === Draining ===
 
@@ -286,4 +291,9 @@ class OnlineBinPacker:
                     uncompressed_size=size_by_path[path],
                 )
             )
-        return FileManifest.construct_manifest(paths, sizes, chunk_metadatas)
+        # TypedDict invariance: ``ParquetRowGroupChunkMetadata`` has extra keys
+        # beyond the empty ``ChunkMetadata`` base, so the concrete list is not
+        # assignable to ``List[Optional[ChunkMetadata]]`` without a cast.
+        return FileManifest.construct_manifest(
+            paths, sizes, cast(List[Optional[ChunkMetadata]], chunk_metadatas)
+        )

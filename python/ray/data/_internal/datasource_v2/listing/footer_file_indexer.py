@@ -28,17 +28,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Footer-reading actors spread across the cluster, provisioned **per ListFiles
-# task**. Footer reads are network-bound, so several actors each driving many
-# concurrent reads keeps IO from bottlenecking on a single node. ``ListFiles``
-# shards user-supplied paths across parallel listing tasks, so a read that hands
-# in many explicit paths stands up this many actors per shard -- lower it for
-# those, rather than assuming it is a cluster-wide total.
+# A pool of footer-reading actors spread across the cluster, provisioned once
+# per ``list_files`` call. Footer reads are network-bound, so several actors each
+# driving many concurrent reads keeps IO from bottlenecking on a single node.
 _DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 32)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
 _DEFAULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", 10)
+# ``FileChunks`` per streamed result. The driver pays one object-store fetch per
+# yielded list, so a large directory costs one fetch per file at ``1``. Raising
+# it trades a little latency-to-first-chunk for far fewer driver-side fetches.
+_DEFAULT_RESULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE", 1)
 # Max in-flight footer batches. ``0`` -> auto (``num_actors * 2``). A smaller
 # window reads fewer footers before an early ``limit`` stop cancels the pool, at
 # the cost of less pipelining on full reads.
@@ -74,6 +75,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         split_coalesced: bool = False,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
+        result_batch_size: Optional[int] = None,
         max_inflight_batches: Optional[int] = None,
         max_shared_open_bins: Optional[int] = None,
     ):
@@ -84,12 +86,21 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         self._coalesce_bytes = coalesce_bytes
         self._split_coalesced = split_coalesced
-        self._num_actors = _DEFAULT_NUM_ACTORS
+        # Re-read at construction so ``monkeypatch.setenv`` / release-test env
+        # overrides work after this module has already been imported.
+        self._num_actors = env_integer(
+            "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", _DEFAULT_NUM_ACTORS
+        )
         self._io_concurrency = (
             io_concurrency if io_concurrency is not None else _DEFAULT_IO_CONCURRENCY
         )
         self._footer_batch_size = (
             footer_batch_size if footer_batch_size is not None else _DEFAULT_BATCH_SIZE
+        )
+        self._result_batch_size = (
+            result_batch_size
+            if result_batch_size is not None
+            else _DEFAULT_RESULT_BATCH_SIZE
         )
         # In-flight footer-batch window; 0/None -> auto (``num_actors * 2``).
         _inflight = (
@@ -107,7 +118,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
     @property
     def yields_read_units(self) -> bool:
         # list_files already emits bin-packed read units, so ListFiles skips the
-        # partitioner. Packing is per listing task, not global.
+        # partitioner and lists in a single task (global packing + one pool).
         return True
 
     def list_files(
@@ -147,6 +158,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             yield from self._read_and_pack(actors, file_infos, max_bin_bytes, limit)
         finally:
             for actor in actors:
+                # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
+                # pyrefly: ignore[bad-argument-type]
                 ray.kill(actor)
 
     def _read_and_pack(
@@ -176,9 +189,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             if batch is None:
                 return False
             actor: ActorProxy[FooterReader] = actors[batch_no % len(actors)]
-            gen: ray.ObjectRefGenerator = actor.read_footers.options(
-                num_returns="streaming"
-            ).remote(batch)
+            # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``.
+            # pyrefly: ignore[bad-assignment]
+            gen: ray.ObjectRefGenerator = actor.read_footers.remote(
+                batch, result_batch_size=self._result_batch_size
+            )
             pending.append(gen)
             batch_no += 1
             return True

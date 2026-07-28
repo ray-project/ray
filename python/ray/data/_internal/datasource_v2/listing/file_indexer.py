@@ -42,7 +42,8 @@ class FileIndexer(ABC):
         manifests that still need size-balanced partitioning downstream. An
         indexer that bin-packs internally (e.g. the footer-based Parquet indexer,
         which reads footers and packs row groups into ~one-block manifests)
-        returns ``True``; ``ListFiles`` then skips the partitioner.
+        returns ``True``; ``ListFiles`` then skips the partitioner and runs
+        listing as a single task so packing sees the whole file stream.
         """
         return False
 

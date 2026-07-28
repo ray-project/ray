@@ -209,6 +209,7 @@ class FooterReader:
         row_groups = coalesce_row_groups(per_rg, self.coalesce_bytes)
         return FileChunks(path=path, size=size, row_groups=row_groups)
 
+    @ray.method(num_returns="streaming")
     def read_footers(
         self, files: List[Tuple[str, int]], *, result_batch_size: int = 1
     ) -> Iterator[List[FileChunks]]:
@@ -216,8 +217,11 @@ class FooterReader:
 
         Yields lists of ``FileChunks`` (not single results): each list the driver
         receives costs one object-store fetch, so batching cuts driver-side
-        deserialization overhead ~``result_batch_size``-fold. Call with
-        ``num_returns="streaming"`` so results stream out as footers land.
+        deserialization overhead ~``result_batch_size``-fold. At the default of
+        ``1`` a directory of N files costs N fetches on the single listing task;
+        callers set it via ``RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE``.
+        ``num_returns`` is fixed to ``"streaming"`` via ``@ray.method`` so
+        results stream out as footers land.
         """
         futures = [
             self.pool.submit(self._read_and_chunk, path, size) for path, size in files

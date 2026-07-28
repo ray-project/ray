@@ -155,6 +155,8 @@ def sample_files(
         pruners=pruners or [],
         preserve_order=True,
     ):
+        if file_info.size is None:
+            continue
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
         if len(sampled_paths) >= max_files:

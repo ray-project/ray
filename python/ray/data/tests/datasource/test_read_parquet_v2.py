@@ -197,9 +197,9 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
 
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path))
-    assert isinstance(
-        ds._logical_plan.dag.input_dependencies[0].file_indexer, FooterFileIndexer
-    )
+    list_files_before = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_before, ListFiles)
+    assert isinstance(list_files_before.file_indexer, FooterFileIndexer)
 
     dag = _optimized_count_plan(ds).dag
 
@@ -223,6 +223,7 @@ def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path), **read_kwargs)
     original = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(original, ListFiles)
 
     (rebuilt,) = [
         op for op in _walk(_optimized_count_plan(ds).dag) if isinstance(op, ListFiles)

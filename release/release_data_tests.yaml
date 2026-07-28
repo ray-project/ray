@@ -366,15 +366,20 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        # imagenet parquet: 7416 single-row-group files of ~8.15 MiB. The V1
-        # partitioner sized buckets off a 5x encoding-ratio estimate, which
-        # over-counts for already-compressed image bytes, so it landed on ~4
-        # files (~31 MB) per block. The footer path measures the real bytes, so
-        # the default budget produces ~66 MB blocks -- 2x coarser. With
-        # ``equal=True`` the splitter buffers whole blocks, so coarser blocks
-        # mean more read-ahead is thrown away when the consumers stop. 36 MiB
-        # reproduces the ~4-files-per-block granularity.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=37748736
+        # imagenet parquet: 7416 single-row-group files of ~8.15 MiB, listed on
+        # one task. ListFiles dominates this test, and its cost tracks the number
+        # of results the driver pulls back rather than the footer IO itself: at
+        # the default result batch of 1 the listing task pays one object-store
+        # fetch per file (7.4k of them). Batching 50 files per actor call and per
+        # streamed result cuts that to ~149 fetches.
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50
+        - RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50
+        # imagenet does not compress (uncompressed/on-disk = 1.00), so the V1
+        # partitioner's 5x encoding estimate over-counted by 5x and it landed on
+        # ~4 files (~31 MB) per block. Matching that granularity was tried at
+        # 36 MiB and made things worse -- it doubles the block count, and block
+        # generation is ~4 ms per manifest block. Left at the default.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 300
     wait_for_nodes:
@@ -463,11 +468,10 @@
     byod:
       post_build_script: byod_install_mosaicml.sh
       runtime_env:
-        # This benchmark hands in 200 explicit parquet paths, so ListFiles
-        # shards them into 200 tasks of one path each. The footer reader pool is
-        # provisioned per listing task, so the default would stand up 32 actors
-        # to read a single footer. One actor per task is all this shape needs.
-        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=1
+        # This benchmark hands in 200 explicit parquet paths, listed on a single
+        # task. At the default footer batch size of 10 that is 20 batches, so
+        # actors past the 20th are provisioned and never dispatched to.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=20
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
