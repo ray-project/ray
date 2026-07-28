@@ -403,7 +403,9 @@ def get_num_ready_tpu_slices(
         tpu_resource_per_chip = int(
             os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
         )
-    intact_slices = _get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip)
+    intact_slices = _get_intact_tpu_slices(
+        topology, accelerator_type, tpu_resource_per_chip
+    )
     if not intact_slices:
         return 0
 
@@ -465,7 +467,9 @@ def get_num_tpu_slices(
         tpu_resource_per_chip = int(
             os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
         )
-    return len(_get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip))
+    return len(
+        _get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip)
+    )
 
 
 @PublicAPI(stability="alpha")
