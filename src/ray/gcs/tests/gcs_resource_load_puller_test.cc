@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_resource_load_puller.h"
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,7 +24,6 @@
 #include "absl/synchronization/mutex.h"
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
-#include "ray/common/test_utils.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
@@ -98,6 +98,13 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
         "GcsResourceLoadPullerTest.pull");
   }
 
+  void FlushPullThread() {
+    std::promise<void> done;
+    pull_io_thread_.GetIoService().post([&done]() { done.set_value(); },
+                                        "GcsResourceLoadPullerTest.flush");
+    done.get_future().get();
+  }
+
   InstrumentedIOContextWithThread pull_io_thread_;
   absl::Mutex mutex_;
   absl::flat_hash_map<NodeID, std::shared_ptr<MockRayletClient>> clients_;
@@ -113,19 +120,14 @@ TEST_F(GcsResourceLoadPullerTest, DisconnectsRayletsThatLeftTheSnapshot) {
   auto puller = MakePuller();
 
   PullOnPullThread(*puller, {AddressOf(node1), AddressOf(node2)});
-  ASSERT_TRUE(WaitForCondition(
-      [&]() {
-        return ClientFor(node1)->NumCalls() == 1 && ClientFor(node2)->NumCalls() == 1;
-      },
-      10000));
+  FlushPullThread();
+  EXPECT_EQ(ClientFor(node1)->NumCalls(), 1);
+  EXPECT_EQ(ClientFor(node2)->NumCalls(), 1);
 
   PullOnPullThread(*puller, {AddressOf(node2)});
-  ASSERT_TRUE(
-      WaitForCondition([&]() { return ClientFor(node2)->NumCalls() == 2; }, 10000));
-
   PullOnPullThread(*puller, {AddressOf(node1), AddressOf(node2)});
-  ASSERT_TRUE(
-      WaitForCondition([&]() { return ClientFor(node1)->NumCalls() == 2; }, 10000));
+  FlushPullThread();
+  EXPECT_EQ(ClientFor(node1)->NumCalls(), 2);
   EXPECT_EQ(FactoryCalls(node1), 2);
   EXPECT_EQ(FactoryCalls(node2), 1);
 }
