@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 
 from ray_release.exception import (
+    RETRYABLE_EXIT_CODES,
     ExitCode,
     ReleaseTestConfigError,
     ReleaseTestError,
@@ -65,6 +66,40 @@ def test_update_result_from_exception():
         assert result.return_code == ExitCode.SETUP_ERROR.value
         assert result.status == ResultStatus.INFRA_ERROR.value
         assert result.runtime == 3600
+
+
+def test_retryable_exit_codes_are_infra_only():
+    assert RETRYABLE_EXIT_CODES == {
+        ExitCode.SETUP_ERROR,
+        ExitCode.CLUSTER_RESOURCE_ERROR,
+        ExitCode.CLUSTER_ENV_BUILD_ERROR,
+        ExitCode.CLUSTER_STARTUP_ERROR,
+        ExitCode.ANYSCALE_ERROR,
+        ExitCode.RAY_WHEELS_TIMEOUT,
+        ExitCode.CLUSTER_ENV_BUILD_TIMEOUT,
+        ExitCode.CLUSTER_STARTUP_TIMEOUT,
+        ExitCode.CLUSTER_WAIT_TIMEOUT,
+    }
+
+
+@pytest.mark.parametrize(
+    "exit_code",
+    [
+        ExitCode.SUCCESS,
+        ExitCode.UNCAUGHT,
+        ExitCode.UNSPECIFIED,
+        ExitCode.UNKNOWN,
+        ExitCode.CLI_ERROR,
+        ExitCode.CONFIG_ERROR,
+        ExitCode.FETCH_RESULT_ERROR,
+        ExitCode.COMMAND_ERROR,
+        ExitCode.COMMAND_ALERT,
+        ExitCode.COMMAND_TIMEOUT,
+        ExitCode.PREPARE_ERROR,
+    ],
+)
+def test_non_infra_exit_codes_are_not_retryable(exit_code):
+    assert exit_code not in RETRYABLE_EXIT_CODES
 
 
 if __name__ == "__main__":
