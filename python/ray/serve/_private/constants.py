@@ -3,6 +3,7 @@ import os
 from typing import List
 
 from ray._common.network_utils import get_all_interfaces_ip
+from ray._private.telemetry.metric_cardinality import MetricCardinality
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -1082,8 +1083,13 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers
 # like replica IDs from controller-emitted metrics.
+#
+# The default follows the cluster-wide RAY_metric_cardinality_level: the `low`
+# level drops these tags, matching how `low` reduces other Serve metrics. Setting
+# this env var explicitly overrides the level.
 RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
-    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", "1"
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+    "0" if MetricCardinality.get_cardinality_level() == MetricCardinality.LOW else "1",
 )
 
 # Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
