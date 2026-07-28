@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Union
 
-from ray.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig
 
 
 class SandboxStatus(Enum):

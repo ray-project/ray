@@ -1,6 +1,6 @@
-from ray.sandbox.backend.base import SandboxStatus
-from ray.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.sandbox.config import GVisorSandboxConfig
+from ray.experimental.sandbox.backend.base import SandboxStatus
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.config import GVisorSandboxConfig
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
@@ -30,8 +30,9 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     assert backend.get_status(sandbox_id) == SandboxStatus.TERMINATED
 
 
-def test_gvisor_factory_registration():
-    from ray.sandbox.backend.factory import SandboxBackendFactory
+def test_create_sandbox_helper():
+    from ray.experimental.sandbox import create
 
-    backend = SandboxBackendFactory.get_backend("gvisor")
-    assert isinstance(backend, GVisorSandboxBackend)
+    sb = create(work_dir="/workspace")
+    assert sb.config.work_dir == "/workspace"
+    assert sb.config.runsc_path == "runsc"
