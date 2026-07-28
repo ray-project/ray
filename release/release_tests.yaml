@@ -2317,7 +2317,6 @@
     anyscale_sdk_2026: true
     byod:
       type: gpu
-      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
