@@ -10585,5 +10585,115 @@ def test_cross_app_shutdown_survives_application_reconcile(
     assert dsm.is_ready_for_shutdown()
 
 
+def _scale_to(dsm, ds, num_replicas, version="1", ticks=14):
+    """Change membership via the public deploy path and settle back to HEALTHY."""
+    info, _ = deployment_info(num_replicas=num_replicas, version=version)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    for _ in range(ticks):
+        dsm.update()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        if (
+            ds._curr_status_info.status == DeploymentStatus.HEALTHY
+            and ds._replicas.count(states=[ReplicaState.STARTING]) == 0
+        ):
+            dsm.update()
+            return
+    raise AssertionError(
+        "deployment never settled: status=%s running=%d starting=%d"
+        % (
+            ds._curr_status_info.status,
+            ds._replicas.count(states=[ReplicaState.RUNNING]),
+            ds._replicas.count(states=[ReplicaState.STARTING]),
+        )
+    )
+
+
+class CountingRankManager(ds_mod.DeploymentRankManager):
+    """Real rank manager that records how often the consistency pass runs.
+
+    Injected at the same seam the fixture uses for actor wrappers, so the rank logic under
+    test stays real; only the call count is added.
+    """
+
+    instances = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.consistency_calls = 0
+        CountingRankManager.instances.append(self)
+
+    def check_rank_consistency_and_reassign_minimally(self, active_replicas):
+        self.consistency_calls += 1
+        return super().check_rank_consistency_and_reassign_minimally(active_replicas)
+
+
+@pytest.fixture
+def rank_gate_dsm(mock_deployment_state_manager, monkeypatch):
+    """A running deployment whose rank manager counts consistency passes."""
+    CountingRankManager.instances = []
+    monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    info, v1 = deployment_info(num_replicas=3, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()  # STARTING -> RUNNING
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+    # Settle: the deployment reaches HEALTHY a tick or two after the replicas do, and the
+    # gate legitimately runs once for this membership. Tests measure from after that.
+    for _ in range(8):
+        dsm.update()
+    assert ds._curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        ds._rank_manager.consistency_calls >= 1
+    ), "gate never ran for a new membership"
+    return dsm, ds, ds._rank_manager, timer
+
+
+class TestRankConsistencyMembershipGate:
+    """The rank-consistency pass runs only when replica membership changes."""
+
+    def test_skips_while_membership_unchanged(self, rank_gate_dsm):
+        dsm, _, rank_manager, _ = rank_gate_dsm
+        after_startup = rank_manager.consistency_calls
+        for _ in range(5):
+            dsm.update()
+        assert rank_manager.consistency_calls == after_startup
+
+    def test_reruns_when_a_replica_leaves(self, rank_gate_dsm):
+        dsm, ds, rank_manager, timer = rank_gate_dsm
+        before = rank_manager.consistency_calls
+
+        # Membership change through the public path: scale up adds a new replica id.
+        _scale_to(dsm, ds, 4)
+
+        assert rank_manager.consistency_calls > before
+
+    def test_starting_replicas_skip_the_pass(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """A STARTING replica has no rank yet, so running the pass would raise
+        "active keys without ranks"; the guard must skip before that."""
+        CountingRankManager.instances = []
+        monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=2, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()  # replicas are STARTING, never marked ready
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        assert ds._rank_manager.consistency_calls == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
