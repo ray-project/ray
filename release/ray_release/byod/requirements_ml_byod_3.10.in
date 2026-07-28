@@ -28,6 +28,9 @@ numpy
 openai-whisper
 openskill
 orjson
+# peft is pulled in by lm_eval; 0.17.x imports HybridCache, removed in
+# transformers 5.x, breaking `import transformers` at runtime.
+peft>=0.18
 petastorm
 protobuf
 pyarrow

@@ -4379,10 +4379,12 @@ patsy==1.0.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   statsmodels
-peft==0.17.1 \
-    --hash=sha256:3d129d64def3d74779c32a080d2567e5f7b674e77d546e3585138216d903f99e \
-    --hash=sha256:e6002b42517976c290b3b8bbb9829a33dd5d470676b2dec7cb4df8501b77eb9f
-    # via lm-eval
+peft==0.19.1 \
+    --hash=sha256:0d97542fe96dcdaa20d3b81c06f26f988618f416a73544ab23c3618ccb674a40 \
+    --hash=sha256:2113f72a81621b5913ef28f9022204c742df111890c5f49d812716a4a301e356
+    # via
+    #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
+    #   lm-eval
 petastorm==0.12.1 \
     --hash=sha256:25f7737bbbd8ebcbe6aac9546c50ee7e739902facd434c1dd2d4c6fe7c0acfe9
     # via -r release/ray_release/byod/requirements_ml_byod_3.10.in
