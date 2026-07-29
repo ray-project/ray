@@ -1,0 +1,143 @@
+# A unique identifier for the head node and workers of this cluster.
+cluster_name: default
+
+# Running Ray in Docker images is optional (this docker section can be commented out).
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled. Assumes Docker is installed.
+docker:
+    image: "rayproject/ray-ml:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
+    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+    container_name: "ray_container"
+    # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
+    # if no cached version is present.
+    pull_before_run: True
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
+
+provider:
+    type: local
+    head_ip: YOUR_HEAD_NODE_HOSTNAME
+    # You may need to supply a public ip for the head node if you need
+    # to run `ray up` from outside of the Ray cluster's network
+    # (e.g. the cluster is in an AWS VPC and you're starting ray from your laptop)
+    # This is useful when debugging the local node provider with cloud VMs.
+    # external_head_ip: YOUR_HEAD_PUBLIC_IP
+    worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+    # Optional when running automatic cluster management on prem. If you use a coordinator server,
+    # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
+    # will assign individual nodes to clusters as needed.
+    #    coordinator_address: "<host>:<port>"
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: YOUR_USERNAME
+    # You can comment out `ssh_private_key` if the following machines don't need a private key for SSH access to the Ray
+    # cluster:
+    #   (1) The machine on which `ray up` is executed.
+    #   (2) The head node of the Ray cluster.
+    #
+    # The machine that runs ray up executes SSH commands to set up the Ray head node. The Ray head node subsequently
+    # executes SSH commands to set up the Ray worker nodes. When you run ray up, ssh credentials sitting on the ray up
+    # machine are copied to the head node -- internally, the ssh key is added to the list of file mounts to rsync to head node.
+    # ssh_private_key: ~/.ssh/id_rsa
+
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+# Typically, min_workers == max_workers == len(worker_ips).
+# This field is optional.
+min_workers: TYPICALLY_THE_NUMBER_OF_WORKER_IPS
+
+# The maximum number of workers nodes to launch in addition to the head node.
+# This takes precedence over min_workers.
+# Typically, min_workers == max_workers == len(worker_ips).
+# This field is optional.
+max_workers: TYPICALLY_THE_NUMBER_OF_WORKER_IPS
+# The default behavior for manually managed clusters is
+# min_workers == max_workers == len(worker_ips),
+# meaning that Ray is started on all available nodes of the cluster.
+# For automatically managed clusters, max_workers is required and min_workers defaults to 0.
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+idle_timeout_minutes: 5
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH. E.g. you could save your conda env to an environment.yaml file, mount
+# that directory to all nodes and call `conda -n my_env -f /path1/on/remote/machine/environment.yaml`. In this
+# example paths on all nodes must be the same (so that conda can be called always with the same argument)
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
+# List of shell commands to run to set up each nodes.
+setup_commands: []
+    # If we have e.g. conda dependencies stored in "/path1/on/local/machine/environment.yaml", we can prepare the
+    # work environment on each worker by:
+    #   1. making sure each worker has access to this file i.e. see the `file_mounts` section
+    #   2. adding a command here that creates a new conda environment on each node or if the environment already exists,
+    #     it updates it:
+    #      conda env create -q -n my_venv -f /path1/on/local/machine/environment.yaml || conda env update -q -n my_venv -f /path1/on/local/machine/environment.yaml
+    #
+    # Ray developers:
+    # you probably want to create a Docker image that
+    # has your Ray repo pre-cloned. Then, you can replace the pip installs
+    # below with a git checkout <your_sha> (and possibly a recompile).
+    # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
+    # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+  # If we have e.g. conda dependencies, we could create on each node a conda environment (see `setup_commands` section).
+  # In that case we'd have to activate that env on each node before running `ray`:
+  # - conda activate my_venv && ray stop
+  # - conda activate my_venv && ulimit -c unlimited && ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray stop
+    - ulimit -c unlimited && ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+  # If we have e.g. conda dependencies, we could create on each node a conda environment (see `setup_commands` section).
+  # In that case we'd have to activate that env on each node before running `ray`:
+  # - conda activate my_venv && ray stop
+  # - ray start --address=$RAY_HEAD_IP:6379
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP:6379

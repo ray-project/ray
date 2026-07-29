@@ -1,0 +1,13 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.16xlarge
+    # Test's wait_for_nodes: 16 > 15 workers — head must count as a usable node.
+    resources:
+      CPU: 64
+
+worker_nodes:
+    - instance_type: m5.16xlarge
+      min_nodes: 15
+      max_nodes: 15
+      market_type: ON_DEMAND

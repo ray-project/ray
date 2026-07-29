@@ -1,0 +1,294 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// Plasma protocol specification
+namespace plasma.flatbuf;
+
+enum ObjectSource:int {
+  // Object was created by a worker (either task returns or `ray.put`).
+  CreatedByWorker = 0,
+  // Object was spilled and restored from external storage.
+  RestoredFromStorage,
+  // Object was received from a remote raylet.
+  ReceivedFromRemoteRaylet,
+  // The object could not be created and the raylet stored an
+  // error as the value.
+  ErrorStoredByRaylet,
+}
+
+enum MessageType:long {
+  // Message that gets send when a client hangs up.
+  PlasmaDisconnectClient = 0,
+  // Create a new object.
+  PlasmaCreateRequest,
+  PlasmaCreateRetryRequest,
+  PlasmaCreateReply,
+  PlasmaAbortRequest,
+  PlasmaAbortReply,
+  // Seal an object.
+  PlasmaSealRequest,
+  PlasmaSealReply,
+  // Get an object that is stored on the local Plasma store.
+  PlasmaGetRequest,
+  PlasmaGetReply,
+  // Release an object.
+  PlasmaReleaseRequest,
+  PlasmaReleaseReply,
+  // Delete an object.
+  PlasmaDeleteRequest,
+  PlasmaDeleteReply,
+  // See if the store contains an object (will be deprecated).
+  PlasmaContainsRequest,
+  PlasmaContainsReply,
+  // Get information for a newly connecting client.
+  PlasmaConnectRequest,
+  PlasmaConnectReply,
+  // Get debugging information from the store.
+  PlasmaGetDebugStringRequest,
+  PlasmaGetDebugStringReply,
+}
+
+enum PlasmaError:int {
+  // Operation was successful.
+  OK,
+  // Trying to create an object that already exists.
+  ObjectExists,
+  // Trying to access an object that doesn't exist.
+  ObjectNonexistent,
+  // Trying to create an object but there isn't enough memory in the store.
+  OutOfMemory,
+  // Trying to delete an object but it's not sealed.
+  ObjectNotSealed,
+  // Trying to delete an object but it's in use.
+  ObjectInUse,
+  // An unexpected error occurred during object creation, such as trying to get
+  // the result of the same request twice. This is most likely due to a system
+  // bug in the plasma store or caller.
+  UnexpectedError,
+  // Trying to abort an object but it's not sealed.
+  ObjectSealed,
+  // Trying to create an object but there isn't enough disk space.
+  OutOfDisk,
+}
+
+// Plasma store messages
+
+struct PlasmaObjectSpec {
+  // Index of the memory segment (= memory mapped file) that
+  // this object is allocated in.
+  segment_index: int;
+  // The unique id of the segment fd in case of fd reuse.
+  unique_fd_id: long;
+  // The offset in bytes in the memory mapped file of the plasma object header.
+  header_offset: ulong;
+  // The offset in bytes in the memory mapped file of the data.
+  data_offset: ulong;
+  // The size in bytes of the data.
+  data_size: ulong;
+  // The offset in bytes in the memory mapped file of the metadata.
+  metadata_offset: ulong;
+  // The size in bytes of the metadata.
+  metadata_size: ulong;
+  // The allocated size. This is just data_size + metadata_size
+  // for immutable objects, but for mutable objects, the data size
+  // and metadata size may change.
+  allocated_size: ulong;
+  // Whether this object is on a fallback allocated mmap.
+  fallback_allocated: bool;
+  // Device to create buffer on.
+  device_num: int;
+  // Whether this is an experimental mutable object that can be written
+  // multiple times by a client.
+  is_experimental_mutable_object: bool;
+}
+
+table PlasmaGetDebugStringRequest {
+}
+
+table PlasmaGetDebugStringReply {
+  // The debug string from the server.
+  debug_string: string;
+}
+
+table PlasmaCreateRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // Owner node ID of this object.
+  owner_node_id: string;
+  // Owner IP address of this object.
+  owner_ip_address: string;
+  // Owner port address of this object.
+  owner_port: int;
+  // Unique id for the owner worker.
+  owner_worker_id: string;
+  // Whether the object will be mutable.
+  is_mutable: bool;
+  // The size of the object's data in bytes.
+  data_size: ulong;
+  // The size of the object's metadata in bytes.
+  metadata_size: ulong;
+  // The source of the object (worker, raylet, etc.). Used for
+  // debug purposes.
+  source: ObjectSource;
+  // Device to create buffer on.
+  device_num: int;
+  // Try the creation request immediately. If this is not possible (due to
+  // out-of-memory), the error will be returned immediately to the client.
+  try_immediately: bool;
+}
+
+table PlasmaCreateRetryRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // The ID of the request to retry.
+  request_id: uint64;
+}
+
+table CudaHandle {
+  handle: [ubyte];
+}
+
+table PlasmaCreateReply {
+  // ID of the object that was created.
+  object_id: string;
+  // The client should retry the request if this is > 0. This
+  // is the request ID to include in the retry.
+  retry_with_request_id: uint64;
+  // The object that is returned with this reply.
+  plasma_object: PlasmaObjectSpec;
+  // Error that occurred for this call.
+  error: PlasmaError;
+  // The file descriptor in the store that corresponds to the file descriptor
+  // being sent to the client right after this message.
+  store_fd: int;
+  // The unique id of the store file descriptor in case of fd reuse.
+  unique_fd_id: long;
+  // The size in bytes of the segment for the store file descriptor (needed to
+  // call mmap).
+  mmap_size: long;
+  // CUDA IPC Handle for objects on GPU.
+  ipc_handle: CudaHandle;
+}
+
+table PlasmaAbortRequest {
+  // ID of the object to be aborted.
+  object_id: string;
+}
+
+table PlasmaAbortReply {
+  // ID of the object that was aborted.
+  object_id: string;
+}
+
+table PlasmaSealRequest {
+  // ID of the object to be sealed.
+  object_id: string;
+}
+
+table PlasmaSealReply {
+  // ID of the object that was sealed.
+  object_id: string;
+  // Error code.
+  error: PlasmaError;
+}
+
+table PlasmaGetRequest {
+  // IDs of the objects stored at local Plasma store we are getting.
+  object_ids: [string];
+  // The number of milliseconds before the request should timeout.
+  timeout_ms: long;
+}
+
+table PlasmaGetReply {
+  // IDs of the objects being returned.
+  // This number can be smaller than the number of requested
+  // objects if not all requested objects are stored and sealed
+  // in the local Plasma store.
+  object_ids: [string];
+  // Plasma object information, in the same order as their IDs. The number of
+  // elements in both object_ids and plasma_objects arrays must agree.
+  plasma_objects: [PlasmaObjectSpec];
+  // A list of the file descriptors in the store that correspond to the file
+  // descriptors being sent to the client. The length of this list is the number
+  // of file descriptors that the store will send to the client after this
+  // message.
+  store_fds: [int];
+  // List of the unique ids for store_fds above.
+  unique_fd_ids: [long];
+  // Size in bytes of the segment for each store file descriptor (needed to call
+  // mmap). This list must have the same length as store_fds.
+  mmap_sizes: [long];
+  // The number of elements in both object_ids and plasma_objects arrays must agree.
+  handles: [CudaHandle];
+}
+
+table PlasmaReleaseRequest {
+  // ID of the object to be released.
+  object_id: string;
+  // Client concerns this request may unmap a mmap region, and will wait for a reply.
+  // If false, the server should not send a PlasmaReleaseReply.
+  may_unmap: bool;
+}
+
+table PlasmaReleaseReply {
+  // ID of the object that was released.
+  object_id: string;
+  // Client should unmap the mmap section for this object_id.
+  should_unmap: bool;
+  // Error code.
+  error: PlasmaError;
+}
+
+table PlasmaDeleteRequest {
+  // The number of objects to delete.
+  count: int;
+  // ID of the object to be deleted.
+  object_ids: [string];
+}
+
+table PlasmaDeleteReply {
+  // The number of objects to delete.
+  count: int;
+  // ID of the object that was deleted.
+  object_ids: [string];
+  // Error code.
+  errors: [PlasmaError];
+}
+
+table PlasmaContainsRequest {
+  // ID of the object we are querying.
+  object_id: string;
+}
+
+table PlasmaContainsReply {
+  // ID of the object we are querying.
+  object_id: string;
+  // 1 if the object is in the store and 0 otherwise.
+  has_object: int;
+}
+
+// PlasmaConnect is used by a plasma client the first time it connects with the
+// store. This is not really necessary, but is used to get some information
+// about the store such as its memory capacity.
+
+table PlasmaConnectRequest {
+}
+
+table PlasmaConnectReply {
+  // The memory capacity of the store.
+  memory_capacity: long;
+}

@@ -1,0 +1,9 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+head_node:
+  instance_type: n2-standard-64
+  resources:
+    CPU: 85
+
+worker_nodes: []

@@ -1,0 +1,33 @@
+ubuntu@ip-172-31-52-199:~/data_processing_tests$ python -m ray.experimental.shuffle --num-cpus=32 --num-partitions=200 --partition-size=500e6 --object-store-memory=20e9
+Start a new cluster...
+2021-04-15 00:51:14,984	INFO services.py:1269 -- View the Ray dashboard at http://127.0.0.1:8265
+Map Progress.: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [03:26<00:00,  1.03s/it]
+Reduce Progress.: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [03:26<00:00,  1.03s/it]
+
+--- Aggregate object store stats across all nodes ---
+Plasma memory usage 14401 MiB, 6040 objects, 75.51% full
+Spilled 80722 MiB, 33854 objects, avg write throughput 394 MiB/s
+Restored 79363 MiB, 33284 objects, avg read throughput 4709 MiB/s
+Objects consumed by Ray tasks: 95377 MiB.
+
+Shuffled 95367 MiB in 208.47784852981567 seconds
+
+ubuntu@ip-172-31-52-199:~/data_processing_tests$ python -m ray.experimental.shuffle --num-cpus=8 --num-partitions=200 --partition-size=500e6 --object-store-memory=5e9 --num-nodes=4
+Emulating a cluster...
+Num nodes: 4
+Num CPU per node: 8
+Object store memory per node: 5000000000.0
+2021-04-15 01:14:16,310	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.52.199:6379
+Map Progress.: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [04:08<00:00,  1.24s/it]
+Reduce Progress.: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [04:08<00:00,  1.24s/it]
+
+--- Aggregate object store stats across all nodes ---
+Plasma memory usage 3459 MiB, 1451 objects, 18.14% full
+Spilled 91357 MiB, 38314 objects, avg write throughput 371 MiB/s
+Restored 87405 MiB, 36657 objects, avg read throughput 4219 MiB/s
+Objects consumed by Ray tasks: 95377 MiB.
+
+Shuffled 95367 MiB in 250.11851406097412 seconds
+2021-04-15 01:18:34,141	ERROR worker.py:928 -- print_logs: Connection closed by server.
+2021-04-15 01:18:34,143	ERROR worker.py:1087 -- listen_error_messages_raylet: Connection closed by server.
+2021-04-15 01:18:34,143	ERROR import_thread.py:88 -- ImportThread: Connection closed by server.

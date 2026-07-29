@@ -1,0 +1,91 @@
+diff --git a/deps/Makefile b/deps/Makefile
+index 3bf0363d5..ea5d12cd4 100644
+--- a/deps/Makefile
++++ b/deps/Makefile
+@@ -51,25 +51,25 @@ ifneq (,$(filter $(BUILD_TLS),yes module))
+ endif
+
+ hiredis: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd hiredis && $(MAKE) static $(HIREDIS_MAKE_FLAGS)
+
+ .PHONY: hiredis
+
+ linenoise: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd linenoise && $(MAKE)
+
+ .PHONY: linenoise
+
+ hdr_histogram: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd hdr_histogram && $(MAKE)
+
+ .PHONY: hdr_histogram
+
+ fpconv: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd fpconv && $(MAKE)
+
+ .PHONY: fpconv
+@@ -98,7 +98,7 @@ AR=ar
+ ARFLAGS=rc
+
+ lua: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd lua/src && $(MAKE) all CFLAGS="$(LUA_CFLAGS)" MYLDFLAGS="$(LUA_LDFLAGS)" AR="$(AR) $(ARFLAGS)"
+
+ .PHONY: lua
+@@ -111,7 +111,7 @@ JEMALLOC_CONFIGURE_OPTS += --host=$(DEB_HOST_GNU_TYPE)
+ endif
+
+ jemalloc: .make-prerequisites
+-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
++	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+ 	cd jemalloc && ./configure --disable-cxx --with-version=5.3.0-0-g0 --with-lg-quantum=3 --disable-cache-oblivious --with-jemalloc-prefix=je_ CFLAGS="$(JEMALLOC_CFLAGS)" LDFLAGS="$(JEMALLOC_LDFLAGS)" $(JEMALLOC_CONFIGURE_OPTS)
+ 	cd jemalloc && $(MAKE) lib/libjemalloc.a
+
+diff --git a/deps/jemalloc/Makefile.in b/deps/jemalloc/Makefile.in
+index 1193cd859..140995eb5 100644
+--- a/deps/jemalloc/Makefile.in
++++ b/deps/jemalloc/Makefile.in
+@@ -496,7 +496,7 @@ $(objroot)include/jemalloc/internal/private_namespace_jet.gen.h: $(C_JET_SYMS)
+ 	$(SHELL) $(srcroot)include/jemalloc/internal/private_namespace.sh $^ > $@
+
+ %.h: %.gen.h
+-	@if ! `cmp -s $< $@` ; then echo "cp $< $@"; cp $< $@ ; fi
++	@if ! `cmp -s $< $@` ; then cp $< $@ ; fi
+
+ $(CPP_OBJS) $(CPP_PIC_OBJS) $(TESTS_CPP_OBJS): %.$(O):
+ 	@mkdir -p $(@D)
+diff --git a/src/Makefile b/src/Makefile
+index ecbd2753d..737a14777 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -116,7 +116,7 @@ endif
+ # Override default settings if possible
+ -include .make-settings
+
+-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS)
++FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS) $(CPPFLAGS)
+ FINAL_LDFLAGS=$(LDFLAGS) $(REDIS_LDFLAGS) $(DEBUG)
+ FINAL_LIBS=-lm
+ DEBUG=-g -ggdb
+@@ -355,9 +355,9 @@ REDIS_CHECK_AOF_NAME=redis-check-aof$(PROG_SUFFIX)
+ ALL_SOURCES=$(sort $(patsubst %.o,%.c,$(REDIS_SERVER_OBJ) $(REDIS_CLI_OBJ) $(REDIS_BENCHMARK_OBJ)))
+
+ all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME) $(TLS_MODULE)
+-	@echo ""
+-	@echo "Hint: It's a good idea to run 'make test' ;)"
+-	@echo ""
++	#@echo ""
++	#@echo "Hint: It's a good idea to run 'make test' ;)"
++	#@echo ""
+
+ Makefile.dep:
+ 	-$(REDIS_CC) -MM $(ALL_SOURCES) > Makefile.dep 2> /dev/null || true

@@ -1,0 +1,16 @@
+applications:
+- name: app1
+  route_prefix: /
+  import_path: ray.serve.tests.test_config_files.use_custom_autoscaling_policy:app
+  deployments:
+  - name: CustomAutoscalingPolicy
+    num_replicas: auto
+    ray_actor_options:
+      num_cpus: 0.0
+    autoscaling_config:
+      min_replicas: 1
+      max_replicas: 2
+      upscale_delay_s: 1
+      downscale_delay_s: 2
+      policy:
+        policy_function: ray.serve.tests.test_config_files.use_custom_autoscaling_policy.custom_autoscaling_policy

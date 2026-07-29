@@ -1,0 +1,299 @@
+# Canonical Sphinx/MyST doc-build warning -> fix rules table.
+#
+# This is the single source of truth for the `sphinx-fix` skill's classify/fix
+# engine (sphinx_fix.py) and is referenced by the `rst-to-myst` skill as the
+# canonical category->fix catalog. Keep one table; do not duplicate it.
+#
+# GRAMMAR CONSTRAINT (important): sphinx_fix.py prefers PyYAML but falls back to
+# a small stdlib-only parser, so this file must stay within a restricted YAML
+# subset: 2-space indentation, block maps and block sequences only (no flow
+# `{...}`/`[...]` collections), no anchors/aliases, no `>`/`|` block scalars.
+# Write every value that contains special characters as a DOUBLE-QUOTED string,
+# and write every regex backslash as `\\` (e.g. `\\.` for a literal dot, `\\s`
+# for whitespace) so it is a valid YAML escape. The --selftest cross-checks the
+# fallback against PyYAML, so a grammar slip is caught.
+#
+# MATCH SEMANTICS: a rule "fires" when, per `match`, either any (default) or all
+# of its `categories`/`signatures` hit. `categories` test the trailing
+# `[category]` tag; `signatures` are regexes searched against the message text.
+# When several rules fire for one warning, the engine prefers a rule with a
+# signature hit over a category-only hit, then earliest in this file. Author
+# most-specific rules first.
+#
+# TIERS: 1 = fatal/abort (NOT represented as a rule -- the engine detects a
+# hard-broken build structurally from the log shape); 2 = structural/parse
+# errors that corrupt the toctree/label graph or fail a document's parse and so
+# MASK warnings beneath them (fix these first, then rebuild); 3 = plain warnings
+# that mask nothing.
+#
+# SAFETY: `mechanical` = a deterministic rewrite; `judgment` = needs a human
+# decision. v0 is human-in-the-loop and proposes both; nothing is auto-applied.
+#
+# VERSION RANGES: `version_sphinx`/`version_myst` record the versions a rule was
+# validated against. A warning from outside the range still matches but is
+# flagged `(unvalidated)`; dependency bumps are the trigger to re-confirm the
+# category strings and signatures.
+#
+# NOTE: the MyST categories below (`myst.xref_missing`, `myst.xref_ambiguous`)
+# are confirmed against real Ray RtD builds. The core-Sphinx classes
+# (toctree/orphan/duplicate-label/literalinclude) are matched by signature only
+# pending confirmation of their exact `[category]` tag on Sphinx 8.2.3; add the
+# category when confirmed. Unmatched warnings drive the skill-improvement loop.
+
+version: 1
+baseline_sphinx: "8.2.3"
+baseline_myst: "5.1.0"
+
+rules:
+  - id: myst-xref-missing-cross-extension
+    title: "Bare cross-extension link to an .rst/.md source"
+    tier: 3
+    safety: mechanical
+    match: all
+    categories:
+      - myst.xref_missing
+    signatures:
+      - "cross-reference target not found: '[^']+\\.(?:rst|md)'"
+    cause: "A bare [text](sibling.rst) or [text](sibling.md) link pointing at an .rst source. MyST flags it as a missing xref and fail_on_warning turns it into a build failure."
+    fix: "Rewrite as a {doc} role so it resolves to the document and is never ambiguous; drop the extension on the target."
+    fix_template: "{doc}`text <{target_stem}>`"
+    target_extract: "cross-reference target not found: '(?P<target>[^']+)'"
+    version_sphinx: ">=8.0,<9"
+    version_myst: ">=5.0,<6"
+    notes: "Shared with rst-to-myst Hard rule 2. target_stem = target minus its extension. On a category rename, re-validate (this rule needs the myst.xref_missing tag)."
+
+  - id: myst-xref-missing-html-fragment
+    title: "Relative .html# self-link read as a cross-reference"
+    tier: 3
+    safety: mechanical
+    match: all
+    categories:
+      - myst.xref_missing
+    signatures:
+      - "cross-reference target not found: '[^']*\\.html#"
+    cause: "A relative page.html#section URL. RST renders it, but MyST treats it as an xref target and cannot find it."
+    fix: "Rewrite as a same-page fragment link [text](#section), resolved via myst_heading_anchors (h1-h3)."
+    fix_template: "[text](#{sec})"
+    target_extract: "cross-reference target not found: '[^']*\\.html#(?P<sec>[^']+)'"
+    version_sphinx: ">=8.0,<9"
+    version_myst: ">=5.0,<6"
+    notes: "Shared with rst-to-myst Hard rule 2."
+
+  - id: myst-xref-missing-renamed-doc
+    title: "Missing MyST xref (residual: stale/renamed doc target)"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - myst.xref_missing
+    cause: "A myst.xref_missing whose target is not a cross-extension or .html# link -- usually a stale relative link to a doc that was renamed or moved (often from a sibling page)."
+    fix: "Repoint the link to the current document, preferring the {doc} role (or an extensionless target). Grep the bare stem across doc/ to find every caller."
+    fix_template: "{doc}`text <DOC>`"
+    target_extract: "cross-reference target not found: '(?P<target>[^']+)'"
+    version_sphinx: ">=8.0,<9"
+    version_myst: ">=5.0,<6"
+    notes: "Residual within the myst.xref_missing family: category-only, so it loses to the cross-extension and html-fragment rules when their signature hits."
+
+  - id: myst-xref-ambiguous
+    title: "Ambiguous extensionless link (doc and same-named label)"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - myst.xref_ambiguous
+    signatures:
+      - "(?:not unique|matches more than one)"
+    cause: "An extensionless [text](name) link where `name` is both a document and a (name)= label, so MyST cannot tell which you meant."
+    fix: "Use the {doc} role for the whole-doc link so it always resolves to the document."
+    fix_template: "{doc}`text <{target_stem}>`"
+    target_extract: "target (?:is not unique|not unique): '?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    version_myst: ">=5.0,<6"
+    notes: "Shared with rst-to-myst Hard rule 2."
+
+  - id: unknown-document
+    title: "{doc}/toctree reference to an unknown document"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - ref.doc
+    signatures:
+      - "unknown document:"
+    cause: "A {doc} role, a :doc: reference, or a toctree entry points at a document path that does not resolve -- a renamed or moved page, a typo, or a relative path that is wrong from the referencing file. Distinct from toctree-nonexisting, which is the toctree-directive-specific wording."
+    fix: "Repoint to the correct document: a path relative to the referencing page, or an absolute path from doc/source with a leading slash. Remove the reference if the target is gone. Grep the bare stem across doc/ to find every caller."
+    target_extract: "unknown document: '?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Category ref.doc confirmed on real Ray RtD builds; the tag is sometimes absent on the first emission, so the signature carries the match."
+
+  - id: toctree-nonexisting
+    title: "toctree references a nonexisting document"
+    tier: 2
+    safety: mechanical
+    match: any
+    signatures:
+      - "toctree contains reference to nonexisting document"
+    cause: "A toctree entry points at a document that does not exist -- a typo or a renamed/removed file. A broken toctree masks the warnings beneath it."
+    fix: "Fix the toctree entry (entries are extensionless) to the current document name, or remove it."
+    target_extract: "nonexisting document '?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Signature-only pending confirmation of the [category] tag on Sphinx 8.2.3."
+
+  - id: orphan-not-in-toctree
+    title: "Document not included in any toctree (orphan)"
+    tier: 3
+    safety: judgment
+    match: any
+    signatures:
+      - "document isn't included in any toctree"
+    cause: "A page that no toctree references. Sphinx warns so pages are not silently unreachable."
+    fix: "Add the page to the appropriate toctree, OR add `:orphan:` (RST) / an `orphan: true` frontmatter field (MyST) if it is intentionally standalone. Human decides which."
+    version_sphinx: ">=8.0,<9"
+    notes: "Signature-only pending [category] confirmation."
+
+  - id: duplicate-label
+    title: "Duplicate label or object description"
+    tier: 2
+    safety: judgment
+    match: any
+    signatures:
+      - "duplicate (?:label|object description)"
+    cause: "The same label (or autodoc object) is defined in two places, so references to it are ambiguous and the label graph is corrupted."
+    fix: "Dedupe -- remove or rename one definition. Which one to keep is a judgment call; preserve the name external {ref}/:ref: callers use."
+    target_extract: "duplicate (?:label|object description) (?:of )?'?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Signature-only pending [category] confirmation. The intentional ray.actor.ActorMethod.bind duplicate is pre-filtered by a suppression below."
+
+  - id: undefined-ref-label
+    title: "Undefined label in a {ref}"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - ref.ref
+    signatures:
+      - "undefined label"
+    cause: "A {ref}/:ref: points at a label that does not exist -- usually a renamed or dropped label. Label names are load-bearing for every caller."
+    fix: "Restore the exact label name (do not invent a new one), or repoint the {ref} at the correct existing label."
+    target_extract: "undefined label:?\\s+'?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Category ref.ref is a best-effort guess; signature carries the match."
+
+  - id: py-xref-target-not-found
+    title: "Python-domain reference target not found (meth/func/class/obj/exc)"
+    tier: 3
+    safety: judgment
+    match: any
+    categories:
+      - ref.meth
+      - ref.obj
+      - ref.func
+      - ref.class
+      - ref.exc
+      - ref.attr
+      - ref.mod
+      - ref.python
+    signatures:
+      - "py:\\w+ reference target not found:"
+    cause: "A Python-domain role ({meth}/{class}/{func}/{obj}/{exc}/:py:*:) points at an object not in the resolved API inventory. Two very different roots: (1) the object is documented elsewhere but its autosummary stub was not generated, or its module aborted import, so the inventory entry is missing -- these arrive as a large flood sharing an object prefix and are DOWNSTREAM symptoms, not separate defects; (2) the reference is genuinely wrong -- a renamed, moved, or mistyped target, or a stdlib/third-party name that needs intersphinx."
+    fix: "Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name."
+    target_extract: "py:\\w+ reference target not found: (?P<target>\\S+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Categories confirmed on real Ray RtD builds (ref.meth, ref.obj, ref.func, ref.python); the signature carries the rest of the py domain (ref.exc, ref.attr). safety=judgment: both the correct target and the correct root (edit one reference vs revert a restructuring) need a human decision -- never auto-apply. A correlated flood sharing an object prefix with autosummary-stub-not-found warnings is that rule's masked downstream; triage the tier-2 root, not each reference."
+
+  - id: image-not-readable
+    title: "Image file not readable"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - image.not_readable
+    signatures:
+      - "image file (?:not readable|.* not readable)"
+    cause: "An image path does not resolve from the referencing document."
+    fix: "Fix the image path (relative to the referencing page, or an absolute /_static-style path)."
+    target_extract: "image file (?:not readable|.* not readable):?\\s+(?P<target>\\S+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Category image.not_readable is a best-effort guess; signature carries the match."
+
+  - id: docutils-inline-markup
+    title: "Unbalanced inline emphasis/strong markup"
+    tier: 3
+    safety: mechanical
+    match: any
+    categories:
+      - docutils
+    signatures:
+      - "Inline .+ start-string without end-string"
+    cause: "A docstring or RST body has an unbalanced inline marker -- a lone * (emphasis) or ** (strong) with no closing marker. Common in API docstrings that write *args or **kwargs, or a bare asterisk, outside a code span. It surfaces from an <autosummary> generated stub at the docstring's location."
+    fix: "Balance or escape the marker in the source docstring, not in the generated stub: wrap literals in double backticks (``*args``, ``**kwargs``), or escape a standalone asterisk (\\*)."
+    version_sphinx: ">=8.0,<9"
+    notes: "Category docutils confirmed on real Ray RtD builds. No target extraction: the message does not carry the offending text, so locate the unbalanced marker at the cited docstring."
+
+  - id: intersphinx-inventory-unreachable
+    title: "intersphinx inventory not fetchable (network/transient)"
+    tier: 3
+    safety: judgment
+    match: any
+    signatures:
+      - "failed to reach any of the inventories"
+    cause: "Sphinx could not download an external intersphinx objects.inv (for example docs.python.org or spark.apache.org). On the RtD build network this is usually a transient connectivity failure, not a defect in the docs; with fail_on_warning it still fails the build."
+    fix: "Re-run the build first -- this is usually transient. If it persists, the inventory URL in intersphinx_mapping (conf.py) is unreachable or wrong: confirm the URL. This is not a per-page content fix."
+    version_sphinx: ">=8.0,<9"
+    notes: "Untagged (no [category]); signature-only. The URL and error detail sit on an unindented continuation line the parser does not capture as a warning record, so match on the WARNING line. safety=judgment: re-run vs investigate intersphinx_mapping is a human call."
+
+  - id: literalinclude-out-of-range
+    title: "literalinclude line/marker out of range"
+    tier: 2
+    safety: mechanical
+    match: any
+    signatures:
+      - "Line spec '[^']*' out of range"
+      - "Object named '[^']*' not found in include file"
+    cause: "A {literalinclude} :lines:/:start-after:/:end-before: no longer matches the source -- the included code moved or changed. The directive fails the document's parse."
+    fix: "Update the :lines: range or the :start-after:/:end-before: markers to match the current source file."
+    version_sphinx: ">=8.0,<9"
+    notes: "Signature-only pending [category] confirmation."
+
+  - id: autosummary-stub-not-found
+    title: "autosummary stub file not generated for a listed member"
+    tier: 2
+    safety: judgment
+    match: any
+    signatures:
+      - "autosummary: stub file not found '[^']+'\\. Check your autosummary_generate"
+    cause: "An autosummary directive lists a member whose stub .rst was never generated. A lone entry usually means the member was renamed or removed. A bulk failure across a whole module or API-ref page means autosummary could not introspect the module -- commonly the module failed to import under the build's autodoc_mock_imports set, or an in-progress API-ref restructuring moved or renamed the source. It is a tier-2 structural condition: the ungenerated stubs mask the py:* reference-target-not-found warnings for the same objects (see py-xref-target-not-found)."
+    fix: "Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry."
+    target_extract: "stub file not found '(?P<target>[^']+)'"
+    version_sphinx: ">=8.0,<9"
+    notes: "Untagged core-Sphinx warning (no [category]); signature-only. Seen at scale in a Ray API-ref rework where dozens of missing stubs masked hundreds of downstream py:ref failures. Fix this tier-2 root first, rebuild, and most of the py-xref-target-not-found flood clears."
+
+# Known-benign warning classes the build already suppresses or filters in
+# doc/source/conf.py. The engine segregates these into a not-actionable bucket
+# and never proposes a fix. Suppressions are checked BEFORE rules, so an
+# intentional duplicate (e.g. ActorMethod.bind) never reaches duplicate-label.
+# When a suppression is lifted (its tracking ticket), convert its row to a rule.
+suppressions:
+  - id: misc-copy-overwrite
+    categories:
+      - misc.copy_overwrite
+    reason: "Sphinx 8 copy-overwrite check fires on a redundant sphinxcontrib-redoc asset. Benign."
+    tracked_by: "DOC-1257"
+
+  - id: config-cache
+    categories:
+      - config.cache
+    reason: "sphinx_design stores an unpicklable value in config; benign cache warning. Pre-existing."
+
+  - id: actor-bind-duplicate
+    signatures:
+      - "duplicate object description of ray\\.actor\\.ActorMethod\\.bind"
+    reason: "Intentional duplicate autodoc object; not a real defect."
+
+  - id: collections-fetched-footnotes
+    signatures:
+      - "autonumbered footnote references"
+      - "Unknown target name"
+    location_contains: "_collections"
+    reason: "Docutils footnote errors in fetched example content under _collections; benign noise filtered in conf.py."
+    tracked_by: "DOC-1258"

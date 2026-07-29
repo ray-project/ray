@@ -1,0 +1,39 @@
+# A unique identifier for the head node and workers of this cluster.
+cluster_name: tputest
+
+# The maximum number of worker nodes to launch in addition to the head node.
+max_workers: 7
+
+available_node_types:
+    ray_head_default:
+        resources: {"TPU": 1}  # use TPU custom resource in your code
+        node_config:
+            # Only v2-8, v3-8 and v4-8 accelerator types are currently supported.
+            # Support for TPU pods will be added in the future.
+            acceleratorType: v2-8
+            runtimeVersion: v2-alpha
+            schedulingConfig:
+                # Set to false to use non-preemptible TPUs
+                preemptible: false
+    ray_tpu:
+        min_workers: 1
+        resources: {"TPU": 1}  # use TPU custom resource in your code
+        node_config:
+            acceleratorType: v2-8
+            runtimeVersion: v2-alpha
+            schedulingConfig:
+                preemptible: true
+
+provider:
+    type: gcp
+    region: us-central1
+    availability_zone: us-central1-b
+    project_id: null # Replace this with your GCP project ID.
+
+setup_commands:
+  - sudo apt install python-is-python3 -y
+  - pip3 install --upgrade pip
+  - pip3 install -U "ray[default]"
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray_head_default

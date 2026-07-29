@@ -1,0 +1,14 @@
+name: "ray-extra-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base-extra$ARCH_SUFFIX"  # CPU base-extra image
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"           # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - IMAGE_TYPE=ray
+  - PLATFORM=cpu
+  - BASE_VARIANT=base-extra
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION

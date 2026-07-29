@@ -1,0 +1,48 @@
+---
+description: Ray documentation style guide for technical content
+alwaysApply: true
+path: doc/**/*
+---
+
+# Ray documentation style
+
+The full style and grammar standard for Ray docs is `doc/source/ray-contribute/writing-style.md`. Read it before writing or editing any file under `doc/`. It's the source of truth and supersedes prior style guidance. It builds on the Google developer documentation style guide as a fallback.
+
+The rules below are the highest-frequency corrections. The full guide covers word choice, sentence structure, links, admonitions, tables, and human-writing patterns in depth.
+
+## Voice
+
+- Active voice with a named actor: "The scheduler retries failed tasks," not "Failed tasks are retried."
+- Present tense, second person ("you"), imperative for instructions.
+- No first-person plural. Rewrite to remove "we" and "our." Use "The Ray project" only when a subject is unavoidable.
+
+## Word choice
+
+- Use contractions (don't, isn't, can't), except in warnings and error messages.
+- "such as," not "like," for examples.
+- Cut filler: simply, just, basically, actually, really, very.
+- Plain words: "use" (not utilize or leverage), "to" (not in order to), "through" (not via), "before" (not prior to).
+- "ID," not "id," in prose.
+- No time-relative words: currently, now, recently, new.
+- Angle-bracket placeholders (`<head-node-ip>`), not UPPERCASE.
+
+## Headings
+
+- Sentence case: "Configure the runtime environment," not "Configure the Runtime Environment."
+- Imperative for task headings, questions for conceptual headings.
+
+## Structure and formatting
+
+- Short sentences. No dashes, parentheticals, or semicolons in prose. A colon only introduces a list or code block.
+- List items that are complete sentences or contain verbs get periods. Lead-ins are complete sentences ending in a colon.
+- MyST admonitions (`:::{note}`, `:::{warning}`), not bold inline labels.
+- Tag code blocks with a language. No `$` shell prompt. Code comments start capitalized and use the imperative.
+- Reserve bold for UI elements, admonition labels, and definition-list terms. Italicize a term on first use.
+
+## Cross-references
+
+- `{doc}` for whole pages (required when the target's source is `.rst`), `{ref}` for labeled targets, `[text](page.md)` between `.md` pages.
+
+## Never fabricate technical details
+
+Every technical claim needs a verifiable source: the existing docs, the source code, or a config file. When you can't verify a detail, leave it out.

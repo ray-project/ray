@@ -1,0 +1,23 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+#advanced_instance_config:
+#    BlockDeviceMappings:
+#        - DeviceName: /dev/sda1
+#          Ebs:
+#            DeleteOnTermination: true
+#            VolumeSize: 500
+
+head_node:
+    instance_type: n2-highmem-16 # i3.4xlarge
+    resources:
+        CPU: 16
+        object_store_memory: 21474836480
+
+worker_nodes:
+    - instance_type: n2-highmem-16 # i3.4xlarge
+      min_nodes: 3
+      max_nodes: 3
+      market_type: ON_DEMAND
+      resources:
+          object_store_memory: 21474836480

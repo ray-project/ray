@@ -1,0 +1,3 @@
+load("//ci/ray_ci/deps:aliases.bzl", "ci_require_aliases")
+
+ci_require_aliases()

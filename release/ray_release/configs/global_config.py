@@ -1,0 +1,121 @@
+import os
+from typing import List, TypedDict
+
+import yaml
+
+
+class GlobalConfig(TypedDict):
+    byod_ecr: str
+    byod_ecr_region: str
+    byod_gcp_cr: str
+    byod_azure_cr: str
+    state_machine_pr_aws_bucket: str
+    state_machine_branch_aws_bucket: str
+    state_machine_disabled: bool
+    state_machine_github_repo: str
+    state_machine_bisect_disabled: bool
+    buildkite_org: str
+    aws2gce_credentials: str
+    ci_pipeline_premerge: List[str]
+    ci_pipeline_postmerge: List[str]
+    ci_pipeline_buildkite_secret: str
+    release_image_step_ray_cpu: str
+    release_image_step_ray_cuda: str
+    release_image_step_ray_ml: str
+    release_image_step_ray_llm: str
+
+
+config = None
+
+
+def init_global_config(config_file: str):
+    """
+    Initiate the global configuration singleton.
+    """
+    global config
+    if not config:
+        _init_global_config(config_file)
+
+
+def get_global_config():
+    """
+    Get the global configuration singleton. Need to be invoked after
+    init_global_config().
+    """
+    global config
+    return config
+
+
+def _init_global_config(config_file: str):
+    global config
+    config_content = yaml.safe_load(open(config_file, "rt"))
+    config = GlobalConfig(
+        byod_ecr=(
+            config_content.get("byod", {}).get("byod_ecr")
+            or config_content.get("release_byod", {}).get("byod_ecr")
+        ),
+        byod_ecr_region=(
+            config_content.get("byod", {}).get("byod_ecr_region")
+            or config_content.get("release_byod", {}).get("byod_ecr_region")
+        ),
+        byod_gcp_cr=(
+            config_content.get("byod", {}).get("gcp_cr")
+            or config_content.get("release_byod", {}).get("gcp_cr")
+        ),
+        byod_azure_cr=(
+            config_content.get("byod", {}).get("azure_cr")
+            or config_content.get("release_byod", {}).get("azure_cr")
+        ),
+        aws2gce_credentials=(
+            config_content.get("credentials", {}).get("aws2gce")
+            or config_content.get("release_byod", {}).get("aws2gce_credentials")
+        ),
+        state_machine_pr_aws_bucket=config_content.get("state_machine", {})
+        .get("pr", {})
+        .get(
+            "aws_bucket",
+        ),
+        state_machine_branch_aws_bucket=config_content.get("state_machine", {})
+        .get("branch", {})
+        .get(
+            "aws_bucket",
+        ),
+        state_machine_disabled=config_content.get("state_machine", {}).get(
+            "disabled", 0
+        )
+        == 1,
+        # No defaults for the targeting keys below: a config that omits them must
+        # fail loudly rather than silently fall back to ray's public repo/org.
+        state_machine_github_repo=config_content.get("state_machine", {}).get(
+            "github_repo"
+        ),
+        state_machine_bisect_disabled=config_content.get("state_machine", {})
+        .get("bisect", {})
+        .get("disabled", 0)
+        == 1,
+        buildkite_org=config_content.get("ci_pipeline", {}).get("buildkite_org"),
+        ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
+        ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
+            "postmerge", []
+        ),
+        ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
+            "buildkite_secret"
+        ),
+        kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
+        release_image_step_ray_cpu=config_content.get("release_image_step", {}).get(
+            "ray_cpu"
+        ),
+        release_image_step_ray_cuda=config_content.get("release_image_step", {}).get(
+            "ray_cuda"
+        ),
+        release_image_step_ray_ml=config_content.get("release_image_step", {}).get(
+            "ray_ml"
+        ),
+        release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
+            "ray_llm"
+        ),
+    )
+    # setup GCP workload identity federation
+    os.environ[
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    ] = f"/workdir/{config['aws2gce_credentials']}"

@@ -1,0 +1,1 @@
+Success! Started 10000 actors in 30.97493314743042s. (322.84169758828256 actors/s)

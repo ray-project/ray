@@ -1,0 +1,26 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    - name: cpu_node
+      instance_type: m5.4xlarge
+      min_nodes: 0
+      max_nodes: 2
+      market_type: ON_DEMAND
+    - name: fake_gpu_node
+      instance_type: m5.4xlarge
+      min_nodes: 0
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+          CPU: 16
+          GPU: 1

@@ -1,0 +1,68 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+message Event {
+  enum SourceType {
+    // The COMMON type is designed for some process that does not init there own
+    // source_type.
+    // We suppose that there will be some roles in addition to GCS, RAYLET, CORE_WORKER.
+    COMMON = 0;
+    CORE_WORKER = 1;
+    GCS = 2;
+    RAYLET = 3;
+    CLUSTER_LIFECYCLE = 4;
+    AUTOSCALER = 5;
+    JOBS = 6;
+  }
+
+  enum Severity {
+    INFO = 0;
+    WARNING = 1;
+    ERROR = 2;
+    FATAL = 3;
+    // Ideally we would want these to be smaller numerically than INFO, but
+    // unfortunately the original rpc enum comes without such, and to be backward
+    // compatible we have to keep the same values for INFO.
+    // DEBUG: messages that are useful for debugging. These messages are not
+    // intended to be seen by end users.
+    DEBUG = 4;
+    // TRACE: messages that are useful for tracing (e.g. function entering/exit),
+    // more detailed than DEBUG info.
+    TRACE = 5;
+  }
+
+  // event_id is the unique ID of this event
+  string event_id = 1;
+  // source type is the type of the source
+  SourceType source_type = 2;
+  // source_hostname is the hostname of the source
+  string source_hostname = 3;
+  // source_pid is the process pid of the source
+  int32 source_pid = 4;
+  // severity is the event severity level
+  Severity severity = 5;
+  // label describes some important information about this event, always use for the
+  // searching index and tag
+  string label = 6;
+  // message is main information of this event
+  string message = 7;
+  // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
+  int64 timestamp = 8;
+  // store custom key such as node_id, job_id, task_id
+  map<string, string> custom_fields = 9;
+}

@@ -1,0 +1,2916 @@
+import gc
+import logging
+import pickle
+import platform
+import re
+import threading
+import time
+from collections import Counter, defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass, fields
+from typing import Dict, List, Optional
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pyarrow as pa
+import pytest
+
+import ray
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.data._internal.block_batching.iter_batches import BatchIterator
+from ray.data._internal.execution.backpressure_policy import (
+    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+)
+from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
+    BackpressurePolicy,
+)
+from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    CustomOpStatsReporter,
+    MapTransformer,
+)
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.stats import (
+    DatasetStats,
+    DatasetStatsSummary,
+    IterationStage,
+    NodeMetrics,
+    OperatorStatsSummary,
+    StatsSummary,
+    Timer,
+    TimeSpan,
+    _maybe_time,
+    _StatsActor,
+    get_or_create_stats_actor,
+)
+from ray.data._internal.util import MemoryProfiler
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
+from ray.data.context import DataContext
+from ray.data.tests.util import column_udf
+from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
+
+
+def get_operator(
+    stats_summary: DatasetStatsSummary,
+    *,
+    index: Optional[int] = None,
+    name_pattern: Optional[str] = None,
+) -> OperatorStatsSummary:
+    """Find and return an operator from a DatasetStatsSummary.
+
+    Args:
+        stats_summary: DatasetStatsSummary object.
+        index: 0-based index to select operator by position.
+        name_pattern: Regex pattern to match operator name.
+
+    Returns:
+        OperatorStatsSummary for the found operator.
+
+    Raises:
+        AssertionError: if operator not found or if neither index nor name_pattern is specified.
+
+    Examples:
+        stats_summary = ds.get_stats_summary()
+        op = get_operator(stats_summary, index=0)
+        op = get_operator(stats_summary, name_pattern="ReadRange->Map")
+    """
+    if index is not None and name_pattern is not None:
+        raise AssertionError("Specify either index or name_pattern, not both")
+
+    if index is not None:
+        if not (0 <= index < len(stats_summary.operators_stats)):
+            available = len(stats_summary.operators_stats)
+            raise AssertionError(
+                f"Operator index {index} out of range. "
+                f"Found {available} operators (indices 0-{available - 1})."
+            )
+        return stats_summary.operators_stats[index]
+
+    if name_pattern is not None:
+        for op in stats_summary.operators_stats:
+            if re.search(name_pattern, op.operator_name):
+                return op
+        available_names = [op.operator_name for op in stats_summary.operators_stats]
+        raise AssertionError(
+            f"No operator found matching pattern '{name_pattern}'. "
+            f"Available operators: {available_names}"
+        )
+
+    # Require explicit selection
+    raise AssertionError(
+        "Must specify either index or name_pattern to select an operator"
+    )
+
+
+def assert_operator_count(
+    stats_summary: DatasetStatsSummary,
+    expected_count: int,
+) -> None:
+    """Assert that stats_summary has exactly expected_count operators.
+
+    Args:
+        stats_summary: DatasetStatsSummary object.
+        expected_count: Expected number of operators.
+
+    Raises:
+        AssertionError: if count doesn't match.
+
+    Examples:
+        stats_summary = ds.get_stats_summary()
+        assert_operator_count(stats_summary, expected_count=2)
+    """
+    actual = len(stats_summary.operators_stats)
+    assert (
+        actual == expected_count
+    ), f"Expected {expected_count} operators, found {actual}"
+
+
+def assert_basic_operator_metrics(
+    op: OperatorStatsSummary,
+) -> None:
+    """Assert that basic operator metrics are present and valid."""
+    assert op.wall_time is not None, "wall_time should not be None"
+    assert op.wall_time.sum > 0, "wall_time sum should be positive"
+
+    assert op.output_num_rows is not None, "output_num_rows should not be None"
+
+    assert op.output_size_bytes is not None, "output_size_bytes should not be None"
+
+    assert op.block_execution_summary_str is not None
+    assert len(op.block_execution_summary_str) > 0
+
+
+def find_stats_summary_in_parents(
+    stats_summary: DatasetStatsSummary,
+    name_pattern: str,
+) -> DatasetStatsSummary:
+    """Find and return a DatasetStatsSummary node from the parent chain."""
+    current = stats_summary
+    while current:
+        if current.base_name and re.search(name_pattern, current.base_name):
+            return current
+        current = current.parents[0] if current.parents else None
+
+    raise AssertionError(
+        f"No stats summary found matching pattern '{name_pattern}' in parents chain"
+    )
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_with_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    poll_interval_s = 0.01
+    with MemoryProfiler(poll_interval_s=poll_interval_s) as profiler:
+        array = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+        time.sleep(poll_interval_s * 2)
+
+        del array
+        gc.collect()
+
+        assert profiler.estimate_max_uss() > array_nbytes
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    with MemoryProfiler(poll_interval_s=None) as profiler:
+        _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+
+        assert profiler.estimate_max_uss() > array_nbytes
+
+
+def test_map_transformer_custom_op_stats():
+    expected = _ReadTaskStats(num_rows=4, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+
+    reporter = CustomOpStatsReporter()
+    # Nothing reported until a task runs.
+    assert reporter.get_stats() == []
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    block = pa.table({"id": list(range(expected.num_rows))})
+    # apply_transform takes the report callback, not the reporter object.
+    list(transformer.apply_transform([block], ctx, reporter.report))
+    assert reporter.get_stats() == [expected]
+
+
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
+
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
+    """
+    gen = _map_task(transformer, DataContext.get_current(), ctx, block)
+    metas = []
+    try:
+        next(gen)  # first block
+        while True:
+            metas.append(pickle.loads(gen.send(None)))  # that block's metadata
+            next(gen)  # next block; StopIteration when exhausted
+    except StopIteration:
+        pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def gen_expected_metrics(
+    is_map: bool,
+    spilled: bool = False,
+    task_backpressure: bool = False,
+    task_output_backpressure: bool = False,
+    extra_metrics: Optional[List[str]] = None,
+    task_locality_hit: bool = False,
+):
+    if is_map:
+        metrics = [
+            "'average_num_outputs_per_task': N",
+            "'average_num_inputs_per_task': N",
+            "'num_output_blocks_per_task_s': N",
+            "'average_total_task_completion_time_s': N",
+            "'average_task_scheduling_time_s': N",
+            "'average_task_output_backpressure_time_s': Z",
+            "'average_task_completion_time_excl_backpressure_s': N",
+            "'average_task_block_gen_and_ser_time_s': N",
+            "'average_bytes_per_output': N",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': Z",
+            "'average_bytes_inputs_per_task': N",
+            "'average_rows_inputs_per_task': N",
+            "'average_bytes_outputs_per_task': N",
+            "'average_rows_outputs_per_task': N",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
+            "'average_max_uss_per_task': H",
+            "'num_inputs_received': N",
+            "'num_row_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_task_inputs_processed': N",
+            "'bytes_task_inputs_processed': N",
+            "'bytes_inputs_of_submitted_tasks': N",
+            "'rows_inputs_of_submitted_tasks': N",
+            "'num_task_outputs_generated': N",
+            "'bytes_task_outputs_generated': N",
+            "'rows_task_outputs_generated': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
+            "'num_outputs_of_finished_tasks': N",
+            "'bytes_outputs_of_finished_tasks': N",
+            "'rows_outputs_of_finished_tasks': N",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
+            "'num_tasks_submitted': N",
+            "'num_tasks_running': Z",
+            "'num_tasks_have_outputs': N",
+            "'num_tasks_finished': N",
+            "'num_tasks_failed': Z",
+            f"'task_scheduling_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_scheduling_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'bytes_inputs_of_task_locality_hit_tasks': {'N' if task_locality_hit else 'Z'}",
+            f"'bytes_inputs_of_task_locality_miss_tasks': {'Z' if task_locality_hit else 'N'}",
+            f"'task_completion_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_completion_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'num_tasks_task_locality_hit': {'N' if task_locality_hit else 'Z'}",
+            f"'num_tasks_task_locality_miss': {'Z' if task_locality_hit else 'N'}",
+            "'block_generation_time': N",
+            "'block_serialization_time_s': N",
+            (
+                "'task_submission_backpressure_time': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
+            ),
+            "'task_completion_time_s': N",
+            "'task_worker_completion_time_s': N",
+            "'task_scheduling_time_s': N",
+            "'task_output_backpressure_time_s': Z",
+            "'task_completion_time': (samples: N, avg: N)",
+            "'block_completion_time': (samples: N, avg: N)",
+            "'task_block_gen_and_ser_time_s': N",
+            "'block_size_bytes': (samples: N, avg: N)",
+            "'block_size_rows': (samples: N, avg: N)",
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
+            "'obj_store_mem_internal_inqueue_blocks': Z",
+            "'obj_store_mem_internal_outqueue_blocks': Z",
+            "'obj_store_mem_freed': N",
+            f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'obj_store_mem_used': A",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
+        ]
+    else:
+        metrics = [
+            "'average_num_outputs_per_task': None",
+            "'average_num_inputs_per_task': None",
+            "'num_output_blocks_per_task_s': None",
+            "'average_total_task_completion_time_s': None",
+            "'average_task_scheduling_time_s': None",
+            "'average_task_output_backpressure_time_s': None",
+            "'average_task_completion_time_excl_backpressure_s': None",
+            "'average_task_block_gen_and_ser_time_s': None",
+            "'average_bytes_per_output': None",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': None",
+            "'average_bytes_inputs_per_task': None",
+            "'average_rows_inputs_per_task': None",
+            "'average_bytes_outputs_per_task': None",
+            "'average_rows_outputs_per_task': None",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
+            "'average_max_uss_per_task': H",
+            "'num_inputs_received': N",
+            "'num_row_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_task_inputs_processed': Z",
+            "'bytes_task_inputs_processed': Z",
+            "'bytes_inputs_of_submitted_tasks': Z",
+            "'rows_inputs_of_submitted_tasks': Z",
+            "'num_task_outputs_generated': Z",
+            "'bytes_task_outputs_generated': Z",
+            "'rows_task_outputs_generated': Z",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
+            "'num_outputs_of_finished_tasks': Z",
+            "'bytes_outputs_of_finished_tasks': Z",
+            "'rows_outputs_of_finished_tasks': Z",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
+            "'num_tasks_submitted': Z",
+            "'num_tasks_running': Z",
+            "'num_tasks_have_outputs': Z",
+            "'num_tasks_finished': Z",
+            "'num_tasks_failed': Z",
+            "'task_scheduling_time_task_locality_hit_s': Z",
+            "'task_scheduling_time_task_locality_miss_s': Z",
+            "'bytes_inputs_of_task_locality_hit_tasks': Z",
+            "'bytes_inputs_of_task_locality_miss_tasks': Z",
+            "'task_completion_time_task_locality_hit_s': Z",
+            "'task_completion_time_task_locality_miss_s': Z",
+            "'num_tasks_task_locality_hit': Z",
+            "'num_tasks_task_locality_miss': Z",
+            "'block_generation_time': Z",
+            "'block_serialization_time_s': Z",
+            (
+                "'task_submission_backpressure_time': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'task_output_backpressure_time': "
+                f"{'N' if task_output_backpressure else 'Z'}"
+            ),
+            "'task_completion_time_s': Z",
+            "'task_worker_completion_time_s': Z",
+            "'task_scheduling_time_s': Z",
+            "'task_output_backpressure_time_s': Z",
+            "'task_completion_time': (samples: Z, avg: Z)",
+            "'block_completion_time': (samples: Z, avg: Z)",
+            "'task_block_gen_and_ser_time_s': Z",
+            "'block_size_bytes': (samples: Z, avg: Z)",
+            "'block_size_rows': (samples: Z, avg: Z)",
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
+            "'obj_store_mem_internal_inqueue_blocks': Z",
+            "'obj_store_mem_internal_outqueue_blocks': Z",
+            "'obj_store_mem_freed': Z",
+            "'obj_store_mem_spilled': Z",
+            "'obj_store_mem_used': A",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
+        ]
+    if extra_metrics:
+        metrics.extend(extra_metrics)
+    return "{" + ", ".join(metrics) + "}"
+
+
+def gen_extra_metrics_str(metrics: str, verbose: bool):
+    return f"* Extra metrics: {metrics}" + "\n" if verbose else ""
+
+
+def gen_runtime_metrics_str(op_names: List[str], verbose: bool) -> str:
+    if not verbose:
+        return ""
+    out = "\nRuntime Metrics:\n"
+    for op in op_names + ["Scheduling", "Total"]:
+        out += f"* {op}: T (N%)\n"
+    return out
+
+
+STANDARD_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+    task_locality_hit=True,
+)
+
+MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
+    is_map=True,
+    spilled=True,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+)
+
+
+CLUSTER_MEMORY_STATS = """
+Cluster memory:
+* Spilled to disk: M
+* Restored from disk: M
+"""
+
+DATASET_MEMORY_STATS = """
+Dataset memory:
+* Spilled to disk: M
+"""
+
+EXECUTION_STRING = "N tasks executed, N blocks produced in T"
+
+
+def canonicalize(
+    stats: str,
+    filter_global_stats: bool = True,
+) -> str:
+    # Dataset UUID expression.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    # Time expressions.
+    canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
+    # Memory expressions.
+    canonicalized_stats = re.sub(r"[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    # Histogram expressions.
+    canonicalized_stats = re.sub(
+        r"\(samples: 0, avg: 0.00\)", "(samples: Z, avg: Z)", canonicalized_stats
+    )
+    canonicalized_stats = re.sub(
+        r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
+    )
+    # For obj_store_mem_used, the value can be zero or positive, depending on the run.
+    # Replace with A to avoid test flakiness.
+    canonicalized_stats = re.sub(
+        r"(obj_store_mem_used: |'obj_store_mem_used': )\d+(\.\d+)?",
+        # Replaces the number with 'A' while keeping the key prefix intact.
+        r"\g<1>A",
+        canonicalized_stats,
+    )
+    # Handle floats in (0, 1)
+    canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    # Replace input rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total input num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
+    # Replace output rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total output num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
+    # Handle zero values specially so we can check for missing values.
+    canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
+    # Scientific notation for small or large numbers
+    canonicalized_stats = re.sub(r"\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
+    # Other numerics.
+    canonicalized_stats = re.sub(r"[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
+    # Replace tabs with spaces.
+    canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
+
+    canonicalized_stats = re.sub(
+        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
+        r"\g<1> H",
+        canonicalized_stats,
+    )
+    # Percentile values in DistributionTracker dicts can be None (when datasketches
+    # is not installed) or a number (canonicalized to N). Normalize to P.
+    canonicalized_stats = re.sub(
+        r"('pN': )(?:N|None)\b",
+        r"\g<1>P",
+        canonicalized_stats,
+    )
+    # max_uss_bytes DistributionTracker may have 0 or N samples depending on
+    # platform (USS measurement only available on Linux). Normalize entire dict.
+    canonicalized_stats = re.sub(
+        r"(max_uss_bytes['\s:]+)\{[^}]+\}",
+        r"\g<1>H",
+        canonicalized_stats,
+    )
+
+    if filter_global_stats:
+        canonicalized_stats = canonicalized_stats.replace(CLUSTER_MEMORY_STATS, "")
+        canonicalized_stats = canonicalized_stats.replace(DATASET_MEMORY_STATS, "")
+    return canonicalized_stats
+
+
+def dummy_map_batches(x):
+    """Dummy function used in calls to map_batches below."""
+    return x
+
+
+def dummy_map_batches_sleep(n):
+    """Function used to create a function that sleeps for n seconds
+    to be used in map_batches below."""
+
+    def f(x):
+        time.sleep(n)
+        return x
+
+    return f
+
+
+@contextmanager
+def patch_update_stats_actor():
+    with patch(
+        "ray.data._internal.stats._StatsManager.update_execution_metrics"
+    ) as update_fn:
+        yield update_fn
+
+
+@contextmanager
+def patch_update_stats_actor_iter():
+    with patch(
+        "ray.data._internal.stats._StatsManager.update_iteration_metrics"
+    ) as update_fn:
+        yield update_fn
+
+
+def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.verbose_stats_logs = True
+    ds = ray.data.range(1000, override_num_blocks=10)
+    it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
+    list(it.iter_batches())
+    stats = it.stats()
+    extra_metrics_2 = gen_expected_metrics(
+        is_map=False,
+        extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
+    )
+    # The task_output_backpressure_time* metrics are wall-clock timers for output
+    # backpressure on the running MapBatches operator. Whether (and for how long)
+    # it blocks is a timing race against the single, slower streaming-split
+    # consumer, so the value is genuinely nondeterministic across runs (sometimes
+    # 0, usually positive). We therefore deliberately do NOT assert these three
+    # values: both the expected and the produced stats collapse them to a
+    # sentinel. Everything else -- including task_submission_backpressure_time --
+    # stays strictly checked. Only the running operator's (first) occurrence is
+    # collapsed; the idle split operator's timers remain strictly asserted as 0.
+    not_asserted = "<varies>"
+    backpressure_keys = (
+        "average_task_output_backpressure_time_s",
+        "task_output_backpressure_time",
+        "task_output_backpressure_time_s",
+    )
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+    for key in backpressure_keys:
+        extra_metrics_1 = extra_metrics_1.replace(
+            f"'{key}': Z", f"'{key}': {not_asserted}"
+        )
+    produced = canonicalize(stats)
+    for key in backpressure_keys:
+        # count=1 collapses only the first (running MapBatches operator)
+        # occurrence; the \b stops the "N" token from matching the "N" in an idle
+        # operator's "None".
+        produced = re.sub(
+            rf"('{key}': )(?:N|Z)\b", rf"\g<1>{not_asserted}", produced, count=1
+        )
+    # The per-stage training-thread blocked breakdown is timing-dependent
+    # (depends on whether prefetch hid the stall); strip it before comparing.
+    produced = re.sub(
+        r"\nPer-stage training-thread blocked time breakdown:\n"
+        r"(?:    \* [^\n]+\n)+",
+        "",
+        produced,
+    )
+    assert (
+        produced
+        == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* UDF time: T min, T max, T mean, T total
+* Output num rows per block: N min, N max, N mean, N total
+* Output size bytes per block: N min, N max, N mean, N total
+* Output rows per task: N min, N max, N mean, N tasks used
+* Tasks per node: N min, N max, N mean; N nodes used
+* Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
+    * Ray Data throughput: N rows/s
+    * Estimated single task throughput: N rows/s
+* Extra metrics: {extra_metrics_1}
+
+Operator N split(N, equal=False): \n"""
+        # Workaround to preserve trailing whitespace in the above line without
+        # causing linter failures.
+        f"""* Extra metrics: {extra_metrics_2}\n"""
+        """
+Dataset iterator time breakdown:
+* Total time overall: T
+    * Total time in Ray Data iterator initialization code: T
+    * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
+    * Total execution time for user thread: T
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
+Streaming split coordinator overhead time: T
+Total batches consumed: N
+Total rows consumed: N
+"""
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
+    )
+
+
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_dataset_stats_basic(
+    ray_start_regular_shared,
+    enable_auto_log_stats,
+    verbose_stats_logs,
+    restore_data_context,
+):
+    context = DataContext.get_current()
+    context.verbose_stats_logs = verbose_stats_logs
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
+
+    with patch.object(logger, "info") as mock_logger:
+        ds = ray.data.range(1000, override_num_blocks=10)
+        ds = ds.map_batches(dummy_map_batches).materialize()
+
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
+
+            assert canonicalize(logger_args[0]) == (
+                f"Operator N ReadRange->MapBatches(dummy_map_batches): "
+                f"{EXECUTION_STRING}\n"
+                f"* Remote wall time: T min, T max, T mean, T total\n"
+                f"* Remote cpu time: T min, T max, T mean, T total\n"
+                f"* UDF time: T min, T max, T mean, T total\n"
+                f"* Output num rows per block: N min, N max, N mean, N total\n"
+                f"* Output size bytes per block: N min, N max, N mean, N total\n"
+                f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+                f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single task throughput: N rows/s\n"
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
+                f"\n"
+                f"Dataset throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+            )
+
+        ds = ds.map(dummy_map_batches).materialize()
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
+
+            assert canonicalize(logger_args[0]) == (
+                f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
+                f"* Remote wall time: T min, T max, T mean, T total\n"
+                f"* Remote cpu time: T min, T max, T mean, T total\n"
+                f"* UDF time: T min, T max, T mean, T total\n"
+                f"* Output num rows per block: N min, N max, N mean, N total\n"
+                f"* Output size bytes per block: N min, N max, N mean, N total\n"
+                f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+                f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+                f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"    * Estimated single task throughput: N rows/s\n"
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT, verbose_stats_logs)}"  # noqa: E501
+                f"\n"
+                f"Dataset throughput:\n"
+                f"    * Ray Data throughput: N rows/s\n"
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+            )
+
+    for batch in ds.iter_batches():
+        pass
+    mds = ds.materialize()
+
+    # Use structured assertions instead of canonicalize string comparison
+    stats_summary = mds.get_stats_summary()
+
+    # Find each pipeline stage via the parent chain
+    map_summary = find_stats_summary_in_parents(stats_summary, r"^Map\(")
+    read_map_summary = find_stats_summary_in_parents(stats_summary, "ReadRange")
+
+    # Verify both operators have valid metrics
+    read_map_op = get_operator(read_map_summary, name_pattern="ReadRange->MapBatches")
+    assert_basic_operator_metrics(read_map_op)
+    assert read_map_op.output_num_rows.sum == 1000
+
+    map_op = get_operator(map_summary, name_pattern=r"^Map\(")
+    assert_basic_operator_metrics(map_op)
+    assert map_op.output_num_rows.sum == 1000
+
+    # Verify iteration stats are present
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
+
+
+def test_block_location_nums(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.enable_get_object_locations_for_metrics = True
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.map_batches(dummy_map_batches).materialize()
+
+    for batch in ds.iter_batches():
+        pass
+
+    stats_summary = ds.materialize().get_stats_summary()
+
+    # Verify operator exists and has valid metrics
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
+    assert_basic_operator_metrics(op)
+    assert op.output_num_rows.sum == 1000
+
+    # Verify iteration stats are present
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
+
+    # Verify block location stats - local and remote should be 0, unknown > 0
+    assert stats_summary.iter_stats.iter_blocks_local == 0
+    assert stats_summary.iter_stats.iter_blocks_remote == 0
+    assert stats_summary.iter_stats.iter_unknown_location > 0
+
+
+def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
+    context = DataContext.get_current()
+    context.enable_get_object_locations_for_metrics = True
+    n = 100
+    ds = ray.data.range(n)
+    assert len(ds.take_all()) == n
+    ds = ds.materialize()
+
+    expected_stats = (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=N,\n"
+        "   base_name=ReadRange,\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_scheduling_time_s: N,\n"
+        "      average_task_output_backpressure_time_s: Z,\n"
+        "      average_task_completion_time_excl_backpressure_s: N,\n"
+        "      average_task_block_gen_and_ser_time_s: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_rows_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
+        "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
+        "      average_max_uss_per_task: H,\n"
+        "      num_inputs_received: N,\n"
+        "      num_row_inputs_received: N,\n"
+        "      bytes_inputs_received: N,\n"
+        "      num_task_inputs_processed: N,\n"
+        "      bytes_task_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      rows_inputs_of_submitted_tasks: N,\n"
+        "      num_task_outputs_generated: N,\n"
+        "      bytes_task_outputs_generated: N,\n"
+        "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
+        "      num_outputs_taken: N,\n"
+        "      bytes_outputs_taken: N,\n"
+        "      num_outputs_of_finished_tasks: N,\n"
+        "      bytes_outputs_of_finished_tasks: N,\n"
+        "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
+        "      num_tasks_submitted: N,\n"
+        "      num_tasks_running: Z,\n"
+        "      num_tasks_have_outputs: N,\n"
+        "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
+        "      task_scheduling_time_task_locality_hit_s: Z,\n"
+        "      task_scheduling_time_task_locality_miss_s: N,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: Z,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: N,\n"
+        "      task_completion_time_task_locality_hit_s: Z,\n"
+        "      task_completion_time_task_locality_miss_s: N,\n"
+        "      num_tasks_task_locality_hit: Z,\n"
+        "      num_tasks_task_locality_miss: N,\n"
+        "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
+        "      task_submission_backpressure_time: N,\n"
+        "      task_output_backpressure_time: Z,\n"
+        "      task_completion_time_s: N,\n"
+        "      task_worker_completion_time_s: N,\n"
+        "      task_scheduling_time_s: N,\n"
+        "      task_output_backpressure_time_s: Z,\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
+        "      task_block_gen_and_ser_time_s: N,\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
+        "      obj_store_mem_internal_inqueue_blocks: Z,\n"
+        "      obj_store_mem_internal_outqueue_blocks: Z,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_spilled: Z,\n"
+        "      obj_store_mem_used: A,\n"
+        "      cpu_usage: Z,\n"
+        "      gpu_usage: Z,\n"
+        "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
+        "   },\n"
+        "   operators_stats=[\n"
+        "      OperatorStatsSummary(\n"
+        "         operator_name='ReadRange',\n"
+        "         is_suboperator=False,\n"
+        "         time_total_s=T,\n"
+        f"         block_execution_summary_str={EXECUTION_STRING}\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=None,\n"
+        "      iter_prefetched_bytes=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
+        "   parents=[\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=N,\n"
+        "         base_name=None,\n"
+        "         number=N,\n"
+        "         extra_metrics={},\n"
+        "         operators_stats=[],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=None,\n"
+        "            iter_prefetched_bytes=None,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         global_bytes_spilled=M,\n"
+        "         global_bytes_restored=M,\n"
+        "         dataset_bytes_spilled=M,\n"
+        "         parents=[],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
+
+    def check_stats():
+        stats = canonicalize(repr(ds._raw_stats().to_summary()))
+        assert stats == expected_stats, stats
+        return True
+
+    # TODO(hchen): The reason why `wait_for_condition` is needed here is because
+    # `to_summary` depends on an external actor (_StatsActor) that records stats
+    # asynchronously. This makes the behavior non-deterministic.
+    # See the TODO in `to_summary`.
+    # We should make it deterministic and refine this test.
+    wait_for_condition(
+        check_stats,
+        timeout=10,
+        retry_interval_ms=1000,
+    )
+
+    ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    expected_stats2 = (
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=N,\n"
+        "   base_name=MapBatches(<lambda>),\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_scheduling_time_s: N,\n"
+        "      average_task_output_backpressure_time_s: Z,\n"
+        "      average_task_completion_time_excl_backpressure_s: N,\n"
+        "      average_task_block_gen_and_ser_time_s: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_rows_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
+        "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
+        "      average_max_uss_per_task: H,\n"
+        "      num_inputs_received: N,\n"
+        "      num_row_inputs_received: N,\n"
+        "      bytes_inputs_received: N,\n"
+        "      num_task_inputs_processed: N,\n"
+        "      bytes_task_inputs_processed: N,\n"
+        "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      rows_inputs_of_submitted_tasks: N,\n"
+        "      num_task_outputs_generated: N,\n"
+        "      bytes_task_outputs_generated: N,\n"
+        "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
+        "      num_outputs_taken: N,\n"
+        "      bytes_outputs_taken: N,\n"
+        "      num_outputs_of_finished_tasks: N,\n"
+        "      bytes_outputs_of_finished_tasks: N,\n"
+        "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
+        "      num_tasks_submitted: N,\n"
+        "      num_tasks_running: Z,\n"
+        "      num_tasks_have_outputs: N,\n"
+        "      num_tasks_finished: N,\n"
+        "      num_tasks_failed: Z,\n"
+        "      task_scheduling_time_task_locality_hit_s: N,\n"
+        "      task_scheduling_time_task_locality_miss_s: Z,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "      task_completion_time_task_locality_hit_s: N,\n"
+        "      task_completion_time_task_locality_miss_s: Z,\n"
+        "      num_tasks_task_locality_hit: N,\n"
+        "      num_tasks_task_locality_miss: Z,\n"
+        "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
+        "      task_submission_backpressure_time: N,\n"
+        "      task_output_backpressure_time: Z,\n"
+        "      task_completion_time_s: N,\n"
+        "      task_worker_completion_time_s: N,\n"
+        "      task_scheduling_time_s: N,\n"
+        "      task_output_backpressure_time_s: Z,\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
+        "      task_block_gen_and_ser_time_s: N,\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
+        "      obj_store_mem_internal_inqueue_blocks: Z,\n"
+        "      obj_store_mem_internal_outqueue_blocks: Z,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_spilled: Z,\n"
+        "      obj_store_mem_used: A,\n"
+        "      cpu_usage: Z,\n"
+        "      gpu_usage: Z,\n"
+        "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
+        "   },\n"
+        "   operators_stats=[\n"
+        "      OperatorStatsSummary(\n"
+        "         operator_name='MapBatches(<lambda>)',\n"
+        "         is_suboperator=False,\n"
+        "         time_total_s=T,\n"
+        f"         block_execution_summary_str={EXECUTION_STRING}\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=N,\n"
+        "      iter_prefetched_bytes=None,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
+        "   parents=[\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=N,\n"
+        "         base_name=ReadRange,\n"
+        "         number=N,\n"
+        "         extra_metrics={\n"
+        "            average_num_outputs_per_task: N,\n"
+        "            average_num_inputs_per_task: N,\n"
+        "            num_output_blocks_per_task_s: N,\n"
+        "            average_total_task_completion_time_s: N,\n"
+        "            average_task_scheduling_time_s: N,\n"
+        "            average_task_output_backpressure_time_s: Z,\n"
+        "            average_task_completion_time_excl_backpressure_s: N,\n"
+        "            average_task_block_gen_and_ser_time_s: N,\n"
+        "            average_bytes_per_output: N,\n"
+        "            obj_store_mem_internal_inqueue: Z,\n"
+        "            obj_store_mem_internal_outqueue: Z,\n"
+        "            obj_store_mem_pending_task_inputs: Z,\n"
+        "            obj_store_mem_pending_task_outputs: Z,\n"
+        "            average_bytes_inputs_per_task: N,\n"
+        "            average_rows_inputs_per_task: N,\n"
+        "            average_bytes_outputs_per_task: N,\n"
+        "            average_rows_outputs_per_task: N,\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            max_uss_bytes: H,\n"
+        "            average_max_uss_per_task: H,\n"
+        "            num_inputs_received: N,\n"
+        "            num_row_inputs_received: N,\n"
+        "            bytes_inputs_received: N,\n"
+        "            num_task_inputs_processed: N,\n"
+        "            bytes_task_inputs_processed: N,\n"
+        "            bytes_inputs_of_submitted_tasks: N,\n"
+        "            rows_inputs_of_submitted_tasks: N,\n"
+        "            num_task_outputs_generated: N,\n"
+        "            bytes_task_outputs_generated: N,\n"
+        "            rows_task_outputs_generated: N,\n"
+        "            row_outputs_taken: N,\n"
+        "            block_outputs_taken: N,\n"
+        "            num_outputs_taken: N,\n"
+        "            bytes_outputs_taken: N,\n"
+        "            num_outputs_of_finished_tasks: N,\n"
+        "            bytes_outputs_of_finished_tasks: N,\n"
+        "            rows_outputs_of_finished_tasks: N,\n"
+        "            num_external_inqueue_blocks: Z,\n"
+        "            num_external_inqueue_bytes: Z,\n"
+        "            num_external_outqueue_blocks: Z,\n"
+        "            num_external_outqueue_bytes: Z,\n"
+        "            num_tasks_submitted: N,\n"
+        "            num_tasks_running: Z,\n"
+        "            num_tasks_have_outputs: N,\n"
+        "            num_tasks_finished: N,\n"
+        "            num_tasks_failed: Z,\n"
+        "            task_scheduling_time_task_locality_hit_s: Z,\n"
+        "            task_scheduling_time_task_locality_miss_s: N,\n"
+        "            bytes_inputs_of_task_locality_hit_tasks: Z,\n"
+        "            bytes_inputs_of_task_locality_miss_tasks: N,\n"
+        "            task_completion_time_task_locality_hit_s: Z,\n"
+        "            task_completion_time_task_locality_miss_s: N,\n"
+        "            num_tasks_task_locality_hit: Z,\n"
+        "            num_tasks_task_locality_miss: N,\n"
+        "            block_generation_time: N,\n"
+        "            block_serialization_time_s: N,\n"
+        "            task_submission_backpressure_time: N,\n"
+        "            task_output_backpressure_time: Z,\n"
+        "            task_completion_time_s: N,\n"
+        "            task_worker_completion_time_s: N,\n"
+        "            task_scheduling_time_s: N,\n"
+        "            task_output_backpressure_time_s: Z,\n"
+        "            task_completion_time: (samples: N, avg: N),\n"
+        "            block_completion_time: (samples: N, avg: N),\n"
+        "            task_block_gen_and_ser_time_s: N,\n"
+        "            block_size_bytes: (samples: N, avg: N),\n"
+        "            block_size_rows: (samples: N, avg: N),\n"
+        "            num_alive_actors: Z,\n"
+        "            num_restarting_actors: Z,\n"
+        "            num_pending_actors: Z,\n"
+        "            num_active_actors: Z,\n"
+        "            num_idle_actors: Z,\n"
+        "            pool_utilization: Z,\n"
+        "            num_tasks_in_flight: Z,\n"
+        "            obj_store_mem_internal_inqueue_blocks: Z,\n"
+        "            obj_store_mem_internal_outqueue_blocks: Z,\n"
+        "            obj_store_mem_freed: N,\n"
+        "            obj_store_mem_spilled: Z,\n"
+        "            obj_store_mem_used: A,\n"
+        "            cpu_usage: Z,\n"
+        "            gpu_usage: Z,\n"
+        "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
+        "         },\n"
+        "         operators_stats=[\n"
+        "            OperatorStatsSummary(\n"
+        "               operator_name='ReadRange',\n"
+        "               is_suboperator=False,\n"
+        "               time_total_s=T,\n"
+        f"               block_execution_summary_str={EXECUTION_STRING}\n"
+        "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
+        "            ),\n"
+        "         ],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=None,\n"
+        "            iter_prefetched_bytes=None,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         global_bytes_spilled=M,\n"
+        "         global_bytes_restored=M,\n"
+        "         dataset_bytes_spilled=M,\n"
+        "         parents=[\n"
+        "            DatasetStatsSummary(\n"
+        "               dataset_uuid=N,\n"
+        "               base_name=None,\n"
+        "               number=N,\n"
+        "               extra_metrics={},\n"
+        "               operators_stats=[],\n"
+        "               iter_stats=IterStatsSummary(\n"
+        "                  wait_time=T,\n"
+        "                  get_ref_bundles_time=T,\n"
+        "                  get_time=T,\n"
+        "                  iter_blocks_local=None,\n"
+        "                  iter_blocks_remote=None,\n"
+        "                  iter_unknown_location=None,\n"
+        "                  iter_prefetched_bytes=None,\n"
+        "                  next_time=T,\n"
+        "                  format_time=T,\n"
+        "                  user_time=T,\n"
+        "                  total_time=T,\n"
+        "               ),\n"
+        "               global_bytes_spilled=M,\n"
+        "               global_bytes_restored=M,\n"
+        "               dataset_bytes_spilled=M,\n"
+        "               parents=[],\n"
+        "            ),\n"
+        "         ],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
+
+    def check_stats2():
+        stats = canonicalize(repr(ds2._raw_stats().to_summary()))
+        assert stats == expected_stats2
+        return True
+
+    wait_for_condition(
+        check_stats2,
+        timeout=10,
+        retry_interval_ms=1000,
+    )
+
+
+def test_dataset_stats_shuffle(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.random_shuffle().repartition(1, shuffle=True)
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+
+    repartition_summary = find_stats_summary_in_parents(stats_summary, "Repartition")
+    random_shuffle_summary = find_stats_summary_in_parents(
+        stats_summary, "RandomShuffle"
+    )
+
+    assert_operator_count(repartition_summary, expected_count=2)
+    get_operator(repartition_summary, name_pattern="RepartitionMap")
+    get_operator(repartition_summary, name_pattern="RepartitionReduce")
+
+    assert_operator_count(random_shuffle_summary, expected_count=2)
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleMap")
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleReduce")
+
+    # Both top-level operators should produce 1000 rows across their suboperators.
+    for operator_summary in (repartition_summary, random_shuffle_summary):
+        for op in operator_summary.operators_stats:
+            assert_basic_operator_metrics(op)
+            assert op.output_num_rows.sum == 1000
+
+
+def test_dataset_stats_repartition(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.repartition(1, shuffle=False)
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="Repartition")
+    assert "Repartition" in op.operator_name
+
+
+def test_dataset_stats_union(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.union(ds)
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="Union")
+    assert "Union" in op.operator_name
+
+
+def test_dataset_stats_zip(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.zip(ds)
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="Zip")
+    assert "Zip" in op.operator_name
+
+
+def test_dataset_stats_sort(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=10)
+    ds = ds.sort("id")
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    assert_operator_count(stats_summary, expected_count=2)
+
+    get_operator(stats_summary, name_pattern="SortMap")
+    get_operator(stats_summary, name_pattern="SortReduce")
+
+
+def test_dataset_stats_from_items(ray_start_regular_shared):
+    ds = ray.data.from_items(range(10))
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="FromItems")
+    assert "FromItems" in op.operator_name
+
+
+def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1000, override_num_blocks=10).map(lambda x: x)
+    mds = ds.materialize()
+
+    stats_summary = mds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="ReadRange->Map")
+
+    # Check key metrics explicitly - tests are now clear about what they verify
+    assert op.output_num_rows.sum == 1000
+    assert op.wall_time.max > 0
+    assert op.wall_time.sum > 0
+
+
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
+    DataContext.get_current().execution_options.preserve_order = True
+
+    ds = ray.data.range(100, override_num_blocks=10).map(
+        column_udf("id", lambda x: x + 1)
+    )
+
+    # Check ReadRange and Map operators before split
+    stats_summary = ds.materialize().get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="ReadRange.*Map")
+    assert "ReadRange" in op.operator_name
+    assert "Map" in op.operator_name
+    assert op.wall_time.sum > 0
+    assert op.output_num_rows.sum == 100
+
+    # Check split was executed
+    dses = ds.split_at_indices([49])
+    assert len(dses) == 2
+    assert dses[0].count() == 49
+    assert dses[1].count() == 51
+
+    # Check Map operator after mapping on split datasets
+    dses = [ds.map(column_udf("id", lambda x: x + 1)) for ds in dses]
+    for ds_ in dses:
+        mds = ds_.materialize()
+        stats_summary = mds.get_stats_summary()
+        map_op = get_operator(stats_summary, name_pattern=r"Map\(")
+        assert "Map" in map_op.operator_name
+        assert map_op.wall_time.sum > 0
+        assert map_op.output_num_rows.sum > 0
+
+
+def test_calculate_blocks_stats(ray_start_regular_shared, op_two_block):
+    block_params, block_meta_list = op_two_block
+    stats = DatasetStats(
+        metadata={"Read": block_meta_list},
+        parent=None,
+    )
+    calculated_stats = stats.to_summary().operators_stats[0]
+
+    assert calculated_stats.output_num_rows == StatsSummary(
+        min=min(block_params["num_rows"]),
+        max=max(block_params["num_rows"]),
+        mean=np.mean(block_params["num_rows"]),
+        sum=sum(block_params["num_rows"]),
+        count=len(block_params["num_rows"]),
+    )
+    assert calculated_stats.output_size_bytes == StatsSummary(
+        min=min(block_params["size_bytes"]),
+        max=max(block_params["size_bytes"]),
+        mean=np.mean(block_params["size_bytes"]),
+        sum=sum(block_params["size_bytes"]),
+        count=len(block_params["size_bytes"]),
+    )
+    assert calculated_stats.wall_time == StatsSummary(
+        min=min(block_params["wall_time"]),
+        max=max(block_params["wall_time"]),
+        mean=np.mean(block_params["wall_time"]),
+        sum=sum(block_params["wall_time"]),
+        count=len(block_params["wall_time"]),
+    )
+    assert calculated_stats.cpu_time == StatsSummary(
+        min=min(block_params["cpu_time"]),
+        max=max(block_params["cpu_time"]),
+        mean=np.mean(block_params["cpu_time"]),
+        sum=sum(block_params["cpu_time"]),
+        count=len(block_params["cpu_time"]),
+    )
+
+    node_counts = Counter(block_params["node_id"])
+    assert calculated_stats.node_count == StatsSummary(
+        min=min(node_counts.values()),
+        max=max(node_counts.values()),
+        mean=np.mean(list(node_counts.values())),
+        sum=sum(node_counts.values()),
+        count=len(node_counts),
+    )
+
+
+def test_summarize_blocks(ray_start_regular_shared, op_two_block):
+    block_params, block_meta_list = op_two_block
+    stats = DatasetStats(
+        metadata={"Read": block_meta_list},
+        parent=None,
+    )
+    stats.dataset_uuid = "test-uuid"
+
+    calculated_stats = stats.to_summary()
+    op = calculated_stats.operators_stats[0]
+
+    # Verify operator name
+    assert "Read" in op.operator_name
+
+    # Verify all metrics are present and match expected values
+    assert op.output_num_rows == StatsSummary(
+        min=min(block_params["num_rows"]),
+        max=max(block_params["num_rows"]),
+        mean=np.mean(block_params["num_rows"]),
+        sum=sum(block_params["num_rows"]),
+        count=len(block_params["num_rows"]),
+    )
+    assert op.output_size_bytes == StatsSummary(
+        min=min(block_params["size_bytes"]),
+        max=max(block_params["size_bytes"]),
+        mean=np.mean(block_params["size_bytes"]),
+        sum=sum(block_params["size_bytes"]),
+        count=len(block_params["size_bytes"]),
+    )
+    assert op.wall_time == StatsSummary(
+        min=min(block_params["wall_time"]),
+        max=max(block_params["wall_time"]),
+        mean=np.mean(block_params["wall_time"]),
+        sum=sum(block_params["wall_time"]),
+        count=len(block_params["wall_time"]),
+    )
+    assert op.cpu_time == StatsSummary(
+        min=min(block_params["cpu_time"]),
+        max=max(block_params["cpu_time"]),
+        mean=np.mean(block_params["cpu_time"]),
+        sum=sum(block_params["cpu_time"]),
+        count=len(block_params["cpu_time"]),
+    )
+
+    node_counts = Counter(block_params["node_id"])
+    assert op.node_count == StatsSummary(
+        min=min(node_counts.values()),
+        max=max(node_counts.values()),
+        mean=np.mean(list(node_counts.values())),
+        sum=sum(node_counts.values()),
+        count=len(node_counts),
+    )
+
+    # Verify to_string() produces output containing operator name
+    stats_str = calculated_stats.to_string()
+    assert "Read" in stats_str
+    assert "tasks executed" in stats_str
+
+
+def test_get_total_stats(ray_start_regular_shared, op_two_block):
+    """Tests a set of similar getter methods which pull aggregated
+    statistics values after calculating operator-level stats:
+    `DatasetStats.get_total_wall_time()`,
+    `DatasetStats.get_total_cpu_time()`."""
+    block_params, block_meta_list = op_two_block
+    stats = DatasetStats(
+        metadata={"Read": block_meta_list},
+        parent=None,
+    )
+
+    dataset_stats_summary = stats.to_summary()
+    op_stats = dataset_stats_summary.operators_stats[0]
+
+    # simple case with only one block / summary, result should match difference between
+    # the start and end time
+    assert (
+        dataset_stats_summary.get_total_wall_time()
+        == op_stats.latest_end_time - op_stats.earliest_start_time
+    )
+
+    # total time across all blocks is sum of wall times of blocks
+    assert dataset_stats_summary.get_total_time_all_blocks() == sum(
+        block_params["wall_time"]
+    )
+
+    cpu_time_stats = op_stats.cpu_time
+    assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.sum
+
+
+def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
+    ds = ray.data.range(5, override_num_blocks=5).map(column_udf("id", lambda x: x + 1))
+    ds.take_all()
+
+    stats_summary = ds.get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="ReadRange->Map")
+
+    # Verify operator has expected metrics
+    assert "ReadRange" in op.operator_name
+    assert "Map" in op.operator_name
+    assert op.wall_time is not None
+    assert op.cpu_time is not None
+    assert op.udf_time is not None
+    assert op.output_num_rows is not None
+    assert op.output_size_bytes is not None
+    assert op.node_count is not None
+    assert op.task_rows is not None
+    assert stats_summary.num_rows_per_s > 0
+
+    # Verify dataset iterator time breakdown exists
+    assert stats_summary.iter_stats is not None
+
+
+def test_write_ds_stats(ray_start_regular_shared, tmp_path):
+    # Test 1: Basic write_parquet - stats stored in _write_ds
+    ds1 = ray.data.range(100, override_num_blocks=100)
+    ds1.write_parquet(str(tmp_path))
+
+    write_stats = ds1._write_ds.get_stats_summary()
+    op = get_operator(write_stats, name_pattern="ReadRange->Write")
+    assert "ReadRange" in op.operator_name
+    assert "Write" in op.operator_name
+    assert op.wall_time.sum > 0
+    assert op.output_num_rows.sum > 0
+    assert write_stats.num_rows_per_s > 0
+
+    # Test 2: Materialize then write_parquet
+    ds2 = (
+        ray.data.range(100, override_num_blocks=100)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+
+    # Capture stats before write_parquet
+    materialized_stats = ds2.get_stats_summary()
+    map_op = get_operator(materialized_stats, name_pattern="Map")
+    assert map_op.wall_time.sum > 0
+
+    # After write_parquet, ds.get_stats_summary() returns _write_ds stats
+    # This tests the _write_ds delegation branch
+    ds2.write_parquet(str(tmp_path))
+    combined_stats = ds2.get_stats_summary()
+    write_op = get_operator(combined_stats, name_pattern="Write")
+    assert write_op.wall_time.sum > 0
+
+
+def test_time_backpressure(ray_start_regular_shared, restore_data_context):
+    class TimedBackpressurePolicy(BackpressurePolicy):
+        COUNT = 0
+
+        def can_add_input(self, op: "PhysicalOperator") -> bool:
+            if TimedBackpressurePolicy.COUNT > 1:
+                time.sleep(0.01)
+                return True
+            else:
+                TimedBackpressurePolicy.COUNT += 1
+                return False
+
+    context = DataContext.get_current()
+    context.verbose_stats_logs = True
+    context.set_config(
+        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY, [TimedBackpressurePolicy]
+    )
+
+    def f(x):
+        time.sleep(0.01)
+        return x
+
+    ds = ray.data.range(10000).map_batches(f).materialize()
+    assert ds._raw_stats().extra_metrics["task_submission_backpressure_time"] > 0
+
+
+def test_runtime_metrics(ray_start_regular_shared):
+    from math import isclose
+
+    def time_to_seconds(time_str):
+        if time_str.endswith("us"):
+            # Convert microseconds to seconds
+            return float(time_str[:-2]) / (1000 * 1000)
+        elif time_str.endswith("ms"):
+            # Convert milliseconds to seconds
+            return float(time_str[:-2]) / 1000
+        elif time_str.endswith("s"):
+            # Already in seconds, just remove the 's' and convert to float
+            return float(time_str[:-1])
+
+    f = dummy_map_batches_sleep(0.01)
+    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
+    metrics_str = ds._raw_stats().runtime_metrics()
+
+    # Dictionary to store the metrics for testing
+    metrics_dict = {}
+
+    # Regular expression to match the pattern of each metric line
+    pattern = re.compile(r"\* (.+?): ([\d\.]+(?:ms|s)) \(([\d\.]+)%\)")
+
+    # Split the input string into lines and iterate over them
+    for line in metrics_str.split("\n"):
+        match = pattern.match(line)
+        if match:
+            # Extracting the operator name, time, and percentage
+            operator_name, time_str, percent_str = match.groups()
+            # Converting percentage to float and keeping time as string
+            metrics_dict[operator_name] = (
+                time_to_seconds(time_str),
+                float(percent_str),
+            )
+
+    total_time, total_percent = metrics_dict.pop("Total")
+    assert total_percent == 100
+
+    # Tolerance for floating-point rounding errors (100ms)
+    # Individual operator times may appear slightly larger than total time
+    # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
+    TOLERANCE = 0.02
+
+    for name, (time_s, percent) in metrics_dict.items():
+        # Special-case Scheduling: it's cumulative time across scheduling loops,
+        # so it can exceed the wall-clock Total span under concurrency.
+        if name == "Scheduling":
+            continue
+        if time_s > total_time + TOLERANCE:
+            print("runtime_metrics raw:\n", metrics_str)
+            print("runtime_metrics parsed:", metrics_dict)
+            print(
+                f"runtime_metrics mismatch for '{name}': {time_s}s > {total_time}s (tolerance: {TOLERANCE}s)"
+            )
+
+        assert time_s <= total_time + TOLERANCE
+        # Check percentage, this is done with some expected loss of precision
+        # due to rounding in the intital output.
+        assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
+
+
+def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
+    """Basic test to ensure per-node metrics are populated."""
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = True
+
+    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+        sum_metrics = defaultdict(float)
+        for metrics in per_node_metrics.values():
+            for metric, value in metrics.items():
+                sum_metrics[metric] += value
+        return sum_metrics
+
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        metrics = ds._raw_stats().extra_metrics
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        assert isinstance(per_node_metrics, dict)
+        assert len(per_node_metrics) >= 1
+
+        for nm in per_node_metrics.values():
+            for f in fields(NodeMetrics):
+                assert f.name in nm
+
+        # basic checks to make sure metrics are populated
+        assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
+        assert any(
+            nm["bytes_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+        assert any(
+            nm["blocks_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+
+        net_metrics = _sum_net_metrics(per_node_metrics)
+        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
+        assert (
+            net_metrics["bytes_outputs_of_finished_tasks"]
+            == metrics["bytes_outputs_of_finished_tasks"]
+        )
+
+
+@pytest.mark.parametrize("enable_metrics", [True, False])
+def test_per_node_metrics_toggle(
+    ray_start_regular_shared, restore_data_context, enable_metrics
+):
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = enable_metrics
+
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ray.data.range(10000).map(lambda x: x).materialize()
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        if enable_metrics:
+            assert per_node_metrics is not None
+        else:
+            assert per_node_metrics is None
+
+
+def test_dataset_throughput_calculation(ray_start_regular_shared):
+    """Test throughput calculations using mock block stats."""
+
+    def create_block_stats(start_time, end_time, num_rows):
+        wall_time_s = end_time - start_time
+        exec_stats = BlockExecStats(
+            start_time_s=start_time,
+            end_time_s=end_time,
+            wall_time_s=wall_time_s,
+            cpu_time_s=wall_time_s,
+        )
+        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
+
+    blocks_stats = [
+        create_block_stats(0.0, 2.0, 100),
+        create_block_stats(0.5, 2.5, 100),
+        create_block_stats(1.0, 3.0, 100),
+    ]
+
+    stats = DatasetStats(metadata={"Map": blocks_stats}, parent=None)
+    summary = stats.to_summary()
+
+    # Throughput: total rows / total execution duration
+    # Total rows = 300
+    # Duration = max end_time - min start_time = 3.0s
+    # 300 rows / 3s = 100 rows/s
+    assert summary.num_rows_per_s == 100
+
+
+def test_operator_throughput_calculation(ray_start_regular_shared):
+    """Test operator throughput calculations using mock BlockStats."""
+
+    def create_block_stats(start_time, end_time, num_rows, task_idx):
+        wall_time_s = end_time - start_time
+        exec_stats = BlockExecStats(
+            start_time_s=start_time,
+            end_time_s=end_time,
+            wall_time_s=wall_time_s,
+            cpu_time_s=wall_time_s,
+            task_idx=task_idx,
+        )
+        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
+
+    blocks_stats = [
+        create_block_stats(0.0, 2.0, 100, 1),
+        create_block_stats(0.0, 2.0, 100, 2),
+    ]
+
+    summary = OperatorStatsSummary.from_block_metadata(
+        operator_name="MockOperator",
+        block_stats=blocks_stats,
+        is_sub_operator=False,
+    )
+
+    # Total rows = 200
+    # Total operator wall time (from earliest start to latest end) = 2.0s
+    # Sum of individual task wall times = 2.0s + 2.0s = 4.0s
+    # Overall throughput: Total rows / Total operator wall time
+    assert summary.num_rows_per_s == 200 / (2.0 - 0.0)
+
+    # Estimated single task throughput: Total rows / Sum of individual task wall times｀
+    assert summary.num_rows_per_task_s == 200 / (2.0 + 2.0)
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_individual_operator_num_rows(shutdown_only):
+    # The input num rows of an individual operator should be the same as the output num rows of its parent operator.
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    data = [{"id": i, "value": i * 1.5, "category": i % 5} for i in range(500)]
+    ds = (
+        ray.data.from_items(data)
+        .map(lambda x: {**x, "value_squared": x["value"] ** 2})
+        .filter(lambda x: x["value_squared"] > 300)
+    )
+
+    stats_output = ds.materialize().stats()
+    re_op0_output = re.compile(r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL)
+    re_op1_input = re.compile(r"Operator 1.*?Total input num rows: (\d+)", re.DOTALL)
+
+    op0_output = int(re_op0_output.search(stats_output).group(1))
+    op1_input = int(re_op1_input.search(stats_output).group(1))
+
+    assert op0_output == 500
+    assert op0_output == op1_input
+
+
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
+    context = DataContext.get_current()
+    context.verbose_stats_logs = verbose_stats_logs
+    context.enable_get_object_locations_for_metrics = True
+    # The object store is about 100MB.
+    ray.init(object_store_memory=100e6)
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    # Use structured assertions instead of canonicalize string comparison
+    stats_summary = ds.get_stats_summary()
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
+    assert_basic_operator_metrics(op)
+    expected_rows = 1000 * 80 * 80 * 4
+    assert op.output_num_rows.sum == expected_rows
+
+    # Verify global memory stats (spilled/restored)
+    assert stats_summary.global_bytes_spilled > 0
+    assert stats_summary.global_bytes_restored > 0
+
+    # Around 100MB should be spilled (200MB - 100MB)
+    assert ds._raw_stats().global_bytes_spilled > 100e6
+
+    ds = (
+        ray.data.range(1000 * 80 * 80 * 4)
+        .map_batches(lambda x: x)
+        .materialize()
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+    # two map_batches operators, twice the spillage
+    assert ds._raw_stats().dataset_bytes_spilled > 200e6
+
+    # The size of dataset is around 50MB, there should be no spillage
+    ds = (
+        ray.data.range(250 * 80 * 80 * 4, override_num_blocks=1)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+
+    assert ds._raw_stats().dataset_bytes_spilled == 0
+
+
+def test_stats_actor_metrics():
+    ray.init(object_store_memory=100e6)
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    # last emitted metrics from map operator
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+
+    assert final_metric.obj_store_mem_spilled == ds._raw_stats().dataset_bytes_spilled
+    assert (
+        final_metric.obj_store_mem_freed
+        == ds._raw_stats().extra_metrics["obj_store_mem_freed"]
+    )
+    assert (
+        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
+    )  # 8B per int
+    assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
+    # There should be nothing in object store at the end of execution.
+
+    args = update_fn.call_args_list[-1].args
+    assert args[0] == f"dataset_{ds._uuid}_0"
+    assert args[2][0] == "Input_0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
+
+    def sleep_three(x):
+        import time
+
+        time.sleep(3)
+        return x
+
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
+
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+    assert final_metric.block_generation_time >= 9
+
+
+def test_stats_actor_iter_metrics():
+    ds = ray.data.range(1e6).map_batches(lambda x: x)
+    with patch_update_stats_actor_iter() as update_fn:
+        ds.take_all()
+
+    ds_stats = ds._raw_stats()
+    final_stats = update_fn.call_args_list[-1].args[0]
+
+    assert final_stats == ds_stats
+    assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
+    assert update_fn.call_args_list[-1].args[2] is None
+
+
+@pytest.mark.parametrize(
+    "split_index_arg, expected_split_label",
+    [
+        ("3", "split_3"),
+        (None, "no_split"),
+    ],
+)
+def test_update_iteration_metrics_exports_new_iter_metrics(
+    split_index_arg, expected_split_label
+):
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_total_s.add(11.0)
+    stats.iter_blocked_production_wait_s.add(1.0)
+    stats.iter_blocked_data_transfer_s.add(1.5)
+    stats.iter_blocked_batching_s.add(2.0)
+    stats.iter_blocked_format_s.add(3.0)
+    stats.iter_blocked_collate_s.add(4.0)
+    stats.iter_blocked_finalize_s.add(5.0)
+    stats.iter_batches_total = 7
+    stats.iter_rows_total = 8
+
+    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
+        _StatsActor.__ray_metadata__.modified_class
+    )
+    recorded = {}
+
+    class FakeGauge:
+        def __init__(self, name):
+            self.name = name
+
+        def set(self, value, tags):
+            recorded[self.name] = (value, tags)
+
+    for attr in [
+        "iter_initialize_s",
+        "iter_total_s",
+        "iter_get_ref_bundles_s",
+        "iter_get_s",
+        "iter_next_batch_s",
+        "iter_format_batch_s",
+        "iter_collate_batch_s",
+        "iter_finalize_batch_s",
+        "iter_blocks_local",
+        "iter_blocks_remote",
+        "iter_unknown_location",
+        "iter_prefetched_bytes",
+        "iter_block_fetching_s",
+        "iter_batch_shaping_s",
+        "iter_batch_formatting_s",
+        "iter_batch_collating_s",
+        "iter_batch_finalizing_s",
+        "time_to_first_batch_s",
+        "iter_total_blocked_s",
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
+
+    actor.update_iteration_metrics(stats, "train_dataset", split_index_arg)
+
+    expected_tags = {"dataset": "train_dataset", "split": expected_split_label}
+    assert recorded["iter_total_s"] == (11.0, expected_tags)
+    assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
+    assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
+    assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
+    assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
+    assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
+    assert recorded["iter_batches_total"] == (7, expected_tags)
+    assert recorded["iter_rows_total"] == (8, expected_tags)
+
+
+def test_iter_stats_summary_has_new_fields():
+    """IterStatsSummary includes per-stage blocked timers and counters."""
+    stats = DatasetStats(metadata={}, parent=None)
+    summary = stats.to_summary()
+    iter_summary = summary.iter_stats
+
+    expected_fields = {
+        "blocked_production_wait_time",
+        "blocked_data_transfer_time",
+        "blocked_batching_time",
+        "blocked_format_time",
+        "blocked_collate_time",
+        "blocked_finalize_time",
+        "batches_total",
+        "rows_total",
+    }
+    actual_fields = {f.name for f in fields(iter_summary)}
+    assert expected_fields.issubset(
+        actual_fields
+    ), f"missing fields: {expected_fields - actual_fields}"
+
+
+def test_iter_stats_summary_reflects_accumulated_values():
+    """IterStatsSummary carries the accumulated timer values."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_blocked_batching_s.add(0.2)
+    stats.iter_batches_total = 10
+    stats.iter_rows_total = 320
+
+    summary = stats.to_summary().iter_stats
+    assert summary.blocked_production_wait_time.get() == pytest.approx(0.5)
+    assert summary.blocked_data_transfer_time.get() == pytest.approx(0.0)
+    assert summary.blocked_batching_time.get() == pytest.approx(0.2)
+    assert summary.batches_total == 10
+    assert summary.rows_total == 320
+
+
+def test_iter_stats_to_string_shows_stage_breakdown():
+    """to_string() renders per-stage breakdown when values are non-zero."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(1.5)
+    stats.iter_blocked_format_s.add(0.8)
+    stats.iter_batches_total = 5
+    stats.iter_rows_total = 160
+    stats.iter_total_blocked_s.add(2.3)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    assert "format" in text
+    assert "Total batches consumed: 5" in text
+    assert "Total rows consumed: 160" in text
+    assert "Per-stage training-thread blocked time breakdown" in text
+
+
+def test_iter_stats_to_string_omits_zero_stages():
+    """to_string() omits stages with zero values from the breakdown."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_total_blocked_s.add(0.5)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    # Zero stages should not appear
+    assert "batching" not in text
+    assert "collate" not in text
+
+
+def test_iter_stats_to_string_no_breakdown_when_all_zero():
+    """When all blocked_* stages are zero, no breakdown section appears."""
+    stats = DatasetStats(metadata={}, parent=None)
+    text = str(stats.to_summary().iter_stats)
+    assert "Per-stage training-thread blocked time breakdown" not in text
+    assert "Total batches consumed" not in text
+    assert "Total rows consumed" not in text
+
+
+def test_dataset_name_and_id():
+    # Test deprecated APIs: _set_name and _name
+    ds = ray.data.range(1)
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
+
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    ds.set_name("test_ds")
+    assert ds.name == "test_ds"
+    assert "test_ds" in repr(ds)
+
+    def _run_dataset(ds, expected_name, expected_run_index):
+        with patch_update_stats_actor() as update_fn:
+            for _ in ds.iter_batches():
+                pass
+
+        assert (
+            update_fn.call_args_list[-1].args[0]
+            == f"{expected_name}_{ds._uuid}_{expected_run_index}"
+        )
+
+    _run_dataset(ds, "test_ds", 0)
+
+    # Run the dataset again, the execution index should be incremented
+    _run_dataset(ds, "test_ds", 1)
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    assert ds.name == "test_ds"
+    _run_dataset(ds, "test_ds", 0)
+
+    ds.set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    assert ds.name == "test_ds_two"
+    _run_dataset(ds, "test_ds_two", 0)
+
+    ds.set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    assert ds.name is None
+    _run_dataset(ds, "dataset", 0)
+
+    ds = ray.data.range(100, override_num_blocks=20)
+    ds.set_name("very_loooooooong_name")
+    assert "very_loooooooong_name" in repr(ds)
+
+
+def test_dataset_id_train_ingest():
+    """Test that the dataset ID is properly set for training ingestion jobs."""
+    num_epochs = 3
+    driver_script = f"""
+import ray
+
+ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+ds.set_name("train")
+ds._set_uuid("1234")
+
+split = ds.streaming_split(1)[0]
+
+for epoch in range({num_epochs}):
+    for _ in split.iter_batches():
+        pass
+    """
+    # Need to run the code as s sub process, because the executor
+    # runs on the SplitCoordinator actor.
+    out = run_string_as_driver(driver_script)
+    for i in range(num_epochs):
+        dataset_id = f"train_1234_{i}"
+        assert f"Starting execution of Dataset {dataset_id}" in out
+
+
+def test_executor_logs_metrics_on_operator_completion(caplog, propagate_logs):
+    """Test that operator completion metrics are logged exactly once per operator."""
+    EXPECTED_COMPLETION_MESSAGE = (
+        "Operator TaskPoolMapOperator[ReadRange] completed. Operator Metrics:"
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        ray.data.range(1).take_all()
+
+    log_messages = [record.message for record in caplog.records]
+    actual_count = sum(EXPECTED_COMPLETION_MESSAGE in msg for msg in log_messages)
+    assert actual_count == 1, (
+        f"Expected operator completion message to appear exactly once, "
+        f"but found {actual_count} occurrences"
+    )
+
+
+def test_stats_actor_datasets(ray_start_cluster):
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    ds.set_name("test_stats_actor_datasets")
+    ds.materialize()
+    stats_actor = get_or_create_stats_actor()
+
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    dataset_name = list(filter(lambda x: x.startswith(ds.name), datasets))
+    assert len(dataset_name) == 1
+    dataset = datasets[dataset_name[0]]
+
+    assert dataset["state"] == "FINISHED"
+    assert dataset["progress"] == 20
+    assert dataset["total"] == 20
+    assert dataset["end_time"] is not None
+
+    operators = dataset["operators"]
+    assert len(operators) == 2
+    assert "Input_0" in operators
+    assert "ReadRange->MapBatches(<lambda>)_1" in operators
+    for value in operators.values():
+        assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
+        assert value["progress"] == 20
+        assert value["total"] == 20
+        assert value["state"] == "FINISHED"
+
+
+def test_stats_actor_datasets_eviction(ray_start_cluster):
+    """
+    Tests that finished datasets are evicted from the _StatsActor when
+    the number of datasets exceeds the configured `max_stats` limit.
+    """
+    # Set a low max_stats limit to easily trigger eviction.
+    max_stats = 2
+    # Create a dedicated _StatsActor for this test to avoid interfering
+    # with the global actor.
+    stats_actor = _StatsActor.remote(max_stats=max_stats)
+
+    # Patch the function that retrieves the stats actor to return our
+    # test-specific actor instance.
+    with patch(
+        "ray.data._internal.stats.get_or_create_stats_actor",
+        return_value=stats_actor,
+    ):
+
+        def check_ds_finished(ds_name):
+            """Helper to check if a dataset is marked as FINISHED in the actor."""
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            ds_tag = next((tag for tag in datasets if tag.startswith(ds_name)), None)
+            if not ds_tag:
+                return False
+            return datasets[ds_tag]["state"] == DatasetState.FINISHED.name
+
+        # --- DS1 ---
+        # Create and materialize the first dataset.
+        ds1 = ray.data.range(1, override_num_blocks=1)
+        ds1.set_name("ds1")
+        ds1.materialize()
+        # Wait until the actor has been updated with the FINISHED state.
+        wait_for_condition(lambda: check_ds_finished("ds1"))
+
+        # --- DS2 ---
+        # Create and materialize the second dataset.
+        # This brings the total number of datasets to the `max_stats` limit.
+        ds2 = ray.data.range(1, override_num_blocks=1)
+        ds2.set_name("ds2")
+        ds2.materialize()
+        wait_for_condition(lambda: check_ds_finished("ds2"))
+
+        # --- Verify state before eviction ---
+        # At this point, both ds1 and ds2 should be in the actor.
+        datasets = ray.get(stats_actor.get_datasets.remote())
+        names_in_actor = {k.split("_")[0] for k in datasets.keys()}
+        assert names_in_actor == {"ds1", "ds2"}
+
+        # --- DS3 ---
+        # Create and materialize the third dataset. This should trigger the
+        # eviction of the oldest finished dataset (ds1).
+        ds3 = ray.data.range(1, override_num_blocks=1)
+        ds3.set_name("ds3")
+        ds3.materialize()
+
+        def check_eviction():
+            """
+            Helper to check that the actor state reflects the eviction.
+            The actor should now contain ds2 and ds3, but not ds1.
+            """
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            # The eviction happens asynchronously, so we might briefly see 3 datasets.
+            # We wait until the count is back to 2.
+            if len(datasets) == max_stats + 1:
+                return False
+            names = {k.split("_")[0] for k in datasets.keys()}
+            assert names == {"ds2", "ds3"}
+            return True
+
+        # Wait until the eviction has occurred and the actor state is correct.
+        wait_for_condition(check_eviction)
+
+
+# Setting internal=10000 (super high number) value so they are only called
+# once (on cold start), and on shutdown.
+@patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch.object(BatchIterator, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch("ray.data._internal.stats.get_or_create_stats_actor")
+def test_stats_manager(mock_get_or_create, shutdown_only):
+
+    # Configure what get_or_create_stats_actor() returns
+    mock_actor = MagicMock()
+    mock_get_or_create.return_value = mock_actor
+
+    ray.init()
+    num_threads = 10
+
+    datasets = [None] * num_threads
+
+    def update_stats_manager(i):
+        datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+        for _ in datasets[i].iter_batches(batch_size=1):
+            pass
+
+    threads = [
+        threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # Count calls to register_dataset.remote()
+    register_dataset_calls = mock_actor.register_dataset.remote.call_count
+    # Count calls to update_iteration_metrics.remote()
+    iteration_calls = mock_actor.update_iteration_metrics.remote.call_count
+    # Count calls to update_execution_metrics.remote()
+    execution_calls = mock_actor.update_execution_metrics.remote.call_count
+
+    # Each thread handles 1 dataset.
+    assert register_dataset_calls == num_threads
+
+    # Since interval is set to high value, the number of execution
+    # calls will update on the first update (cold start), and on shutdown,
+    # which is 2 for each thread.
+    assert execution_calls == 2 * num_threads
+    # iteration_calls has 3 per thread: cold start + shutdown + the
+    # finally-block flush in DataIterator._iter_batches (added so an
+    # early ``break`` still records iter_total_s and flushes metrics).
+    assert iteration_calls == 3 * num_threads
+
+
+def test_stats_manager_stale_actor_handle(ray_start_cluster):
+    """
+    This test asserts that StatsManager is able to handle appropriately
+    cases of StatsActor being killed upon driver disconnecting from running
+    Ray cluster
+
+    See https://github.com/ray-project/ray/issues/54841 for more details
+    """
+
+    class F:
+        def __call__(self, x):
+            return x
+
+    # First driver run
+    ray.init(ignore_reinit_error=True)
+
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
+
+    ray.shutdown()
+
+    # Second driver run
+    ray.init(ignore_reinit_error=True)
+
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
+
+    ray.shutdown()
+
+
+def test_runtime_metrics_histogram_observe():
+    """Test that RuntimeMetricsHistogram correctly places values in buckets."""
+    # Create a simple histogram with 3 boundaries: [1.0, 5.0, 10.0]
+    boundaries = [1.0, 5.0, 10.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Test values in different buckets
+    histogram.observe(0.5)  # Should go to bucket 0 (< 1.0)
+    histogram.observe(3.0)  # Should go to bucket 1 (1.0 <= x < 5.0)
+    histogram.observe(7.0)  # Should go to bucket 2 (5.0 <= x < 10.0)
+    histogram.observe(15.0)  # Should go to bucket 3 (>= 10.0)
+
+    # Test multiple observations
+    histogram.observe(2.0, num_observations=3)  # Should add 3 to bucket 1
+
+    # Verify bucket counts
+    expected_counts = [1, 4, 1, 1]  # [bucket0, bucket1, bucket2, bucket3]
+    assert histogram._bucket_counts == expected_counts
+
+    # Verify the average value
+    assert f"{histogram}" == "(samples: 7, avg: 5.00)"
+
+
+def test_runtime_metrics_histogram_export_to():
+    """Test that export_to correctly applies observations to Ray Histogram."""
+    from ray.util.metrics import Histogram
+
+    # Create a simple histogram with 2 boundaries
+    boundaries = [1.0, 3.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Add some observations
+    histogram.observe(0.5)  # bucket 0
+    histogram.observe(2.0)  # bucket 1
+    histogram.observe(5.0)  # bucket 2
+
+    # Create a mock Ray Histogram
+    mock_metric = MagicMock(spec=Histogram)
+    mock_metric.last_applied_bucket_counts_for_tags = {}
+
+    # Apply to metric
+    tags = {"node_id": "test_node"}
+    histogram.export_to(mock_metric, tags)
+
+    # Verify that observe was called 3 times (once for each observation)
+    assert mock_metric.observe.call_count == 3
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    # Bucket 2: 3.0 to 13.0 (3.0 + 10), midpoint should be around 8.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+    assert any(3.0 <= val for val in observed_values)
+
+    # Verify that the last_applied_bucket_counts_for_tags was updated
+    tags_key = '{"node_id": "test_node"}'
+    assert tags_key in mock_metric.last_applied_bucket_counts_for_tags
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [1, 1, 1]
+
+    # Add some more observations
+    histogram.observe(0.8)  # bucket 0
+    histogram.observe(1.2)  # bucket 1
+    histogram.export_to(mock_metric, tags)
+
+    # Verify that observe was called 2 more times (once for each observation)
+    assert mock_metric.observe.call_count == 5
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls[2:]]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [2, 2, 1]
+
+
+def test_data_context_with_custom_classes_serialization(ray_start_cluster):
+    """
+    Test that DataContext containing custom exception classes can be properly
+    serialized to StatsActor across different jobs.
+
+    This test reproduces the issue where StatsActor fails to deserialize
+    DataContext when it contains custom exception classes imported from modules
+    that are not available in StatsActor's runtime environment.
+
+    The fix uses DataContextMetadata to sanitize DataContext before serialization,
+    converting custom classes to dictionary representations.
+    """
+    import os
+    import tempfile
+
+    def create_driver_script_with_dependency(working_dir, ray_address):
+        """Create custom module and driver script that depends on it."""
+        custom_module_path = os.path.join(working_dir, "test_custom_module.py")
+        with open(custom_module_path, "w") as f:
+            f.write(
+                """class CustomRetryException(Exception):
+    def __init__(self):
+        pass
+"""
+            )
+
+        driver_script = f"""
+import sys
+# Add working_dir to sys.path so we can import test_custom_module
+sys.path.insert(0, r"{working_dir}")
+
+import ray
+import ray.data
+from ray.data.context import DataContext
+
+ray.init(
+    address="{ray_address}",
+    ignore_reinit_error=True,
+    runtime_env={{"working_dir": r"{working_dir}"}}
+)
+
+import test_custom_module
+
+data_context = DataContext.get_current()
+data_context.actor_task_retry_on_errors = [test_custom_module.CustomRetryException]
+
+ds = ray.data.range(10)
+ds.take(1)
+ray.shutdown()
+"""
+        return driver_script
+
+    # Job 1: Create dataset to trigger StatsActor creation
+    ds = ray.data.range(10)
+    ds.take(1)
+
+    # Job 2: Run job that imports custom exception from module
+    with tempfile.TemporaryDirectory() as working_dir:
+        ray_address = ray.get_runtime_context().gcs_address
+        driver_script = create_driver_script_with_dependency(working_dir, ray_address)
+
+        # This should succeed without ModuleNotFoundError if the fix is applied
+        run_string_as_driver(driver_script)
+
+        # Verify StatsActor can retrieve datasets without errors
+        stats_actor = get_or_create_stats_actor()
+        datasets = ray.get(stats_actor.get_datasets.remote())
+        assert len(datasets) == 2, (
+            f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
+            f"but found {len(datasets)}"
+        )
+
+
+class TestTimerPercentile:
+    """Tests for Timer's KLL-sketch-backed percentile().
+
+    Every ``Timer.add(v)`` feeds the internal ``DistributionTracker``
+    sketch, so ``percentile`` returns an approximate quantile bounded
+    by the KLL accuracy guarantee (~1.65% rank error at k=200). For
+    sample counts at or below k the sketch keeps every item and
+    returns exact values; the relaxed tolerances below cover both
+    regimes.
+    """
+
+    def test_zero_samples(self):
+        t = Timer()
+        assert t.percentile(0.0) == 0
+        assert t.percentile(0.5) == 0
+        assert t.percentile(0.9) == 0
+        assert t.percentile(1.0) == 0
+
+    def test_existing_aggregate_stats_unchanged(self):
+        # Sanity: wiring DistributionTracker into add() must not perturb
+        # Timer's pre-existing sum/min/max/avg semantics.
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        assert t.get() == pytest.approx(1.111)
+        assert t.max() == pytest.approx(1.0)
+        assert t.min() == pytest.approx(0.001)
+        assert t.avg() == pytest.approx(0.27775)
+
+    def test_single_sample(self):
+        t = Timer()
+        t.add(0.042)
+        for p in [0.0, 0.5, 0.9, 1.0]:
+            assert t.percentile(p) == pytest.approx(0.042)
+
+    @pytest.mark.parametrize("p", [0.5, 0.9, 0.99])
+    def test_uniform_samples(self, p):
+        # All samples identical — every quantile must equal the sample.
+        t = Timer()
+        for _ in range(100):
+            t.add(0.005)
+        assert t.percentile(p) == pytest.approx(0.005)
+
+    def test_linearly_spaced_samples_within_kll_tolerance(self):
+        # 11 samples in [0.0, 1.0]. With k=200 the sketch is exact at
+        # this size; allow a small abs tolerance for safety.
+        t = Timer()
+        for v in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+            t.add(v)
+        assert t.percentile(0.0) == pytest.approx(0.0, abs=0.05)
+        assert t.percentile(0.5) == pytest.approx(0.5, abs=0.1)
+        assert t.percentile(0.9) == pytest.approx(0.9, abs=0.1)
+        assert t.percentile(1.0) == pytest.approx(1.0, abs=0.05)
+
+    def test_percentiles_are_monotonic(self):
+        # Across arbitrary quantiles, the sketch must return a
+        # monotonically non-decreasing sequence.
+        t = Timer()
+        for v in range(1, 1001):
+            t.add(float(v))
+        ps = [t.percentile(q) for q in [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]]
+        assert ps == sorted(ps)
+
+    def test_bimodal_distribution(self):
+        # 80 samples at 5ms, 20 samples at 200ms.
+        #   true p50 = 5ms (50% of mass is at 5ms)
+        #   true p90 ≈ 200ms (top 20% of mass is at 200ms)
+        t = Timer()
+        for _ in range(80):
+            t.add(0.005)
+        for _ in range(20):
+            t.add(0.2)
+        assert t.percentile(0.5) == pytest.approx(0.005, abs=0.01)
+        assert t.percentile(0.9) == pytest.approx(0.2, abs=0.05)
+
+    def test_worker_scaling_regression_case(self):
+        # Regression test for the worker_scaling-scale workload that
+        # motivated proper percentile tracking. KLL-backed percentiles
+        # land close to the true distribution and stay monotonic.
+        t = Timer()
+        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:  # 80 in 8-12s
+            t.add(v)
+        for v in [15.0, 18.0, 22.0, 28.0] * 4:  # 16 in 15-28s
+            t.add(v)
+        for v in [35.0, 37.0]:
+            t.add(v)
+        max_v = t.max()
+        p50 = t.percentile(0.5)
+        p90 = t.percentile(0.9)
+        assert 0 < p50 <= p90 <= max_v
+        # p50 in the bulk (8-12s); p90 well into the tail.
+        assert 8.0 <= p50 <= 12.0
+        assert p90 >= 15.0
+
+    @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
+    def test_rejects_out_of_range_p(self, bad_p):
+        # Catch the common ``percentile(90)`` typo (instead of 0.9).
+        t = Timer()
+        t.add(0.005)
+        with pytest.raises(ValueError, match="p must be in"):
+            t.percentile(bad_p)
+
+    @pytest.mark.parametrize("ok_p", [0.0, 1.0])
+    def test_accepts_boundary_p(self, ok_p):
+        t = Timer()
+        t.add(0.005)
+        # Should not raise.
+        t.percentile(ok_p)
+
+    def test_cloudpickle_roundtrip(self):
+        # Regression: Timer is embedded in DatasetStats, which is
+        # cloudpickled when Datasets cross actor / process boundaries.
+        # The KLL sketch under DistributionTracker is C++-backed; an
+        # earlier version of this PR broke ``cloudpickle.dumps(ds)``
+        # with ``cannot pickle 'kll_doubles_sketch' object``.
+        import cloudpickle
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        t2 = cloudpickle.loads(cloudpickle.dumps(t))
+        assert t2.get() == pytest.approx(t.get())
+        assert t2.max() == pytest.approx(t.max())
+        assert t2.avg() == pytest.approx(t.avg())
+        # Percentiles must survive the round-trip.
+        assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
+        assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
+
+    def test_as_dict_is_json_serializable(self):
+        # Regression: Timer.__dict__ holds a DistributionTracker (not
+        # JSON-serializable) since percentile tracking was added. Code
+        # that persists Timer stats to JSON (e.g. the training-ingest
+        # benchmark checkpointing metrics.json) must use as_dict(), which
+        # exposes only the scalar fields.
+        import json
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        d = t.as_dict()
+        assert "_distribution" not in d
+        # Must not raise ``Object of type DistributionTracker is not JSON
+        # serializable``.
+        json.loads(json.dumps(d))
+
+    def test_as_dict_from_dict_roundtrip(self):
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+
+        restored = Timer()
+        restored.from_dict(t.as_dict())
+        assert restored.get() == pytest.approx(t.get())
+        assert restored.min() == pytest.approx(t.min())
+        assert restored.max() == pytest.approx(t.max())
+        assert restored.avg() == pytest.approx(t.avg())
+
+    def test_as_dict_from_dict_empty(self):
+        # An untouched Timer reports min/max as None (inf is not
+        # JSON-representable) and restores back to the empty sentinels.
+        t = Timer()
+        d = t.as_dict()
+        assert d["_min"] is None and d["_max"] is None
+        assert d["_total"] == 0 and d["_total_count"] == 0
+
+        restored = Timer()
+        restored.from_dict(d)
+        assert restored.min() == float("inf")
+        assert restored.get() == 0
+
+    @pytest.mark.parametrize("bad_state", [None, [], "x", 42])
+    def test_from_dict_ignores_non_dict(self, bad_state):
+        # A malformed/missing checkpoint payload must not crash restore;
+        # the Timer keeps its empty-state defaults.
+        t = Timer()
+        t.from_dict(bad_state)
+        assert t.get() == 0
+        assert t.min() == float("inf")
+
+    def test_from_dict_handles_none_values(self):
+        # Explicit None values must fall back to defaults — .get(k, 0)
+        # would wrongly keep None since the key is present.
+        t = Timer()
+        t.from_dict({"_total": None, "_min": None, "_max": None, "_total_count": None})
+        assert t.get() == 0.0
+        assert t._total_count == 0.0
+        assert t.min() == float("inf")
+        assert t.max() == 0.0
+
+
+class TestTimeSpan:
+    """Tests for TimeSpan dataclass."""
+
+    def test_default_values(self):
+        """Default TimeSpan has start_s=0 and end_s=0."""
+        t = TimeSpan()
+        assert t.start_s == 0.0
+        assert t.end_s == 0.0
+
+    def test_duration(self):
+        """Duration is end_s - start_s."""
+        t = TimeSpan(start_s=1.0, end_s=3.5)
+        assert t.duration == pytest.approx(2.5)
+
+    def test_zero_duration(self):
+        """Default TimeSpan has zero duration."""
+        t = TimeSpan()
+        assert t.duration == 0.0
+
+
+class TestTimerSpan:
+    """Tests for Timer.timer() returning a TimeSpan and accumulating."""
+
+    def test_timer_yields_timespan(self, monkeypatch):
+        """timer() yields a fresh TimeSpan whose duration is accumulated."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+        assert t.max() == 0.5
+        assert t.min() == 0.5
+
+    def test_each_call_returns_fresh_span(self, monkeypatch):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as s1:
+            perf[0] = 2.0
+        perf[0] = 10.0
+        with t.timer() as s2:
+            perf[0] = 12.0
+        assert s1 is not s2
+        assert s1.duration == 1.0
+        assert s2.duration == 2.0
+        assert t.get() == 3.0
+
+    def test_maybe_time_skips_when_timer_none(self):
+        """_maybe_time(None) yields None."""
+        with _maybe_time(None) as span:
+            assert span is None
+        assert span is None
+
+    def test_maybe_time_yields_span_when_timer_given(self, monkeypatch):
+        """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with _maybe_time(t) as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+
+
+@pytest.mark.parametrize(
+    "stage,attr",
+    [
+        (IterationStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (IterationStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (IterationStage.BATCHING, "iter_blocked_batching_s"),
+        (IterationStage.FORMAT, "iter_blocked_format_s"),
+        (IterationStage.COLLATE, "iter_blocked_collate_s"),
+        (IterationStage.FINALIZE, "iter_blocked_finalize_s"),
+    ],
+)
+class TestGetBlockedTimer:
+    """Tests for DatasetStats.get_blocked_timer() stage->Timer mapping."""
+
+    def test_get_blocked_timer_returns_correct_attribute(self, stage, attr):
+        """get_blocked_timer(stage) returns the Timer matching the stage."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert stats.get_blocked_timer(stage) is getattr(stats, attr)
+
+    def test_get_blocked_timer_returns_timer_instance(self, stage, attr):
+        """get_blocked_timer returns a real Timer (not None)."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert isinstance(stats.get_blocked_timer(stage), Timer)
+
+
+def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
+    # KLL-sketch percentile tracking is always on (bounded memory), so
+    # the percentile fields are populated end-to-end with no env-var
+    # gating. ``Dataset.materialize`` runs the streaming executor on a
+    # deep copy of the dataset, so stats land on the
+    # ``MaterializedDataset`` it returns — read stats from there.
+    mds = ray.data.range(100).map(lambda r: r).materialize()
+    summary = mds.get_stats_summary(detail=True)
+    p50 = summary.streaming_exec_schedule_p50_s
+    p90 = summary.streaming_exec_schedule_p90_s
+    schedule_max = summary.streaming_exec_schedule_max_s
+    # Percentiles are populated, monotonic, and bounded by max.
+    assert p90 > 0
+    assert 0 <= p50 <= p90 <= schedule_max
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-vv", __file__]))

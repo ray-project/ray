@@ -1,0 +1,977 @@
+import asyncio
+import os
+import sys
+from typing import Any, List
+
+import pytest
+
+import ray
+from ray import serve
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
+from ray._common.utils import get_or_create_event_loop
+from ray.exceptions import RayActorError
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+)
+from ray.serve._private.test_utils import check_num_replicas_eq
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import (
+    DeploymentHandle,
+    DeploymentResponse,
+    DeploymentResponseGenerator,
+)
+
+
+def test_basic(serve_instance):
+    @serve.deployment
+    def downstream():
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle
+            assert isinstance(self._handle, DeploymentHandle)
+
+        async def __call__(self):
+            response = self._handle.remote()
+            assert isinstance(response, DeploymentResponse)
+            val = await response
+
+            # Check that the response can be awaited multiple times.
+            for _ in range(10):
+                assert (await response) == val
+
+            return val
+
+    handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
+    assert isinstance(handle, DeploymentHandle)
+    r = handle.remote()
+    assert r.result() == "hello"
+
+    # Check that `.result()` can be called multiple times.
+    for _ in range(10):
+        assert r.result() == "hello"
+
+
+def test_result_timeout(serve_instance):
+    """Test `.result()` timeout parameter."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Deployment:
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return "hi"
+
+    handle = serve.run(Deployment.bind())
+    ref = handle.remote()
+    with pytest.raises(TimeoutError):
+        ref.result(timeout_s=0.1)
+
+    ray.get(signal_actor.send.remote())
+    assert ref.result() == "hi"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support getting dynamic handles",
+)
+def test_get_app_and_deployment_handle(serve_instance):
+    """Test the `get_app_handle` and `get_deployment_handle` APIs."""
+
+    @serve.deployment
+    def downstream():
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            pass
+
+        async def check_get_deployment_handle(self):
+            handle = serve.get_deployment_handle(deployment_name="downstream")
+            assert isinstance(handle, DeploymentHandle)
+
+            ref = handle.remote()
+            assert isinstance(ref, DeploymentResponse)
+            return await ref
+
+    serve.run(Deployment.bind(downstream.bind()))
+    handle = serve.get_app_handle("default")
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.check_get_deployment_handle.remote().result() == "hello"
+
+    handle = serve.get_deployment_handle("downstream", app_name="default")
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello"
+
+
+@pytest.mark.parametrize("arg_type", ["args", "kwargs"])
+def test_compose_deployments_in_app(serve_instance, arg_type: str):
+    """Test composing deployment handle refs within a deployment."""
+
+    @serve.deployment
+    class Downstream:
+        def __init__(self, msg: str):
+            self._msg = msg
+
+        def __call__(self, inp: str):
+            return f"{self._msg}|{inp}"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle1: DeploymentHandle, handle2: DeploymentHandle):
+            self._handle1 = handle1
+            self._handle2 = handle2
+
+        async def __call__(self):
+            if arg_type == "args":
+                result = await self._handle1.remote(self._handle2.remote("hi"))
+            else:
+                result = await self._handle1.remote(inp=self._handle2.remote(inp="hi"))
+            return f"driver|{result}"
+
+    handle = serve.run(
+        Deployment.bind(
+            Downstream.options(name="downstream1").bind("downstream1"),
+            Downstream.options(name="downstream2").bind("downstream2"),
+        ),
+    )
+    assert handle.remote().result() == "driver|downstream1|downstream2|hi"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode only supports single apps",
+)
+@pytest.mark.parametrize("arg_type", ["args", "kwargs"])
+def test_compose_apps(serve_instance, arg_type):
+    """Test composing deployment handle refs outside of a deployment."""
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, msg: str):
+            self._msg = msg
+
+        def __call__(self, inp: str):
+            return f"{self._msg}|{inp}"
+
+    handle1 = serve.run(Deployment.bind("app1"), name="app1", route_prefix="/app1")
+    handle2 = serve.run(Deployment.bind("app2"), name="app2", route_prefix="/app2")
+
+    if arg_type == "args":
+        assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
+    else:
+        assert handle1.remote(inp=handle2.remote(inp="hi")).result() == "app1|app2|hi"
+
+
+def test_compose_args_and_kwargs(serve_instance):
+    """Test composing deployment handle refs outside of a deployment."""
+
+    @serve.deployment
+    class Downstream:
+        def __init__(self, msg: str):
+            self._msg = msg
+
+        def __call__(self, *args, **kwargs):
+            return {"args": args, "kwargs": kwargs}
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle1: DeploymentHandle, handle2: DeploymentHandle):
+            self._handle1 = handle1
+            self._handle2 = handle2
+
+        async def __call__(self):
+            return await self._handle1.remote(
+                "0",
+                "100",
+                self._handle2.remote("1", "2", a="a", b="b"),
+                x="x",
+                y=self._handle2.remote("3", "4", c="c", d="d"),
+                z="z",
+            )
+
+    handle = serve.run(
+        Deployment.bind(
+            Downstream.bind("downstream1"),
+            Downstream.bind("downstream2"),
+        ),
+    )
+
+    result = handle.remote().result()
+    assert result["args"] == (
+        "0",
+        "100",
+        {
+            "args": ("1", "2"),
+            "kwargs": {"a": "a", "b": "b"},
+        },
+    )
+    assert result["kwargs"] == {
+        "x": "x",
+        "y": {
+            "args": ("3", "4"),
+            "kwargs": {"c": "c", "d": "d"},
+        },
+        "z": "z",
+    }
+
+
+@pytest.mark.parametrize("await_order", ["b_first", "c_first"])
+@pytest.mark.asyncio
+async def test_chained_deployment_response_await_order(
+    serve_instance, await_order: str
+):
+    @serve.deployment
+    class DeploymentA:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 2
+
+    @serve.deployment
+    class DeploymentB:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 3
+
+    @serve.deployment
+    class DeploymentC:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 4
+
+    @serve.deployment
+    class ComposedDeployment:
+        def __init__(self, deployment_a, deployment_b, deployment_c):
+            self.deployment_a = deployment_a
+            self.deployment_b = deployment_b
+            self.deployment_c = deployment_c
+
+        async def __call__(self, number: int, await_order: str) -> int:
+            a = self.deployment_a.remote(number)
+            b = self.deployment_b.remote(a)
+            c = self.deployment_c.remote(b)
+
+            # Test different await orders - both should work without hanging
+            if await_order == "b_first":
+                true_b = await b
+                true_c = await c
+            else:
+                true_c = await c
+                true_b = await b
+
+            return true_b * true_c
+
+    handle = serve.run(
+        ComposedDeployment.bind(
+            DeploymentA.bind(), DeploymentB.bind(), DeploymentC.bind()
+        ),
+    )
+
+    # Use a timeout to detect hangs
+    result = await handle.remote(5, await_order)
+
+    # Verify the result is correct:
+    # a = 5 * 2 = 10
+    # b = 10 * 3 = 30 (true_b)
+    # c = 30 * 4 = 120 (true_c)
+    # result = 30 * 120 = 3600
+    assert result == 3600, f"Expected 3600, got {result}"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation(
+    serve_instance,
+):
+    """
+    When upstream (Adder) crashes with os._exit in a chained DeploymentResponse
+    scenario, the downstream (Multiplier) must NOT be incorrectly marked as dead.
+    Subsequent requests should succeed after the upstream is restarted.
+    """
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (5 + 1) * 2 = 12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
+    # Trigger Adder crash with os._exit(0)
+    crash_response = handle.remote(0)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for Adder to be restarted by controller
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="Adder",
+        target=1,
+        timeout=30,
+    )
+
+    # Multiplier should still be in rotation (don't mark it dead when error is
+    # from upstream). A new request should succeed. (2 + 1) * 2 = 6
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must not have been restarted (same actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before == multiplier_actor_id_after, (
+        f"Multiplier was incorrectly marked dead and restarted: "
+        f"actor_id {multiplier_actor_id_before} -> {multiplier_actor_id_after}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_upstream_crash_fails_fast(serve_instance):
+    """When upstream dies in a chained DeploymentResponse, the request should
+    fail immediately with an error — not hang until the caller's timeout.
+    """
+
+    @serve.deployment(num_replicas=2)
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            context = serve.get_replica_context()
+            if val == 0 and context.rank.rank == 0:
+                os._exit(0)
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (5 + 1) * 2 = 12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    # Send requests until we hit the rank-0 replica that will die.
+    # The request must raise a RayServeException (not a TimeoutError), with
+    # Ray's ActorDiedError text embedded (actor id / replica name, etc.).
+    with pytest.raises(RayServeException) as exc_info:
+        while True:
+            handle.remote(0).result(timeout_s=10)
+    err_text = str(exc_info.value)
+    assert "Multiplier" in err_text
+    assert "Adder" in err_text
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_downstream_crash_replica_marked_dead(
+    serve_instance,
+):
+    """
+    When downstream (Multiplier) crashes in a chained DeploymentResponse
+    scenario, the Multiplier replica MUST be correctly marked as dead.
+    Subsequent requests should succeed after the Multiplier is restarted.
+    """
+    # Adder returns input+1. Multiplier crashes when input==0.
+    # So input=-1 -> Adder returns 0 -> Multiplier gets 0 and crashes.
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val * self._multiple
+
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (-1 + 1) * 2 = 0, but Multiplier crashes on 0. Use val=5: (5+1)*2=12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
+    # Trigger Multiplier crash: Adder returns 0, Multiplier gets 0 and os._exit(0)
+    crash_response = handle.remote(-1)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for Multiplier to be restarted by controller
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="Multiplier",
+        target=1,
+        timeout=30,
+    )
+
+    # New request should succeed with restarted Multiplier. (2 + 1) * 2 = 6
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must have been restarted (different actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before != multiplier_actor_id_after, (
+        f"Multiplier was not correctly marked dead and restarted: "
+        f"actor_id unchanged at {multiplier_actor_id_before}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_middle_of_chain_crash(serve_instance):
+    """
+    When the middle deployment (B) crashes in a 3-hop chain Ingress->A->B->C,
+    only B should be marked dead. A and C must NOT be incorrectly marked dead.
+    Subsequent requests should succeed after B is restarted.
+    """
+
+    @serve.deployment
+    class ServiceA:
+        def __call__(self, val: int) -> int:
+            return val * 2
+
+    @serve.deployment
+    class ServiceB:
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val * 3
+
+    @serve.deployment
+    class ServiceC:
+        def __call__(self, val: int) -> int:
+            return val * 5
+
+    @serve.deployment
+    class Ingress:
+        def __init__(
+            self,
+            a: DeploymentHandle,
+            b: DeploymentHandle,
+            c: DeploymentHandle,
+        ):
+            self._a = a
+            self._b = b
+            self._c = c
+
+        async def __call__(self, val: int) -> int:
+            a_resp: DeploymentResponse = self._a.remote(val)
+            b_resp: DeploymentResponse = self._b.remote(a_resp)
+            c_resp: DeploymentResponse = self._c.remote(b_resp)
+            return await c_resp
+
+    app = Ingress.bind(
+        ServiceA.bind(),
+        ServiceB.bind(),
+        ServiceC.bind(),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: 5 -> A=10 -> B=30 -> C=150
+    assert handle.remote(5).result(timeout_s=10) == 150
+
+    # Trigger B crash: val=0 -> A=0 -> B gets 0, crashes
+    crash_response = handle.remote(0)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for B to be restarted
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="ServiceB",
+        target=1,
+        timeout=30,
+    )
+
+    # A and C should still be in rotation. New request: 2 -> A=4 -> B=12 -> C=60
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 60, f"Expected 60, got {result}"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_upstream_raises_exception(serve_instance):
+    """
+    When upstream raises a normal exception (not ActorDiedError), the error
+    propagates correctly and the downstream replica remains in rotation.
+    """
+    # No Windows skip: we use raise ValueError, not os._exit
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                raise ValueError("Adder rejects 0")
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    # Upstream raises ValueError (may be wrapped in RayTaskError)
+    error_response = handle.remote(0)
+    with pytest.raises(Exception):
+        error_response.result(timeout_s=5)
+
+    # Multiplier should still be in rotation. Next request succeeds.
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
+
+
+def test_nested_deployment_response_error(serve_instance):
+    """Test that passing a deployment response in a nested object to a downstream
+    handle call errors, and with an informative error message."""
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self, *args):
+            pass
+
+    @serve.deployment
+    class Upstream:
+        def __init__(self, h1: DeploymentHandle, h2: DeploymentHandle):
+            self._h1 = h1
+            self._h2 = h2
+
+        async def __call__(self):
+            with pytest.raises(
+                RayServeException, match="`DeploymentResponse` is not serializable"
+            ):
+                await self._h2.remote([self._h2.remote()])
+
+    h = serve.run(
+        Upstream.bind(Downstream.bind(), Downstream.bind()),
+    )
+    h.remote().result()
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
+def test_convert_to_object_ref(serve_instance):
+    """Test converting deployment handle refs to Ray object refs."""
+
+    @ray.remote
+    def identity_task(inp: Any):
+        return inp
+
+    @serve.deployment
+    def downstream():
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle
+
+        async def __call__(self):
+            ref = self._handle.remote()
+            return await identity_task.remote(await ref._to_object_ref())
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    ref = handle.remote()
+    assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
+
+
+def test_generators(serve_instance):
+    """Test generators inside and outside a deployment."""
+
+    @serve.deployment
+    def downstream():
+        for i in range(10):
+            yield i
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle.options(stream=True)
+
+        async def __call__(self):
+            gen = self._handle.remote()
+            assert isinstance(gen, DeploymentResponseGenerator)
+            async for i in gen:
+                yield i
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    gen = handle.options(stream=True).remote()
+    assert isinstance(gen, DeploymentResponseGenerator)
+    assert list(gen) == list(range(10))
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
+def test_convert_to_object_ref_gen(serve_instance):
+    """Test converting generators to obj ref gens inside and outside a deployment."""
+
+    @serve.deployment
+    def downstream():
+        for i in range(10):
+            yield i
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle.options(stream=True)
+
+        async def __call__(self):
+            gen = self._handle.remote()
+            assert isinstance(gen, DeploymentResponseGenerator)
+
+            obj_ref_gen = await gen._to_object_ref_gen()
+            async for obj_ref in obj_ref_gen:
+                yield await obj_ref
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    gen = handle.options(stream=True).remote()
+    assert isinstance(gen, DeploymentResponseGenerator)
+    obj_ref_gen = gen._to_object_ref_gen_sync()
+    assert ray.get(list(obj_ref_gen)) == list(range(10))
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
+    """Blocking `DeploymentResponse` (and generator) methods should fail in loop."""
+
+    if stream:
+
+        @serve.deployment
+        def downstream():
+            yield
+
+    else:
+
+        @serve.deployment
+        def downstream():
+            pass
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle.options(stream=stream)
+
+        async def __call__(self):
+            response = self._handle.remote()
+            with pytest.raises(
+                RuntimeError,
+                match="should not be called from within an `asyncio` event loop",
+            ):
+                if stream:
+                    for _ in response:
+                        pass
+                else:
+                    response.result()
+
+            return "OK"
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    assert handle.remote().result() == "OK"
+
+
+def test_handle_eager_execution(serve_instance):
+    """Handle requests should be sent without fetching the result."""
+
+    upstream_signal_actor = SignalActor.remote()
+    downstream_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    async def downstream():
+        await downstream_signal_actor.send.remote()
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle
+
+        async def __call__(self):
+            # Send a request without awaiting the response. It should still
+            # executed (verified via signal actor).
+            r = self._handle.remote()
+            await upstream_signal_actor.send.remote()
+
+            await downstream_signal_actor.wait.remote()
+
+            return await r
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    # Send a request without awaiting the response. It should still
+    # executed (verified via signal actor).
+    r = handle.remote()
+    ray.get(upstream_signal_actor.wait.remote(), timeout=5)
+
+    r.result() == "OK"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't respect max_ongoing_requests",
+)
+@pytest.mark.asyncio
+async def test_max_ongoing_requests_enforced(serve_instance):
+    """Handles should respect max_ongoing_requests enforcement."""
+
+    loop = get_or_create_event_loop()
+
+    @ray.remote
+    class Waiter:
+        def __init__(self):
+            self._waiters: List[asyncio.Event] = []
+
+        async def wait(self):
+            event = asyncio.Event()
+            self._waiters.append(event)
+            await event.wait()
+
+        def unblock_one(self):
+            self._waiters.pop().set()
+
+        def get_num_waiters(self) -> int:
+            return len(self._waiters)
+
+    waiter = Waiter.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Deployment:
+        async def __call__(self):
+            await waiter.wait.remote()
+
+    handle = serve.run(Deployment.bind())
+
+    async def _do_request():
+        return await handle.remote()
+
+    async def _assert_one_waiter():
+        assert await waiter.get_num_waiters.remote() == 1
+        return True
+
+    # Send a batch of requests. Only one should be able to execute at a time
+    # due to `max_ongoing_requests=1`.
+    tasks = [loop.create_task(_do_request()) for _ in range(10)]
+    for i in range(len(tasks)):
+        # Check that only one starts executing.
+        await async_wait_for_condition(_assert_one_waiter)
+        _, pending = await asyncio.wait(tasks, timeout=0.1)
+        assert len(tasks) == len(tasks)
+
+        # Unblocking the one that is executing should cause it to finish.
+        # Another request will then get scheduled.
+        await waiter.unblock_one.remote()
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        assert len(done) == 1
+        assert len(pending) == len(tasks) - 1
+        tasks = pending
+
+
+def test_shutdown(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert h.remote().result() == "hi"
+
+    h.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert await h.remote() == "hi"
+
+    await h.shutdown_async()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
