@@ -79,9 +79,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
 
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
-# CAP on fetch connections per reducer: n_threads = min(#managers, this). A
-# resource budget (bounds ShuffleManager contention + recv-buffer memory), not
-# tied to #managers.
+# CAP on fetch connections per reducer: n_threads = min(#managers, this).
 _DEFAULT_FETCH_THREADS = 16
 
 
@@ -503,9 +501,6 @@ def _external_shuffle_reduce_task(
         accum_tables: List[pa.Table] = []
         accum_bytes: int = 0
         output_buffer: Optional[BlockOutputBuffer] = None
-        # Coalesce each region's shards into one chunk so the write sees
-        # O(num_nodes) chunks, not O(num_maps) (env "0" disables).
-        _combine_regions = os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE", "1") != "0"
         # Codec from data_context.hash_shuffle_compression (same field the map used).
         _compression = (
             data_context if data_context is not None else DataContext.get_current()
@@ -591,7 +586,9 @@ def _external_shuffle_reduce_task(
                     table = _read_ipc(ipc_buf, _compression)
                     accum_bytes += table.nbytes
                     region_tables.append(table)
-                if _combine_regions and len(region_tables) > 1:
+                # Coalesce a region's shards into one chunk so the write sees
+                # O(num_nodes) chunks, not O(num_maps).
+                if len(region_tables) > 1:
                     accum_tables.append(
                         pa.concat_tables(region_tables).combine_chunks()
                     )
