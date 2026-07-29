@@ -84,6 +84,14 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
+# Prototype flag: route the V2 Parquet read path through the experimental
+# arrow-rs (Rust) reader instead of PyArrow. Only takes effect when
+# ``use_datasource_v2`` is also set. Requires the native ``ray_data_arrow_rs``
+# module to be installed. Defaults to False.
+DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
+    "RAY_DATA_USE_ARROW_RS_PARQUET_READER", False
+)
+
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
@@ -591,6 +599,12 @@ class DataContext:
             override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
             V2). Parquet is the only reader migrated to V2 so far; the others
             read through V1 for now regardless of this flag.
+        use_arrow_rs_parquet_reader: Prototype flag. When True (and
+            ``use_datasource_v2`` is also True), ``ParquetScanner.create_reader()``
+            returns the experimental arrow-rs (Rust) reader
+            (``ArrowRsParquetFileReader``) instead of the PyArrow
+            ``ParquetFileReader``. Requires the native ``ray_data_arrow_rs``
+            module. Defaults to False.
         parquet_chunker_target_chunk_size: Target chunk size in bytes used by
             ``ParquetFileChunker`` when splitting large Parquet files into
             multiple read tasks. When ``None``, the chunker's built-in default
@@ -899,6 +913,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    use_arrow_rs_parquet_reader: bool = DEFAULT_USE_ARROW_RS_PARQUET_READER
     # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
     # chunker uses its built-in default (currently 1 GiB).
     parquet_chunker_target_chunk_size: Optional[
