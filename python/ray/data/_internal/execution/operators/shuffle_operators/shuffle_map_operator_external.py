@@ -67,16 +67,13 @@ def _make_mapper_sentinel(mapper_id: int) -> List[str]:
     return [f"{_MAPPER_ID_SENTINEL}{mapper_id}"]
 
 
-class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
+class ExternalHashShuffleMapOp(
+    InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin
+):
     """External-shuffle map operator. See module docstring."""
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
-    # Default = unbounded partition pool: accumulate every partition fully
-    # and encode it once at end-of-task. Memory bounded by the ``memory``
-    # resource request instead. Opt in to a real pool by passing
-    # ``pool_budget_bytes=``.
-    _UNBOUNDED_POOL_BYTES = 1 << 62
 
     def __init__(
         self,
@@ -90,7 +87,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
         # -- External-shuffle-specific below --
-        pool_budget_bytes: Optional[int] = None,
         fsync_on_close: bool = True,
     ):
         super().__init__(
@@ -143,8 +139,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # =====================================================================
 
         # -- External-shuffle config knobs -----------------------------------
-        # Fixed override; ``None`` ⇒ ``_UNBOUNDED_POOL_BYTES``.
-        self._pool_budget_override: Optional[int] = pool_budget_bytes
         self._fsync_on_close: bool = fsync_on_close
 
         # -- Per-shuffle identity & on-disk staging --------------------------
@@ -241,12 +235,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        pool_budget_bytes = (
-            self._pool_budget_override
-            if self._pool_budget_override is not None
-            else self._UNBOUNDED_POOL_BYTES
-        )
-
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
@@ -275,7 +263,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             token=self._token,
-            pool_budget_bytes=pool_budget_bytes,
             compression=compression,
             fsync_on_close=self._fsync_on_close,
         )

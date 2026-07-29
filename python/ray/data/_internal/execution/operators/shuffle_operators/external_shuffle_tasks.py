@@ -115,55 +115,41 @@ def _decoded_to_array(decoded, num_partitions):
     return arr
 
 
-class _PartitionSpillWriter:
-    """Byte-budgeted staging pool for per-partition shards, sealed to disk
-    IPC-frame at a time.
+class _PartitionWriter:
+    """Per-partition shard buffer, sealed to disk one IPC frame per partition.
 
-    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s
-    staging list. Once total staged bytes across ALL partitions reach
-    ``pool_budget_bytes``, the largest partition's shards are IPC-encoded,
-    written to the output file, and their offsets recorded in
-    ``index``. ``flush_all()`` seals what's left at end-of-task.
+    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s list;
+    ``flush_all()`` concatenates each partition's shards, IPC-encodes them
+    into one whole-frame, writes it to the output file, and records the
+    (offset, length) range in ``index``.
 
-    Peak on-heap staging is bounded by ``pool_budget_bytes`` — independent
-    of partition count M — because we spill the largest bucket instead of
-    accumulating one per partition.
+    Staging is unbounded: a map holds all its partition shards in memory
+    until ``flush_all``, so peak ≈ the map's decoded input. Ray Data already
+    size-bounds map input blocks, so no in-task spill is needed.
     """
 
     __slots__ = (
         "_f",
         "_map_id",
-        "_pool_budget_bytes",
         "_compression",
         "_staging",
-        "_staging_bytes",
-        "_staging_total",
         "_index",
         "_decoded_bytes_per_partition",
-        "_peak_inflight",
     )
 
     def __init__(
         self,
         f,
         map_id: int,
-        pool_budget_bytes: int,
         compression: Optional[str],
     ):
         self._f = f
         self._map_id = map_id
-        self._pool_budget_bytes = pool_budget_bytes
         # Codec from data_context.hash_shuffle_compression (same field the reduce reads).
         self._compression = compression
         self._staging: Dict[int, List[pa.Table]] = {}
-        self._staging_bytes: Dict[int, int] = {}
-        self._staging_total = 0  # running sum -> _pool_size is O(1)
         self._index: Dict[int, List[Tuple[int, int]]] = {}
         self._decoded_bytes_per_partition: Dict[int, int] = {}
-        self._peak_inflight = 0
-
-    def _pool_size(self) -> int:
-        return self._staging_total
 
     def _flush(self, pid: int) -> None:
         shards = self._staging.get(pid)
@@ -171,9 +157,7 @@ class _PartitionSpillWriter:
             return
         tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
         # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
-        self._decoded_bytes_per_partition[pid] = (
-            self._decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
-        )
+        self._decoded_bytes_per_partition[pid] = tbl.nbytes
         buf = _encode_shard(
             tbl, self._compression
         )  # whole-frame codec (see _encode_shard)
@@ -182,35 +166,18 @@ class _PartitionSpillWriter:
             raise RuntimeError(
                 f"map_{self._map_id}.shf partition {pid}: IPC frame is "
                 f"{buf.size} bytes, exceeding the u32 wire-protocol "
-                f"per-range limit ({_MAX_RANGE_BYTES}). Reduce "
-                f"``pool_budget_bytes`` or the upstream block size."
+                f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
+                f"``num_partitions`` or reduce the upstream block size."
             )
         off = self._f.tell()
         self._f.write(memoryview(buf))
         self._index.setdefault(pid, []).append((off, buf.size))
         self._staging[pid] = []
-        self._staging_total -= self._staging_bytes[pid]
-        self._staging_bytes[pid] = 0
 
-    def add_shard(self, pid: int, shard: pa.Table, avg_row_bytes: int) -> None:
+    def add_shard(self, pid: int, shard: pa.Table) -> None:
         if not shard.num_rows:
             return
-        # Estimate bytes as rows x avg_row_bytes (O(1)); avoids per-shard
-        # shard.nbytes (O(slice), paid N times => map's O(partitions) wall).
-        # Only drives the pool-budget heuristic; exact decoded size still comes
-        # from tbl.nbytes at flush.
-        nb = shard.num_rows * avg_row_bytes
         self._staging.setdefault(pid, []).append(shard)
-        self._staging_bytes[pid] = self._staging_bytes.get(pid, 0) + nb
-        self._staging_total += nb
-        self._peak_inflight = max(self._peak_inflight, self._pool_size())
-        # Spill LARGEST bucket(s) on overflow so total staging stays
-        # bounded by ``pool_budget_bytes``.
-        while self._pool_size() >= self._pool_budget_bytes:
-            victim = max(self._staging_bytes, key=self._staging_bytes.get)
-            if self._staging_bytes[victim] == 0:
-                break
-            self._flush(victim)
 
     def flush_all(self) -> None:
         for pid in list(self._staging.keys()):
@@ -224,10 +191,6 @@ class _PartitionSpillWriter:
     def decoded_bytes_per_partition(self) -> Dict[int, int]:
         return self._decoded_bytes_per_partition
 
-    @property
-    def peak_inflight(self) -> int:
-        return self._peak_inflight
-
 
 @ray.remote
 def _external_shuffle_map_task(
@@ -238,7 +201,6 @@ def _external_shuffle_map_task(
     map_id: int,
     shuffle_id: str,
     token: str,
-    pool_budget_bytes: int = 16 * 1024 * 1024,
     compression: Optional[str] = None,
     fsync_on_close: bool = True,
 ) -> ShuffleHandle:
@@ -246,11 +208,6 @@ def _external_shuffle_map_task(
     local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
     byte index + manager endpoint + auth token). Shuffle bytes never enter the
     Ray object store.
-
-    Bounded memory via ``pool_budget_bytes``: post-hash buckets share one
-    staging pool of that size; on overflow the LARGEST bucket is spilled, so
-    peak staging stays independent of partition count M. Input is fed in
-    row-batches so ``partition_fn`` doesn't materialize all M shards at once.
 
     The output file is sealed via atomic ``rename``: writes land in
     ``map_{i}.shf.tmp``, then flush + optional ``fsync`` + size sanity check
@@ -265,7 +222,6 @@ def _external_shuffle_map_task(
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the manager's actor name.
         token: Per-shuffle auth token stamped into the handle.
-        pool_budget_bytes: Staging pool budget; also bounds row-batch size.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
         fsync_on_close: If True, ``fsync`` before rename for durability.
     """
@@ -289,29 +245,10 @@ def _external_shuffle_map_task(
     tmp_path = final_path + ".tmp"
     output_schema: Optional[pa.Schema] = None
 
-    def _partition_units(blk):
-        """Yield (pid, shard).
-        yield whole-block when the block already fits the pool (no overhead),
-        else split into pool-sized row-batches (which bounds the 2×S partition
-        spike to S + O(pool))."""
-        if blk.num_rows == 0:
-            return
-        avg_row = max(1, blk.nbytes // blk.num_rows)
-        batch_rows = max(1, pool_budget_bytes // avg_row)
-        if blk.num_rows <= batch_rows:
-            # block's partition spike is already ≤ pool → whole-block, no overhead
-            for pid, shard in partition_fn(blk).items():
-                yield pid, shard, avg_row
-        else:
-            for batch in blk.to_batches(max_chunksize=batch_rows):
-                bt = pa.Table.from_batches([batch], schema=blk.schema)
-                for pid, shard in partition_fn(bt).items():
-                    yield pid, shard, avg_row
-
     final_size_on_close = -1
     try:
         with open(tmp_path, "wb") as f:
-            writer = _PartitionSpillWriter(f, map_id, pool_budget_bytes, compression)
+            writer = _PartitionWriter(f, map_id, compression)
             for blk in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
@@ -323,8 +260,10 @@ def _external_shuffle_map_task(
                     # First-seen schema; reducer uses it to type empty
                     # partitions (ShuffleHandle["schema"]).
                     output_schema = getattr(blk, "schema", None)
-                for pid, shard, avg_row in _partition_units(blk):
-                    writer.add_shard(pid, shard, avg_row)
+                if blk.num_rows == 0:
+                    continue
+                for pid, shard in partition_fn(blk).items():
+                    writer.add_shard(pid, shard)
             writer.flush_all()
 
             # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
@@ -376,7 +315,6 @@ def _external_shuffle_map_task(
         "node_id": node_id,
         "token": token,
         "num_partitions": num_partitions,
-        "peak_inflight_bytes": writer.peak_inflight,
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,

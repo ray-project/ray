@@ -82,7 +82,6 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         ctx,
         num_partitions=num_parts,
         partition_fn=_make_hash_partition_fn(["id"], num_parts),
-        pool_budget_bytes=4 * 1024 * 1024,
         fsync_on_close=False,  # don't pay fsync cost on a smoke test
         name="ExternalHashShuffleMap-smoke",
     )
@@ -119,8 +118,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         reduce_output = _run_and_collect(reduce_op)
         got_rows = _total_rows(reduce_output)
         assert got_rows == expected_total_rows, (
-            f"row count mismatch: got {got_rows}, expected "
-            f"{expected_total_rows}"
+            f"row count mismatch: got {got_rows}, expected " f"{expected_total_rows}"
         )
         assert len({id(bundle) for bundle in reduce_output}) >= 1
     finally:
