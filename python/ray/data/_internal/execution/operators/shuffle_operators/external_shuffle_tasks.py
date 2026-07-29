@@ -225,7 +225,7 @@ def _external_shuffle_map_task(
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the manager actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
-    # will look the manager up by name via ``_lookup_manager``.
+    # will look the manager up by name via ``ray.get_actor``.
     ShuffleManager.options(
         name=_manager_name(shuffle_id, node_id),
         namespace=_SHUFFLE_MANAGER_NAMESPACE,
@@ -305,7 +305,7 @@ def _external_shuffle_map_task(
         # ``(offset, length)`` of partition ``p``'s frame.
         "index_ranges": _idx_ranges,
         # ShuffleManager identity: reducers rebuild the actor name from
-        # (shuffle_id, node_id) and call ``_lookup_manager`` when they need
+        # (shuffle_id, node_id) and call ``ray.get_actor`` when they need
         # the handle.
         "shuffle_id": shuffle_id,
         "node_id": node_id,
