@@ -1,20 +1,11 @@
-from typing import TYPE_CHECKING, Iterable, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
+from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     BlockTransformer,
     ReduceFn,
-)
-from ray.data.aggregate import (
-    Count,
-    Max,
-    Mean,
-    Min,
-    MissingValuePercentage,
-    Sum,
-    ZeroPercentage,
 )
 from ray.data.block import Block, BlockAccessor
 
@@ -22,62 +13,23 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
 
 
-class _AggMeta(NamedTuple):
-    kind: str  # sum | count | min | max | mean | missing_pct | zero_pct
-    name: str  # output column name (e.g. "sum(x)")
-    target_col: Optional[str]  # source column, or None (e.g. global Count)
-    ignore_nulls: bool
-
-
-def _component_names(i: int, kind: str) -> Tuple[str, ...]:
-    """Names of the mergeable partial-component columns for aggregation ``i``."""
-    if kind == "count":
-        return (f"__agg{i}_cnt",)
-    if kind == "sum":
-        return (f"__agg{i}_sum",)
-    if kind in ("min", "max"):
-        return (f"__agg{i}_mm",)
-    if kind == "mean":
-        return (f"__agg{i}_sum", f"__agg{i}_cnt")
-    # missing_pct / zero_pct: numerator + denominator
-    return (f"__agg{i}_num", f"__agg{i}_den")
-
-
-def _arrow_agg_meta(
+def _agg_specs(
     aggregation_fns: Tuple["AggregateFn", ...],
-) -> Optional[List[_AggMeta]]:
-    # TODO (you-cheng) we can support vectorized STD with some parallel algorithm
-    # see https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
-    kind_by_type = {
-        Sum: "sum",
-        Count: "count",
-        Min: "min",
-        Max: "max",
-        Mean: "mean",
-        MissingValuePercentage: "missing_pct",
-        ZeroPercentage: "zero_pct",
-    }
-
-    meta: List[_AggMeta] = []
+) -> Optional[List[ArrowAggSpec]]:
+    """Per-agg Arrow vectorization specs -- each aggregation declares its own via
+    ``AggregateFn._arrow_agg_spec``.  Returns None (caller falls back to the
+    Python engine) if any aggregation isn't vectorizable, or if the query mixes
+    reduction (two-phase) and collection (single-phase) aggs, which execute
+    differently."""
+    specs: List[ArrowAggSpec] = []
     for agg in aggregation_fns:
-        kind = kind_by_type.get(type(agg))
-        if kind is None:
+        spec = agg._arrow_agg_spec()
+        if spec is None:
             return None
-        target_col = agg.get_target_column()
-        # Only Count accepts an optional (None) target column, Count() counts
-        # all rows in a group.  Every other kind needs a real column; a missing
-        # target falls back to the Python engine, which raises the proper ValueError.
-        if kind != "count" and not isinstance(target_col, str):
-            return None
-        meta.append(
-            _AggMeta(
-                kind=kind,
-                name=agg.name,
-                target_col=target_col,
-                ignore_nulls=agg._ignore_nulls,
-            )
-        )
-    return meta
+        specs.append(spec)
+    if len({s.single_phase for s in specs}) > 1:
+        return None
+    return specs
 
 
 def _make_aggregating_transformer(
@@ -102,13 +54,41 @@ def _make_vectorized_aggregating_transformer(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
 ) -> Optional[BlockTransformer]:
-    """Arrow-vectorized map-side combiner, or None if any aggregation isn't
-    Arrow-vectorizable (caller falls back to the Python engine)."""
-    meta = _arrow_agg_meta(aggregation_fns)
-    if meta is None:
+    """Arrow-vectorized map-side combiner, driven by each agg's own spec, or None
+    if the query isn't vectorizable (caller falls back to the Python engine)."""
+    specs = _agg_specs(aggregation_fns)
+    if specs is None:
         return None
 
     keys = list(key_columns)
+    single_phase = specs[0].single_phase
+    if single_phase and not keys:
+        # Global collection agg: the distinct hash kernels need group keys, so we fallback to python
+        return None
+
+    if single_phase:
+        # The map only validates + prunes to keys + source columns; the reduce
+        # does the single grouped distinct/count_distinct pass over raw rows.
+        keep = list(
+            dict.fromkeys(
+                keys
+                + [
+                    a.get_target_column()
+                    for a in aggregation_fns
+                    if a.get_target_column() is not None
+                ]
+            )
+        )
+
+        def _prune_transform(block: Block) -> Block:
+            block_schema = BlockAccessor.for_block(block).schema()
+            for agg in aggregation_fns:
+                agg._validate(block_schema)
+            if block.num_rows == 0:
+                return block
+            return block.select(keep)
+
+        return _prune_transform
 
     def _arrow_transform(block: Block) -> Block:
         block_schema = BlockAccessor.for_block(block).schema()
@@ -118,37 +98,17 @@ def _make_vectorized_aggregating_transformer(
         if block.num_rows == 0:
             return block
 
-        specs: List[tuple] = []
+        agg_specs: List[tuple] = []
         names: List[str] = []
-        for i, (kind, _out, col, ignore_nulls) in enumerate(meta):
-            sopts = pc.ScalarAggregateOptions(skip_nulls=ignore_nulls, min_count=1)
-            copts = pc.CountOptions(mode="only_valid" if ignore_nulls else "all")
-            cnt0 = pc.ScalarAggregateOptions(min_count=0)
-            names += _component_names(i, kind)
-            if kind == "count":
-                specs.append(
-                    ([], "count_all") if col is None else (col, "count", copts)
-                )
-            elif kind == "sum":
-                specs.append((col, "sum", sopts))
-            elif kind in ("min", "max"):
-                specs.append((col, kind, sopts))
-            elif kind == "mean":
-                specs += [(col, "sum", sopts), (col, "count", copts)]
-            elif kind == "missing_pct":
-                block = block.append_column(
-                    f"__d{i}_miss",
-                    pc.cast(pc.is_null(block[col], nan_is_null=True), pa.int64()),
-                )
-                specs += [(f"__d{i}_miss", "sum", cnt0), ([], "count_all")]
-            else:
-                block = block.append_column(
-                    f"__d{i}_zero", pc.cast(pc.equal(block[col], 0), pa.int64())
-                )
-                den = (col, "count", copts) if ignore_nulls else ([], "count_all")
-                specs += [(f"__d{i}_zero", "sum", cnt0), den]
+        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+            col = agg.get_target_column()
+            opts = arrow_agg_options(agg._ignore_nulls)
+            if spec.prep is not None:
+                block = spec.prep(i, col, block)
+            names.extend(f"__agg{i}_{c}" for c in spec.components)
+            agg_specs += spec.map_specs(i, col, opts)
 
-        out = block.group_by(keys, use_threads=False).aggregate(specs)
+        out = block.group_by(keys, use_threads=False).aggregate(agg_specs)
         return out.rename_columns(keys + names)
 
     return _arrow_transform
@@ -158,16 +118,18 @@ def _make_vectorized_aggregating_reduce_fn(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
 ) -> Optional[ReduceFn]:
-    """Arrow-vectorized reduce: merge the map-side partial components across
-    shards, then finalize into output columns.  Returns None if any aggregation
-    isn't Arrow-vectorizable (caller falls back to the Python engine)."""
-    meta = _arrow_agg_meta(aggregation_fns)
-    if meta is None:
+    specs = _agg_specs(aggregation_fns)
+    if specs is None:
         return None
 
     keys = list(key_columns)
+    single_phase = specs[0].single_phase
+    if single_phase and not keys:
+        return None
     _fallback_map = _fallback_aggregating_transformer(key_columns, aggregation_fns)
     _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
+    # Source columns of collection aggs (only used to detect nested inputs).
+    src_cols = [a.get_target_column() for a in aggregation_fns] if single_phase else []
 
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
@@ -175,71 +137,49 @@ def _make_vectorized_aggregating_reduce_fn(
         shards = tables_by_input[0]
         tables = [t for t in shards if t.num_rows > 0]
         if not tables:
-            # Fallback when a global aggregation over an empty input because we need to build identical empty row.
+            # Empty global aggregation: delegate to the fallback for the same
+            # identity row (Count->0, Sum->null, ...) it would emit.
             if shards and not keys:
                 yield from _fallback_reduce(partition_id, [[_fallback_map(shards[0])]])
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
 
-        # Merge partial components across shards (sum sums/counts, min mins, ...).
-        specs: List[tuple] = []
-        names: List[str] = []
-        for i, (kind, _out, _col, ignore_nulls) in enumerate(meta):
-            sopts = pc.ScalarAggregateOptions(skip_nulls=ignore_nulls, min_count=1)
-            cnt_opts = pc.ScalarAggregateOptions(min_count=0)
-            comp = _component_names(i, kind)
-            names += comp
-            if kind in ("min", "max"):
-                (mm,) = comp
-                specs.append((mm, kind, sopts))
-            elif kind == "count":
-                (cnt,) = comp
-                specs.append((cnt, "sum", cnt_opts))
-            elif kind == "sum":
-                (s,) = comp
-                specs.append((s, "sum", sopts))
-            elif kind == "mean":
-                s, cnt = comp
-                specs += [(s, "sum", sopts), (cnt, "sum", cnt_opts)]
-            else:  # missing_pct / zero_pct
-                num, den = comp
-                specs += [(num, "sum", cnt_opts), (den, "sum", cnt_opts)]
+        # The distinct/count_distinct kernels have no impl for a nested source
+        # column (the map shipped raw rows); delegate the partition to Python.
+        if single_phase and any(
+            c is not None and pa.types.is_nested(combined.schema.field(c).type)
+            for c in src_cols
+        ):
+            yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
+            return
 
-        merged = combined.group_by(keys, use_threads=False).aggregate(specs)
+        # Reduction: merge each agg's partial components (the map's output).
+        # Collection: aggregate the raw source column in one grouped pass.
+        merge_specs: List[tuple] = []
+        names: List[str] = []
+        comps: List[Tuple[str, ...]] = []
+        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+            opts = arrow_agg_options(agg._ignore_nulls)
+            out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
+            input_cols = (agg.get_target_column(),) if single_phase else out_cols
+            comps.append(out_cols)
+            names += out_cols
+            merge_specs += spec.merge_specs(input_cols, opts)
+
+        merged = combined.group_by(keys, use_threads=False).aggregate(merge_specs)
         merged = merged.rename_columns(keys + names)
 
-        # Finalize: turn merged partials into output columns.
-        null_f = pa.scalar(None, pa.float64())
-        one = pa.scalar(1.0)
+        # Finalize into output columns.  Duplicate output names are munged to
+        # name, name_2, name_3, ... (counting against the original name).
         cols = {k: merged[k] for k in keys}
-        seen: dict = {}  # duplicate output names -> munged (name, name_2, ...),
-        for i, (kind, out, _col, _ignore_nulls) in enumerate(meta):
-            comp = _component_names(i, kind)
-            if seen.get(out, 0) > 0:
-                out = f"{out}_{seen[out] + 1}"
-            seen[out] = seen.get(out, 0) + 1
-            if kind == "count":
-                (cnt,) = comp
-                cols[out] = pc.cast(merged[cnt], pa.int64())
-            elif kind == "sum":
-                (s,) = comp
-                cols[out] = merged[s]
-            elif kind in ("min", "max"):
-                (mm,) = comp
-                cols[out] = merged[mm]
-            elif kind == "mean":
-                s, cnt = comp
-                denom = pc.cast(merged[cnt], pa.float64())
-                denom = pc.if_else(pc.equal(denom, 0.0), null_f, denom)
-                cols[out] = pc.divide(pc.cast(merged[s], pa.float64()), denom)
-            else:  # missing_pct / zero_pct
-                num_n, den_n = comp
-                num = pc.cast(merged[num_n], pa.float64())
-                den = pc.cast(merged[den_n], pa.float64())
-                safe_den = pc.if_else(pc.greater(den, 0.0), den, one)
-                pct = pc.multiply(pc.divide(num, safe_den), 100.0)
-                cols[out] = pc.if_else(pc.equal(den, 0.0), null_f, pct)
-
+        seen: dict = {}
+        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+            name = agg.name
+            n = seen.get(name, 0)
+            seen[name] = n + 1
+            if n > 0:
+                name = f"{name}_{n + 1}"
+            cols[name] = spec.finalize(merged, comps[i])
         yield pa.table(cols)
 
     return _arrow_reduce
