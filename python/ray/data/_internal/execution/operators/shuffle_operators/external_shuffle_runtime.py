@@ -54,10 +54,7 @@ _MAX_RANGE_BYTES: int = (1 << 32) - 1
 
 
 # ----------------------------------------------------------------- Arrow IPC
-# Shard wire format: [u64 uncompressed_size][zstd(whole IPC stream)] -- ONE zstd
-# frame per shard, vs Arrow's per-buffer IPC compression (~40 zstd blobs/shard).
-# One decompress + one alloc per shard at the reducer; inner IPC is uncompressed
-# so buffers read zero-copy.
+# Shard wire format: [u64 uncompressed_size][zstd(whole IPC stream)]
 _WF_HEADER = struct.Struct("<Q")
 
 
