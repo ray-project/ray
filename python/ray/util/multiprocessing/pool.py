@@ -734,7 +734,7 @@ class Pool:
             else:
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
+        ray_cpus = int(ray.cluster_resources().get("CPU", 0))
         if processes is None:
             processes = ray_cpus
         if processes <= 0:

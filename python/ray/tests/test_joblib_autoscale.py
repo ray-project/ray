@@ -50,6 +50,19 @@ def test_autoscale_lazy_creation(shutdown_only):
     pool.terminate()
 
 
+def test_autoscale_zero_cpu_head_accepts_explicit_target(shutdown_only):
+    """A zero-CPU head can create pending actors to drive scale-up."""
+    ray.init(num_cpus=0, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+
+    result = pool.apply_async(lambda: 1)
+    wait_for_condition(lambda: len(pool._starting_actor_refs) == 1, timeout=10)
+    assert not result.ready()
+    pool.terminate()
+    with pytest.raises(Exception):
+        result.get(timeout=10)
+
+
 def test_autoscale_pool_can_be_collected(shutdown_only):
     """The dispatcher thread must not keep an unused Pool alive."""
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
@@ -424,7 +437,7 @@ def test_autoscale_maxtasksperchild_replaces_actor(shutdown_only):
 def test_autoscaling_cluster_e2e():
     """Pending num_cpus=1 actors drive the autoscaler to add worker nodes.
 
-    Uses AutoscalingCluster (the same autoscaler KubeRay uses) with a 2-CPU
+    Uses AutoscalingCluster (the same autoscaler KubeRay uses) with a zero-CPU
     head + 4-CPU workers. register_ray(autoscale=True, max_size=8) creates
     pending actors that surface CPU demand; the autoscaler adds workers; the
     work completes.
@@ -440,7 +453,7 @@ def test_autoscaling_cluster_e2e():
     from ray.util.joblib import register_ray
 
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
+        head_resources={"CPU": 0},
         worker_node_types={
             "cpu_worker": {
                 "resources": {"CPU": 4, "object_store_memory": 500 * 1024 * 1024},
@@ -455,8 +468,8 @@ def test_autoscaling_cluster_e2e():
         cluster.start()
         ray.init("auto")
 
-        # Head has 2 CPUs; max_size=8 means 6 actors will be pending →
-        # autoscaler sees 6 CPU demand and launches workers.
+        # The head has no CPUs. All eight actors are pending until the
+        # autoscaler launches workers.
         register_ray(autoscale=True, max_size=8, initial_size=0, idle_timeout_s=999)
 
         def compute(x):
@@ -470,9 +483,9 @@ def test_autoscaling_cluster_e2e():
         expected = [i + offset for i in range(50)]
         assert results == expected
 
-        wait_for_condition(lambda: ray.cluster_resources()["CPU"] >= 10, timeout=60)
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] >= 8, timeout=60)
         total_cpus = ray.cluster_resources()["CPU"]
-        assert total_cpus >= 10, f"expected 10 CPUs after scaling, got {total_cpus}"
+        assert total_cpus >= 8, f"expected 8 CPUs after scaling, got {total_cpus}"
 
     finally:
         ray.shutdown()
