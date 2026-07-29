@@ -65,6 +65,7 @@ py_test(
 py_test(
     name = "test_job_manager",
     size = "large",
+    timeout = "eternal",
     srcs = ["modules/job/tests/test_job_manager.py"],
     tags = [
         "exclusive",

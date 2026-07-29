@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core how-to guides: tasks, actors, objects, dependencies, scheduling, fault tolerance, design patterns, and compiled graphs.
+
 .. _core-use-guide:
 
 User Guides

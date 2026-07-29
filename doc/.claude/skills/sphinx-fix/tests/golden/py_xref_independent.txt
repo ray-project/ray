@@ -1,0 +1,14 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] py-xref-target-not-found  python/ray/train/collective/__init__.py:docstring of ray.train.collective.broadcast_from_rank_zero:
+          msg:    py:exc reference target not found: pickle.PicklingError
+          fix:    Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name.
+          safety: judgment (needs your call)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

@@ -22,6 +22,7 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/actor/gcs_actor.h"
@@ -67,7 +68,7 @@ class GcsActorSchedulerMockTest : public Test {
                                          clock_);
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-        io_context,
+        PeriodicalRunner::Create(io_context),
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

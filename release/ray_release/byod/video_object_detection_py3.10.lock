@@ -152,6 +152,7 @@ aiohttp==3.13.3 \
     #   anyscale
     #   gcsfs
     #   google-auth
+    #   kubernetes
     #   ray
     #   s3fs
     #   taskiq
@@ -221,8 +222,9 @@ anyio==4.12.1 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.74 \
-    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
 argcomplete==3.3.0 \
     --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
@@ -548,6 +550,7 @@ certifi==2025.1.31 \
     #   geventhttpclient
     #   httpcore
     #   httpx
+    #   kubernetes
     #   requests
 cffi==1.16.0 \
     --hash=sha256:0c9ef6ff37e974b73c25eecc13952c55bceed9112be2d9d938ded8e856138bcc \
@@ -750,9 +753,7 @@ cmake==4.1.0 \
     # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
 colorama==0.4.6 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via
-    #   anyscale
-    #   log-symbols
+    # via anyscale
 colorful==0.5.8 \
     --hash=sha256:a9381fdda3337fbaba5771991020abc69676afa102646650b759927892875992 \
     --hash=sha256:bb16502b198be2f1c42ba3c52c703d5f651d826076817185f0294c1a549a7445
@@ -1127,6 +1128,10 @@ dm-tree==0.1.9 \
     --hash=sha256:e97c34fcb44941c36b7ee81dcdbceba0fbe728bddcc77e5837ab2eb665bcbff8 \
     --hash=sha256:f68b0efad76703dd4648586c75618a48cdd671b68c3266fe980e323c15423607
     # via ray
+durationpy==0.10 \
+    --hash=sha256:1fa6893409a6e739c9c72334fc65cca1f355dbdd93405d30f726deb5bde42fba \
+    --hash=sha256:3b41e1b601234296b4fb368338fdcd3e13e0b4fb5b67345948f4f2bf9868b286
+    # via kubernetes
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
@@ -1597,14 +1602,6 @@ geventhttpclient==2.3.4 \
     --hash=sha256:fecf1b735591fb21ea124a374c207104a491ad0d772709845a10d5faa07fa833 \
     --hash=sha256:ffe87eb7f1956357c2144a56814b5ffc927cbb8932f143a0351c78b93129ebbc
     # via locust
-gitdb==4.0.11 \
-    --hash=sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4 \
-    --hash=sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b
-    # via gitpython
-gitpython==3.1.44 \
-    --hash=sha256:9e0e10cda9bed1ee64bc9a6de50e7e38a9c9943241cd7f585f6df3ed28011110 \
-    --hash=sha256:c87e30b26253bf5418b01b0660f818967f3c503193838337fe5e573331249269
-    # via anyscale
 google-api-core==2.24.2 \
     --hash=sha256:810a63ac95f3c441b7c0e43d344e372887f62ce9071ba972eacf32672e072de9 \
     --hash=sha256:81718493daf06d96d6bc76a91c23874dbf2fac0adbbf542831b805ee6e974696
@@ -2383,6 +2380,10 @@ kombu==5.5.4 \
     --hash=sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363 \
     --hash=sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8
     # via celery
+kubernetes==36.0.0 \
+    --hash=sha256:027b606bb8032e6c6464a53236bdd9bd9a94c237e1063bc45a303c25b304ced9 \
+    --hash=sha256:a766433357ec9f90db7565cccf52e28e7fca40b0ef366c80a6022adbc0ac0425
+    # via anyscale
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
@@ -2411,10 +2412,6 @@ locust==2.18.0 \
     --hash=sha256:55036b2601ad7a2725885ceafb28f90390128a9a5dc631809da462f53b37cd56 \
     --hash=sha256:f8d668c2c33518c705664bc869791d58fc98ba8f1aadbf2335be36e4e681feae
     # via -r release/ray_release/byod/requirements_byod_gpu_3.10.in
-log-symbols==0.0.14 \
-    --hash=sha256:4952106ff8b605ab7d5081dd2c7e6ca7374584eff7086f499c06edd1ce56dcca \
-    --hash=sha256:cf0bbc6fe1a8e53f0d174a716bc625c4f87043cc21eb55dd8a740cfe22680556
-    # via anyscale
 lxml==4.9.4 \
     --hash=sha256:00e91573183ad273e242db5585b52670eddf92bacad095ce25c1e682da14ed91 \
     --hash=sha256:01bf1df1db327e748dcb152d17389cf6d0a8c5d533ef9bab781e9d5037619229 \
@@ -4092,6 +4089,7 @@ python-dateutil==2.8.2 \
     #   botocore
     #   celery
     #   jupyter-client
+    #   kubernetes
     #   matplotlib
     #   pandas
 python-dotenv==1.2.1 \
@@ -4165,6 +4163,7 @@ pyyaml==6.0.1 \
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
     #   anyscale
     #   jupyter-events
+    #   kubernetes
     #   ray
     #   ultralytics
     #   uvicorn
@@ -4265,6 +4264,10 @@ pyzmq==26.0.3 \
     #   nbclassic
     #   notebook
     #   petastorm
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
+    # via ray
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -4286,6 +4289,7 @@ requests==2.32.5 \
     #   google-cloud-storage
     #   google-oauth
     #   jupyterlab-server
+    #   kubernetes
     #   locust
     #   msal
     #   ray
@@ -4296,7 +4300,9 @@ requests==2.32.5 \
 requests-oauthlib==2.0.0 \
     --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
     --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
-    # via google-auth-oauthlib
+    # via
+    #   google-auth-oauthlib
+    #   kubernetes
 retry-decorator==1.1.1 \
     --hash=sha256:e1e8ad02e518fe11073f2ea7d80b6b8be19daa27a60a1838aff7c731ddcf2ebe
     # via
@@ -4539,6 +4545,7 @@ six==1.16.0 \
     #   google-pasta
     #   gsutil
     #   isodate
+    #   kubernetes
     #   oauth2client
     #   opencensus
     #   petastorm
@@ -4555,10 +4562,6 @@ smart-open==6.2.0 \
     #   -r docker/base-deps/requirements.in
     #   anyscale
     #   ray
-smmap==5.0.1 \
-    --hash=sha256:dceeb6c0028fdb6734471eb07c0cd2aae706ccaecab45965ee83f11c8d3b1f62 \
-    --hash=sha256:e6d8668fa5f93e706934a62d7b4db19c8d9eb8cf2adbb75ef1b675aa332b69da
-    # via gitdb
 sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
     --hash=sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc
@@ -4567,10 +4570,6 @@ soupsieve==2.5 \
     --hash=sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690 \
     --hash=sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7
     # via beautifulsoup4
-spinners==0.0.24 \
-    --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
-    --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
-    # via anyscale
 stack-data==0.6.3 \
     --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
     --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
@@ -4609,9 +4608,9 @@ tensorboard-data-server==0.7.2 \
     --hash=sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60 \
     --hash=sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530
     # via tensorboard
-tensorboardx==2.6.2.2 \
-    --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
-    --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666
+tensorboardx==2.6.5 \
+    --hash=sha256:c10b891d00af306537cb8b58a039b2ba41571f0da06f433a41c4ca8d6abe1373 \
+    --hash=sha256:ca176db3997ee8c07d2eb77381225956a3fd1c10c91beafab1f17069adc47017
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
     #   ray
@@ -4866,6 +4865,7 @@ urllib3==1.26.19 \
     #   anyscale
     #   botocore
     #   geventhttpclient
+    #   kubernetes
     #   requests
 uvicorn==0.38.0 \
     --hash=sha256:48c0afd214ceb59340075b4a052ea1ee91c16fbc2a9b1469cca0e54566977b02 \
@@ -5063,7 +5063,9 @@ webencodings==0.5.1 \
 websocket-client==1.8.0 \
     --hash=sha256:17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526 \
     --hash=sha256:3239df9f44da632f96012472805d40a23281a991027ce11d2f45a6f24ac4c3da
-    # via jupyter-server
+    # via
+    #   jupyter-server
+    #   kubernetes
 websockets==11.0.3 \
     --hash=sha256:01f5567d9cf6f502d655151645d4e8b72b453413d3819d2b6f1185abc23e82dd \
     --hash=sha256:03aae4edc0b1c68498f41a6772d80ac7c1e33c06c6ffa2ac1c27a07653e79d6f \

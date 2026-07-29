@@ -378,6 +378,40 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Clean up.
         algo.cleanup()
 
+    def test_evaluation_in_algorithm_train_with_remote_runners(self):
+        """Test offline evaluation with remote runners and eval env runners.
+
+        The offline eval runners' placement-group bundles come after the
+        main-process, training env-runner, and eval env-runner bundles, so
+        ``_pg_offset`` must equal
+        ``num_env_runners + evaluation_num_env_runners``.
+        """
+        for num_env_runners, evaluation_num_env_runners in [(0, 1), (2, 0), (2, 3)]:
+            with self.subTest(
+                num_env_runners=num_env_runners,
+                evaluation_num_env_runners=evaluation_num_env_runners,
+            ):
+                config = (
+                    self.config.copy(copy_frozen=False)
+                    .environment("CartPole-v1")
+                    .env_runners(num_env_runners=num_env_runners)
+                    .evaluation(
+                        evaluation_interval=1,
+                        evaluation_parallel_to_training=False,
+                        num_offline_eval_runners=1,
+                        evaluation_num_env_runners=evaluation_num_env_runners,
+                    )
+                )
+
+                algo = config.build()
+                try:
+                    self.assertEqual(
+                        algo.offline_eval_runner_group._pg_offset,
+                        num_env_runners + evaluation_num_env_runners,
+                    )
+                finally:
+                    algo.cleanup()
+
 
 if __name__ == "__main__":
     import sys

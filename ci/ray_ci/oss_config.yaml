@@ -14,11 +14,15 @@ ci_pipeline:
     - 018af6d3-58e1-463f-90ec-d9aa4a4f57f1  # release
     - 018773ff-b5db-4dcb-8a49-1c6492b4d0f4  # bisect
   buildkite_secret: ray_ci_buildkite_token
+  buildkite_org: ray-project
 state_machine:
   pr:
     aws_bucket: ray-ci-pr-results
   branch:
     aws_bucket: ray-ci-results
+  github_repo: anyscale/ray
+  bisect:
+    disabled: 0
 release_image_step:
   ray_cpu: anyscalecpubuild
   ray_cuda: anyscalecudabuild

@@ -1,3 +1,6 @@
+.. meta::
+   :description: End-to-end Ray examples: multimodal AI, audio and timeseries, XGBoost, object detection, RAG, and serving LLM agents with MCP and LangChain.
+
 .. _ref-overview-examples:
 
 

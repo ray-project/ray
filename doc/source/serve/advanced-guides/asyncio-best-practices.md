@@ -2,8 +2,7 @@
 
 # Asyncio and concurrency best practices in Ray Serve
 
-The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop.
-Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
+The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop. Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
 
 This guide explains:
 
@@ -95,11 +94,9 @@ Important differences:
 
 ## Threadpool sizing and overrides
 
-Serve sets a default threadpool size for user code that mirrors Python's
-`ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
+Serve sets a default threadpool size for user code that mirrors Python's `ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
 
-In most cases, the default is fine. If you need to tune it, you can override the default
-executor inside your deployment:
+In most cases, the default is fine. If you need to tune it, you can override the default executor inside your deployment:
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __threadpool_override_begin__

@@ -98,7 +98,7 @@ class ActorPool:
                 [2, 4, 6, 8]
         """
         # Ignore/Cancel all the previous submissions
-        # by calling `has_next` and `gen_next` repeteadly.
+        # by calling `has_next` and `gen_next` repeatedly.
         while self.has_next():
             try:
                 self.get_next(timeout=0, ignore_if_timedout=True)
@@ -155,7 +155,7 @@ class ActorPool:
                 [6, 8, 4, 2]
         """
         # Ignore/Cancel all the previous submissions
-        # by calling `has_next` and `gen_next_unordered` repeteadly.
+        # by calling `has_next` and `gen_next_unordered` repeatedly.
         while self.has_next():
             try:
                 self.get_next_unordered(timeout=0)

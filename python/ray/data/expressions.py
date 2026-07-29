@@ -415,6 +415,34 @@ class Expr(ABC):
         """
         return _PyArrowConvertibilityVisitor().visit(self)
 
+    @functools.cached_property
+    def _idempotent(self) -> bool:
+        """Memoized idempotency result (see :meth:`is_idempotent`).
+
+        ``cached_property`` stores the value in the instance ``__dict__`` on first
+        access; this is safe because expressions are immutable. The visitor recurses
+        through child ``is_idempotent()`` calls, so this cache is filled bottom-up and
+        querying every node of a tree is linear overall.
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IDEMPOTENCY_VISITOR,
+        )
+
+        return _IDEMPOTENCY_VISITOR.visit(self)
+
+    def is_idempotent(self) -> bool:
+        """Return whether this expression is safe to duplicate, reorder, or move.
+
+        Returns ``False`` for non-idempotent expressions (``random``, ``uuid``,
+        ``monotonically_increasing_id``, and any composite containing them).
+        Optimizer rules consult this before any rewrite that would change an
+        expression's evaluation count, row set, or position.
+
+        Returns:
+            Whether the expression tree contains no non-idempotent nodes.
+        """
+        return self._idempotent
+
     def __repr__(self) -> str:
         """Return a tree-structured string representation of the expression.
 
@@ -1401,10 +1429,16 @@ class PyArrowComputeUDFExpr(UDFExpr):
             return False
 
         return (
-            super().structurally_equals(other)
-            and self.pc_func is other.pc_func
+            self.pc_func is other.pc_func
             and self.pc_positional == other.pc_positional
             and self.pc_kwargs == other.pc_kwargs
+            and len(self.args) == len(other.args)
+            and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
+            and self.kwargs.keys() == other.kwargs.keys()
+            and all(
+                self.kwargs[k].structurally_equals(other.kwargs[k])
+                for k in self.kwargs.keys()
+            )
         )
 
 

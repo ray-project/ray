@@ -243,101 +243,6 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 Reducing memory usage
 ---------------------
 
-.. _data_out_of_memory:
-
-Troubleshooting out-of-memory errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
-Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory situations.
-
-Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified.
-The maximum block size is set by the configuration parameter :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` and is set to 128MiB by default.
-If the Dataset includes an :ref:`all-to-all shuffle operation <optimizing_shuffles>` (such as :func:`~ray.data.Dataset.random_shuffle`), then the default maximum block size is controlled by :class:`DataContext.target_shuffle_max_block_size <ray.data.context.DataContext>`, set to 1GiB by default to avoid creating too many tiny blocks.
-
-.. note::
-    It's **not** recommended to modify :class:`DataContext.target_max_block_size <ray.data.context.DataContext>`. The default is already chosen to balance between high overheads from too many tiny blocks vs. excessive heap memory usage from too-large blocks.
-
-When a task's output is larger than the maximum block size, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
-However, too-large blocks are still possible, and they can lead to out-of-memory situations.
-To avoid these issues:
-
-1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
-2. Call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with ``batch_size="auto"`` to let Ray Data automatically pick an appropriate batch size, or specify an explicit integer batch size small enough that the output batch fits comfortably in heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
-3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
-
-As an example of tuning batch size, the following code uses one task to load a 1 GB :class:`~ray.data.Dataset` with 1000 1 MB rows and applies an identity function using :func:`~ray.data.Dataset.map_batches`.
-Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is ``None``, this code passes entire blocks as batches to the UDF, causing the heap memory usage to increase significantly.
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-    # Pretend there are two CPUs.
-    ray.init(num_cpus=2)
-
-    # Force Ray Data to use one task to show the memory issue.
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    # The default batch_size=None passes entire blocks as batches.
-    ds = ds.map_batches(lambda batch: batch)
-    print(ds.materialize().stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 1.33s
-      ...
-    * Peak heap memory usage (MiB): 3302.17 min, 4233.51 max, 4100 mean
-    * Output num rows: 125 min, 125 max, 125 mean, 1000 total
-    * Output size bytes: 134000536 min, 196000784 max, 142857714 mean, 1000004000 total
-      ...
-
-Setting a lower batch size produces lower peak heap memory usage:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-    # Pretend there are two CPUs.
-    ray.init(num_cpus=2)
-
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    ds = ds.map_batches(lambda batch: batch, batch_size=32)
-    print(ds.materialize().stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 0.51s
-    ...
-    * Peak heap memory usage (MiB): 587.09 min, 1569.57 max, 1207 mean
-    * Output num rows: 40 min, 160 max, 142 mean, 1000 total
-    * Output size bytes: 40000160 min, 160000640 max, 142857714 mean, 1000004000 total
-    ...
-
-Improving heap memory usage in Ray Data is an active area of development.
-Here are the current known cases in which heap memory usage may be very high:
-
-1. Reading large (1 GiB or more) binary files.
-2. Transforming a Dataset where individual rows are large (100 MiB or more).
-
-In these cases, the last resort is to reduce the number of concurrent execution slots.
-This can be done with custom resources.
-For example, use :meth:`ds.map_batches(fn, num_cpus=2) <ray.data.Dataset.map_batches>` to halve the number of execution slots for the ``map_batches`` tasks.
-
-If these strategies are still insufficient, `file a Ray Data issue on GitHub`_.
-
-
 Avoiding object spilling
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -368,7 +273,7 @@ There are two ways to do this:
 2. If you don't need control over the exact number of output blocks and just want to produce larger blocks, use :meth:`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set ``batch_size`` to the desired number of rows per block. This is executed in a streaming fashion and avoids materialization.
 
 When :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is used, Ray Data coalesces blocks so that each map task can process at least this many rows.
-Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it does not necessarily determine the task's final *output* block size; see :ref:`the section <data_out_of_memory>` on block memory usage for more information on how block size is determined.
+Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it doesn't necessarily determine the task's final *output* block size.
 
 To illustrate these, the following code uses both strategies to coalesce the 10 tiny blocks with 1 row each into 1 larger block with 10 rows:
 

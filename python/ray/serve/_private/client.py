@@ -27,7 +27,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -363,6 +363,9 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -384,6 +387,9 @@ class ServeControllerClient:
                 deployment_args_proto.ingress_request_router = deployment_args[
                     "ingress_request_router"
                 ]
+                deployment_args_proto.uses_multiplexing = deployment_args[
+                    "uses_multiplexing"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -395,7 +401,7 @@ class ServeControllerClient:
                 app.name
             ] = application_args_proto.SerializeToString()
 
-        # Validate applications before sending to controller
+        # Validate applications before sending to controller.
         self._check_ingress_deployments(built_apps)
 
         ray.get(

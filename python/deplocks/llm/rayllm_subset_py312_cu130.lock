@@ -2132,6 +2132,12 @@ pyyaml==6.0.3 \
     # via
     #   -c python/deplocks/llm/rayllm_py312_cu130.lock
     #   -r python/requirements.txt
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
+    # via
+    #   -c python/deplocks/llm/rayllm_py312_cu130.lock
+    #   -r python/requirements.txt
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0

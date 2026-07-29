@@ -194,9 +194,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.102 \
-    --hash=sha256:12cbe08c37a0f15ef88d432bb60c9cd9d32a4fbf5742ec3303e1cbc0da571f25 \
-    --hash=sha256:3b7c3e342c183cb9a26f2fd9722aba59f903c0e097119c4af2ece8ececa8d333
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
@@ -3240,6 +3240,12 @@ pyzmq==27.1.0 \
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/deplocks/ray_img/ray_img_cu130_py313.lock
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0

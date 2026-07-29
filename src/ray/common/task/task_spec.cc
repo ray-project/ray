@@ -14,6 +14,7 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <algorithm>
 #include <boost/functional/hash.hpp>
 #include <memory>
 #include <sstream>
@@ -247,6 +248,32 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   // it means it pauses the generator even before it starts.
   RAY_CHECK_NE(result, 0);
   return result;
+}
+
+bool TaskSpecification::HasActorGeneratorBackpressure() const {
+  if (!IsActorTask()) {
+    return false;
+  }
+  const auto &ats = message_->actor_task_spec();
+  return ats.has_actor_generator_backpressure_num_objects() &&
+         ats.actor_generator_backpressure_num_objects() > 0;
+}
+
+int64_t TaskSpecification::EffectiveStreamingGeneratorOwnerBackpressureThreshold() const {
+  int64_t per_task = message_->generator_backpressure_num_objects();
+  RAY_CHECK_NE(per_task, 0);
+
+  // Actor-wide cap uses separate owner->executor consumed-progress updates.
+  // Keep owner-side per-stream threshold tight so every read can publish progress
+  // even when concurrent streams split the actor-wide budget.
+  if (HasActorGeneratorBackpressure()) {
+    return 1;
+  }
+
+  if (per_task != -1) {
+    return per_task;
+  }
+  return -1;
 }
 
 int64_t TaskSpecification::NumObjectsPerYield() const {
@@ -495,6 +522,11 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
+int64_t TaskSpecification::ActorGeneratorBackpressureNumObjects() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().actor_generator_backpressure_num_objects();
+}
+
 const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
@@ -656,7 +688,7 @@ std::string TaskSpecification::CallSiteString() const {
   } else {
     stream << "(deserialize task arg) ";
   }
-  stream << FunctionDescriptor()->CallSiteString();
+  stream << desc->CallSiteString();
   return stream.str();
 }
 

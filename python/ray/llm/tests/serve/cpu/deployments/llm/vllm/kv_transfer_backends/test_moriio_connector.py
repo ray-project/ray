@@ -85,10 +85,14 @@ class TestMoRIIOConnectorBackendSetup:
         assert extra["proxy_ping_port"] == "0"
         assert "http_port" in extra
         assert extra["read_mode"] == "false"
+        # Routable node IP passed to vLLM's MoRIIO connector (cross-node fix,
+        # vllm-project/vllm#45488), matching the advertised zmq host.
+        assert extra["host_ip"] == _TEST_HOST
 
         zmq = backend._zmq_address
         host, hs, notify = parse_zmq_address(zmq)
         assert host == _TEST_HOST
+        assert host == extra["host_ip"]
         assert hs == DEFAULT_HANDSHAKE_PORT_BASE
         assert notify == DEFAULT_NOTIFY_PORT_BASE
 

@@ -163,6 +163,8 @@ RAY_NODE_ACCELERATOR_TYPE_KEY = kLabelKeyNodeAcceleratorType.decode()
 RAY_NODE_MARKET_TYPE_KEY = kLabelKeyNodeMarketType.decode()
 RAY_NODE_REGION_KEY = kLabelKeyNodeRegion.decode()
 RAY_NODE_ZONE_KEY = kLabelKeyNodeZone.decode()
+# Keep this in sync with NODE_ID_LABEL_KEY in ray.util.placement_group. That
+# module cannot import this exported value because it forms a circular dependency
 RAY_NODE_ID_KEY = kLabelKeyNodeID.decode()
 RAY_NODE_GROUP_KEY = kLabelKeyNodeGroup.decode()
 

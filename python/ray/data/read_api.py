@@ -18,7 +18,6 @@ from typing import (
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
@@ -51,6 +50,7 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -63,9 +63,9 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -89,7 +89,6 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -115,12 +114,18 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 
 if TYPE_CHECKING:
     import daft
     import dask
     import datasets
+    import fsspec.spec
     import mars
     import modin
     import pandas
@@ -131,6 +136,8 @@ if TYPE_CHECKING:
     import torch
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data.catalog import Catalog
 
 T = TypeVar("T")
 
@@ -926,6 +933,214 @@ def read_videos(
 
 
 @PublicAPI(stability="alpha")
+def read_zarr(
+    path: str,
+    *,
+    filesystem: "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem | None" = None,
+    chunk_shapes: dict[str, list] | list | None = None,
+    array_paths: list[str] | None = None,
+    allow_full_metadata_scan: bool = False,
+    align_axis_0: bool = False,
+    overlap: int = 0,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
+
+    **Output schemas.** ``read_zarr`` produces one of two schemas, selected by
+    ``align_axis_0``: long-form or wide-form.
+
+    *Long-form* (default) -- each output row is one chunk of one array, with
+    columns:
+
+    * ``array`` -- the array's path in the store.
+    * ``chunk_index`` -- the N-D index of the chunk in its array's chunk grid.
+    * ``chunk_slices`` -- per-axis ``(start, stop)`` of the chunk in the
+      array's coordinate space.
+    * ``chunk`` -- the chunk's data at its natural shape.
+
+    Arrays read in the same call need not share any dimension -- different
+    ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
+
+    .. note::
+
+        In long-form the ``chunk`` column is a tensor, and tensors of different
+        rank or dtype can't be combined into one batch. Consume long-form per
+        array (filter on the ``array`` column first), or -- when arrays are
+        row-aligned (share ``shape[0]``) -- use ``align_axis_0=True`` so each
+        array becomes its own column, which is batch-safe.
+
+    *Aligned wide-form* (``align_axis_0=True``) -- each row is one axis-0 chunk
+    shared across the selected arrays, with columns:
+
+    * ``t_start``, ``t_stop`` (the global axis-0 range of the row).
+    * one column per selected array, holding that array's
+      ``[t_start:t_stop, ...]`` slice.
+
+    All selected arrays must share ``shape[0]`` and resolve to the same axis-0
+    chunk size (after any ``chunk_shapes`` override). Use ``array_paths`` to
+    choose which arrays participate -- ``align_axis_0`` itself doesn't filter.
+
+    **Selecting arrays and metadata discovery.** By default ``read_zarr`` reads
+    every array it discovers. Pass ``array_paths`` to read a subset. Discovery
+    follows these rules:
+
+    * If the store has consolidated ``.zmetadata``, it's the canonical array
+      list (filtered by ``array_paths`` if given). This is the fast path.
+    * Otherwise, if ``array_paths`` is given, each requested array's metadata
+      is read directly -- no ``.zmetadata`` required.
+    * Otherwise, if ``allow_full_metadata_scan=True``, the store is recursively
+      scanned for arrays. This can be slow or costly on large remote stores, so
+      it's off by default; prefer consolidating metadata with
+      ``zarr.consolidate_metadata`` ahead of time.
+
+    **Controlling chunk size.** Zarr stores are often chunked finely (for
+    example one image per chunk). Use ``chunk_shapes`` to re-tile the leading
+    axes at read time, coarsening (or refining) the granularity at which
+    reading happens. This doesn't affect downstream batch sizes and is internal
+    to the read; finely chunked reading can hurt performance. A sequence
+    applies as a shared prefix across all selected arrays, overriding the
+    leading axes and keeping trailing axes native (``chunk_shapes=[16]`` turns
+    native chunks ``(1, 224, 224, 3)`` into ``(16, 224, 224, 3)`` and ``(50,)``
+    into ``(16,)``); a dict overrides per array, and arrays absent from it keep
+    native chunks.
+
+    **Reading row-aligned arrays.** When arrays share an axis-0 (for example a
+    timestep axis), ``align_axis_0=True`` co-iterates them as the wide-form
+    schema -- one row per axis-0 chunk, one column per array. For
+    sliding-window pipelines, ``overlap`` extends each row's per-array data
+    forward by ``N`` timesteps from the next row's range (clipped at the end of
+    the store). With ``overlap=K-1``, any window of length ``K`` that starts in
+    a row's owned ``[t_start, t_stop)`` fits entirely within that row's slice.
+
+    **Custom codecs.** Stores compressed with non-stdlib codecs (for example
+    ``imagecodecs`` JPEG-XL) need the codec package imported and registered
+    *in every Ray worker*, not just the driver process. Register it with a
+    ``worker_process_setup_hook`` -- pass an importable callable or its dotted
+    path (a string is interpreted as an import path, not as a string of code)::
+
+        ray.init(runtime_env={
+            "worker_process_setup_hook": "imagecodecs.numcodecs.register_codecs",
+        })
+
+    **Array attributes (.zattrs).** ``read_zarr`` doesn't surface each array's
+    ``.zattrs`` (Zarr user attributes) in the row schema -- they're invariant
+    per array, so repeating them on every row would just bloat the output. Read
+    them separately (for example with the ``zarr`` package) if your job needs
+    them.
+
+    Examples:
+        Read every array at its native chunking (long-form, one row per chunk):
+
+        >>> import ray
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ... )
+
+        Aligned read -- paired ``(images, labels)`` per row; ``align_axis_0``
+        requires all selected arrays to share ``shape[0]``:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     align_axis_0=True,
+        ...     chunk_shapes=[50],
+        ... )
+
+        Coarsen every array's leading axis to 16-element chunks:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     chunk_shapes=[16],
+        ... )
+
+        Per-array chunk overrides -- re-tile only the selected arrays:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     chunk_shapes={"images": [50], "labels": [50]},
+        ... )
+
+    Args:
+        path: Path to the Zarr v2 store.
+        filesystem: The filesystem
+            implementation to read from. PyArrow filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+            Also acceptsan :class:`fsspec.spec.AbstractFileSystem`.
+            pyarrow filesystems are wrapped internally with
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper`
+        chunk_shapes: Optional re-tiling of the leading chunk axes at read
+            time. Either a sequence applied as a shared prefix across all
+            selected arrays (trailing axes keep native chunks), or a dict of
+            per-array prefixes (arrays absent from it keep native chunks). An
+            override may not exceed its target array's rank. Defaults to native
+            chunks.
+        array_paths: Optional list of array paths within the Zarr store to
+            read. If unspecified, all arrays discovered in the store are
+            included.
+        allow_full_metadata_scan: If ``True``, recursively scan the store for
+            ``.zarray`` files when ``array_paths`` is unspecified and
+            ``.zmetadata`` is missing. This may be slow or expensive for large
+            remote stores, so it is disabled by default.
+        align_axis_0: If ``True``, emit the wide-form schema: one row per
+            axis-0 chunk with one column per selected array, plus ``t_start``
+            and ``t_stop`` columns naming the global axis-0 range. All selected
+            arrays must share ``shape[0]`` and resolve to the same effective
+            axis-0 chunk size after ``chunk_shapes`` resolution. Defaults to
+            ``False`` (long-form, one chunk per row).
+        overlap: The number of additional axis-0 timesteps to extend each
+            row's per-array data forward by, clipped at the store end, for
+            sliding-window pipelines. Only valid with ``align_axis_0=True``.
+            Defaults to ``0``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` of long-form chunk rows by default
+        (``array``, ``chunk_index``, ``chunk_slices``, ``chunk``), or
+        wide-form aligned rows (``t_start``, ``t_stop``, plus one column
+        per aligned array) when ``align_axis_0`` is set.
+    """
+    datasource = ZarrV2Datasource(
+        path=path,
+        filesystem=filesystem,
+        chunk_shapes=chunk_shapes,
+        array_paths=array_paths,
+        allow_full_metadata_scan=allow_full_metadata_scan,
+        align_axis_0=align_axis_0,
+        overlap=overlap,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
 def read_mongo(
     uri: str,
     database: str,
@@ -1129,6 +1344,7 @@ def read_parquet(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -1220,8 +1436,8 @@ def read_parquet(
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
     Args:
-        paths: A single file path or directory, or a list of file paths. Multiple
-            directories are not supported.
+        paths: A single file path, directory, a list of file paths, or a table name
+            (when used with ``catalog``). Multiple directories/tables are not supported.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1230,6 +1446,11 @@ def read_parquet(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``paths`` is interpreted as a catalog table identifier
+            (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
+            the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan. Deprecated — use
             :meth:`~ray.data.Dataset.select_columns` on the returned dataset
@@ -1305,6 +1526,23 @@ def read_parquet(
         restart more workers.
     """
     _validate_shuffle_arg(shuffle)
+
+    if catalog is not None:
+        if not isinstance(paths, str):
+            raise ValueError("Specifying multiple table identifiers is not supported.")
+
+        from ray.data.catalog import ReaderFormat
+
+        resolved = catalog.resolve(paths, reader=ReaderFormat.PARQUET)
+        paths = resolved.path
+        if resolved.filesystem is not None:
+            if filesystem is not None:
+                logger.warning(
+                    "Both `filesystem` and `catalog` were specified. Overriding "
+                    "the provided `filesystem` with the catalog-resolved "
+                    "credentials."
+                )
+            filesystem = resolved.filesystem
 
     # Check for deprecated filter parameter
     if "filter" in arrow_parquet_args:
@@ -2199,11 +2437,20 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    allow_pickle: bool = False,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
     The column name defaults to "data".
+
+    .. warning::
+
+        By default, ``allow_pickle`` is ``False`` and object-dtype ``.npy``
+        files that contain pickled Python objects will raise an error. Loading
+        pickled data can execute arbitrary code and is unsafe with untrusted
+        files. Only set ``allow_pickle=True`` if you trust the source of the
+        data.
 
     Examples:
         Read a directory of files in remote storage.
@@ -2250,6 +2497,9 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        allow_pickle: If ``True``, allow loading object-dtype ``.npy`` files
+            that use Python pickle. Defaults to ``False`` because unpickling
+            untrusted data can execute arbitrary code.
         **numpy_load_args: Other options to pass to np.load.
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -2258,6 +2508,7 @@ def read_numpy(
     datasource = NumpyDatasource(
         paths,
         numpy_load_args=numpy_load_args,
+        allow_pickle=allow_pickle,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
@@ -2544,6 +2795,163 @@ def read_mcap(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_lerobot(
+    root: Union[str, List[str]],
+    *,
+    episodes: Optional[List[int]] = None,
+    read_granularity: Literal["file", "episode"] = "file",
+    filesystem: Optional[
+        "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
+    ] = None,
+    frame_tolerance_s: Optional[float] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
+
+    `LeRobot <https://huggingface.co/lerobot>`_ is a platform for sharing datasets
+    and pretrained models for real-world robotics. A LeRobot v3 dataset stores
+    low-dimensional data (state, action, timestamps) in chunked Parquet files and
+    camera observations either as chunked MP4 video files or as encoded images
+    stored inline in the Parquet rows.  This reader decodes camera frames (video
+    via torchcodec, images via Pillow) and aligns them with the parquet data
+    using episode metadata.
+
+    Output columns include ``index``, ``episode_index``, ``frame_index``,
+    ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
+    uint8 tensors), ``task`` (string), ``dataset_index`` (int32, identifies the
+    source root when reading multiple datasets), and ``stats``. ``stats`` is a
+    JSON string of the source dataset's per-feature normalization statistics,
+    keyed by feature name (e.g. ``{"action": {"mean": [...], "std": [...]}}``),
+    for downstream normalization of state/action vectors. It is a per-dataset
+    constant: the same value on every row, dictionary-encoded so it is stored
+    once per block rather than duplicated. It is ``"{}"`` when the dataset has
+    no stats.
+
+    Examples:
+        Read a LeRobot v3 dataset from a public S3 bucket (anonymous access):
+
+        >>> import ray
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ... )
+        >>> ds.schema()  # doctest: +SKIP
+
+        One read task per episode (instead of per file group):
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ...     read_granularity="episode",
+        ... )
+
+        Read multiple datasets as one (paths may be local or cloud URIs):
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     ["/path/to/ds1", "/path/to/ds2"],
+        ... )
+
+    Args:
+        root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
+            or a list of such paths to read multiple datasets as one.
+            All roots must share the same ``video_keys``, ``image_keys``,
+            ``fps``, and non-video feature names.
+        episodes: If given, read only these ``episode_index`` values. This is a
+            read-time pushdown -- other episodes' parquet rows and video files
+            are never opened -- so it is cheaper than reading everything and
+            ``filter``-ing afterward. Row values are preserved, not renumbered:
+            ``index``, ``episode_index``, ``frame_index`` and ``timestamp`` keep
+            their original values, so ``index`` becomes non-contiguous (gaps
+            where episodes were skipped). Applied per root when reading multiple
+            roots; requesting an ``episode_index`` absent from every root
+            raises. ``None`` (the default) reads all episodes.
+        read_granularity: How rows are grouped into the base read tasks. A *file
+            group* is the set of consecutive episodes whose frames share one
+            physical file (an mp4 per camera for video datasets, or the data
+            parquet for image datasets). ``"file"`` (the default) emits one task
+            per file group, so each file is opened once; ``"episode"`` emits one
+            task per episode. Use ``override_num_blocks`` to tune the final
+            number of output blocks.
+        filesystem: Filesystem for reading metadata and parquet. A pyarrow
+            ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
+            fsspec ``AbstractFileSystem``. By default it is selected from the URI
+            scheme, including the ``s3://anonymous@bucket/…`` convention for
+            public buckets. For credentialed cloud datasets the recommended setup
+            is a pyarrow ``filesystem`` together with ``storage_options`` (see
+            below): the filesystem covers metadata and parquet, and
+            ``storage_options`` supplies the credentials for the by-URI video
+            decode path.
+        frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+            differ from a row's timestamp before it is rejected. ``None`` (the
+            default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
+            10fps. Increase to tolerate timestamp jitter; decrease for stricter
+            alignment.
+        storage_options: fsspec storage options (e.g. credentials or a custom
+            ``endpoint_url``). They supply the credentials for the by-URI video
+            decode path -- videos are streamed directly through torchcodec /
+            fsspec, not through ``filesystem`` -- so pass them alongside a pyarrow
+            ``filesystem`` for credentialed cloud video. When ``filesystem`` is
+            not given, they also resolve the metadata / parquet filesystem.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+            Video decoding is CPU-intensive, so raising this (and lowering
+            ``concurrency``) can prevent oversubscription.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+            Video frames are decoded on CPU (torchcodec), so this does not
+            accelerate decoding -- it only reserves GPUs for the read tasks.
+        memory: The heap memory in bytes to reserve for each parallel read
+            worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set
+            this to control number of tasks to run concurrently. This doesn't
+            change the total number of tasks run or the total number of output
+            blocks. By default, concurrency is dynamically decided based on the
+            available resources. Use it to cap the number of simultaneous video
+            decoders.
+        override_num_blocks: Override the number of output blocks from all read
+            tasks. By default this follows ``read_granularity``: one read task
+            per file group (per video file for video datasets, per data-parquet
+            file for image/tabular ones), or per episode, so each file is opened
+            once; raise it (e.g. to your cluster's CPU count) to
+            parallelize a monolithic dataset across more workers. Splitting a
+            file group re-opens its file(s) once per sub-task, so higher
+            parallelism trades amortized file opens for more concurrency;
+            lowering it merges groups.
+
+    Returns:
+        A :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
+        camera, task, and metadata columns.
+    """
+    datasource = LeRobotDatasource(
+        root=root,
+        episodes=episodes,
+        read_granularity=read_granularity,
+        filesystem=filesystem,
+        storage_options=storage_options,
+        frame_tolerance_s=frame_tolerance_s,
+    )
+    if override_num_blocks is None:
+        # Default to one read task per video-file group. Ray's generic
+        # block-count floor would over-split a video read, where each split
+        # re-opens a file and re-inits a torchcodec decoder -- a cost a small
+        # dataset can't amortize. An explicit override_num_blocks still
+        # splits/merges from this base (e.g. to parallelize a monolithic mp4).
+        override_num_blocks = datasource.default_num_blocks()
+    return read_datasource(
+        datasource,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
@@ -3238,12 +3646,7 @@ def read_hudi(
 
 @PublicAPI
 def from_daft(df: "daft.DataFrame") -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
-
-    .. warning::
-
-        This function only works with PyArrow 13 or lower. For more details, see
-        https://github.com/ray-project/ray/issues/53278.
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
     Args:
         df: A Daft DataFrame
@@ -3251,12 +3654,13 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
-    pyarrow_version = get_pyarrow_version()
-    assert pyarrow_version is not None
-    if pyarrow_version >= parse_version("14.0.0"):
+    import daft
+    from packaging.version import parse as parse_version
+
+    if parse_version(daft.__version__) < parse_version("0.7.0"):
         raise RuntimeError(
-            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
-            "https://github.com/ray-project/ray/issues/53278."
+            f"ray.data.from_daft requires daft >= 0.7.0, but found {daft.__version__}. "
+            "Please upgrade daft via 'pip install -U daft'."
         )
 
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
@@ -4159,6 +4563,7 @@ def read_iceberg(
     snapshot_id: Optional[int] = None,
     scan_kwargs: Optional[Dict[str, str]] = None,
     catalog_kwargs: Optional[Dict[str, str]] = None,
+    catalog: Optional["Catalog"] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4209,6 +4614,11 @@ def read_iceberg(
              `pyiceberg catalog
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, the catalog supplies ``catalog_kwargs`` pointing at its
+            Iceberg REST endpoint. ``catalog`` will be ignored if ``catalog_kwargs``
+            is specified.
         ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
             read tasks.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -4246,6 +4656,20 @@ def read_iceberg(
             DeprecationWarning,
             stacklevel=2,
         )
+
+    if catalog is not None:
+        if catalog_kwargs:
+            logger.warning(
+                "`catalog` and `catalog_kwargs` are both specified. "
+                "Ignoring `catalog` and using `catalog_kwargs` instead."
+            )
+        else:
+            from ray.data.catalog import ReaderFormat
+
+            resolved = catalog.resolve(table_identifier, reader=ReaderFormat.ICEBERG)
+            catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -4457,7 +4881,16 @@ def read_clickhouse(
     )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message=(
+        "``read_unity_catalog`` is deprecated. Use ``read_delta``, "
+        "``read_parquet``, or ``read_iceberg`` with a "
+        "``catalog=ray.data.DatabricksUnityCatalog(...)`` instead. For example::\n\n"
+        "    catalog = ray.data.DatabricksUnityCatalog(url=..., token=..., region=...)\n"
+        "    ds = ray.data.read_delta('main.sales.transactions', catalog=catalog)"
+    ),
+    warning=True,
+)
 def read_unity_catalog(
     table: str,
     url: Optional[str] = None,
@@ -4476,10 +4909,6 @@ def read_unity_catalog(
     REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/external-access/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
-
-    .. note::
-
-       This function is experimental and under active development.
 
     Examples:
         Read a Unity Catalog Delta table:
@@ -4531,25 +4960,33 @@ def read_unity_catalog(
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_credentials import (
-        UnityCatalogCredentialConfig,
-        resolve_credential_provider,
-    )
+    from ray.data.catalog import DatabricksUnityCatalog, ReaderFormat
 
-    resolved_provider = resolve_credential_provider(
-        UnityCatalogCredentialConfig(
-            credential_provider=credential_provider, url=url, token=token
-        )
-    )
-
-    connector = UnityCatalogConnector(
-        table_full_name=table,
-        credential_provider=resolved_provider,
-        data_format=data_format,
+    catalog = DatabricksUnityCatalog(
+        url=url,
+        token=token,
+        credential_provider=credential_provider,
         region=region,
-        reader_kwargs=reader_kwargs,
     )
-    return connector.read()
+    reader_kwargs = reader_kwargs or {}
+
+    fmt = ReaderFormat(data_format.lower()) if data_format else None
+    if fmt is None:
+        fmt = catalog.infer_format(table)
+        if fmt is None:
+            raise ValueError(
+                f"Could not infer the data format for table {table!r}. Pass "
+                f"`data_format` explicitly (one of: "
+                f"{', '.join(f.value for f in ReaderFormat)})."
+            )
+
+    if fmt is ReaderFormat.DELTA:
+        return read_delta(table, catalog=catalog, **reader_kwargs)
+    if fmt is ReaderFormat.PARQUET:
+        return read_parquet(table, catalog=catalog, **reader_kwargs)
+    if fmt is ReaderFormat.ICEBERG:
+        return read_iceberg(table_identifier=table, catalog=catalog, **reader_kwargs)
+    raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 
 @PublicAPI(stability="alpha")
@@ -4559,6 +4996,7 @@ def read_delta(
     *,
     storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -4628,6 +5066,11 @@ def read_delta(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``path`` is interpreted as a catalog table identifier
+            (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
+            the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
@@ -4680,8 +5123,41 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
+    if catalog is not None:
+        from ray.data.catalog import ReaderFormat
+
+        resolved = catalog.resolve(path, reader=ReaderFormat.DELTA)
+        path = resolved.path
+        if resolved.storage_options:
+            storage_options = {**resolved.storage_options, **(storage_options or {})}
+        if resolved.filesystem is not None:
+            if filesystem is not None:
+                logger.warning(
+                    "Both `filesystem` and `catalog` were specified. Overriding "
+                    "the provided `filesystem` with the catalog-resolved "
+                    "credentials."
+                )
+            # `to_pyarrow_dataset` emits table-relative file paths and requires
+            # the filesystem to be rooted at the table directory. The catalog
+            # vends a bucket-rooted filesystem, so wrap it in a SubTreeFileSystem
+            # rooted at the table path (see `DeltaTable.to_pyarrow_dataset`).
+            import pyarrow.fs as pafs
+
+            _, normalized_path = pafs.FileSystem.from_uri(path)
+            filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
+
     dt = DeltaTable(path, version=version, storage_options=storage_options)
-    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+    try:
+        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+    except Exception as e:
+        error_msg = str(e)
+        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
+        if "deletionVectors" in error_msg:
+            raise RuntimeError(
+                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
+                f"Error: {error_msg}\n"
+            ) from e
+        raise
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
         pa_dataset,

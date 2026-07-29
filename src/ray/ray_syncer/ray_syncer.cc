@@ -29,6 +29,7 @@
 namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
+                     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                      const std::string &local_node_id,
                      size_t max_batch_size,
                      uint64_t max_batch_delay_ms,
@@ -36,7 +37,7 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(PeriodicalRunner::Create(io_context)),
+      periodical_runner_(std::move(periodical_runner)),
       max_batch_size_(max_batch_size),
       max_batch_delay_ms_(max_batch_delay_ms),
       on_rpc_completion_(std::move(on_rpc_completion)) {
@@ -177,7 +178,7 @@ void RaySyncer::Register(MessageType message_type,
 
         // Set job to pull from reporter periodically
         if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-          timer_->RunFnPeriodically(
+          periodical_runner_->RunFnPeriodically(
               [this, stopped = stopped_, message_type]() {
                 if (*stopped) {
                   return;

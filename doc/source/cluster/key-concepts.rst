@@ -1,3 +1,6 @@
+.. meta::
+   :description: Core Ray cluster concepts: head and worker nodes, the autoscaler, Ray jobs, the GCS, and namespaces.
+
 Key Concepts
 ============
 

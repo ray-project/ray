@@ -24,7 +24,7 @@ _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
 # Hardcoded so all components agree without per-Dataset configuration.
-SUBCLUSTER_LABEL_KEY = "__subcluster__"
+SUBCLUSTER_LABEL_KEY = "ray-subcluster"
 # Sentinel for "no subcluster" — used as both a node-label fallback and
 # the bucket key for unlabeled nodes in ``_cluster_node_resources``.
 DEFAULT_SUBCLUSTER: Optional[str] = None
@@ -120,20 +120,20 @@ class OngoingRequest:
     requested_resources: List[ResourceDict]
     # The expiration time of the request.
     expiration_time: float
-    # If true, after allocating requested resources to each requester,
-    # remaining resources will also be allocated to this requester.
+    # If true, after reserving requested resources to each requester,
+    # remaining resources will also be reserved to this requester.
     request_remaining: bool
     # The priority of the request, higher value means higher priority.
     priority: int
-    # Resources that are already allocated to the requester.
-    allocated_resources: List[ResourceDict]
+    # Resources that are already reserved to the requester.
+    reserved_resources: List[ResourceDict]
     # Per-bundle label selectors, parallel to ``requested_resources``.
     # Empty dicts mean no label constraint on that bundle. Required to have
     # the same length as ``requested_resources``.
     requested_label_selectors: List[Dict[str, str]]
 
     def __lt__(self, other):
-        """Used to sort requests when allocating resources.
+        """Used to sort requests when reserving resources.
 
         Higher priority first, then earlier first_request_time first.
         """
@@ -149,7 +149,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     Create one instance per requester. Multiple instances sharing the same
     ``requester_id`` will have diverging caches and break the FIFO ordering
-    guarantee that ``request_resources`` and ``get_allocated_resources`` rely on.
+    guarantee that ``request_resources`` and ``get_reserved_resources`` rely on.
     """
 
     def __init__(
@@ -162,9 +162,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         # Label selector keyed by ``SUBCLUSTER_LABEL_KEY`` pinning this
         # requester to a single subcluster.
         self._subcluster_selector = subcluster_selector
-        self._cached_allocated_resources: List[ResourceDict] = []
-        # In-flight get_allocated_resources ref, or None if no request is pending.
-        self._pending_allocated_resources: Optional[ray.ObjectRef] = None
+        self._cached_reserved_resources: List[ResourceDict] = []
+        # In-flight get_reserved_resources ref, or None if no request is pending.
+        self._pending_reserved_resources: Optional[ray.ObjectRef] = None
         if autoscaling_coordinator_actor is not None:
             # Bypass the cached_property by injecting the actor directly.
             # Used in tests to avoid the shared named actor.
@@ -200,16 +200,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     def cancel_request(self) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-        Also clears client-side state (pending ref and cached allocation) so
-        a subsequent ``get_allocated_resources`` call returns a fresh result
+        Also clears client-side state (pending ref and cached reservation) so
+        a subsequent ``get_reserved_resources`` call returns a fresh result
         rather than stale data from a prior pipeline run.
         """
-        self._pending_allocated_resources = None
-        self._cached_allocated_resources = []
+        self._pending_reserved_resources = None
+        self._cached_reserved_resources = []
         self._autoscaling_coordinator.cancel_request.remote(self._requester_id)
 
-    def get_allocated_resources(self) -> List[ResourceDict]:
-        """Return allocated resources without blocking.
+    def get_reserved_resources(self) -> List[ResourceDict]:
+        """Return reserved resources without blocking.
 
         Submits an async RPC and immediately returns the last cached result.
         The cache is updated the next time the pending RPC completes.
@@ -220,16 +220,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
         On actor errors, returns the cached value and logs a warning; never raises.
         """
-        ref = self._pending_allocated_resources
+        ref = self._pending_reserved_resources
         if ref is not None:
             ready, _ = ray.wait([ref], timeout=0)
             if ready:
-                self._pending_allocated_resources = None
+                self._pending_reserved_resources = None
                 try:
-                    self._cached_allocated_resources = ray.get(ref, timeout=0)
+                    self._cached_reserved_resources = ray.get(ref, timeout=0)
                 except ray.exceptions.RayError:
                     logger.warning(
-                        f"Failed to get allocated resources for {self._requester_id};"
+                        f"Failed to get reserved resources for {self._requester_id};"
                         " falling back to the cached value."
                         " If this persists, file a GitHub issue.",
                         exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
@@ -237,14 +237,14 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
         # Submit a new request if none is currently in-flight
         # (first call, or the previous request completed or errored).
-        if self._pending_allocated_resources is None:
-            self._pending_allocated_resources = (
-                self._autoscaling_coordinator.get_allocated_resources.remote(
+        if self._pending_reserved_resources is None:
+            self._pending_reserved_resources = (
+                self._autoscaling_coordinator.get_reserved_resources.remote(
                     self._requester_id,
                 )
             )
 
-        return self._cached_allocated_resources
+        return self._cached_reserved_resources
 
 
 def _default_send_resources_request(
@@ -262,7 +262,7 @@ class _AutoscalingCoordinatorActor:
 
     This actor is responsible for:
     * Merging received requests and dispatching them to Ray Autoscaler.
-    * Allocating cluster resources to the requesters.
+    * Reserving cluster resources to the requesters.
     """
 
     TICK_INTERVAL_S = 20
@@ -307,7 +307,7 @@ class _AutoscalingCoordinatorActor:
         with self._lock:
             self._merge_and_send_requests()
             self._update_cluster_node_resources()
-            self._reallocate_resources()
+            self._rereserve_resources()
 
     def request_resources(
         self,
@@ -346,7 +346,7 @@ class _AutoscalingCoordinatorActor:
                         f"Bundle {i} label_selector targets subcluster "
                         f"{bundle_subcluster!r}, but requester is registered to "
                         f"{req_subcluster!r}. Per-bundle cross-subcluster "
-                        f"allocation is not supported."
+                        f"reservation is not supported."
                     )
         with self._lock:
             now = self._get_current_time()
@@ -385,16 +385,16 @@ class _AutoscalingCoordinatorActor:
                     request_remaining=request_remaining,
                     priority=priority.value,
                     expiration_time=now + expire_after_s,
-                    allocated_resources=[],
+                    reserved_resources=[],
                 )
             # Write subcluster after all validations so a rejected call
             # never leaves the registry on a new subcluster.
             self._subcluster_selectors[requester_id] = subcluster_selector
             if request_updated:
                 # If the request has updated, immediately send
-                # a new request and reallocate resources.
+                # a new request and rereserve resources.
                 self._merge_and_send_requests()
-                self._reallocate_resources()
+                self._rereserve_resources()
 
     def cancel_request(
         self,
@@ -407,7 +407,7 @@ class _AutoscalingCoordinatorActor:
             del self._ongoing_reqs[requester_id]
             self._subcluster_selectors.pop(requester_id, None)
             self._merge_and_send_requests()
-            self._reallocate_resources()
+            self._rereserve_resources()
 
     def _purge_expired_requests(self):
         now = self._get_current_time()
@@ -442,12 +442,12 @@ class _AutoscalingCoordinatorActor:
         else:
             self._send_resources_request(merged_req)
 
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
-        """Get the allocated resources for the requester."""
+    def get_reserved_resources(self, requester_id: str) -> List[ResourceDict]:
+        """Get the reserved resources for the requester."""
         with self._lock:
             if requester_id not in self._ongoing_reqs:
                 return []
-            return self._ongoing_reqs[requester_id].allocated_resources
+            return self._ongoing_reqs[requester_id].reserved_resources
 
     def _maybe_subtract_resources(self, res1: ResourceDict, res2: ResourceDict) -> bool:
         """If res2<=res1, subtract res2 from res1 in-place, and return True.
@@ -489,8 +489,8 @@ class _AutoscalingCoordinatorActor:
         self._cluster_node_resources = cluster_node_resources
         return True
 
-    def _reallocate_resources(self):
-        """Reallocate cluster resources.
+    def _rereserve_resources(self):
+        """Rereserve cluster resources.
 
         Each requester's subcluster comes from its ``subcluster_selector``.
         A requester without one is eligible only for the ``None`` bucket.
@@ -512,15 +512,15 @@ class _AutoscalingCoordinatorActor:
 
         # TODO(hchen): Optimize the following triple loop.
         for requester_id, ongoing_req in live_items:
-            ongoing_req.allocated_resources = []
+            ongoing_req.reserved_resources = []
             subcluster = _subcluster_of(requester_id)
             for bundle in ongoing_req.requested_resources:
                 for node_resource in cluster_node_resources.get(subcluster, []):
                     if self._maybe_subtract_resources(node_resource, bundle):
-                        ongoing_req.allocated_resources.append(bundle)
+                        ongoing_req.reserved_resources.append(bundle)
                         break
 
-        # Allocate remaining resources. Multiple concurrent requesters in
+        # Reserve remaining resources. Multiple concurrent requesters in
         # the same subcluster split that subcluster's leftovers equally.
         remaining_items = [
             (req_id, req) for req_id, req in live_items if req.request_remaining
@@ -534,20 +534,20 @@ class _AutoscalingCoordinatorActor:
             if not eligible:
                 continue
             for node_resource in node_resources:
-                # Integer division may leave some resources unallocated.
+                # Integer division may leave some resources unreserved.
                 divided = {k: v // len(eligible) for k, v in node_resource.items()}
                 if not any(v > 0 for v in divided.values()):
                     continue
                 for r in eligible:
-                    r.allocated_resources.append(divided)
+                    r.reserved_resources.append(divided)
 
         if logger.isEnabledFor(logging.DEBUG):
-            msg = "Allocated resources:\n"
+            msg = "Reserved resources:\n"
             for requester_id, ongoing_req in self._ongoing_reqs.items():
-                allocated_resources_log_str = _format_resources_for_log(
-                    ongoing_req.allocated_resources
+                reserved_resources_log_str = _format_resources_for_log(
+                    ongoing_req.reserved_resources
                 )
-                msg += f"Requester {requester_id}: {allocated_resources_log_str}\n"
+                msg += f"Requester {requester_id}: {reserved_resources_log_str}\n"
             logger.debug(msg)
 
 

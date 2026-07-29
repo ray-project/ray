@@ -141,6 +141,28 @@ void TaskReceiver::HandleTaskExecutionResult(
   }
 }
 
+void TaskReceiver::BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request) {
+  RAY_CHECK_EQ(request.task_spec().type(), TaskType::ACTOR_TASK)
+      << "BeginActorTaskArgsFetch must only be called for actor tasks";
+
+  // Copy rather than move since `request` needs task_spec further down
+  TaskSpecification task_spec(request.task_spec());
+  const auto dependencies = task_spec.GetDependencies();
+  if (dependencies.empty()) {
+    return;
+  }
+  // The waiter keys this fetch by (task_id, attempt_number). This is safe because
+  // the executor receives a given (task_id, attempt_number) at most once per actor
+  // lifecycle:
+  // 1. each attempt is popped from the submit queue and sent exactly once
+  // 2. PushTask is not retried at the gRPC layer
+  // 3. Every resubmission (retry lineage reconstruction, or reconnect) increments the
+  // attempt number.
+  // So no two BeginArgsFetch/MarkReady calls ever collide on the same key.
+  waiter_.BeginArgsFetch(dependencies,
+                         TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()});
+}
+
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                          rpc::PushTaskReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -170,47 +192,15 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
   }
 
-  auto execute_callback =
-      [this, reply, send_reply_callback, resource_ids = std::move(resource_ids)](
-          const TaskSpecification &t) mutable {
-        TaskExecutionResult result;
-        auto status = task_handler_(t,
-                                    std::move(resource_ids),
-                                    &result.return_objects,
-                                    &result.dynamic_return_objects,
-                                    &result.streaming_generator_returns,
-                                    reply->mutable_borrowed_refs(),
-                                    &result.is_retryable_error,
-                                    &result.actor_repr_name,
-                                    &result.application_error);
-
-        HandleTaskExecutionResult(status, t, result, send_reply_callback, reply);
-      };
-
-  auto cancel_callback = [this, reply, send_reply_callback](const TaskSpecification &t,
-                                                            const Status &status) {
-    if (t.IsActorTask()) {
-      // If task cancelation is due to worker shutdown, propagate that information
-      // to the submitter.
-      if (stopping_) {
-        reply->set_worker_exiting(true);
-        reply->set_was_cancelled_before_running(true);
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      } else {
-        send_reply_callback(status, nullptr, nullptr);
-      }
-    } else {
-      reply->set_was_cancelled_before_running(true);
-      send_reply_callback(status, nullptr, nullptr);
-    }
-  };
-
   if (task_spec.IsActorCreationTask()) {
     SetupActor(task_spec.IsAsyncioActor(),
                task_spec.MaxActorConcurrency(),
                task_spec.AllowOutOfOrderExecution());
     normal_task_execution_queue_->EnqueueTask(
-        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+        TaskToExecute(std::move(task_spec),
+                      std::move(resource_ids),
+                      reply,
+                      std::move(send_reply_callback)));
   } else if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
@@ -227,7 +217,9 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                  fiber_state_manager_,
                                  is_asyncio_,
                                  fiber_max_concurrency_,
-                                 concurrency_groups_))
+                                 concurrency_groups_,
+                                 execute_task_callback_,
+                                 cancel_task_callback_))
                        : std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<OrderedActorTaskExecutionQueue>(
                                  task_execution_service_,
@@ -235,16 +227,57 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                  task_event_buffer_,
                                  pool_manager_,
                                  RayConfig::instance()
-                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+                                     .actor_scheduling_queue_max_reorder_wait_seconds(),
+                                 execute_task_callback_,
+                                 cancel_task_callback_)))
                .first;
     }
-    it->second->EnqueueTask(
-        request.sequence_number(),
-        request.client_processed_up_to(),
-        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+    it->second->EnqueueTask(request.sequence_number(),
+                            request.client_processed_up_to(),
+                            TaskToExecute(std::move(task_spec),
+                                          std::move(resource_ids),
+                                          reply,
+                                          std::move(send_reply_callback)));
   } else {
     normal_task_execution_queue_->EnqueueTask(
-        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+        TaskToExecute(std::move(task_spec),
+                      std::move(resource_ids),
+                      reply,
+                      std::move(send_reply_callback)));
+  }
+}
+
+void TaskReceiver::ExecuteTask(TaskToExecute &task) {
+  TaskExecutionResult result;
+  auto status = task_handler_(task.TaskSpec(),
+                              std::move(task.resource_ids()),
+                              &result.return_objects,
+                              &result.dynamic_return_objects,
+                              &result.streaming_generator_returns,
+                              task.reply()->mutable_borrowed_refs(),
+                              &result.is_retryable_error,
+                              &result.actor_repr_name,
+                              &result.application_error);
+
+  HandleTaskExecutionResult(
+      status, task.TaskSpec(), result, task.send_reply_callback(), task.reply());
+}
+
+void TaskReceiver::CancelTask(const TaskToExecute &task, const Status &status) {
+  const TaskSpecification &task_spec = task.TaskSpec();
+  if (task_spec.IsActorTask()) {
+    // If task cancelation is due to worker shutdown, propagate that information
+    // to the submitter.
+    if (stopping_) {
+      task.reply()->set_worker_exiting(true);
+      task.reply()->set_was_cancelled_before_running(true);
+      task.send_reply_callback()(Status::OK(), nullptr, nullptr);
+    } else {
+      task.send_reply_callback()(status, nullptr, nullptr);
+    }
+  } else {
+    task.reply()->set_was_cancelled_before_running(true);
+    task.send_reply_callback()(status, nullptr, nullptr);
   }
 }
 
