@@ -1847,6 +1847,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# IQL
+py_test(
+    name = "test_iql_rl_module",
+    size = "small",
+    srcs = ["algorithms/iql/tests/test_iql_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # MARWIL
 py_test(
     name = "test_marwil",
