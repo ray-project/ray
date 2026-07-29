@@ -42,7 +42,6 @@ from ray.exceptions import (
     ActorUnschedulableError,
     OutOfMemoryError,
     RuntimeEnvSetupError,
-    WorkerBootstrapError,
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -351,28 +350,6 @@ class JobManager:
                             JobFailureStage.RUNTIME_ENV_SETUP,
                             context_key="runtime_env",
                             context=runtime_env_context,
-                        )
-
-                    elif isinstance(e, WorkerBootstrapError):
-                        logger.error(
-                            f"Failed to start job {job_id} because the "
-                            "supervisor actor's worker process never finished "
-                            f"registering: {e}"
-                        )
-
-                        target_job_error_message = (
-                            f"Job supervisor actor's worker failed to start: {e}"
-                        )
-                        target_job_error_type = (
-                            JobErrorType.JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE
-                        )
-                        target_failure_info = make_failure_info(
-                            JobFailureStage.WORKER_BOOTSTRAP,
-                            context_key="worker_bootstrap",
-                            # Ray-generated text, so it is carried whole. The
-                            # raylet's channel for a cancelled lease is a flat
-                            # string, so there is no per-worker detail to add.
-                            context={"error_message": str(e)},
                         )
 
                     elif isinstance(e, ActorUnschedulableError):

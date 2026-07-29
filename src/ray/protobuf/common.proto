@@ -302,8 +302,6 @@ message RayErrorInfo {
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     // for ErrorType::ACTOR_UNAVAILABLE
     ActorUnavailableContext actor_unavailable_error = 4;
-    // for ErrorType::WORKER_STARTUP_FAILED raised on the actor path
-    WorkerBootstrapContext worker_bootstrap_error = 6;
   }
   string error_message = 5;
   // The type of error that caused the exception.
@@ -529,7 +527,16 @@ message JobFailureInfo {
     UNSPECIFIED = 0;
     SUBMISSION = 1;
     RUNTIME_ENV_SETUP = 2;
-    WORKER_BOOTSTRAP = 3;
+    // 3 was WORKER_BOOTSTRAP, and 6 in the oneof below was its context. A worker
+    // that started but never registered is recorded in the actor's death cause as
+    // ActorDeathCause.worker_bootstrap_context, but it is not attributed as its
+    // own job stage, because reaching this layer with it would mean giving the
+    // caller a different exception type than it gets today.
+    //
+    // TODO: restore 3 and 6 together, once the lease-cancellation path has a
+    // measured frequency to justify changing a stable public exception type. Both
+    // numbers are deliberately left unused so that restoring them is a pure
+    // addition.
     SUPERVISOR_START = 4;
     DRIVER_RUN = 5;
   }
@@ -546,7 +553,6 @@ message JobFailureInfo {
 
   oneof context {
     RuntimeEnvFailedContext runtime_env = 5;
-    WorkerBootstrapContext worker_bootstrap = 6;
     SupervisorDeathContext supervisor = 7;
     DriverRunContext driver_run = 10;
   }

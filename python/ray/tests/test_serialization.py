@@ -921,45 +921,28 @@ def test_runtime_env_setup_failed_error_deserialization(monkeypatch):
     assert result.setup_failure is not fake_error_info.runtime_env_setup_failed_error
 
 
-def test_worker_startup_failed_error_deserialization(monkeypatch):
-    """WORKER_STARTUP_FAILED becomes WorkerBootstrapError only when a bootstrap
-    context was reported.
+def test_worker_startup_failed_stays_ray_system_error(monkeypatch):
+    """WORKER_STARTUP_FAILED keeps raising RaySystemError.
 
-    The plain-task path sets this error type with no context at all, so the
-    fallback has to stay RaySystemError -- that is the type callers assert on
-    today, and the gate is what keeps them working.
+    This is a guard on something NOT changing. The GCS now records a worker that
+    started but never registered as its own branch of the actor's death cause,
+    which is a genuinely different failure from the cluster being unable to place
+    the actor at all. It would be reasonable to surface that difference here as a
+    distinct exception type -- and doing so would change the type an existing
+    caller receives, for a path whose frequency is unmeasured. So the
+    caller-visible type is deliberately left alone, and this pins it.
     """
     from ray._private.serialization import SerializationContext
     from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
-    from ray.exceptions import RaySystemError, WorkerBootstrapError
+    from ray.exceptions import RaySystemError
 
     ctx = SerializationContext.__new__(SerializationContext)
     metadata = str(ErrorType.Value("WORKER_STARTUP_FAILED")).encode()
 
-    with_context = RayErrorInfo()
-    with_context.error_type = ErrorType.WORKER_STARTUP_FAILED
-    bootstrap_error = with_context.worker_bootstrap_error
-    bootstrap_error.error_message = "Failed to startup worker after retrying 3 times."
-    monkeypatch.setattr(
-        ctx, "_deserialize_error_info", lambda data, fields: with_context
-    )
-
-    result = ctx._deserialize_object(
-        data=b"",
-        metadata=metadata,
-        object_ref=None,
-        out_of_band_tensors=None,
-    )
-
-    assert isinstance(result, WorkerBootstrapError)
-    assert "Failed to startup worker after retrying 3 times." in str(result)
-
-    without_context = RayErrorInfo()
-    without_context.error_type = ErrorType.WORKER_STARTUP_FAILED
-    without_context.error_message = "Worker startup failed."
-    monkeypatch.setattr(
-        ctx, "_deserialize_error_info", lambda data, fields: without_context
-    )
+    error_info = RayErrorInfo()
+    error_info.error_type = ErrorType.WORKER_STARTUP_FAILED
+    error_info.error_message = "Worker startup failed."
+    monkeypatch.setattr(ctx, "_deserialize_error_info", lambda data, fields: error_info)
 
     result = ctx._deserialize_object(
         data=b"",

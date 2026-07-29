@@ -355,24 +355,6 @@ def test_runtime_env_failure_info_json_to_proto():
     assert not failure_info.runtime_env.HasField("failed_package")
 
 
-def test_worker_bootstrap_failure_info_json_to_proto():
-    failure_info = _parse_failure_info(
-        make_failure_info(
-            JobFailureStage.WORKER_BOOTSTRAP,
-            context_key="worker_bootstrap",
-            context={
-                "error_message": "Failed to startup worker after retrying 3 times."
-            },
-        )
-    )
-    assert failure_info.stage == JobFailureInfo.Stage.WORKER_BOOTSTRAP
-    assert failure_info.WhichOneof("context") == "worker_bootstrap"
-    assert (
-        failure_info.worker_bootstrap.error_message
-        == "Failed to startup worker after retrying 3 times."
-    )
-
-
 def test_supervisor_failure_info_json_to_proto():
     died = ActorDiedErrorContext(
         error_message="The actor died unexpectedly before finishing this task.",

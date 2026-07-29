@@ -77,12 +77,6 @@ class JobErrorType(str, Enum):
     JOB_SUPERVISOR_ACTOR_START_FAILURE = "JOB_SUPERVISOR_ACTOR_START_FAILURE"
     # Job supervisor actor failed to be scheduled
     JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE = "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
-    # Job supervisor actor's worker process never completed registration. Distinct
-    # from JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE, which means the cluster could not
-    # place the actor at all: the remediation is different for each.
-    JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE = (
-        "JOB_SUPERVISOR_ACTOR_WORKER_BOOTSTRAP_FAILURE"
-    )
     # Job supervisor actor failed for unknown exception
     JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
     # Job supervisor actor died
@@ -107,7 +101,6 @@ class JobFailureStage(str, Enum):
 
     SUBMISSION = "SUBMISSION"
     RUNTIME_ENV_SETUP = "RUNTIME_ENV_SETUP"
-    WORKER_BOOTSTRAP = "WORKER_BOOTSTRAP"
     SUPERVISOR_START = "SUPERVISOR_START"
     DRIVER_RUN = "DRIVER_RUN"
 

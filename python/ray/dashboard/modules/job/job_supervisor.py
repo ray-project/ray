@@ -151,8 +151,11 @@ def _infra_cause_from_actor_death(
                 error_type = ErrorType.NODE_DIED
     else:
         # creation_task_failure_context is the user's own exception, and
-        # runtime_env_failed_context, actor_unschedulable_context and
-        # worker_bootstrap_context are each attributed at their own stage.
+        # runtime_env_failed_context and actor_unschedulable_context are each
+        # attributed at their own stage. worker_bootstrap_context reaches here too
+        # and is deliberately not treated as infra: it means a worker never
+        # finished registering, which is most often the job's own image or
+        # py_executable, not the platform.
         return None
 
     context = InfraCauseContext(error_type=error_type, error_message=error_message)

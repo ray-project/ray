@@ -1061,32 +1061,6 @@ class ActorUnschedulableError(RayError):
         return f"The actor is not schedulable: {self.error_message}"
 
 
-@PublicAPI(stability="alpha")
-class WorkerBootstrapError(RayError):
-    """Raised when a worker process started but never finished registering.
-
-    Ray gave up after repeated startup attempts, for example because a
-    ``py_executable`` wrapper exits before the worker registers. Distinct from
-    ``ActorUnschedulableError``, which means the cluster could not place the
-    work at all.
-
-    Args:
-        error_message: The error message that explains why worker startup
-            failed.
-    """
-
-    def __init__(self, error_message: str):
-        # BaseException.__reduce__ rebuilds the exception from self.args, which
-        # is only seeded by positional arguments. This one is constructed with
-        # keywords, so seed it here or the class cannot be unpickled -- and
-        # RayError.to_bytes pickles it.
-        super().__init__(error_message)
-        self.error_message = error_message
-
-    def __str__(self):
-        return self.error_message
-
-
 @DeveloperAPI
 class ObjectRefStreamEndOfStreamError(RayError):
     """Raised by streaming generator tasks when there are no more ObjectRefs to
@@ -1238,7 +1212,6 @@ RAY_EXCEPTION_TYPES = [
     TaskUnschedulableError,
     ActorDiedError,
     ActorUnschedulableError,
-    WorkerBootstrapError,
     ActorUnavailableError,
     RayChannelError,
     RayChannelTimeoutError,

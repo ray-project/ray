@@ -50,7 +50,6 @@ from ray.exceptions import (
     TaskCancelledError,
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
-    WorkerBootstrapError,
     WorkerCrashedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
@@ -531,12 +530,6 @@ class SerializationContext:
                 return TaskUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("WORKER_STARTUP_FAILED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
-                if error_info.HasField("worker_bootstrap_error"):
-                    return WorkerBootstrapError(
-                        error_message=error_info.worker_bootstrap_error.error_message
-                    )
-                # The plain-task path sets this error type without a context, so
-                # it keeps raising the exception type it has always raised.
                 return RaySystemError(error_info.error_message)
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)

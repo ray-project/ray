@@ -136,11 +136,22 @@ rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
     break;
   case ContextCase::kWorkerBootstrapContext:
-    // Unlike the arm above, this context holds more than error_message, so the
-    // whole sub-message has to be copied to reach the Python side.
-    error_info.mutable_worker_bootstrap_error()->CopyFrom(
-        death_cause.worker_bootstrap_context());
-    error_info.set_error_type(rpc::ErrorType::WORKER_STARTUP_FAILED);
+    // Reported to the caller as ACTOR_UNSCHEDULABLE_ERROR, the same as a genuine
+    // placement failure, so that the exception a Python caller sees is unchanged.
+    //
+    // The GCS still records the two apart in the actor's death cause, which is
+    // what the state and export APIs expose. Only the caller-visible error type is
+    // merged. Separating it here as well would change ActorUnschedulableError --
+    // stable @PublicAPI -- into a new type for anyone calling into an actor whose
+    // worker failed to start.
+    //
+    // TODO: report this as its own error type once there is a count for how often
+    // the lease-cancellation path is actually taken. The evidence for splitting it
+    // is currently qualitative -- the two failures are genuinely different and are
+    // remediated differently -- but nothing persists this path today, so the
+    // frequency is unmeasured, and it is not worth changing a stable public
+    // exception type on a qualitative argument alone.
+    error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
     break;
   case ContextCase::kOomContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
