@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -77,9 +78,44 @@ constexpr char kDefaultCFName[] = "default";
 // (https://github.com/ray-project/ray/pull/64187). Once that root cause is
 // fixed, this relaxation should be revisited and, ideally, removed so all
 // tables keep the strict per-write fsync.
+// TEST-ONLY (REP-64 provenance): the set is overridable at runtime via
+// RAY_TESTING_GCS_SOFT_DURABLE_TABLES so a single instrumented build can run
+// every arm of the delay matrix -- "F4 on" (default), "F4 off" (empty string),
+// or F4 restricted to one channel. Parsed once. Unset => the shipped default
+// below, so behavior is identical to upstream unless the harness sets it.
 const absl::flat_hash_set<std::string> &SoftDurableTables() {
-  static const auto *const kTables =
-      new absl::flat_hash_set<std::string>{"NODE", "ACTOR"};
+  static const auto *const kTables = [] {
+    auto *tables = new absl::flat_hash_set<std::string>{"NODE", "ACTOR"};
+    const char *override_env = std::getenv("RAY_TESTING_GCS_SOFT_DURABLE_TABLES");
+    if (override_env == nullptr) {
+      return tables;
+    }
+    // Set-but-empty deliberately means "no table is soft-durable" (F4 fully off).
+    tables->clear();
+    std::string spec(override_env);
+    // Explicit sentinel for the same thing, because an empty env value does not
+    // survive every CI layer reliably (bazel --test_env, docker -e).
+    if (spec == "NONE" || spec == "none") {
+      return tables;
+    }
+    std::string::size_type start = 0;
+    while (start <= spec.size()) {
+      const auto comma = spec.find(',', start);
+      const auto end = comma == std::string::npos ? spec.size() : comma;
+      auto token = spec.substr(start, end - start);
+      // Trim surrounding whitespace so "NODE, ACTOR" parses like "NODE,ACTOR".
+      const auto first = token.find_first_not_of(" \t");
+      if (first != std::string::npos) {
+        const auto last = token.find_last_not_of(" \t");
+        tables->insert(token.substr(first, last - first + 1));
+      }
+      if (comma == std::string::npos) {
+        break;
+      }
+      start = comma + 1;
+    }
+    return tables;
+  }();
   return *kTables;
 }
 

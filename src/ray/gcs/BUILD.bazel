@@ -461,6 +461,7 @@ ray_cc_library(
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:delay_injecting_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/observability:metric_constants",

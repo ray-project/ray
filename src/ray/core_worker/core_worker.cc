@@ -15,6 +15,8 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <future>
 #include <memory>
 #include <string>
@@ -524,6 +526,52 @@ CoreWorker::CoreWorker(
       100,
       "CoreWorker.RecoverObjects");
 
+  // REP-64 F5 (owner-side recovery fallback). Object recovery after a node
+  // failure is otherwise triggered ONLY by the node-death pub/sub push handled
+  // in on_node_change (see the SubscribeToNodeChange registration below): on
+  // DEAD it calls reference_counter_->ResetObjectsOnRemovedNode. If that single
+  // push is delayed (e.g. gated behind a slow GCS durable write, as under
+  // RocksDB strict fsync) or dropped, the owner never marks its lost objects for
+  // recovery and ray.get()/list(gen) hangs forever -- there is no other trigger.
+  // As a backstop, periodically fetch the set of DEAD nodes directly from the
+  // GCS with a fresh RPC (served from the GCS in-memory state, which is set
+  // synchronously on node failure and is NOT gated on the durable write) and
+  // (re)trigger recovery. ResetObjectsOnRemovedNode is idempotent: it only
+  // matches objects still pinned at that node, so re-running it for an
+  // already-recovered node is a cheap no-op. Respects strict durability and the
+  // GCS publish-after-persist ordering -- it only makes the consumer resilient
+  // to a late/lost notification.
+  if (std::getenv("RAY_TESTING_ENABLE_NODE_DEATH_FALLBACK") != nullptr) {
+    RAY_LOG(INFO) << "REP64 F5: owner-side node-death fallback enabled";
+    periodical_runner_->RunFnPeriodically(
+        [this] {
+          gcs_client_->Nodes().AsyncGetAll(
+              [this](const Status &status,
+                     const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>,
+                                                    int64_t>> &result) {
+                if (!status.ok() || !result.has_value()) {
+                  return;
+                }
+                for (const auto &node : result->first) {
+                  const auto node_id = NodeID::FromBinary(node.node_id());
+                  // Mirror the on_node_change DEAD handler: reset object locations
+                  // AND disconnect the dead node's clients (the latter fails any
+                  // in-flight RPC to the dead node -- e.g. a streaming generator
+                  // task -- which is what actually unblocks the owner). All three
+                  // are idempotent, so re-running per tick is a cheap no-op once
+                  // the node is already reconciled.
+                  reference_counter_->ResetObjectsOnRemovedNode(node_id);
+                  raylet_client_pool_->Disconnect(node_id);
+                  core_worker_client_pool_->Disconnect(node_id);
+                }
+              },
+              /*timeout_ms=*/-1,
+              /*state_filter=*/rpc::GcsNodeInfo::DEAD);
+        },
+        1000,
+        "CoreWorker.ReconcileDeadNodesFallback");
+  }
+
   periodical_runner_->RunFnPeriodically(
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms(),
@@ -846,6 +894,17 @@ void CoreWorker::SubscribeToNodeChanges() {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
                "reconstruction is not enabled.";
+        // TEST-ONLY (REP-64 provenance): timestamp the *owner-side receipt* of
+        // node death. Paired with the GCS-side stamps, a single CI run shows
+        // which hop of transition -> publish -> delivery -> recovery is slow,
+        // which is what we cannot observe by reproducing locally.
+        if (std::getenv("RAY_TESTING_REP64_TRACE") != nullptr) {
+          RAY_LOG(WARNING).WithField(node_id)
+              << "REP64_TRACE owner_received_node_dead us="
+              << std::chrono::duration_cast<std::chrono::microseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count();
+        }
         reference_counter->ResetObjectsOnRemovedNode(node_id);
         raylet_client_pool->Disconnect(node_id);
         core_worker_client_pool->Disconnect(node_id);

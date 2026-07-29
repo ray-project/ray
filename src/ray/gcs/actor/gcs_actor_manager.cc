@@ -15,6 +15,8 @@
 #include "ray/gcs/actor/gcs_actor_manager.h"
 
 #include <algorithm>
+#include <cstdlib>
+
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
 #include <limits>
@@ -1121,6 +1123,24 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
 
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
+
+  // TEST-ONLY (REP-64 provenance): "F3 for the actor channel" -- publish actor
+  // death on the in-memory transition instead of from the durable write's
+  // completion callback, mirroring what F3 does for the node channel. The
+  // original provenance never had this knob because the `actor_publish_delayed`
+  // arm suggested the actor channel self-heals; that conclusion assumed the
+  // fetch-on-subscribe read stays fast, which is exactly what a saturated
+  // RocksDB I/O pool breaks. Inert unless the env var is set.
+  const bool actor_publish_before_persist =
+      std::getenv("RAY_TESTING_GCS_ACTOR_PUBLISH_BEFORE_PERSIST") != nullptr;
+  if (actor_publish_before_persist) {
+    io_context_.post(
+        [this, actor_id, data = GenActorDataOnlyWithStates(*actor_table_data)]() {
+          gcs_publisher_->PublishActor(actor_id, data);
+        },
+        "GcsActorManager.PublishActorDeathBeforePersist");
+  }
+
   // The backend storage is reliable in the future, so the status must be ok.
   gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
@@ -1130,12 +1150,38 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor_id,
         actor_table_data,
         is_restartable,
+        actor_publish_before_persist,
         done_callback = std::move(done_callback)](Status status) {
          if (done_callback) {
            done_callback();
          }
-         gcs_publisher_->PublishActor(actor_id,
-                                      GenActorDataOnlyWithStates(*actor_table_data));
+         // TEST-ONLY: optionally delay only the actor-death notification to
+         // deterministically reproduce/isolate the publish-after-persist timing
+         // race without relying on real fsync latency. Gated on an env var (read
+         // directly, not via RayConfig) so the knob lives only in the GCS and is
+         // not validated by raylet/core_worker config init. 0/unset disables.
+         const char *actor_pub_delay_env =
+             std::getenv("RAY_TESTING_GCS_ACTOR_PUBLISH_DELAY_MS");
+         const int64_t actor_pub_delay_ms =
+             actor_pub_delay_env != nullptr ? std::atoll(actor_pub_delay_env) : 0;
+         auto publish_actor = [this,
+                               actor_id,
+                               data = GenActorDataOnlyWithStates(*actor_table_data)]() {
+           gcs_publisher_->PublishActor(actor_id, data);
+         };
+         if (actor_pub_delay_ms > 0) {
+           auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+           timer->expires_from_now(boost::posix_time::milliseconds(actor_pub_delay_ms));
+           timer->async_wait(
+               [timer, publish_actor = std::move(publish_actor)](
+                   const boost::system::error_code &ec) {
+                 if (!ec) {
+                   publish_actor();
+                 }
+               });
+         } else if (!actor_publish_before_persist) {
+           publish_actor();  // product default: publish-after-persist.
+         }
          if (!is_restartable) {
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});

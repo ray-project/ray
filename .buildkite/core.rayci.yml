@@ -134,6 +134,17 @@ steps:
   # runs on premerge via the `rocksdb_tests` tag (see
   # .buildkite/test.rules.txt) when src/ray/gcs/store_client/ or the
   # rocksdb build config is modified. Always runs on postmerge.
+  #
+  # PROVENANCE BRANCH ONLY (REP-64, PR #64187 -- DO NOT MERGE):
+  # the three RAY_TESTING_* vars below reproduce PR #64702's shipped
+  # configuration on top of this branch and capture the death-path
+  # timestamps, so a CI run pinpoints which hop stalls. They must be
+  # deleted before any of this lands as a product change.
+  #   SOFT_DURABLE_TABLES=NONE      -> F4 removed (as #64702 does)
+  #   NODE_PUBLISH_BEFORE_PERSIST=1 -> F3 for the node channel (as #64702 does)
+  #   REP64_TRACE=1                 -> emit REP64_TRACE stamps on node death;
+  #                                    inert until a node actually dies, so it
+  #                                    captures automatically on the next failure
   - label: ":ray: core: rocksdb tests"
     tags:
       - rocksdb_tests
@@ -145,6 +156,9 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_GCS_ROCKSDB=1
+        --test-env=RAY_TESTING_GCS_SOFT_DURABLE_TABLES=NONE
+        --test-env=RAY_TESTING_GCS_NODE_PUBLISH_BEFORE_PERSIST=1
+        --test-env=RAY_TESTING_REP64_TRACE=1
         --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
 
