@@ -41,6 +41,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta_datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -4740,6 +4741,124 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: "SaveMode" = SaveMode.APPEND,
+        partition_by: Optional[List[str]] = None,
+        storage_options: Optional[Dict[str, str]] = None,
+        schema_mode: str = "merge",
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to a Delta Lake table.
+
+        This is a prototype that supports ``APPEND`` and ``OVERWRITE`` modes. Each
+        write task writes Parquet data files to the table location, and the driver
+        performs a single atomic commit to the Delta transaction log using the
+        ``deltalake`` library. If the table doesn't exist, it's created.
+
+        .. tip::
+            For more details on Delta Lake, see https://delta.io/ and the
+            ``deltalake`` Python library.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+                from ray.data import SaveMode
+
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+
+                # Append (default) - creates the table if it doesn't exist.
+                ds.write_delta("/tmp/my_delta_table")
+
+                # Overwrite the table contents.
+                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+
+                # Partitioned write.
+                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+
+                # A later append with an extra column adds it to the table
+                # automatically (the default schema_mode="merge") -- existing
+                # rows read back with None for it.
+                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table"
+                )
+
+                # Reject that same write instead, leaving the table untouched.
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table", schema_mode="error"
+                )
+
+        Args:
+            path: URI of the Delta table (e.g. ``/tmp/my_table`` or
+                ``s3://bucket/my_table``).
+            mode: Write mode using the :class:`~ray.data.SaveMode` enum. Options:
+
+                * ``SaveMode.APPEND`` (default): Add new data to the table.
+                * ``SaveMode.OVERWRITE``: Replace all existing data in the table.
+
+            partition_by: Optional list of columns to partition the table by.
+            storage_options: A dictionary of storage options passed to the
+                ``deltalake`` library for authentication and configuration (e.g.
+                cloud credentials).
+            schema_mode: How an ``APPEND`` handles a column present in the
+                data being written but absent from the table's current
+                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                replaces the table's schema wholesale) or when the table
+                doesn't exist yet (there's no existing schema to compare
+                against). One of:
+
+                * ``"merge"`` (default): Add the new column to the table
+                  before committing the write, like SQL's
+                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  added as nullable, and every row written before this
+                  reads back with ``None`` for it.
+                * ``"error"``: Reject the write with a ``ValueError``
+                  instead, leaving the table's schema unchanged.
+
+                A column present in *both* the data and the table, but with
+                an incompatible type (for example, writing a string into a
+                column the table has as an integer), always raises a
+                ``ValueError`` -- regardless of ``schema_mode``. Only adding
+                a brand-new column is supported; changing an existing
+                column's type is not.
+            name: Optional table name recorded in the Delta metadata when a new
+                table is created.
+            description: Optional table description recorded in the Delta metadata
+                when a new table is created.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set
+                this to control number of tasks to run concurrently. This doesn't
+                change the total number of tasks run. By default, concurrency is
+                dynamically decided based on the available resources.
+        """
+        datasink = DeltaDatasink(
+            path=path,
+            mode=mode,
+            partition_by=partition_by,
+            storage_options=storage_options,
+            schema_mode=schema_mode,
+            name=name,
+            description=description,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_images(
@@ -6138,7 +6257,9 @@ class Dataset:
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Union[TorchDeviceType, Literal["auto"]] = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], CollatedData], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -6196,12 +6317,14 @@ class Dataset:
                 ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of collate_fn.
+                If the output of ``collate_fn`` is a `TensorBatchType`, it is
+                automatically moved to the target device (see ``device``);
+                otherwise, you must handle the device transfer manually.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
@@ -6209,7 +6332,7 @@ class Dataset:
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
                 experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+                conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the

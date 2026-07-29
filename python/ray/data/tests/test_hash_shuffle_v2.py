@@ -52,10 +52,9 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_use_hash_shuffle_v2(restore_data_context):
+def data_context_hash_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])

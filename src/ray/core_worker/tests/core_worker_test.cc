@@ -914,6 +914,60 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
+TEST_F(CoreWorkerTest, NamedActorRegisterFailureReleasesHandleReference) {
+  // Named actors register synchronously. If the registration times out, the
+  // handle reference must still drop to zero so the GCS later learns there
+  // are no references and deletes the actor.
+  auto function = RayFunction(
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("module", "class", "actor_fn", ""));
+  std::string ray_namespace = "test_ns";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  auto named_options = [&](std::string name) {
+    return ActorCreationOptions(
+        /*max_restarts=*/0,
+        /*max_task_retries=*/0,
+        /*max_concurrency=*/1,
+        /*resources=*/{},
+        /*placement_resources=*/{},
+        /*dynamic_worker_options=*/{},
+        /*is_detached=*/false,
+        std::move(name),
+        ray_namespace,
+        /*is_asyncio=*/false,
+        scheduling_strategy,
+        // With an empty runtime env, CreateActor falls back to the current
+        // task's env. This test worker has no task, so give a fake one here.
+        R"({"serialized_runtime_env": "{\"env_vars\": {\"T\": \"1\"}}"})");
+  };
+
+  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ =
+      Status::TimedOut("injected registration timeout");
+  ActorID actor_id;
+  auto status = core_worker_->CreateActor(function,
+                                          {},
+                                          named_options("register_timeout_squatter"),
+                                          /*extension_data=*/"",
+                                          /*call_site=*/"",
+                                          &actor_id);
+  ASSERT_TRUE(status.IsTimedOut()) << status;
+  EXPECT_FALSE(reference_counter_->HasReference(ObjectID::ForActorHandle(actor_id)));
+  EXPECT_EQ(task_manager_->NumPendingTasks(), 0);
+
+  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ = Status::OK();
+  ActorID ok_actor_id;
+  status = core_worker_->CreateActor(function,
+                                     {},
+                                     named_options("register_ok"),
+                                     /*extension_data=*/"",
+                                     /*call_site=*/"",
+                                     &ok_actor_id);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_TRUE(reference_counter_->HasReference(ObjectID::ForActorHandle(ok_actor_id)));
+  EXPECT_EQ(task_manager_->NumPendingTasks(), 1);
+}
+
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
   // type. The publisher was created with only:
