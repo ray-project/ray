@@ -21,13 +21,25 @@
 ! release_tests spark_on_ray rocksdb_tests redis_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
-# Documentation prose (.md and .rst) does not block premerge. A content-only
-# change to narrative docs triggers no library test steps: prose can't change
-# tested code, and the post-merge documentation build is the coverage for these
-# changes. Executable doc assets such as .py and .ipynb are matched by the rules
-# below and still run tests.
+# Documentation prose (.md and .rst) and static image assets do not block
+# premerge. A content-only change to narrative docs or a diagram swap triggers
+# no library test steps: neither can change tested code, and the post-merge
+# documentation build is the coverage for these changes. Executable doc assets
+# such as .py and .ipynb are matched by the rules below and still run tests.
+#
+# Images are listed here, ahead of the per-library rules, because those rules
+# match a whole directory and would otherwise route a .png or .svg edit to that
+# library's docs example step. Config assets that examples consume (.yaml, .sh)
+# are deliberately absent: they can change what a test does, so they keep
+# routing to the owning library below.
 doc/*.md
 doc/*.rst
+doc/*.png
+doc/*.svg
+doc/*.jpg
+doc/*.jpeg
+doc/*.gif
+doc/*.webp
 # pass
 ;
 
@@ -190,15 +202,30 @@ docker/
 @ doc
 ;
 
-# Documentation validation infra: the Sphinx config, the in-repo build
-# extensions, the Vale config, the doc pipeline definition, and the doc
-# requirements all drive the documentation build and validation. The `doc`
-# tag is reserved for that build machinery, not for the library example
-# tests that happen to live in the docs. Config and extension changes route
-# here only, so they trigger the `-W` build and validation without running
-# any library doctest or example execution.
+# Documentation validation infra: the Sphinx config, the modules that config
+# imports, the in-repo build extensions, the doc-build helper scripts, the Vale
+# config, the doc pipeline definition, and the doc requirements all drive the
+# documentation build and validation. The `doc` tag is reserved for that build
+# machinery, not for the library example tests that happen to live in the docs.
+# These changes route here only, so they trigger the documentation build and
+# validation without running any library doctest or example execution.
+#
+# The `doc/source/*.py` modules are enumerated one by one on purpose. A
+# `doc/source/*.py` pattern would NOT work: `*` in these patterns is fnmatch
+# and crosses `/`, so it would also swallow every example script under
+# `doc/source/<lib>/doc_code/` and stop those from reaching the per-library
+# rules below. Add a module here when `conf.py` grows a new import.
 doc/source/conf.py
+doc/source/custom_directives.py
+doc/source/api_autogen.py
+doc/source/api_mock_imports.py
+doc/source/template_collections.py
+doc/source/preprocess_github_markdown.py
 doc/source/_ext/
+doc/load_doc_cache.py
+doc/update_cache_env.py
+doc/rtd_doctor.py
+doc/test_no_new_rst.py
 doc/requirements-doc.txt
 .vale.ini
 .vale/
@@ -246,6 +273,15 @@ doc/source/ray-observability/
 # Any remaining executable doc asset (cluster/, ray-contribute/, other
 # unowned doc dirs, and any example BUILD.bazel outside the library dirs
 # above) falls to the core docs example step as the catch-all owner.
+#
+# `doc/test_myst_doc.py` lands here too. It is the shared notebook runner behind
+# every library's example targets, so a change to it could in principle break
+# any of them, and routing it to all five `<lib>_doc` tags the way
+# `doc/BUILD.bazel` does would be the maximal-coverage choice. One library's
+# worth of execution is deliberately treated as a sufficient smoke signal
+# instead: the runner is shared, so a break shows up in core as readily as
+# anywhere, and the post-merge documentation build covers the rest. Widen this
+# only if a harness regression actually escapes core.
 doc/*.py
 doc/*.ipynb
 doc/*/BUILD.bazel

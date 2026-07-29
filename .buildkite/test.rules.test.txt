@@ -102,15 +102,44 @@ doc/example.ipynb: core_doc
 # BUILD.bazel defines every library's targets, so it routes to all of them.
 doc/source/serve/examples/BUILD.bazel: serve_doc
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Documentation validation infra stays on the `doc` tag. The Sphinx config and
-# the in-repo build extensions build the docs, so they route to the `doc` build
-# and validation only, never to a library's doctest or example execution.
+# Prose and static images under a library doc dir are skipped, not routed to
+# that library's docs example step. The per-library rules match whole
+# directories, so these cases lock in that the leading skip rule wins first.
+doc/source/data/key-concepts.rst:
+doc/source/serve/index.md:
+doc/source/rllib/images/rllib-stack.svg:
+doc/source/data/images/dataset-arch.png:
+doc/source/train/images/overview.jpg:
+doc/source/tune/images/tune-flow.gif:
+# Config and script assets a doc example consumes can change what the test
+# does, so under a library doc dir they keep routing to that library. Under an
+# unowned dir they still fall through to the trailing `doc/` skip, because the
+# catch-all matches only .py, .ipynb, and BUILD.bazel. That is unchanged from
+# before this rework, and none of those assets is a bazel test dep today.
+doc/source/serve/doc_code/config.yaml: serve_doc
+doc/source/cluster/doc_code/slurm-basic.sh:
+# Documentation validation infra stays on the `doc` tag. The Sphinx config, the
+# modules it imports, the in-repo build extensions, and the doc-build helper
+# scripts build the docs, so they route to the `doc` build and validation only,
+# never to a library's doctest or example execution.
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
 doc/requirements-doc.txt: doc
 doc/source/conf.py: doc
 doc/source/_ext/llms_txt.py: doc
+doc/source/custom_directives.py: doc
+doc/source/api_autogen.py: doc
+doc/source/api_mock_imports.py: doc
+doc/source/template_collections.py: doc
+doc/source/preprocess_github_markdown.py: doc
+doc/load_doc_cache.py: doc
+doc/update_cache_env.py: doc
+doc/rtd_doctor.py: doc
+doc/test_no_new_rst.py: doc
+# The shared notebook runner stays on the catch-all core step by design; see
+# the comment on the catch-all rule in test.rules.txt.
+doc/test_myst_doc.py: core_doc
 python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
 
