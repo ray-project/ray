@@ -943,6 +943,23 @@ def check_counts(
             assert curr_count == count, msg
 
 
+def test_max_graceful_shutdown_timeout_s(mock_deployment_state_manager):
+    """The manager reports the largest graceful_shutdown_timeout_s it manages."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # No deployments: nothing to drain, so nothing to wait for.
+    assert dsm.max_graceful_shutdown_timeout_s() == 0.0
+
+    info_1, _ = deployment_info(graceful_shutdown_timeout_s=20)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    assert dsm.max_graceful_shutdown_timeout_s() == 20
+
+    info_2, _ = deployment_info(graceful_shutdown_timeout_s=35)
+    dsm.deploy(TEST_DEPLOYMENT_ID_2, info_2)
+    assert dsm.max_graceful_shutdown_timeout_s() == 35
+
+
 def test_create_delete_single_replica(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()

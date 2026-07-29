@@ -21,6 +21,8 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     HTTP_PROXY_TIMEOUT,
     MAX_CACHED_HANDLES,
+    RAY_SERVE_SHUTDOWN_BACKSTOP_S,
+    RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
 )
@@ -108,49 +110,102 @@ class ServeControllerClient:
             *[shutdown_task(cache_key) for cache_key in list(self.handle_cache)]
         )
 
-    def shutdown(self, timeout_s: float = 30.0) -> None:
+    def _on_graceful_shutdown_timeout(self, timeout_s: float) -> None:
+        # The controller exceeded its own shutdown budget, so it is genuinely
+        # wedged. Force-kill it so serve.shutdown() never returns while a
+        # half-dead controller is still registered for the next serve.run() to
+        # reconnect to.
+        logger.warning(
+            f"Controller did not exit within its shutdown budget ({timeout_s}s); "
+            "forcing kill. Check controller logs for more details."
+        )
+        try:
+            ray.kill(self._controller, no_restart=True)
+        except Exception:
+            pass
+
+    def _resolve_shutdown_timeout_s(self) -> Optional[float]:
+        """Wait derived from the controller's shutdown budget, or None if the
+        controller is already gone."""
+        try:
+            budget_s = ray.get(
+                self._controller.get_shutdown_budget_s.remote(), timeout=5
+            )
+        except ray.exceptions.RayActorError:
+            return None
+        except TimeoutError:
+            budget_s = RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S
+        return budget_s + RAY_SERVE_SHUTDOWN_BACKSTOP_S
+
+    async def _resolve_shutdown_timeout_s_async(self) -> Optional[float]:
+        """Async variant of ``_resolve_shutdown_timeout_s``."""
+        try:
+            budget_s = await asyncio.wait_for(
+                self._controller.get_shutdown_budget_s.remote(), timeout=5
+            )
+        except ray.exceptions.RayActorError:
+            return None
+        except (TimeoutError, asyncio.TimeoutError):
+            budget_s = RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S
+        return budget_s + RAY_SERVE_SHUTDOWN_BACKSTOP_S
+
+    def shutdown(self, timeout_s: Optional[float] = None) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
-        instance.
+        instance. Blocks until the controller has finished graceful teardown and
+        exited. When ``timeout_s`` is None the wait is derived from the
+        controller's own shutdown budget so it always covers the drain; pass an
+        explicit value to override.
         """
         self.shutdown_cached_handles()
 
-        if ray.is_initialized() and not self._shutdown:
-            try:
-                ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
-            except ray.exceptions.RayActorError:
-                # Controller has been shut down.
-                pass
-            except TimeoutError:
-                logger.warning(
-                    f"Controller failed to shut down within {timeout_s}s. "
-                    "Check controller logs for more details."
-                )
-            self._shutdown = True
+        if not (ray.is_initialized() and not self._shutdown):
+            return
 
-    async def shutdown_async(self, timeout_s: float = 30.0) -> None:
+        if timeout_s is None:
+            timeout_s = self._resolve_shutdown_timeout_s()
+            if timeout_s is None:
+                # Controller already gone; nothing to wait for.
+                self._shutdown = True
+                return
+
+        try:
+            ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
+        except ray.exceptions.RayActorError:
+            # Controller finished shutting down and exited.
+            pass
+        except TimeoutError:
+            self._on_graceful_shutdown_timeout(timeout_s)
+        self._shutdown = True
+
+    async def shutdown_async(self, timeout_s: Optional[float] = None) -> None:
         """Completely shut down the connected Serve instance.
 
-        Shuts down all processes and deletes all state associated with the
-        instance.
+        Async variant of ``shutdown``; see it for semantics.
         """
         await self.shutdown_cached_handles_async()
 
-        if ray.is_initialized() and not self._shutdown:
-            try:
-                await asyncio.wait_for(
-                    self._controller.graceful_shutdown.remote(), timeout=timeout_s
-                )
-            except ray.exceptions.RayActorError:
-                # Controller has been shut down.
-                pass
-            except TimeoutError:
-                logger.warning(
-                    f"Controller failed to shut down within {timeout_s}s. "
-                    "Check controller logs for more details."
-                )
-            self._shutdown = True
+        if not (ray.is_initialized() and not self._shutdown):
+            return
+
+        if timeout_s is None:
+            timeout_s = await self._resolve_shutdown_timeout_s_async()
+            if timeout_s is None:
+                # Controller already gone; nothing to wait for.
+                self._shutdown = True
+                return
+
+        try:
+            await asyncio.wait_for(
+                self._controller.graceful_shutdown.remote(), timeout=timeout_s
+            )
+        except ray.exceptions.RayActorError:
+            # Controller finished shutting down and exited.
+            pass
+        except (TimeoutError, asyncio.TimeoutError):
+            self._on_graceful_shutdown_timeout(timeout_s)
+        self._shutdown = True
 
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "HEALTHY" status.

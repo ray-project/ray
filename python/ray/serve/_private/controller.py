@@ -36,6 +36,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     DEFAULT_LATENCY_BUCKET_MS,
+    PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -44,6 +45,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    RAY_SERVE_SHUTDOWN_OVERHEAD_MARGIN_S,
     RAY_SERVE_THROUGHPUT_OPTIMIZED,
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
@@ -1918,6 +1920,25 @@ class ServeController:
         # This event never gets set. The caller waits indefinitely on this event
         # until the controller is killed, which raises a RayActorError.
         await self._shutdown_event.wait()
+
+    def get_shutdown_budget_s(self) -> float:
+        """Upper bound on how long a graceful shutdown will take.
+
+        serve.shutdown() derives its wait from this so it blocks until the
+        controller has finished draining and exited, instead of a fixed timeout
+        that can be shorter than the drain and abandon it midway. Covers the
+        longest replica drain (each deployment's graceful_shutdown_timeout_s,
+        which already includes the direct-ingress floor) and the proxy drain.
+        """
+        replica_budget_s = (
+            self.deployment_state_manager.max_graceful_shutdown_timeout_s()
+        )
+        proxy_budget_s = (
+            PROXY_MIN_DRAINING_PERIOD_S if self.proxy_state_manager is not None else 0.0
+        )
+        return (
+            max(replica_budget_s, proxy_budget_s) + RAY_SERVE_SHUTDOWN_OVERHEAD_MARGIN_S
+        )
 
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""

@@ -5857,6 +5857,26 @@ class DeploymentStateManager:
         """
         return self._shutting_down and len(self._deployment_states) == 0
 
+    def max_graceful_shutdown_timeout_s(self) -> float:
+        """Largest graceful shutdown timeout across all deployments.
+
+        Mirrors the per-replica force-kill deadline in DeploymentReplica.stop,
+        including the direct-ingress min-draining floor for ingress deployments,
+        so serve.shutdown() can wait at least this long for the controller to
+        drain and exit.
+        """
+        timeouts = []
+        for info in self.get_deployment_infos().values():
+            if info is None or info.deployment_config is None:
+                continue
+            timeout_s = info.deployment_config.graceful_shutdown_timeout_s
+            if info.ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+                timeout_s = max(
+                    timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                )
+            timeouts.append(timeout_s)
+        return max(timeouts, default=0.0)
+
     def delete_checkpoint(self) -> None:
         """Delete the deployment state checkpoint from KV store."""
         self._kv_store.delete(CHECKPOINT_KEY)
