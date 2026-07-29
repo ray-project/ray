@@ -729,7 +729,7 @@ greenlet==3.4.0
     # via sqlalchemy
 groovy==0.1.2
     # via gradio
-grpcio==1.76.0
+grpcio==1.75.0 ; python_version < "3.14"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -741,11 +741,11 @@ grpcio==1.76.0
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.76.0
+grpcio-status==1.75.0 ; python_version < "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
-grpcio-tools==1.76.0
+grpcio-tools==1.75.0 ; python_version < "3.14"
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1345,6 +1345,8 @@ numpy==2.2.6
     #   xgboost
     #   zarr
     #   zoopt
+nvidia-ml-py==13.610.43
+    # via deepspeed
 nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
