@@ -90,9 +90,12 @@ def generate_event_export_env_vars(
     #  and contaminate the batch.
     #  Pinning it off for now -- make these robust by filtering the batch for the
     #  injected event (by event_id/event_type) instead of assuming a single/first event.
+    #  These tests only exercise the HTTP publisher, so keep the GCS publisher off (it
+    #  defaults on in this config) to keep the aggregator agent lean during startup.
     event_export_env_vars = {
         "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
         "RAY_enable_ray_event": "0",
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "False",
     } | additional_env_vars
 
     if preserve_proto_field_name is not None:
