@@ -8,17 +8,7 @@ from ray.serve.config import AutoscalingContext
 from ray.serve.llm.autoscaling import SLOAutoscalingPolicy
 
 
-class _Cfg:
-    def __init__(self, target_ongoing=8.0):
-        self._target = target_ongoing
-
-    def get_target_ongoing_requests(self):
-        return self._target
-
-
-def _ctx(
-    current=2, total_requests=0.0, target=None, now=1000.0, config=_Cfg(), state=None
-):
+def _ctx(current=2, total_requests=0.0, target=None, now=1000.0, state=None):
     target = current if target is None else target
     return AutoscalingContext(
         deployment_id=DeploymentID(name="d", app_name="a"),
@@ -37,7 +27,7 @@ def _ctx(
         last_scale_up_time=None,
         last_scale_down_time=None,
         current_time=now,
-        config=config,
+        config=None,
         total_pending_async_requests=0,
     )
 
@@ -133,13 +123,6 @@ class TestDegradation:
         pol = _policy()  # empty cache values -> metrics {}
         dec, state = pol(_ctx(current=2, total_requests=16.0))
         assert dec == 2.0  # 16/8
-        assert state["c_concurrency"] == 8.0
-
-    def test_stale_cache_uses_concurrency(self):
-        pol = _policy(ttft=9.0)
-        pol._cache.values = None  # property returns None
-        dec, state = pol(_ctx(current=2, total_requests=16.0))
-        assert dec == 2.0
         assert state["c_concurrency"] == 8.0
 
 

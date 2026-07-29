@@ -81,9 +81,9 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
 
     Zero traffic drives the load signals to zero, so the fleet falls to
     ``min_replicas`` with no special case. When Prometheus is unreachable the
-    inner concurrency loop still runs off Serve's own request count, seeded from
-    ``target_ongoing_requests``, so scaling degrades to request-based rather than
-    stopping.
+    inner concurrency loop still runs off Serve's own request count against a
+    default per-replica capacity, so scaling degrades to request-based rather
+    than stopping.
 
     The policy scopes its queries to one model, so pass ``model_id``.
     ``prometheus_address`` defaults to the ``RAY_PROMETHEUS_HOST`` variable::
@@ -152,10 +152,7 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
         self, ctx: AutoscalingContext
     ) -> Tuple[Union[int, float], Dict[str, Any]]:
         state = dict(ctx.policy_state or {})
-        seed = _CONCURRENCY_FALLBACK
-        if ctx.config is not None:
-            seed = float(ctx.config.get_target_ongoing_requests() or seed)
-        c_concurrency = state.get("c_concurrency", seed)
+        c_concurrency = state.get("c_concurrency", _CONCURRENCY_FALLBACK)
 
         metrics = self.prometheus_metrics or {}
         p99_ttft = metrics.get(self.ttft_query)
