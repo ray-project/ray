@@ -30,6 +30,12 @@ from ray._common.utils import decode
 
 logger = logging.getLogger(__name__)
 
+# Default upper bound on how long a driver launched by run_string_as_driver may
+# run. Without a bound, a driver that hangs on shutdown blocks the calling test
+# until the test runner's own timeout fires, which turns a single failure into a
+# whole-target timeout and burns every retry attempt.
+DEFAULT_DRIVER_TIMEOUT_SECONDS = 300
+
 try:
     from prometheus_client.core import Metric
     from prometheus_client.parser import Sample, text_string_to_metric_families
@@ -374,7 +380,10 @@ def assert_tensors_equivalent(obj1, obj2):
 
 
 def run_string_as_driver(
-    driver_script: str, env: Dict = None, encode: str = "utf-8"
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
 ) -> str:
     """Run a driver as a separate process.
 
@@ -382,9 +391,16 @@ def run_string_as_driver(
         driver_script: A string to run as a Python script.
         env: The environment variables for the driver.
         encode: The encoding to use for the driver script.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever, but note that a driver which
+            hangs on shutdown will then consume the caller's entire test
+            budget instead of failing.
 
     Returns:
         The script's output.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
     """
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -394,7 +410,19 @@ def run_string_as_driver(
         env=env,
     )
     with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
+        try:
+            output = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )[0]
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            output = proc.communicate()[0]
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                decode(output, encode_type=encode),
+            )
+            raise
         if proc.returncode:
             print(decode(output, encode_type=encode))
             logger.error(proc.stderr)
