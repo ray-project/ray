@@ -2234,7 +2234,6 @@
     timeout: 10800
     script: RAY_TRAIN_V2_ENABLED=1 python test_preemption_benchmark.py
     wait_for_nodes:
-      # Includes the head node: 1 head + 8 `min_nodes` training workers.
       num_nodes: 9
   alert: default
 
