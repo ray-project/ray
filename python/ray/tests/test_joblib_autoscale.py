@@ -13,6 +13,7 @@ import threading
 import time
 import weakref
 
+import numpy as np
 import pytest
 
 import ray
@@ -143,6 +144,20 @@ def test_autoscale_submits_only_to_ready_actors(shutdown_only):
     assert list(pool.imap(compute, range(10), chunksize=1)) == [
         compute(i) for i in range(10)
     ]
+    pool.terminate()
+
+
+def test_autoscale_map_accepts_numpy_arrays(shutdown_only):
+    """Array truth-value semantics must not affect autoscale chunking."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+
+    def square(value):
+        return value * value
+
+    values = np.array([1, 2, 3, 4])
+    assert pool.map(square, values) == [1, 4, 9, 16]
+    assert pool.map_async(square, values).get(timeout=10) == [1, 4, 9, 16]
     pool.terminate()
 
 

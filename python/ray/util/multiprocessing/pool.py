@@ -1201,7 +1201,7 @@ class Pool:
         if chunksize is None:
             chunksize = self._calculate_chunksize(iterable)
 
-        num_chunks = 0 if not iterable else div_round_up(len(iterable), chunksize)
+        num_chunks = 0 if len(iterable) == 0 else div_round_up(len(iterable), chunksize)
         result = AsyncResult(
             [],
             callback,
