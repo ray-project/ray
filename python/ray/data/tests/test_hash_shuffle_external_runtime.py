@@ -175,6 +175,26 @@ def test_flight_unreachable_is_connection_error(tmp_path):
         s.close()
 
 
+def test_flight_short_read_fails(tmp_path):
+    # File shorter than the requested range: the header already promised `length`
+    # bytes, so the server MUST fail the stream rather than truncate (a short send
+    # silently desyncs every later frame at the client -- SPARK-34534 class).
+    (tmp_path / "s.bin").write_bytes(b"only8byt")  # 8 bytes
+    fd, sink = _open_sink(tmp_path)
+    try:
+        with _running_flight_server(tmp_path, "t") as endpoint:
+            with pytest.raises(ConnectionError, match="short read"):
+                _stream_members_flight(
+                    endpoint,
+                    "t",
+                    [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
+                    max_bytes=1 << 20,
+                    sink=sink,
+                )
+    finally:
+        os.close(fd)
+
+
 # --------------------------- reducer helpers (no Ray and no sockets)
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,
