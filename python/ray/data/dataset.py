@@ -209,8 +209,7 @@ def _warn_on_ray_remote_args_fn(
 ) -> None:
     if ray_remote_args_fn is not None:
         warnings.warn(
-            "`ray_remote_args_fn` is deprecated and will be removed after "
-            "January 2027.",
+            "`ray_remote_args_fn` is deprecated and will be removed in Ray 2.64.",
             RayDeprecationWarning,
             stacklevel=3,
         )

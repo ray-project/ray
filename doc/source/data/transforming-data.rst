@@ -469,6 +469,54 @@ Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a tr
                 .map_groups(normalize_features)
             )
 
+Advanced: Distributed UDFs with Placement Groups
+================================================
+
+While all transformations are automatically parallelized across your Ray cluster, often times these transformations can be distributed themselves. For example, if you're using
+a large model, you may want to distribute the model across multiple nodes.
+You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` and ``ray_remote_args_fn``, which can dynamically create placement groups for each model replica.
+
+.. warning::
+
+    This example uses the deprecated ``ray_remote_args_fn`` API. Placement
+    groups created this way aren't automatically cleaned up when Ray Data
+    actors exit and may continue reserving cluster resources.
+
+.. testcode::
+
+    import ray
+    from typing import Dict
+    import numpy as np
+    import torch
+
+    NUM_SHARDS = 2
+    @ray.remote
+    class ModelShard:
+        def __init__(self):
+            self.model = torch.nn.Linear(10, 10)
+
+        def f(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            return batch
+
+    class DistributedModel:
+        def __init__(self):
+            self.shards = [ModelShard.remote() for _ in range(NUM_SHARDS)]
+
+        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            return {"out": np.array(ray.get([shard.f.remote(batch) for shard in self.shards]))}
+
+    def ray_remote_args_fn():
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        pg = ray.util.placement_group([{"CPU": 1}] * NUM_SHARDS)
+        scheduling_strategy = PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True,
+        )
+        return {"scheduling_strategy": scheduling_strategy}
+
+    ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
+    ds.take_all()
+
 Advanced: Asynchronous Transforms
 =================================
 
