@@ -32,8 +32,10 @@ import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
     DEFAULT_DRIVER_TIMEOUT_SECONDS,
+    KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS,
     MetricSamplePattern,
     PrometheusTimeseries,
+    _detach_process,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
     wait_for_condition,
@@ -576,9 +578,17 @@ def run_string_as_driver_stdout_stderr(
             outputs_bytes = proc.communicate(
                 driver_script.encode(encoding=encode), timeout=timeout
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             proc.kill()
-            outputs_bytes = proc.communicate()
+            try:
+                outputs_bytes = proc.communicate(
+                    timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                outputs_bytes = (e.stdout or b"", e.stderr or b"")
+                _detach_process(proc)
             logger.error(
                 "Driver did not exit within %ss; killed it. Output so far:\n%s",
                 timeout,

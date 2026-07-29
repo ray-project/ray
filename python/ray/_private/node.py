@@ -1833,6 +1833,7 @@ class Node:
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
         wait_timeout_seconds = 1
+        unreaped_process_infos = []
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1908,8 +1909,17 @@ class Node:
                             "uninterruptible syscall, such as a blocking disk "
                             "write. Continuing shutdown without it."
                         )
+                        # Keep it in `all_processes` so `live_processes` and
+                        # `any_processes_alive` still report it. Dropping it
+                        # here would let teardown assertions such as
+                        # `Cluster.remove_node`'s pass while the process is
+                        # still running.
+                        unreaped_process_infos.append(process_info)
 
-        del self.all_processes[process_type]
+        if unreaped_process_infos:
+            self.all_processes[process_type] = unreaped_process_infos
+        else:
+            del self.all_processes[process_type]
 
     def kill_redis(self, check_alive: bool = True):
         """Kill the Redis servers.

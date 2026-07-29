@@ -9,6 +9,7 @@ import asyncio
 import inspect
 import logging
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -35,6 +36,24 @@ logger = logging.getLogger(__name__)
 # until the test runner's own timeout fires, which turns a single failure into a
 # whole-target timeout and burns every retry attempt.
 DEFAULT_DRIVER_TIMEOUT_SECONDS = 300
+
+# Seconds to wait for a driver's output after it has been SIGKILLed. A process
+# parked in uninterruptible sleep does not die on SIGKILL, so this wait must be
+# bounded too or the timeout path hangs exactly like the path it replaces.
+KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS = 10
+
+
+def _detach_process(proc: subprocess.Popen) -> None:
+    """Stop waiting on a process that survived SIGKILL.
+
+    ``Popen.__exit__`` and ``Popen.__del__`` both call ``wait()`` with no
+    timeout, so a process stuck in uninterruptible sleep would re-introduce the
+    unbounded wait the caller just escaped. ``Popen.wait`` short-circuits when
+    ``returncode`` is already set, so record the signal we sent and move on.
+    """
+    if proc.returncode is None:
+        proc.returncode = -signal.SIGKILL
+
 
 try:
     from prometheus_client.core import Metric
@@ -414,9 +433,17 @@ def run_string_as_driver(
             output = proc.communicate(
                 driver_script.encode(encoding=encode), timeout=timeout
             )[0]
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             proc.kill()
-            output = proc.communicate()[0]
+            try:
+                output = proc.communicate(timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS)[
+                    0
+                ]
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                output = e.stdout or b""
+                _detach_process(proc)
             logger.error(
                 "Driver did not exit within %ss; killed it. Output so far:\n%s",
                 timeout,
