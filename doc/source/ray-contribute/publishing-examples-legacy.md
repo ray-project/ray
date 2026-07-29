@@ -8,10 +8,10 @@ myst:
 
 # Publishing an example with the in-tree notebook flow (legacy)
 
-This page describes the legacy flow for publishing an example: commit a notebook to the Ray repository and register a release test that reruns it on a schedule against Ray's nightly build.
+This page describes the legacy flow for publishing an example: commit a notebook to the Ray repository and register a release test that you trigger manually to validate it in CI.
 
 :::{note}
-Prefer the template-collections flow for new examples. See {ref}`publishing-examples`. Only a couple of examples still use this flow, and you maintain every part of its release test yourself. Use this flow only for an example that can't be a template.
+Prefer the template-collections flow for new examples. See {ref}`publishing-examples`. Only a couple of examples still use this flow, and you maintain and run every part of its release test yourself. The in-tree example release tests aren't run on a schedule, so treat the release test as an on-demand check you trigger manually. Use this flow only for an example that can't be a template.
 :::
 
 For how to write the notebook content itself, such as cells, tags, and local testing, see {ref}`creating-notebook-example`. This page picks up once you have a finished notebook, and covers placing it and wiring CI.
@@ -69,7 +69,7 @@ Make the script executable with `chmod +x ci/tests.sh`. For an example that read
 
 ## Register the release test
 
-Add an entry for your example in [`release/release_tests.yaml`](https://github.com/ray-project/ray/blob/master/release/release_tests.yaml) so CI runs it on a schedule:
+Add an entry for your example in [`release/release_tests.yaml`](https://github.com/ray-project/ray/blob/master/release/release_tests.yaml). This defines the test so you can trigger it manually in CI:
 
 ```yaml
 - name: my_example            # no dashes (regex sensitive); used to trigger the test
@@ -104,7 +104,7 @@ You don't add a Bazel target for the compute configs. A glob in `doc/BUILD.bazel
 
 ## Trigger the release test
 
-CI runs your test on the schedule you set, but the `buildkite/release` check on a pull request is paused by default and appears green without running. Trigger it manually to verify your example, and retrigger it on every new commit:
+The `buildkite/release` check on a pull request is paused by default and appears green without running, and the in-tree example release tests aren't relied on for scheduled runs. Trigger the test manually to validate your example, and retrigger it on every new commit:
 
 1. In the pull request's checks, open **buildkite/release** and choose **Rebuild**.
 2. Choose **Specify which release tests you want to run**.
