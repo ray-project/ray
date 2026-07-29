@@ -309,6 +309,7 @@ class TaskEventBufferTestBatchSendDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -334,6 +335,7 @@ class TaskEventBufferTestLimitBufferDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 5,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -402,6 +404,7 @@ class TaskEventBufferTestDroppedAttemptsOnly
   "task_events_send_batch_size": 1,
   "task_events_dropped_task_attempt_batch_size": 1,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
