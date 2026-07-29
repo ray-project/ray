@@ -992,6 +992,62 @@ def test_downscale_single_deployment():
     scheduler.on_deployment_deleted(dep_id)
 
 
+def test_downscale_newest_replica_first_across_tied_nodes():
+    """Test that when nodes are tied on all other priorities, the most
+    recently started replicas are stopped first even across nodes.
+    """
+
+    dep_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1")
+    cluster_node_info_cache.add_node("node2")
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id, ReplicaConfig.create(lambda x: x, ray_actor_options={"num_cpus": 0})
+    )
+    r1_id = ReplicaID(unique_id="replica1", deployment_id=dep_id)
+    r2_id = ReplicaID(unique_id="replica2", deployment_id=dep_id)
+    scheduler.on_replica_running(r1_id, "node1")
+    scheduler.on_replica_running(r2_id, "node2")
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            dep_id: DeploymentDownscaleRequest(deployment_id=dep_id, num_to_stop=1)
+        },
+    )
+    # Both nodes have one replica; stop the newer replica (r2).
+    assert deployment_to_replicas_to_stop[dep_id] == {r2_id}
+    scheduler.on_replica_stopping(r2_id)
+
+    # Scale up to two replicas per node, with the newest replica on node2.
+    r3_id = ReplicaID(unique_id="replica3", deployment_id=dep_id)
+    r4_id = ReplicaID(unique_id="replica4", deployment_id=dep_id)
+    r5_id = ReplicaID(unique_id="replica5", deployment_id=dep_id)
+    scheduler.on_replica_running(r3_id, "node1")
+    scheduler.on_replica_running(r4_id, "node2")
+    scheduler.on_replica_running(r5_id, "node2")
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            dep_id: DeploymentDownscaleRequest(deployment_id=dep_id, num_to_stop=2)
+        },
+    )
+    # Both nodes have two replicas; drain node2 first since it hosts the
+    # most recently started replica, relinquishing the whole node.
+    assert deployment_to_replicas_to_stop[dep_id] == {r4_id, r5_id}
+    scheduler.on_replica_stopping(r4_id)
+    scheduler.on_replica_stopping(r5_id)
+    scheduler.on_replica_stopping(r1_id)
+    scheduler.on_replica_stopping(r3_id)
+    scheduler.on_deployment_deleted(dep_id)
+
+
 def test_schedule_passes_placement_group_options():
     """Test that bundle_label_selector is passed to CreatePlacementGroupRequest."""
     cluster_node_info_cache = MockClusterNodeInfoCache()
