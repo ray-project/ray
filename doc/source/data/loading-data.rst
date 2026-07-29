@@ -15,7 +15,8 @@ Ray Data loads data from various sources. This guide shows you how to:
 Reading files
 =============
 
-Ray Data reads files from local disk or cloud storage in a variety of file formats.
+Ray Data reads files from shared local storage or cloud storage in a variety of
+file formats.
 To view the full list of supported file formats, see the
 :ref:`Loading Data API <loading-data-api>`.
 
@@ -161,25 +162,27 @@ To view the full list of supported file formats, see the
             ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
 
 
-Reading files from local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading files from shared local storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
-specify paths with the ``local://`` schema. Paths can point to files or directories.
+To read files from a shared local filesystem, put the files on storage such as
+NFS, and mount that storage at the same path on every Ray node. Then, call a
+function like :func:`~ray.data.read_parquet` with the mounted path. Paths can
+point to files or directories.
+
+.. warning::
+
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
-
-.. tip::
-
-    If your files are accessible on every node, exclude ``local://`` to parallelize the
-    read tasks across the cluster.
 
 .. testcode::
     :skipif: True
 
     import ray
 
-    ds = ray.data.read_parquet("local:///tmp/iris.parquet")
+    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
 
     print(ds.schema())
 
@@ -305,33 +308,6 @@ To read formats other than Parquet, see the :ref:`Loading Data API <loading-data
         Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
-
-Reading files from NFS
-~~~~~~~~~~~~~~~~~~~~~~
-
-To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
-and specify files on the mounted filesystem. Paths can point to files or directories.
-
-To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
-
-.. testcode::
-    :skipif: True
-
-    import ray
-
-    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
-
-    print(ds.schema())
-
-.. testoutput::
-
-    Column        Type
-    ------        ----
-    sepal.length  double
-    sepal.width   double
-    petal.length  double
-    petal.width   double
-    variety       string
 
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -478,7 +478,7 @@ py_test(
 
 py_test(
     name = "test_unique_e2e",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
@@ -492,7 +492,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -793,6 +793,20 @@ py_test(
     name = "test_image",
     size = "medium",
     srcs = ["tests/datasource/test_image.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_iter_torch_batches",
+    size = "small",
+    srcs = ["tests/test_iter_torch_batches.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1307,6 +1321,22 @@ py_test(
         "exclusive",
         "team:data",
         "tensorflow_datasets",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_iter_torch_batches_gpu",
+    size = "medium",
+    srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
     ],
     deps = [
         ":conftest",
@@ -1881,7 +1911,7 @@ py_test(
 
 py_test(
     name = "test_webdataset",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_webdataset.py"],
     tags = [
         "exclusive",
@@ -1978,9 +2008,9 @@ py_test(
 )
 
 py_test(
-    name = "test_autoscaler",
+    name = "test_actor_autoscaler",
     size = "small",
-    srcs = ["tests/test_autoscaler.py"],
+    srcs = ["tests/test_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2023,6 +2053,20 @@ py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lerobot",
+    size = "medium",
+    srcs = ["tests/datasource/test_lerobot.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2191,6 +2235,20 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/datasource/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta.py"],
     tags = [
         "exclusive",
         "team:data",

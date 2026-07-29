@@ -259,7 +259,13 @@ class TaskProfileEvent : public TaskEvent {
   std::string event_name_;
   int64_t start_time_{};
   int64_t end_time_{};
-  std::string extra_data_;
+  // Defaults to a valid empty-JSON object. extra_data is an optional JSON
+  // string; callers set it via SetExtraData (the Cython ProfileEvent normally
+  // sets "{}" or a JSON payload in __exit__), but some events are flushed
+  // without SetExtraData ever being called. Without this default they carry an
+  // empty string, which is not valid JSON and makes consumers that json-parse
+  // the field (e.g. the state API) fail on that event.
+  std::string extra_data_ = "{}";
   /// The current Ray session name.
   std::string session_name_;
 };

@@ -116,6 +116,20 @@ It's ideal to size each Ray pod to take up the entire Kubernetes node. In other 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and `tolerations` fields of the pod spec. Specifically, these fields determine on which Kubernetes nodes the pods may be scheduled. See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more about Pod-to-Node assignment.
 
+(kuberay-config-safe-to-evict)=
+#### Preventing eviction of the Ray head Pod by the Cluster Autoscaler
+The Ray head Pod is a single point of failure for the Ray cluster. To prevent the Kubernetes Cluster Autoscaler from evicting it during node consolidation, set the [`cluster-autoscaler.kubernetes.io/safe-to-evict`](https://kubernetes.io/docs/reference/labels-annotations-taints/#cluster-autoscaler-kubernetes-io-safe-to-evict) annotation to `"false"` on the head Pod template:
+
+```yaml
+headGroupSpec:
+  template:
+    metadata:
+      annotations:
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+```
+
+This setting blocks eviction during autoscaling events. This doesn't prevent Ray head Pod errors such events as node failure, manual Pod deletion, or reclamation of the underlying node (such as spot instance preemption).
+
 #### image
 The Ray container images specified in the `RayCluster` CR should carry the same Ray version as the CR's `spec.rayVersion`. If you are using a nightly or development Ray image, you can specify Ray's latest release version under `spec.rayVersion`.
 

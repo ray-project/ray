@@ -196,10 +196,12 @@ def simulate_s3_bucket(
     s3_server = f"http://{build_address('localhost', port)}"
     server = ThreadedMotoServer(port=port)
     server.start()
-    url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
-    yield url
-    server.stop()
-    os.environ = old_env
+    try:
+        url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
+        yield url
+    finally:
+        server.stop()
+        os.environ = old_env
 
 
 class TelemetryCallsite(Enum):

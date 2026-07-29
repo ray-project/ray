@@ -12,6 +12,9 @@ class GlobalConfig(TypedDict):
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
     state_machine_disabled: bool
+    state_machine_github_repo: str
+    state_machine_bisect_disabled: bool
+    buildkite_org: str
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
@@ -81,6 +84,16 @@ def _init_global_config(config_file: str):
             "disabled", 0
         )
         == 1,
+        # No defaults for the targeting keys below: a config that omits them must
+        # fail loudly rather than silently fall back to ray's public repo/org.
+        state_machine_github_repo=config_content.get("state_machine", {}).get(
+            "github_repo"
+        ),
+        state_machine_bisect_disabled=config_content.get("state_machine", {})
+        .get("bisect", {})
+        .get("disabled", 0)
+        == 1,
+        buildkite_org=config_content.get("ci_pipeline", {}).get("buildkite_org"),
         ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
         ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
             "postmerge", []

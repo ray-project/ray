@@ -186,9 +186,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.80 \
-    --hash=sha256:3857ac9a1b9219e6980938c1e76b48d50e592c9e7782e167ead2e6b1153a907d \
-    --hash=sha256:8d2cc6faa9dd3f3e2bd23dc6405d81d367aea0db2bd8258aa049edd25c79592b
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
@@ -1109,18 +1109,6 @@ fsspec==2023.12.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   adlfs
     #   ray
-gitdb==4.0.12 \
-    --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
-    --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   gitpython
-gitpython==3.1.47 \
-    --hash=sha256:489f590edfd6d20571b2c0e72c6a6ac6915ee8b8cd04572330e3842207a78905 \
-    --hash=sha256:dba27f922bd2b42cb54c87a8ab3cb6beb6bf07f3d564e21ac848913a05a8a3cd
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   anyscale
 google-api-core==2.30.3 \
     --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
     --hash=sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b
@@ -3576,12 +3564,6 @@ smart-open==6.2.0 \
     #   -r docker/base-deps/requirements.in
     #   anyscale
     #   ray
-smmap==5.0.3 \
-    --hash=sha256:4d9debb8b99007ae47165abc08670bd74cb74b5227dda7f643eccc4e9eb5642c \
-    --hash=sha256:c106e05d5a61449cf6ba9a1e650227ecfb141590d2a98412103ff35d89fc7b2f
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   gitdb
 soupsieve==2.8.3 \
     --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
     --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95

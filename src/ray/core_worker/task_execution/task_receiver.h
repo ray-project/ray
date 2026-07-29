@@ -73,6 +73,14 @@ class TaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
+  /// Issue an async args-fetch IPC to the raylet for an actor task's
+  /// dependencies, if any. Intended to be called on the gRPC handler thread
+  /// before posting `QueueTaskForExecution` to the task execution service, so
+  /// the IPC is not blocked behind in-progress task execution.
+  ///
+  /// \param[in] request The PushTaskRequest. Read-only access to the args.
+  void BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request);
+
   /// Enqueue a task for execution that was received via `PushTask`.
   ///
   /// For actor tasks: the task will be enqueued and requests will be scheduled to begin

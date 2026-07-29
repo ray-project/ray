@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING, Optional
+
 import ray
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig
+
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
 
 
 @ray.remote(num_cpus=0)
@@ -23,15 +28,20 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(
+            self._controller: Optional["ActorHandle"] = ray.get_actor(
                 SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
             )
         except ValueError:
             self._controller = None
         if self._controller is None:
             controller_impl = get_controller_impl()
+            # This Java bootstrap builds HTTPOptions directly and previously
+            # relied on the (now removed) HeadOnly default of
+            # HTTPOptions.location. Pass proxy_location explicitly to preserve
+            # head-only proxy placement on multi-node clusters.
             self._controller = controller_impl.remote(
                 http_options=HTTPOptions(port=http_proxy_port),
+                proxy_location=ProxyLocation.HeadOnly,
                 global_logging_config=LoggingConfig(),
             )
 

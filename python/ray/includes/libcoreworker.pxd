@@ -117,7 +117,6 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CRayStatus ReserveSlot(int64_t num_objects)
         c_bool TryReserveSlot(int64_t num_objects)
         void ReleaseSlot(int64_t num_objects)
-        void OnReport(int64_t total)
         void Teardown()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:

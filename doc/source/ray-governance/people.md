@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Directory of Ray project committers and maintainers, listing the people responsible for governance and ongoing development of the Ray open-source project."
+---
+
 (people)=
 
 # People
@@ -27,6 +33,7 @@ This page lists the key people involved in the governance and maintenance of the
 - Devin Petersohn ([GitHub](https://github.com/devin-petersohn/))
 - Dhyey Shah ([GitHub](https://github.com/dayshah/))
 - Dmitri Gekhtman ([GitHub](https://github.com/DmitriGekhtman/))
+- Douglas Strodtman ([GitHub](https://github.com/dstrodtman/))
 - Edward Oakes ([GitHub](https://github.com/edoakes/))
 - Eric Liang ([GitHub](https://github.com/ericl/))
 - Fengbin Fang ([GitHub](https://github.com/ffbin/))

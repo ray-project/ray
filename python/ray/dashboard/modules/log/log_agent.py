@@ -292,6 +292,15 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                 f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
                 "It is unexpected. Please report an issue to Ray Github."
             )
+
+        if request.glob_filter:
+            glob_path = Path(request.glob_filter)
+            if glob_path.anchor or ".." in glob_path.parts:
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"Invalid glob filter: {request.glob_filter}. "
+                    "It must be a relative path and cannot contain '..'.",
+                )
         log_files = []
         for p in path.glob(request.glob_filter):
             log_files.append(str(p.relative_to(path)) + ("/" if p.is_dir() else ""))

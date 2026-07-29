@@ -52,29 +52,25 @@ build:
         fi
         echo "Doc-affecting files changed; building docs. Changed doc-relevant paths:"
         git diff --name-only origin/master...HEAD -- doc/ ':!doc/.claude/' .readthedocs.yaml
-    # Override the html build step. On PR (external) builds, build incrementally
-    # from the latest master doc cache, falling back to a clean build
-    # (rtd-fallback) if it fails. PRs that delete or move doc sources skip the
-    # incremental path: the restored cache can't prune the stale pages/stubs they
-    # leave behind, and a clean rename wouldn't trip a warning to force the
-    # fallback. The prune-on-restore fix is tracked in DOC-1314. Branch/tag builds
-    # (master, stable, release tags) always do a full clean build so published
-    # output is never stale. Targets live in doc/Makefile (rtd, rtd-fallback, html).
+    # Override the html build step so every build runs a full clean Sphinx
+    # build via the doc/Makefile html target, for PR (external) previews and
+    # branch/tag builds alike.
+    #
+    # The incremental-from-master-cache path added in #64277 is disabled for
+    # now. On every PR preview Sphinx discards the restored cache because a
+    # config value differs between the environment that produced the cache and
+    # the RTD build environment, so it rebuilds all documents anyway while
+    # still paying the cache download and extract cost, and it risks a second
+    # clean rebuild when the incremental leg trips a warning. A clean build is
+    # faster and lower-variance in practice today. Re-enable the incremental
+    # path only once cache reuse is confirmed (Sphinx logs "N changed" rather
+    # than "NNNN added") and stale-artifact pruning lands for PRs that rename
+    # or delete sources. The rtd and rtd-fallback Makefile targets and
+    # doc/load_doc_cache.py stay in the tree for that re-enable.
     build:
       html:
         - |
-          if [ "${READTHEDOCS_VERSION_TYPE:-}" = "external" ]; then
-            if ! git diff --quiet --no-renames --diff-filter=D origin/master...HEAD -- doc/source/ 2>/dev/null; then
-              echo "PR deletes or moves doc sources; the incremental cache cannot prune their stale pages, so building clean (DOC-1314)."
-              make -C doc rtd-fallback HTMLDIR="$READTHEDOCS_OUTPUT/html"
-            else
-              echo "PR build; attempting incremental build from the master doc cache."
-              make -C doc rtd HTMLDIR="$READTHEDOCS_OUTPUT/html" || make -C doc rtd-fallback HTMLDIR="$READTHEDOCS_OUTPUT/html"
-            fi
-          else
-            echo "Branch/tag build; running a full clean build."
-            make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
-          fi
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

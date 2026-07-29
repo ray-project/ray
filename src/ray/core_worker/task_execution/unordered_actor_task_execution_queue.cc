@@ -109,6 +109,9 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         RAY_CHECK_NE(it->second.AttemptNumber(), task.AttemptNumber());
         if (it->second.AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
+          // TODO(karticam): This attempt's args-fetch IPC is in flight; its
+          // eventual MarkReady will be stored in the waiter, but will never be
+          // consumed. Fix the small memory leak.
           task_to_cancel = std::move(task);
         } else {
           task_to_cancel = std::move(it->second);
@@ -182,9 +185,8 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    // Make a copy since request is going to be moved.
-    auto dependencies = request.PendingDependencies();
-    waiter_.AsyncWait(dependencies, [this, request = std::move(request)]() mutable {
+    const TaskAttempt task_attempt{task_spec.TaskId(), task_spec.AttemptNumber()};
+    waiter_.OnArgsReady(task_attempt, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
       const TaskSpecification &task = request.TaskSpec();

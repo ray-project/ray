@@ -1004,6 +1004,11 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     r = httpx.get("http://localhost:8000/test")
     assert r.status_code == 404
 
+    # Healthz stays 200 with no app backends instead of hitting the 404 default backend.
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200
+    )
+
     serve.shutdown()
 
 

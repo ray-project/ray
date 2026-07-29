@@ -11,7 +11,7 @@ from ray import ObjectRef
 from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
@@ -284,12 +284,16 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
 
-        If the actor is dead, the health check will return RayActorError.
+        If the actor is dead, the health check raises RayActorError. If the
+        actor is permanently unschedulable (e.g. hard-pinned to a node that no
+        longer exists), it raises ActorUnschedulableError. Both cases mean the
+        actor is ready for shutdown.
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except RayActorError:
-            # The actor is dead, so it's ready for shutdown.
+        except (RayActorError, ActorUnschedulableError):
+            # The actor is dead or permanently unschedulable (e.g. hard-pinned
+            # to a node that no longer exists), so it's ready for shutdown.
             return True
         except GetTimeoutError:
             pass
@@ -598,6 +602,7 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
@@ -606,6 +611,7 @@ class ProxyStateManager:
         self.logging_config = logging_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
+        self._proxy_location = proxy_location
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
@@ -657,6 +663,18 @@ class ProxyStateManager:
 
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
+
+    def _resolved_proxy_location(self) -> ProxyLocation:
+        # `location` on HTTPOptions is a deprecated override; `proxy_location`
+        # is the authority. Default to EveryNode when neither is set.
+        return (
+            self._http_options.location
+            or self._proxy_location
+            or ProxyLocation.EveryNode
+        )
+
+    def get_proxy_location(self) -> ProxyLocation:
+        return self._resolved_proxy_location()
 
     def get_proxy_handles(self) -> Dict[str, ActorHandle]:
         handles = {
@@ -786,7 +804,7 @@ class ProxyStateManager:
     def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP and gRPC servers
         on."""
-        location = self._http_options.location
+        location = self._resolved_proxy_location()
 
         if location == ProxyLocation.Disabled:
             return []
