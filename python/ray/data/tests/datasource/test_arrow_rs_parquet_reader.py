@@ -701,10 +701,10 @@ def test_filter_pushdown_prunes_row_groups(tmp_path, restore_ctx):
     import pyarrow.dataset as pds
     from pyarrow.fs import LocalFileSystem
 
-    from ray.data.expressions import col
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
         ArrowRsParquetFileReader,
     )
+    from ray.data.expressions import col
 
     path = tmp_path / "sorted.parquet"
     n = 4000
@@ -1570,6 +1570,7 @@ def test_read_metadata_s3_matches_pyarrow(s3_fs, s3_path):
     recovery as the data path) and returns the same schema + row-group counts as
     PyArrow reading the same object."""
     import ray_data_arrow_rs
+
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
         _s3_config,
     )

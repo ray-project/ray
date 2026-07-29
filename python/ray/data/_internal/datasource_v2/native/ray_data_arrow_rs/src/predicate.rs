@@ -46,12 +46,25 @@ impl Value {
     /// null operands, and any cross-type pair that isn't int/float — every such
     /// case makes the caller keep the row group.
     pub fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
+        // Integers with |v| above this lose precision when promoted to f64
+        // (f64 has a 53-bit mantissa), so a mixed int/float comparison could
+        // silently flip. Treat those as incomparable (None) instead — the
+        // caller keeps the row group, which is always sound.
+        const MAX_SAFE_INT: i64 = 9_007_199_254_740_991; // 2^53 - 1
+        const MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+        let in_safe_range = |v: i64| (MIN_SAFE_INT..=MAX_SAFE_INT).contains(&v);
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Some(a.cmp(b)),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
-            // Mixed int/float: promote to f64 (e.g. `float_col > 5`).
-            (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
-            (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
+            // Mixed int/float: promote to f64 (e.g. `float_col > 5`), but only
+            // when the integer is exactly representable in f64.
+            (Value::Int(a), Value::Float(b)) if in_safe_range(*a) => {
+                (*a as f64).partial_cmp(b)
+            }
+            (Value::Float(a), Value::Int(b)) if in_safe_range(*b) => {
+                a.partial_cmp(&(*b as f64))
+            }
+            (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_)) => None,
             (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
             (Value::Bool(a), Value::Bool(b)) => Some(a.cmp(b)),
             _ => None,
