@@ -33,7 +33,5 @@ class ORCDatasource(FileBasedDatasource):
     ) -> "pyarrow.NativeFile":
         # ORC stores its metadata footer at the end of the file, so reading
         # requires a seekable file (open_input_file) rather than a sequential
-        # input stream. open_args (e.g. compression, buffer_size) only apply to
-        # sequential stream reads and ORC handles compression internally, so
-        # they are intentionally not forwarded here.
+        # input stream.
         return filesystem.open_input_file(path)

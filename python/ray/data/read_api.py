@@ -2433,7 +2433,6 @@ def read_orc(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     include_paths: bool = False,
@@ -2474,11 +2473,6 @@ def read_orc(
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
-        arrow_open_stream_args: kwargs passed to
-            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
-                python/generated/pyarrow.fs.FileSystem.html\
-                    #pyarrow.fs.FileSystem.open_input_file>`_
-            when opening input files to read.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -2511,7 +2505,6 @@ def read_orc(
     datasource = ORCDatasource(
         paths,
         filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
