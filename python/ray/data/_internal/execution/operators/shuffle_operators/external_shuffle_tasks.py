@@ -616,9 +616,7 @@ def _external_shuffle_reduce_task(
         finally:
             os.close(fd)
     finally:
-        # Unlink only this reducer's own file. NOT rmdir(staging_dir): the dir
-        # is shared per-node and rmdir races a concurrent reducer's open
-        # (FileNotFoundError at 8TB). Teardown reclaims the empty dir.
+        # Unlink this reducer's own file.
         try:
             os.unlink(prefetch_file)
         except OSError:
