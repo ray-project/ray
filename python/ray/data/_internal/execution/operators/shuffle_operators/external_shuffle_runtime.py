@@ -135,6 +135,13 @@ _FLIGHT_CHUNK = 1 << 20  # Flight Result body size; keep under gRPC's ~4 MiB fra
 # Flight fetch request (Action body): JSON ``{"t": token, "s": [[path, [[off, len], ...]], ...]}``.
 
 
+def _grpc_location(host: str, port) -> str:
+    """gRPC URI for host:port. IPv6 literals must be bracketed (grpc://[::1]:0);
+    a bare ``:`` in the host is the IPv6 signal."""
+    h = f"[{host}]" if ":" in host else host
+    return f"grpc://{h}:{port}"
+
+
 def _make_flight_server(host: str, base_dir: str, token: str):
     """Build (not start) an Arrow Flight server serving shuffle byte-ranges via
     DoAction. Each range is framed as ``[u32 length][frame bytes]`` — the layout
@@ -162,7 +169,7 @@ def _make_flight_server(host: str, base_dir: str, token: str):
                             remaining -= len(buf)
                             yield flight.Result(pa.py_buffer(buf))
 
-    return _ShuffleFlightServer(f"grpc://{host}:0")
+    return _ShuffleFlightServer(_grpc_location(host, 0))
 
 
 @ray.remote
@@ -374,7 +381,7 @@ def _stream_members_flight(endpoint, token, members, max_bytes, sink) -> None:
     import pyarrow.flight as flight
 
     host, port = endpoint
-    client = flight.connect(f"grpc://{host}:{port}")
+    client = flight.connect(_grpc_location(host, port))
     try:
         for batch in _chunk_members_by_bytes(members, max_bytes):
             sources = [(m.path, m.ranges) for m in batch]
