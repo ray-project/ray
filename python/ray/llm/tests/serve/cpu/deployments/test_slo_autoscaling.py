@@ -42,7 +42,7 @@ def _ctx(
     )
 
 
-def _policy(ttft=None, kv=None, hit=None, inflight=None, **kw):
+def _policy(ttft=None, hit=None, inflight=None, **kw):
     """Build a policy with its metric cache preset; no background fetch thread."""
     pol = SLOAutoscalingPolicy(
         ttft_target_s=2.0,
@@ -54,8 +54,6 @@ def _policy(ttft=None, kv=None, hit=None, inflight=None, **kw):
     vals = {}
     if ttft is not None:
         vals[pol.ttft_query] = ttft
-    if kv is not None:
-        vals[pol.kv_query] = kv
     if hit is not None:
         vals[pol.hit_rate_query] = hit
     if inflight is not None:
@@ -72,13 +70,8 @@ class TestInnerLoop:
         assert dec == 3.0
 
     def test_idle_scales_to_zero(self):
-        dec, _ = _policy(kv=0.0)(_ctx(current=3, total_requests=0.0))
+        dec, _ = _policy()(_ctx(current=3, total_requests=0.0))
         assert dec == 0.0
-
-    def test_kv_term_binds_over_concurrency(self):
-        # concurrency term: 4/8 = 0.5; kv term: 2 * 0.95 / 0.9 = 2.11 -> ceil 3
-        dec, _ = _policy(kv=0.95)(_ctx(current=2, total_requests=4.0))
-        assert dec == 3.0
 
     def test_engine_queue_drives_scale_up(self):
         # Serve sees 8 ongoing (8/8 = 1), but the engine reports 24 in-flight
@@ -96,48 +89,40 @@ class TestInnerLoop:
 
 class TestSelfTuning:
     def test_high_ttft_lowers_capacity_and_scales_up(self):
-        dec, state = _policy(ttft=4.0, kv=0.3, hit=0.5)(
-            _ctx(current=2, total_requests=16.0)
-        )
+        dec, state = _policy(ttft=4.0, hit=0.5)(_ctx(current=2, total_requests=16.0))
         assert state["c_concurrency"] < 8.0
         assert dec >= 3.0
 
     def test_low_ttft_raises_capacity(self):
-        dec, state = _policy(ttft=0.5, kv=0.3, hit=0.5)(
-            _ctx(current=2, total_requests=16.0)
-        )
+        dec, state = _policy(ttft=0.5, hit=0.5)(_ctx(current=2, total_requests=16.0))
         assert state["c_concurrency"] > 8.0
 
     def test_deadband_holds_capacity(self):
         # 1.9s is within 10% of the 2.0s goal.
-        _, state = _policy(ttft=1.9, kv=0.3, hit=0.5)(
-            _ctx(current=2, total_requests=16.0)
-        )
+        _, state = _policy(ttft=1.9, hit=0.5)(_ctx(current=2, total_requests=16.0))
         assert state["c_concurrency"] == 8.0
 
     def test_rampup_freezes_tuner(self):
-        _, state = _policy(ttft=9.0, kv=0.3, hit=0.5)(
+        _, state = _policy(ttft=9.0, hit=0.5)(
             _ctx(current=1, total_requests=16.0, target=4)
         )
         assert state["c_concurrency"] == 8.0
 
     def test_idle_freezes_tuner(self):
-        _, state = _policy(ttft=9.0, kv=0.0, hit=0.5)(
-            _ctx(current=2, total_requests=0.0)
-        )
+        _, state = _policy(ttft=9.0, hit=0.5)(_ctx(current=2, total_requests=0.0))
         assert state["c_concurrency"] == 8.0
 
     def test_hit_rate_swing_freezes_tuner(self):
         prior = {"last_tune_s": 0.0, "last_hit_rate": 0.2, "c_concurrency": 8.0}
-        _, state = _policy(ttft=9.0, kv=0.3, hit=0.9)(
+        _, state = _policy(ttft=9.0, hit=0.9)(
             _ctx(current=2, total_requests=16.0, state=prior)
         )
         assert state["c_concurrency"] == 8.0
 
     def test_interval_gates_tuning(self):
         prior = {"last_tune_s": 990.0, "c_concurrency": 8.0}
-        # now=1000, interval default 60 -> only 10s elapsed -> no tune
-        _, state = _policy(ttft=9.0, kv=0.3, hit=0.5)(
+        # now=1000, interval default 30 -> only 10s elapsed -> no tune
+        _, state = _policy(ttft=9.0, hit=0.5)(
             _ctx(current=2, total_requests=16.0, now=1000.0, state=prior)
         )
         assert state["c_concurrency"] == 8.0
@@ -168,7 +153,7 @@ class TestConstruction:
             ttft_target_s=2.0, model_id="my-org/m", prometheus_address="x"
         )
         assert 'model_name="my-org/m"' in pol.ttft_query
-        assert 'model_name="my-org/m"' in pol.kv_query
+        assert 'model_name="my-org/m"' in pol.inflight_query
 
 
 if __name__ == "__main__":

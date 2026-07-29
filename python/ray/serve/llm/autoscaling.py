@@ -24,11 +24,6 @@ def _ttft_query(model_id: str) -> str:
     )
 
 
-def _kv_usage_query(model_id: str) -> str:
-    """Fleet-average KV-cache utilization for one model, in [0, 1]."""
-    return f'avg(ray_vllm_kv_cache_usage_perc{{model_name="{model_id}"}})'
-
-
 def _inflight_query(model_id: str) -> str:
     """Engine in-flight requests: running plus the vLLM queue, summed fleet-wide.
 
@@ -54,7 +49,6 @@ def _hit_rate_query(model_id: str) -> str:
 
 # Control-loop constants. Not user knobs: production-sane defaults that pace the
 # outer tuning loop and bound the learned capacity.
-_KV_TARGET = 0.9
 _TUNE_INTERVAL_S = 30.0
 _TUNE_STEP_MAX = 1.5
 _TUNE_DEADBAND = 0.1
@@ -71,13 +65,12 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
     The operator declares a latency goal and a model. The policy discovers the
     per-replica capacity on its own from live metrics. It runs two loops.
 
-    Inner loop (every tick): scale on load. It sizes the fleet to the tightest
-    of two constraints and returns the larger replica count:
-
-    - Concurrency: ``ongoing_requests / c_concurrency``. Absolute, so it composes
-      with the scaling factor and does not oscillate on consolidation.
-    - KV cache: ``current_replicas * kv_utilization / kv_target``. A fixed
-      ceiling on the memory-bound decode phase, not an SLO.
+    Inner loop (every tick): scale on load. ``desired = load / c_concurrency``,
+    where ``load`` is the larger of Serve's own request count and the vLLM engine
+    in-flight count (running plus queued). The result is an absolute count, so it
+    composes with the scaling factor and does not oscillate on consolidation. A
+    full KV cache blocks admission, which grows the queue and thus ``load``, so a
+    separate KV signal is not needed.
 
     Outer loop (every ``tune_interval_s``): learn the concurrency capacity from
     latency. When p99 TTFT is above ``ttft_target_s`` it lowers ``c_concurrency``
@@ -128,14 +121,12 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
                 "SLOAutoscalingPolicy needs model_id to scope its queries."
             )
         self.ttft_query = _ttft_query(model_id)
-        self.kv_query = _kv_usage_query(model_id)
         self.hit_rate_query = _hit_rate_query(model_id)
         self.inflight_query = _inflight_query(model_id)
         super().__init__(
             prometheus_address=prometheus_address,
             prometheus_queries=[
                 self.ttft_query,
-                self.kv_query,
                 self.hit_rate_query,
                 self.inflight_query,
             ],
@@ -168,7 +159,6 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
 
         metrics = self.prometheus_metrics or {}
         p99_ttft = metrics.get(self.ttft_query)
-        kv_util = metrics.get(self.kv_query)
         hit_rate = metrics.get(self.hit_rate_query)
         inflight = metrics.get(self.inflight_query)
 
@@ -195,17 +185,14 @@ class SLOAutoscalingPolicy(PrometheusQueryMixin):
             if hit_rate is not None:
                 state["last_hit_rate"] = hit_rate
 
-        # Inner loop: size to the tightest constraint. Both terms are replica
-        # counts; the larger one wins. Load is the larger of Serve's own ongoing
-        # count and the engine's in-flight count, so an engine-side queue that
-        # Serve cannot see still drives scale-up. It falls back to Serve's count
-        # when Prometheus is unavailable.
+        # Inner loop: size from the load. Load is the larger of Serve's own
+        # ongoing count and the engine's in-flight count, so an engine-side queue
+        # that Serve cannot see still drives scale-up. It falls back to Serve's
+        # count when Prometheus is unavailable.
         load = ctx.total_num_requests
         if inflight is not None:
             load = max(load, inflight)
         desired = load / c_concurrency if c_concurrency > 0 else 0.0
-        if kv_util is not None and ctx.current_num_replicas > 0:
-            desired = max(desired, ctx.current_num_replicas * kv_util / _KV_TARGET)
 
         state["c_concurrency"] = c_concurrency
         return float(math.ceil(desired)), state
