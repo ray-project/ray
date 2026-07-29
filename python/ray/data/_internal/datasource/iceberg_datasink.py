@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
-    from pyiceberg.table import DataScan, FileScanTask, Table
+    from pyiceberg.table import CreateTableTransaction, DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.update.schema import UpdateSchema
 
@@ -200,6 +200,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: SaveMode = SaveMode.APPEND,
         overwrite_filter: Optional["Expr"] = None,
+        create_kwargs: Optional[Dict[str, Any]] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -218,6 +219,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
+            create_kwargs: Optional arguments to pass through to PyIceberg's
+                catalog.create_table_transaction() method.
             upsert_kwargs: Optional arguments for upsert operations.
                 Supported parameters: join_cols (List[str]), case_sensitive (bool),
                 branch (str). Note: This implementation uses a copy-on-write strategy
@@ -236,10 +239,15 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self._snapshot_properties = (snapshot_properties or {}).copy()
         self._mode = mode
         self._overwrite_filter = overwrite_filter
+        self._create_kwargs = (create_kwargs or {}).copy()
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
         self._overwrite_kwargs = (overwrite_kwargs or {}).copy()
 
         # Validate kwargs are only set for relevant modes
+        if self._create_kwargs and self._mode != SaveMode.CREATE:
+            raise ValueError(
+                f"create_kwargs can only be specified when mode is SaveMode.CREATE, but mode is {self._mode}"
+            )
         if self._upsert_kwargs and self._mode != SaveMode.UPSERT:
             raise ValueError(
                 f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, but mode is {self._mode}"
@@ -275,6 +283,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             self._catalog_name = "default"
 
         self._table: "Table" = None
+        self._create_table_txn: Optional["CreateTableTransaction"] = None
         self._io: "FileIO" = None
         self._table_metadata: "TableMetadata" = None
         self._data_context = DataContext.get_current()
@@ -283,11 +292,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
         state.pop("_table", None)
+        state.pop("_create_table_txn", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
         self.__dict__.update(state)
         self._table = None
+        self._create_table_txn = None
 
     def _with_retry(self, func: Callable, description: str) -> Any:
         """Execute a function with retry logic.
@@ -338,10 +349,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             )
 
         cat = self._get_catalog()
-        self._table = self._with_retry(
-            lambda: cat.create_table(self.table_identifier, schema=schema),
-            description=f"create Iceberg table '{self.table_identifier}'",
+        self._create_table_txn = self._with_retry(
+            lambda: cat.create_table_transaction(
+                self.table_identifier, schema=schema, **self._create_kwargs
+            ),
+            description=f"stage creation of Iceberg table '{self.table_identifier}'",
         )
+        self._table = self._create_table_txn._table
 
         self._io = self._table.io
         self._table_metadata = self._table.metadata
@@ -906,7 +920,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
         if not all_data_files:
-            logger.info("[on_write_complete] No data files written, nothing to commit")
+            if self._mode == SaveMode.CREATE:
+                assert self._create_table_txn is not None
+                self._with_retry(
+                    self._create_table_txn.commit_transaction,
+                    description=f"create Iceberg table '{self.table_identifier}'",
+                )
+            logger.info("[on_write_complete] No data files written")
             return
 
         # Concatenate all upsert keys from all workers into a single table
@@ -948,7 +968,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
         # Create transaction and commit schema update + data files atomically
-        txn = self._table.transaction()
+        if self._mode == SaveMode.CREATE:
+            assert self._create_table_txn is not None
+            txn = self._create_table_txn
+        else:
+            txn = self._table.transaction()
 
         # Update table schema within the transaction if it differs
         if not final_reconciled_schema.equals(table_schema):

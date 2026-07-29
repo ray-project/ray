@@ -1042,6 +1042,20 @@ class TestSchemaEvolution:
 class TestCreateMode:
     """Test create mode functionality."""
 
+    def test_create_is_staged_until_write_completes(self, missing_table):
+        """Test CREATE mode doesn't create an empty table before data is written."""
+        from ray.data import SaveMode
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        datasink = IcebergDatasink(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            mode=SaveMode.CREATE,
+        )
+        datasink.on_write_start(_SCHEMA)
+
+        assert not missing_table.table_exists(f"{_DB_NAME}.{_TABLE_NAME}")
+
     def test_write_create_creates_missing_table(self, missing_table):
         """Test create mode creates a missing table and writes data."""
         from ray.data import SaveMode
@@ -1062,6 +1076,19 @@ class TestCreateMode:
 
         result = _read_from_iceberg(sort_by="col_a")
         assert rows_same(result, create_data)
+
+    def test_write_create_passes_create_kwargs(self, missing_table):
+        """Test create_kwargs are passed to PyIceberg."""
+        from ray.data import SaveMode
+
+        _write_to_iceberg(
+            _create_typed_dataframe({"col_a": [1], "col_b": ["a"], "col_c": [10]}),
+            mode=SaveMode.CREATE,
+            create_kwargs={"properties": {"owner": "ray"}},
+        )
+
+        table = missing_table.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        assert table.properties["owner"] == "ray"
 
     def test_write_create_raises_if_table_exists(self, clean_table):
         """Test create mode fails when the target table already exists."""
