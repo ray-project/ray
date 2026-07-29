@@ -2820,6 +2820,8 @@ def read_lerobot(
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
     frame_tolerance_s: Optional[float] = None,
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    delta_tolerance_s: float = 1e-4,
     storage_options: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2871,6 +2873,18 @@ def read_lerobot(
         ...     ["/path/to/ds1", "/path/to/ds2"],
         ... )
 
+        Return a temporal window per frame -- here the last 3 image frames and the
+        next 2 actions, each stacked along a new leading time axis with a
+        companion ``*_is_pad`` mask:
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ...     delta_timestamps={
+        ...         "observation.images.image": [-0.2, -0.1, 0.0],
+        ...         "action": [0.0, 0.1],
+        ...     },
+        ... )
+
     Args:
         root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
             or a list of such paths to read multiple datasets as one.
@@ -2906,6 +2920,31 @@ def read_lerobot(
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
             10fps. Increase to tolerate timestamp jitter; decrease for stricter
             alignment.
+        delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}`` mapping
+            requesting a temporal window per frame. For each frame, the listed
+            feature is returned stacked over the offsets -- a new leading time
+            dimension (e.g. a camera frame becomes ``(T, H, W, C)``, an ``action``
+            vector becomes ``(T, action_dim)``) and a boolean ``{key}_is_pad``
+            column of shape ``(T,)``. Offsets are converted to frame steps via the
+            dataset ``fps`` (each must align to the frame grid, i.e. be a multiple
+            of ``1 / fps``) and clamped to the anchor frame's episode: an
+            offset falling before the episode's first frame or after its last
+            returns the nearest in-episode frame and sets ``is_pad`` ``True`` for
+            that slot. Features not listed keep their single-frame output. ``None``
+            (the default) disables temporal windows.
+
+            .. note::
+               When ``delta_timestamps`` is set, reads are **episode-aligned**:
+               each read task always covers whole episodes, so
+               ``override_num_blocks`` cannot split an episode across tasks. It
+               must not exceed the number of episodes (with
+               ``read_granularity="episode"``) or file groups (with ``"file"``) --
+               a larger value raises ``ValueError``. Leaving it unset reads one
+               task per episode / file group.
+        delta_tolerance_s: Frame-grid tolerance in seconds for ``delta_timestamps``
+            offsets. Each offset must be a multiple of ``1 / fps`` within this
+            tolerance. Defaults to ``1e-4`` (matching lerobot's ``LeRobotDataset``).
+            Ignored when ``delta_timestamps`` is ``None``.
         storage_options: fsspec storage options (e.g. credentials or a custom
             ``endpoint_url``). They supply the credentials for the by-URI video
             decode path -- videos are streamed directly through torchcodec /
@@ -2948,6 +2987,8 @@ def read_lerobot(
         filesystem=filesystem,
         storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
+        delta_timestamps=delta_timestamps,
+        delta_tolerance_s=delta_tolerance_s,
     )
     if override_num_blocks is None:
         # Default to one read task per video-file group. Ray's generic

@@ -5,12 +5,13 @@ import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
 
 import ray
 from ray import serve
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
+    KV_INDEXER_THREADS_KEY,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.serve._private.common import DeploymentTargetInfo
@@ -21,18 +22,19 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-KV_ROUTER_ACTOR_NAME = "serve_llm_kv_router"
-
 # Dynamo's selection service keys all worker, indexer, and load state by
-# (model_name, tenant_id). KVRouterActor is a deployment-scoped actor that
-# instantiates a selection service and serves exactly one model, so a single
-# fixed key scopes all of its workers together.
+# (model_name, tenant_id). KVTokenTracker instantiates a selection service and
+# serves exactly one model, so a single fixed key scopes all of its workers
+# together.
 _MODEL_NAME = "default"
 _TENANT_ID = "default"
 
-# Hooks a replica may invoke through ``KVRouterActor.on_lifecycle_events``.
+# Hooks a replica may invoke through ``KVTokenTracker.on_lifecycle_events``.
 LIFECYCLE_HOOKS = frozenset(
     {
         "on_request_added",
@@ -69,7 +71,7 @@ class RequestLifecycle:
 
 
 class WorkerSelection(TypedDict):
-    """The worker chosen by ``KVRouterActor.select_worker`` for a request."""
+    """The worker chosen by ``KVTokenTracker.select_worker`` for a request."""
 
     # The chosen worker.
     worker_id: int
@@ -81,26 +83,32 @@ class WorkerSelection(TypedDict):
     effective_prefill_tokens: int
 
 
-class KVRouterActor:
-    """Deployment-scoped Ray actor backing KV-aware routing.
+class KVTokenTracker:
+    """Tracks per-replica KV-cache overlap and token load inside the LLMRouter
+    ingress replica.
 
-    Attached to the LLMServer deployment via Serve's ``DeploymentActorConfig``,
-    independent of any replica's lifetime.
+    Built by the LLMRouter ingress replica via ``build_kv_token_tracker``, so
+    ``select_worker`` is a local call on the ingress event loop.
 
-    1. Created once per deployment, attached to the LLMServer deployment via
-       Serve's ``DeploymentActorConfig`` (independent of any replica's lifetime).
-    2. Owns an in-process Dynamo ``SelectionService``.
-    3. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``,
+    1. Owns a router-local Dynamo ``SelectionService``.
+    2. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``,
        mapping each running replica to a Dynamo worker id.
-    4. The ``SelectionService`` maintains a global KV index radix tree, fed by
+    3. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
-    5. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
+    4. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
        and prefill/decode load.
-    6. Books each request's lifecycle into the service's active-load tracker, so
+    5. Books each request's lifecycle into the service's active-load tracker, so
        in-flight load feeds back into scoring for subsequent requests.
     """
 
-    def __init__(self, indexer_threads: int = DEFAULT_KV_INDEXER_THREADS):
+    def __init__(
+        self,
+        indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
+        serve_deployment_id: Optional[Any] = None,
+    ):
+        # The tracked LLMServer deployment id, passed in by the LLMRouter
+        # that builds the tracker.
+        self._serve_deployment_id = serve_deployment_id
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
@@ -133,19 +141,15 @@ class KVRouterActor:
         self._create_selection_service()
         self._start_replica_tracking()
 
-    async def ready(self) -> None:
-        """Readiness probe for KVAwareRouter to confirm KVRouterActor is initialized
-        before it starts routing requests to it.
-        """
-
     def get_block_size(self) -> int:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
 
     def _create_selection_service(self) -> None:
-        """Create the in-process Dynamo selection service for this deployment."""
-        # Imported here, not at module scope: Ray pickles this actor class by
-        # value, and Dynamo's pyo3 classes cannot be pickled as its globals.
+        """Create the router-local Dynamo selection service for this deployment."""
+        # Imported here, not at module scope, to keep Dynamo's pyo3 extension off
+        # the import path of every process that imports this module; only the
+        # ingress replica that builds the tracker needs it.
         try:
             from dynamo.llm import SelectionService
         except ImportError:
@@ -163,7 +167,7 @@ class KVRouterActor:
 
     def _start_replica_tracking(self) -> None:
         """Subscribe to this deployment's running replicas via LongPollClient."""
-        deployment_id = serve.get_deployment_actor_context().deployment_id
+        deployment_id = self._serve_deployment_id
         controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
         self._long_poll_client = LongPollClient(
             controller,
@@ -173,17 +177,21 @@ class KVRouterActor:
                     deployment_id,
                 ): self._on_deployment_targets,
             },
-            # Relies on KVRouterActor being an async actor (it defines async
-            # methods), so Ray runs __init__ inside the actor's event loop.
+            # Built inside the LLMRouter ingress replica's async __init__, so this
+            # binds LongPoll callbacks to that event loop.
             call_in_event_loop=asyncio.get_running_loop(),
             client_id=f"{type(self).__name__}:{deployment_id}",
         )
 
-    def _schedule(self, coro) -> None:
-        """Run a coroutine on the actor's event loop, holding a reference until
-        it completes.
+    def _schedule(self, awaitable) -> None:
+        """Schedule an awaitable (coroutine or future) on the ingress replica's
+        event loop, holding a reference until it completes.
         """
-        task = asyncio.create_task(coro)
+
+        async def _run():
+            await awaitable
+
+        task = asyncio.create_task(_run())
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
@@ -481,3 +489,46 @@ class KVRouterActor:
         if not state.expected_output_tokens:
             return None
         return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
+
+
+_KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None
+
+
+def set_kv_token_tracker(tracker: "KVTokenTracker") -> None:
+    global _KV_TOKEN_TRACKER
+    _KV_TOKEN_TRACKER = tracker
+
+
+def get_kv_token_tracker() -> Optional["KVTokenTracker"]:
+    return _KV_TOKEN_TRACKER
+
+
+# The LLMRouter ingress deployment name (``serve.deployment(LLMRouter)`` with no
+# name override -> the class name). Engine replicas RPC its ``on_lifecycle_events``
+# handle method to book request load.
+LLM_ROUTER_DEPLOYMENT_NAME = "LLMRouter"
+
+
+def get_llm_router_handle():
+    """Handle to the in-app LLMRouter deployment, for engine replicas to reach
+    its ``on_lifecycle_events`` method. Resolved in the current Serve app.
+    """
+    app_name = serve.get_replica_context().app_name
+    return serve.get_deployment_handle(LLM_ROUTER_DEPLOYMENT_NAME, app_name=app_name)
+
+
+def build_kv_token_tracker(
+    llm_config: "LLMConfig", serve_deployment_id: Any
+) -> "KVTokenTracker":
+    """Build the ``KVTokenTracker`` and register it in this process's global
+    so the same-process ``KVAwareRouter`` can reach it. Must be called from the
+    ingress replica's event loop (the tracker binds a LongPollClient to it).
+    """
+    tracker = KVTokenTracker(
+        indexer_threads=llm_config.experimental_configs.get(
+            KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
+        ),
+        serve_deployment_id=serve_deployment_id,
+    )
+    set_kv_token_tracker(tracker)
+    return tracker

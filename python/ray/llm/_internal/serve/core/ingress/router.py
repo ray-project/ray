@@ -1,19 +1,23 @@
+import asyncio
 import json
 from types import SimpleNamespace
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.llm._internal.serve.core.ingress.tokenizer import (
-    REQUEST_TOKEN_IDS_KWARG,
-    TokenizeError,
-    Tokenizer,
-)
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    REQUEST_TOKEN_IDS_KWARG,
+)
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
+
+# Type-only import as LLMConfig transitively pulls in vLLM. This file should
+# remain engine-agnostic.
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 logger = get_logger(__name__)
 
@@ -105,13 +109,36 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
 
     async def __init__(
-        self, server: DeploymentHandle, pre_routing_tokenization: bool = False
+        self,
+        server: DeploymentHandle,
+        llm_config: Optional["LLMConfig"] = None,
     ):
         self._handle: DeploymentHandle = server
+        self._tokenizer = None
+        # Holds the KVTokenTracker (KV-aware deployments only) so the
+        # engine-facing on_lifecycle_events method can book load into it.
+        self._kv_token_tracker = None
+        # A non-None llm_config signals pre-routing tokenization, which the
+        # builder binds only for a KV-aware request router.
+        if llm_config is not None:
+            # Build the tracker before _handle._init() below, which initializes
+            # the KVAwareRouter that looks it up. server.deployment_id is the
+            # tracked LLMServer deployment.
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                build_kv_token_tracker,
+            )
+
+            self._kv_token_tracker = build_kv_token_tracker(
+                llm_config, server.deployment_id
+            )
+            # Lazy import: this module pulls in vLLM's renderer;
+            # keep it off the non-KV ingress import path.
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
+                tokenizer,
+            )
+
+            self._tokenizer = await asyncio.to_thread(tokenizer.Tokenizer, llm_config)
         self._handle._init()
-        # Pre-routing tokenization is only useful to a KV-aware request router,
-        # which scores replicas based on the prompt token IDs.
-        self._tokenizer = Tokenizer(self._handle) if pre_routing_tokenization else None
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -133,11 +160,15 @@ class LLMRouter:
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
         if self._tokenizer is not None and routing_payload is not None:
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
+                tokenizer,
+            )
+
             try:
                 request_token_ids = await self._tokenizer.tokenize(
                     vars(routing_payload)
                 )
-            except TokenizeError as e:
+            except tokenizer.TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
@@ -166,6 +197,15 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
+    async def on_lifecycle_events(self, batch):
+        """Engine-facing intake for request lifecycle events.
+
+        Engine replicas RPC this LLMRouter handle method to book request
+        load; it applies the batch to the KVTokenTracker on this ingress
+        replica's event loop.
+        """
+        return await self._kv_token_tracker.on_lifecycle_events(batch)
+
     async def _pick_replica(
         self,
         handle: DeploymentHandle,
@@ -188,7 +228,7 @@ class LLMRouter:
         KV-aware request router can score replicas on prompt-prefix overlap.
 
         ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
-        actor RPC and the rejection-retry loop: the real request goes out via
+        RPC and the rejection-retry loop: the real request goes out via
         HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
         the extra RPC + retry introduced burstiness compared to the prior
         local round-robin implementation.
