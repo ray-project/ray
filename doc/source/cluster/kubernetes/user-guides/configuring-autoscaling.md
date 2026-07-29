@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure the Ray autoscaler on Kubernetes so a RayCluster adds and removes worker pods as resource demand changes."
+---
+
 (kuberay-autoscaling)=
 
 # KubeRay Autoscaling

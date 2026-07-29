@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Set up the Ray History Server with KubeRay on GKE using Google Cloud Storage, including RBAC and the collector image."
+---
+
 (kuberay-history-server)=
 
 # Ray History Server with KubeRay

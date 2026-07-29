@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Index of KubeRay user guides covering cluster configuration, autoscaling, GPUs and TPUs, storage, observability, and security."
+---
+
 (kuberay-guides)=
 
 # User Guides

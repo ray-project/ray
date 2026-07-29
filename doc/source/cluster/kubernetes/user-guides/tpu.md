@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Use TPUs with KubeRay: configure Ray pods for TPUs, TPU workload scheduling and default labels, and multi-host TPU autoscaling."
+---
+
 (kuberay-tpu)=
 
 # Use TPUs with KubeRay

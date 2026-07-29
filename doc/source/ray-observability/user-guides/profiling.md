@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray applications for CPU, memory, and GPU bottlenecks using py-spy, cProfile, memray, and the PyTorch profiler from the dashboard."
+---
+
 (profiling)=
 # Profiling
 Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
