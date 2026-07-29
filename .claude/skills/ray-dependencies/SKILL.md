@@ -48,7 +48,7 @@ These take precedence over generic packaging advice:
 
 Ray uses a two-tier dependency management system:
 
-1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. One per Python version: `requirements_compiled.txt` (default), `requirements_compiled_py3.10.txt`, `requirements_compiled_py3.11.txt`, etc.
+1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. There is a **single unified lock**: `requirements_compiled.txt` is the source of truth, and `requirements_compiled_py3.10.txt`, `requirements_compiled_py3.11.txt`, `requirements_compiled_py3.12.txt`, and `requirements_compiled_py3.13.txt` are all symlinks to it. (`requirements_compiled_py3.14.txt` is currently maintained as a separate file.)
 2. **raydepsets** — a DAG-based lock file manager (`ci/raydepsets/`) that generates per-image, per-environment lock files from `.depsets.yaml` configs. Lock files live in `python/deplocks/` and `release/ray_release/byod/`.
 
 ### Key file locations
@@ -58,7 +58,7 @@ Ray uses a two-tier dependency management system:
 | `python/requirements.txt` | Base Ray installation requirements |
 | `python/requirements_compiled.txt` | Monorepo pinned dependencies (per-Python-version variants exist) |
 | `python/requirements/` | Modular requirement files by component (test, ml, data, train, tune, serve, rllib, llm) |
-| `python/requirements/ml/py313/` | ML requirements organized by Python version |
+| `python/requirements/ml/` | ML requirement files (core, data, dl-cpu/gpu, ml, rllib, train, tune, third_party) |
 | `python/requirements/data/` | Ray Data variant requirements (pyarrow versions, mongo, etc.) |
 | `python/requirements/llm/` | LLM requirements (`llm-requirements.txt`, `llm-test-requirements.txt`) |
 | `python/requirements/serve/` | Serve requirements and overrides |
@@ -72,21 +72,19 @@ Ray uses a two-tier dependency management system:
 
 ## Generating the constraints (`requirements_compiled*.txt`)
 
-The two compiled lock files are produced by two `bash` functions in `ci/ci.sh`:
+The unified compiled lock is produced by a single `bash` function in `ci/ci.sh`:
 
 | Function | Output | Source set |
 |---|---|---|
-| `compile_pip_dependencies` (`ci/ci.sh:16`) | `python/requirements_compiled.txt` | shared `python/requirements/**` files (test, cloud, docker, `ml/*`, security) |
-| `compile_313_pip_dependencies` (`ci/ci.sh:82`) | `python/requirements_compiled_py3.13.txt` | py313 overrides under `python/requirements/py313/**` and `python/requirements/ml/py313/**`, falling back to shared files |
+| `compile_pip_dependencies` (`ci/ci.sh:16`) | `python/requirements_compiled.txt` | `python/requirements.txt` and shared `python/requirements/**` files (test, cloud, docker, `ml/*` including `ml-requirements.txt` and `third_party.txt`, security) |
+
+There is one source requirement set and one compiled lock shared across all Python versions; per-version differences are expressed with `python_version` markers in the source files (see *Marker preservation* below), not with separate override directories or a separate compile function.
 
 ### How to invoke
 
 ```bash
-# Default-Python lock (currently py3.10/3.11/3.12 generic)
+# Unified lock (shared across py3.10–3.13 via symlinks)
 ci/ci.sh compile_pip_dependencies
-
-# py3.13 lock (uses py313 override directories)
-ci/ci.sh compile_313_pip_dependencies
 
 # Custom output filename (rare)
 ci/ci.sh compile_pip_dependencies my_custom_lock.txt
@@ -114,7 +112,7 @@ The function `pip install`s `numpy` and `torch` before compilation. **Why:** `pi
 
 ### Source file lists
 
-If you add a brand-new source requirement file under `python/requirements/**`, it will NOT be picked up automatically — you must extend the `pip-compile` source list inside the relevant function in `ci/ci.sh`. This is one of the few legitimate reasons to edit `ci/ci.sh` (see workflow rule 2). Update both `compile_pip_dependencies` and `compile_313_pip_dependencies` if the new file applies to both Python tracks; if py3.13 needs an override, place it under `python/requirements/py313/` or `python/requirements/ml/py313/` and reference the override in `compile_313_pip_dependencies` only.
+If you add a brand-new source requirement file under `python/requirements/**`, it will NOT be picked up automatically — you must extend the `pip-compile` source list inside `compile_pip_dependencies` in `ci/ci.sh`. This is one of the few legitimate reasons to edit `ci/ci.sh` (see workflow rule 2). A single source set feeds every Python version, so if a package needs a different version on a specific Python version, express it with markers in the source file (see *Marker preservation* below) rather than adding a separate file or override directory.
 
 ### Recompile + relock everything
 
@@ -122,7 +120,6 @@ After editing source requirements, the full refresh is:
 
 ```bash
 ci/ci.sh compile_pip_dependencies && \
-ci/ci.sh compile_313_pip_dependencies && \
 bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 ```
 
@@ -312,9 +309,9 @@ Cross-config dependencies are supported — e.g., `ci_data.depsets.yaml` referen
 
 ---
 
-## Marker preservation (pip-compile, py313 / multi-Python locks)
+## Marker preservation (pip-compile, multi-Python locks)
 
-`pip-compile` (pip-tools 7.4.1, the version `ci/ci.sh` uses) **strips `python_version` markers** from output pins UNLESS the source declaration is **an exact-version pin with the marker attached**. This matters because `requirements_compiled_py3.13.txt` is consumed as a constraint at multiple `--python-version` targets via uv.
+`pip-compile` (pip-tools 7.4.1, the version `ci/ci.sh` uses) **strips `python_version` markers** from output pins UNLESS the source declaration is **an exact-version pin with the marker attached**. This matters because the unified `requirements_compiled.txt` is consumed as a constraint at multiple `--python-version` targets via uv.
 
 **What works (markers survive):**
 ```
@@ -339,11 +336,11 @@ Even though only one branch wins at compile time, the winning exact pin survives
 
 **Where to put the pins:**
 - Broad cross-cutting compat → `python/requirements.txt`
-- ML-specific compat → `python/requirements/ml/py313/ml-requirements.txt`
-- Test-stack compat → `python/requirements/py313/test-requirements.txt`
-- Don't pin in `python/requirements/ml/py313/dl-cpu-requirements.txt` for things unrelated to CPU torch.
+- ML-specific compat → `python/requirements/ml/ml-requirements.txt`
+- Test-stack compat → `python/requirements/test-requirements.txt`
+- Don't pin in `python/requirements/ml/dl-cpu-requirements.txt` for things unrelated to CPU torch.
 
-**Classes of cliff to watch for when bumping py313 lock:**
+**Classes of cliff to watch for when bumping the compiled lock:**
 1. Dropped cp310 wheels (most common; detectable via PyPI `Requires-Python` ≥ 3.11).
 2. Transitive upper bounds from py<3.11-only deps (e.g. `tensorflow-metadata==1.17.3` caps `protobuf<=6.32` on py<3.11; not auto-detectable from `Requires-Python`).
 3. Transitive extras that pull new deps in newer versions (e.g. `jsonschema==4.25+` adds `rfc3987-syntax` to its `format-nongpl` extra, which pulls `lark==1.3.1` and clashes with vllm's `lark==1.2.2`).
@@ -390,7 +387,7 @@ bazel test //ci/raydepsets:test_workspace
 
 ### Adding a new dependency to a Ray component
 
-1. Identify the correct source requirements file (e.g., `python/requirements/ml/py313/data-requirements.txt` for Ray Data on py313).
+1. Identify the correct source requirements file (e.g., `python/requirements/ml/data-requirements.txt` for Ray Data).
 2. Add the package with appropriate version bounds (`>=min,<max`). Use the dual-exact-pin-with-markers pattern if the version differs across Python versions.
 3. Recompile monorepo deps: `ci/ci.sh compile_pip_dependencies`.
 4. Rebuild affected lock files: `bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/<relevant>.depsets.yaml`.
