@@ -69,7 +69,10 @@ def load_targets() -> "dict[str, tuple[str, str | None]]":
     heavy import-time side effects (it rewrites sys.path and registers custom
     Sphinx extensions).
     """
-    tree = ast.parse(CONF_PY.read_text(), filename=str(CONF_PY))
+    # Explicit encoding: conf.py contains non-ASCII (em-dashes), and the default
+    # locale encoding decodes it wrong on some Windows locales (silent mojibake
+    # on cp1252, UnicodeDecodeError on cp932/gbk).
+    tree = ast.parse(CONF_PY.read_text(encoding="utf-8"), filename=str(CONF_PY))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == "_intersphinx_targets"
@@ -126,9 +129,18 @@ def refresh(names: "list[str]") -> int:
             failures.append(name)
             continue
         # Atomic write so an interrupted run never leaves a partial snapshot.
+        # A local I/O error (disk full, read-only checkout) is reported the same
+        # way as a download failure so one bad target can't abort the rest, and
+        # the temp file is removed so a failed run leaves no stray .tmp behind.
         tmp = dest.with_name(dest.name + ".tmp")
-        tmp.write_bytes(data)
-        tmp.replace(dest)
+        try:
+            tmp.write_bytes(data)
+            tmp.replace(dest)
+        except OSError as err:
+            tmp.unlink(missing_ok=True)
+            print(f"  FAIL {name}\n       {dest}\n       {err}")
+            failures.append(name)
+            continue
         print(f"  ok   {name:<20} {len(data):>9,d} bytes  <- {url}")
 
     if failures:
