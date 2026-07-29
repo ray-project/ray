@@ -179,11 +179,15 @@ class KVRouterActor:
             client_id=f"{type(self).__name__}:{deployment_id}",
         )
 
-    def _schedule(self, coro) -> None:
-        """Run a coroutine on the actor's event loop, holding a reference until
-        it completes.
+    def _schedule(self, awaitable) -> None:
+        """Run a coroutine or future in the background on the actor's event loop,
+        holding a reference until it completes.
         """
-        task = asyncio.create_task(coro)
+
+        async def _run():
+            await awaitable
+
+        task = asyncio.create_task(_run())
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
