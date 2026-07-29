@@ -93,6 +93,13 @@ doc/source/tune/examples/example.py: ml_doc
 doc/source/rllib/doc_code/example.py: rllib_doc
 doc/source/ray-core/examples/example.ipynb: core_doc
 doc/source/ray-observability/example.py: core_doc
+# The five ray-core notebooks whose targets are tagged team:ml route to ml_doc,
+# because the core step filters targets by team and would not execute them.
+doc/source/ray-core/examples/highly_parallel.ipynb: ml_doc
+doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
+# Claude Code skills and agent files trigger nothing, matching the RtD guard.
+doc/.claude/skills/sphinx-fix/sphinx_fix.py:
+doc/.claude/agents/reviewer.md:
 doc/source/llm/doc_code/example.py: llm
 # Unowned doc dirs and doc-root executables fall to the core docs example step.
 doc/source/cluster/example.py: core_doc

@@ -32,6 +32,11 @@
 # library's docs example step. Config assets that examples consume (.yaml, .sh)
 # are deliberately absent: they can change what a test does, so they keep
 # routing to the owning library below.
+# Claude Code skills and agent files under doc/.claude/ never participate in
+# the Sphinx build and define no test targets, so they trigger nothing. This
+# matches the RtD build guard, which excludes the same path for the same reason
+# (see the `:!doc/.claude/` exclude in .readthedocs.yaml).
+doc/.claude/
 doc/*.md
 doc/*.rst
 doc/*.png
@@ -271,6 +276,22 @@ doc/source/rllib/
 doc/source/train/
 doc/source/tune/
 doc/source/ray-air/
+@ ml_doc
+;
+
+# These five notebooks live under ray-core/ but their targets in
+# doc/BUILD.bazel are tagged `team:ml`, and the team argument to
+# ci/ray_ci:test_in_docker filters targets by `team:<team>`
+# (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
+# them to core_doc would run a step that tests everything under ray-core/
+# except the file that changed. They route to ml_doc, the step that actually
+# owns the targets. Re-tagging the targets `team:core` in doc/BUILD.bazel would
+# be the alternative fix and would let these lines go away.
+doc/source/ray-core/examples/highly_parallel.ipynb
+doc/source/ray-core/examples/plot_hyperparameter.ipynb
+doc/source/ray-core/examples/batch_prediction.ipynb
+doc/source/ray-core/examples/plot_parameter_server.ipynb
+doc/source/ray-core/examples/plot_pong_example.ipynb
 @ ml_doc
 ;
 
