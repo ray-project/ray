@@ -686,7 +686,7 @@ message PlacementGroupTableData {
   map<string, string> topology_assignments = 17;
   // Topology strategy that applies to this PG. Mirrors
   // PlacementGroupSpec.topology_strategy. Empty if the PG does not use
-  // topology-aware scheduling.
+  // a topology strategy.
   map<string, PlacementStrategy> topology_strategy = 18;
 }
 
