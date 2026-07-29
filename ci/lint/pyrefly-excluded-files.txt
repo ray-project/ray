@@ -63,6 +63,7 @@ python/ray/data/_internal/execution/operators/actor_pool_map_operator.py
 python/ray/data/_internal/execution/operators/aggregate_num_rows.py
 python/ray/data/_internal/execution/operators/base_physical_operator.py
 python/ray/data/_internal/execution/operators/hash_aggregate.py
+python/ray/data/_internal/execution/operators/hash_aggregate_v2.py
 python/ray/data/_internal/execution/operators/hash_shuffle.py
 python/ray/data/_internal/execution/operators/input_data_buffer.py
 python/ray/data/_internal/execution/operators/join.py
