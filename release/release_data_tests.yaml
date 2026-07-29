@@ -216,13 +216,87 @@
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
+  # The bin budget is per-variant rather than per-block: only
+  # fixed_size/sort_shuffle/84-groups needed retuning, and the other seven were
+  # measured healthy at 32 MiB, so they stay there rather than move onto an
+  # unmeasured value. ``setup`` is left empty and every combination is
+  # enumerated in ``adjustments`` so each can carry its own budget.
+  #
+  # Baseline for all eight is release build #102329 (32 MiB everywhere) against
+  # master build #102323:
+  #
+  # | variant                          | 32 MiB | master |      delta |
+  # |----------------------------------|--------|--------|------------|
+  # | fixed_size / sort / 84 groups    | 215.7s | 145.0s |     +48.8% |
+  # | autoscaling / sort / 84 groups   | 463.6s | 420.7s |     +10.2% |
+  # | autoscaling / hash / 84 groups   | 208.8s | 201.9s |      +3.4% |
+  # | autoscaling / hash / 7M groups   | 2216.7s| 2208.7s|      +0.4% |
+  # | fixed_size / hash / 84 groups    |  19.3s |  19.8s |      -2.7% |
+  # | fixed_size / hash / 7M groups    | 663.5s | 771.2s |     -14.0% |
+  # | fixed_size / sort / 7M groups    | 550.7s | 651.7s |     -15.5% |
+  # | autoscaling / sort / 7M groups   | 716.6s |1033.8s |     -30.7% |
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      scaling: []
+      shuffle_strategy: []
+      columns: []
+      bin_packing_bytes: []
+    adjustments:
+      # 256 MiB (4x the default): the one variant that needed retuning. It sat
+      # at 211s in #102329 on 32 MiB and 220-259s on smaller budgets, against
+      # master's ~145s; 256 MiB brings it to 137s, at or just under master.
+      #
+      # What's being tuned away is per-block sort-shuffle overhead, not bytes.
+      # At 32 MiB the scan emitted 4x the ``ListFiles`` outputs and ~1.5x the
+      # blocks into the shuffle (Sort Sample 3050 vs master's 2000) for an
+      # identical 20.8GB object-store peak and identical row count. With only
+      # 84 reduce partitions, block count is what dominates -- so this variant
+      # wants the same direction as ``map_groups`` (1.25 GiB on this same
+      # dataset), just less far.
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 268435456
+      # The remaining seven stay at 32 MiB, where they were measured. None is a
+      # tuned optimum -- they are a known-acceptable state, and 256 MiB is
+      # unmeasured for all of them. Worth a sweep given how far it moved the
+      # variant above, but not worth assuming.
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"   # 7M groups
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -231,14 +305,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-        # 32 MiB: half the default, so the scan yields ~2x the read tasks.
-        # Measured on both shuffle strategies. It's the first setting to move
-        # fixed_size/84-groups/sort_shuffle, which had been stuck at 220-259s
-        # against master's 145s under every other budget (default 64 MiB and
-        # the 1.25 GiB that helps ``map_groups`` on this same dataset); 32 MiB
-        # brings it to 192s. Aggregation wants more, smaller read tasks here --
-        # the opposite of ``map_groups``, despite the identical scan.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=33554432
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1779,6 +1846,17 @@
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
         - RAYTEST_FAIL_ON_SPILLING=1
+        # 1 GiB: 16x the default, so the scan yields far fewer, larger read
+        # tasks. ``map_batches`` wants this direction -- same as ``map_groups``
+        # at 1.25 GiB, and the opposite of ``aggregate_groups`` at 32 MiB.
+        #
+        # This test read via V1 until the ``use_datasource_v2 = False`` pin came
+        # out of ``map_benchmark.py``. On V2 at the 64 MiB default it doubled
+        # object-store peak (310GB on V1 -> 616GB on V2, release build #101536
+        # vs #102329) and ran 725s against 304s on V1. The larger budget cuts
+        # the block count to bring that peak back down; ``RAYTEST_FAIL_ON_
+        # SPILLING=1`` above will fail the test if it moves the wrong way.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
