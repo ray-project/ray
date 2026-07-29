@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from traceback import format_exception
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import colorama
 
@@ -100,6 +100,49 @@ class TaskCancelledError(RayError):
         if self.error_message:
             msg += self.error_message
         return msg
+
+
+# Path fragments (POSIX "/") identifying traceback ``File ...`` frames that
+# belong to Ray-internal machinery -- noise in a user-facing traceback. Ray
+# Core frames are always hidden; callers can hide additional library-internal
+# frames by passing their own markers (Ray Data passes the DATA markers below).
+_RAY_CORE_INTERNAL_FRAME_MARKERS = (
+    "ray/worker.py",
+    "ray/_private/",
+    "ray/util/tracing/",
+    "ray/_raylet.pyx",
+)
+
+# Ray Data execution-layer frames (scheduler/executor/planner), hidden on top
+# of the core set when a traceback's root cause is user code (a Ray Data UDF).
+_RAY_DATA_INTERNAL_FRAME_MARKERS = ("ray/data/_internal/",)
+
+
+def _is_hidden_internal_frame(line: str, extra_markers: Sequence[str] = ()) -> bool:
+    """Return True if ``line`` is a traceback ``  File ...`` header for a frame
+    that belongs to Ray-internal machinery and should be stripped from a
+    user-facing traceback.
+
+    Library-agnostic: Ray Core frames (``_RAY_CORE_INTERNAL_FRAME_MARKERS``) are
+    always matched. ``extra_markers`` lets a caller additionally hide its own
+    internal frames on top of the core set (Ray Data passes
+    ``_RAY_DATA_INTERNAL_FRAME_MARKERS`` when the root cause is a UDF).
+    """
+    # TODO(windows): markers use POSIX "/" separators; Windows tracebacks render
+    # paths with "\", so these substrings won't match and internal frames won't
+    # be stripped there.
+    if not line.startswith("  File "):
+        return False
+    return any(
+        marker in line for marker in (*_RAY_CORE_INTERNAL_FRAME_MARKERS, *extra_markers)
+    )
+
+
+def _is_caret_line(line: str) -> bool:
+    """Return True if ``line`` is a caret annotation such as ``    ^^^^`` that
+    Python prints beneath a frame to point at the offending sub-expression."""
+    stripped = line.strip()
+    return bool(stripped) and all(c in "^~" for c in stripped)
 
 
 @PublicAPI
@@ -282,18 +325,26 @@ class RayTaskError(RayError):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
-        code_from_internal_file = False
+        # Per-call mode: when the root cause is user code (e.g. a Ray Data UDF),
+        # also hide Ray Data's internal execution frames (scheduler/executor/
+        # planner) so the user's own traceback isn't buried under Ray Data
+        # machinery. Ray Core internal frames are hidden regardless.
+        hide_data_frames = isinstance(self.cause, UserCodeException)
+        # State: True while we're inside a hidden internal frame and should drop
+        # the indented continuation lines that follow its ``File ...`` header.
+        in_hidden_frame = False
 
-        # Format tracebacks.
-        # Python stacktrace consists of
-        # Traceback...: Indicate the next line will be a traceback.
-        #   File [file_name + line number]
-        #     code
-        # XError: [message]
-        # NOTE: For _raylet.pyx (Cython), the code is not always included.
-        for i, line in enumerate(lines):
-            # Convert traceback to the readable information.
+        # A Python traceback is a repeating block of:
+        #   Traceback ...            <- header
+        #     File "<path>", line N  <- frame header (2-space indent)
+        #       <source code>        <- continuation (4-space indent)
+        #       ^^^^^                <- optional caret annotation (4-space indent)
+        #   XError: <message>        <- final cause
+        # We drop the frames that belong to Ray internals and keep the rest.
+        # NOTE: For _raylet.pyx (Cython), the source-code line may be absent.
+        for line in lines:
             if line.startswith("Traceback "):
+                in_hidden_frame = False
                 traceback_line = (
                     f"{colorama.Fore.CYAN}"
                     f"{self.proctitle}()"
@@ -306,40 +357,39 @@ class RayTaskError(RayError):
                     )
                 else:
                     traceback_line += ")"
-                code_from_internal_file = False
                 out.append(traceback_line)
-            elif line.startswith("  File ") and (
-                "ray/worker.py" in line
-                or "ray/_private/" in line
-                or "ray/util/tracing/" in line
-                or "ray/_raylet.pyx" in line
+            elif _is_hidden_internal_frame(
+                line,
+                _RAY_DATA_INTERNAL_FRAME_MARKERS if hide_data_frames else (),
             ):
-                # TODO(windows)
-                # Process the internal file line.
-                # The file line always starts with 2 space and File.
-                # https://github.com/python/cpython/blob/0a0a135bae2692d069b18d2d590397fbe0a0d39a/Lib/traceback.py#L421 # noqa
+                # Drop this frame's ``File ...`` header and mark its continuation
+                # lines for removal.
+                in_hidden_frame = True
                 if "ray._raylet.raise_if_dependency_failed" in line:
-                    # It means the current task is failed
-                    # due to the dependency failure.
-                    # Print out an user-friendly
-                    # message to explain that..
+                    # A dependency (input argument) failed; show a user friendly
+                    # note in place of the internal frame.
                     out.append(
                         "  At least one of the input arguments for "
                         "this task could not be computed:"
                     )
-                if i + 1 < len(lines) and lines[i + 1].startswith("    "):
-                    # If the next line is indented with 2 space,
-                    # that means it contains internal code information.
-                    # For example,
-                    #   File [file_name] [line]
-                    #     [code] # if the next line is indented, it is code.
-                    # Note there there are 4 spaces in the code line.
-                    code_from_internal_file = True
-            elif code_from_internal_file:
-                # If the current line is internal file's code,
-                # the next line is not code anymore.
-                code_from_internal_file = False
+            elif in_hidden_frame and line.startswith("    "):
+                # A continuation line (source code or caret) of a hidden frame.
+                if not hide_data_frames:
+                    # Ray Core-only: drop the source line, keep any caret.
+                    in_hidden_frame = False
+            elif (
+                hide_data_frames
+                and _is_caret_line(line)
+                and not (out and out[-1].startswith("    "))
+            ):
+                # An orphaned caret line: its source-code line was a hidden
+                # internal frame or is absent (the raw traceback can place a
+                # stray "^^^^" right after the header), so there's nothing left
+                # for it to point at. Carets still sitting under a kept code line
+                # (the user's own frames) are preserved by the guard above.
+                pass
             else:
+                in_hidden_frame = False
                 out.append(line)
         return "\n".join(out)
 

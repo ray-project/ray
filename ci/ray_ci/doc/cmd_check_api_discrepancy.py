@@ -183,63 +183,43 @@ TEAM_API_CONFIGS = {
     "rllib": {
         "head_modules": {"ray.rllib"},
         "head_doc_file": "doc/source/rllib/package_ref/index.rst",
-        "white_list_apis": set(),
-        # RLlib carries the largest un-triaged surface. These are parked as
-        # tracked debt to green the now-honest check; each still wants a real
-        # resolution from the RLlib team (fix the doc entry, deprecate, or
-        # de-annotate). Grouped by failure mode.
-        "tracked_doc_debt": {
-            # Documented autosummary entries that don't resolve to a live object:
-            # instance attributes with no class-level object, and malformed
-            # entries whose module path is doubled (a full-path name written
-            # under a matching .. currentmodule::). Fix the source pages (or the
-            # check's name handling), then drop these.
-            "ray.rllib.core.rl_module.rl_module.RLModuleSpec.module_class",
-            "ray.rllib.core.rl_module.rl_module.RLModuleSpec.observation_space",
-            "ray.rllib.core.rl_module.rl_module.RLModuleSpec.action_space",
-            "ray.rllib.core.rl_module.rl_module.RLModuleSpec.model_config",
+        # Private-by-name methods RLlib intentionally documents as a public
+        # override / customization contract. The RLModule._forward* hooks that
+        # were whitelisted here are now exempted generically by their
+        # @OverrideToImplementCustomLogic marker (see API._is_override_hook in
+        # api.py), so only the Learner / offline hooks that lack that marker
+        # still need an explicit entry.
+        "white_list_apis": {
+            "ray.rllib.core.learner.learner.Learner._make_module",
+            # OfflinePreLearner / OfflineData methods documented as the
+            # offline-RL customization surface in rllib-offline.rst (which has a
+            # worked example of overriding _map_to_episodes).
+            "ray.rllib.offline.offline_data.OfflineData.__init__",
+            "ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__",
+            "ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes",
+        },
+        # RLModule instance attributes (observation_space, action_space,
+        # inference_only, model_config) are assigned in setup(), not declared on
+        # the class, so the checker's import-walk resolves them to None and
+        # treats them as unresolved. They are legitimately documented via
+        # autosummary, so exempt them from the doc-resolves-to-code check only.
+        "doc_only_whitelist": {
             "ray.rllib.core.rl_module.rl_module.RLModule.observation_space",
             "ray.rllib.core.rl_module.rl_module.RLModule.action_space",
             "ray.rllib.core.rl_module.rl_module.RLModule.inference_only",
             "ray.rllib.core.rl_module.rl_module.RLModule.model_config",
-            "ray.rllib.env.external.rllink.ray.rllib.env.external.rllink.RLlink",
-            "ray.rllib.core.rl_module.apis.ray.rllib.core.rl_module.apis.inference_only_api.InferenceOnlyAPI",
-            "ray.rllib.core.rl_module.apis.ray.rllib.core.rl_module.apis.q_net_api.QNetAPI",
-            "ray.rllib.core.rl_module.apis.ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI",
-            "ray.rllib.core.rl_module.apis.ray.rllib.core.rl_module.apis.target_network_api.TargetNetworkAPI",
-            "ray.rllib.core.rl_module.apis.ray.rllib.core.rl_module.apis.value_function_api.ValueFunctionAPI",
-            "ray.rllib.connectors.connector_v2.ray.rllib.connectors.connector_v2.ConnectorV2",
-            "ray.rllib.connectors.connector_v2.ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2",
-            "ray.rllib.connectors.env_to_module.observation_preprocessor.ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor",
-            "ray.rllib.connectors.env_to_module.observation_preprocessor.ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor",
-            # Documented private / dunder members flagged non-public. Document
-            # the public surface instead, then drop these. The documented
-            # override hooks that used to sit here (RLModule._forward*) are now
-            # exempted by their @OverrideToImplementCustomLogic marker in
-            # API.split_resolvable_and_broken_doc_apis, so they need no entry.
-            "ray.rllib.core.learner.learner.Learner._check_is_built",
-            "ray.rllib.core.learner.learner.Learner._make_module",
-            "ray.rllib.core.learner.learner.Learner._check_registered_optimizer",
-            "ray.rllib.core.learner.learner.Learner._set_optimizer_lr",
-            "ray.rllib.core.learner.learner.Learner._get_clip_function",
-            "ray.rllib.utils.schedules.scheduler.Scheduler._create_tensor_variable",
-            "ray.rllib.offline.offline_data.OfflineData.__init__",
-            "ray.rllib.offline.offline_prelearner.OfflinePreLearner.__init__",
-            "ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__",
-            "ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes",
-            "ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_sample_batch_to_episode",
-            "ray.rllib.offline.offline_prelearner.OfflinePreLearner._should_module_be_updated",
-            "ray.rllib.env.multi_agent_episode.MultiAgentEpisode.__len__",
-            "ray.rllib.env.single_agent_episode.SingleAgentEpisode.__len__",
         },
-        # Documented in more than one place (a hand-written topic page plus the
-        # generated class stub).
+        # Canonical names intentionally documented in more than one place:
+        # build_learner / build_learner_group / learners appear on both the
+        # AlgorithmConfig page (algorithm-config.rst) and the learner/offline
+        # pages; save_to_path / restore_from_path are inherited from
+        # Checkpointable and shown on each Checkpointable subclass's API page.
         "intentional_duplicate_apis": {
             "ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_learner",
             "ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_learner_group",
             "ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners",
-            "ray.rllib.utils.checkpoints.Checkpointable.restore_from_path",
             "ray.rllib.utils.checkpoints.Checkpointable.save_to_path",
+            "ray.rllib.utils.checkpoints.Checkpointable.restore_from_path",
         },
     },
 }

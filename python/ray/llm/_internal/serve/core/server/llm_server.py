@@ -566,8 +566,8 @@ class LLMServer(LLMServerProtocol):
         """Serve request-router hook, polled by the controller.
 
         Surfaces this replica's routing stats (the engine's KV-events endpoint
-        for KV-aware routing); the deployment's ``KVRouterActor`` reads them off
-        the ``LongPoll`` replica snapshot to register the worker.
+        for KV-aware routing); the LLMRouter's own ``KVTokenTracker``
+        reads them off the ``LongPoll`` replica snapshot to register the worker.
         """
         if self.engine is None:
             return {}
