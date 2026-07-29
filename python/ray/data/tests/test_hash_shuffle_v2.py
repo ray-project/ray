@@ -233,6 +233,23 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("ctx_value", [64 * 1024 * 1024, 0])
+def test_map_task_target_input_bytes_from_context(ctx_value):
+    ctx = DataContext.get_current()
+    original = ctx.hash_shuffle_map_task_target_input_bytes
+    ctx.hash_shuffle_map_task_target_input_bytes = ctx_value
+    try:
+        op = ShuffleMapOp(
+            InputDataBuffer(ctx, []),
+            ctx,
+            num_partitions=2,
+            partition_fn=lambda table: {},
+        )
+        assert op._map_task_target_input_bytes == ctx_value
+    finally:
+        ctx.hash_shuffle_map_task_target_input_bytes = original
+
+
 def test_shuffle_map_task_uses_operator_name():
     ctx = DataContext.get_current()
     name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
@@ -241,7 +258,6 @@ def test_shuffle_map_task_uses_operator_name():
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
-        pre_map_merge_threshold=0,
         name=name,
     )
     op.start(ExecutionOptions(), noop_counter())
