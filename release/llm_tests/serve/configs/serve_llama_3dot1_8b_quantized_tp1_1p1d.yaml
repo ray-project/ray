@@ -1,0 +1,17 @@
+applications:
+  - args:
+      prefill_config: &config
+        model_loading_config:
+          model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+        accelerator_type: A10G
+        engine_kwargs:
+          max_model_len: 8192
+          tensor_parallel_size: 1
+          enforce_eager: false
+          kv_transfer_config:
+            kv_connector: NixlConnector
+            kv_role: kv_both
+      decode_config: *config
+    import_path: ray.serve.llm:build_pd_openai_app
+    name: llm-endpoint
+    route_prefix: /

@@ -1,0 +1,48 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+/// The runtime env information which is transferred between ray core processes.
+// ExportRuntimeEnvInfo is used in the event_data stored by the export API
+// for various events. This schema is public and any changes must
+// be backward compatible.
+message ExportRuntimeEnvInfo {
+  message RuntimeEnvUris {
+    /// working dir uri
+    string working_dir_uri = 1;
+    /// python modules uris
+    repeated string py_modules_uris = 2;
+  }
+
+  /// The runtime env config, include some fields that do not
+  /// participate in the calculation of the runtime_env hash.
+  message RuntimeEnvConfig {
+    /// The timeout of runtime env creation.
+    int32 setup_timeout_seconds = 1;
+    /// Indicates whether to install runtime env eagerly before the workers are leased.
+    bool eager_install = 2;
+    /// A list of files to stream the runtime env setup logs to.
+    repeated string log_files = 3;
+  }
+
+  /// The serialized runtime env passed from the user.
+  string serialized_runtime_env = 1;
+  /// URIs used in this runtime env. These will be used for reference counting.
+  RuntimeEnvUris uris = 2;
+  /// The serialized runtime env config passed from the user.
+  RuntimeEnvConfig runtime_env_config = 3;
+}

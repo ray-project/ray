@@ -1,0 +1,30 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
+
+head_node:
+    # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
+    instance_type: m5.2xlarge
+    resources:
+      CPU: 0
+      proxy: 1
+
+worker_nodes:
+    # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
+    - instance_type: m5.2xlarge
+      # smaller min workers will make the head node cpu usage very high, and crash the head node.
+      # issue: https://github.com/ray-project/ray/issues/18908
+      min_nodes: 5
+      # 4096 max replicas
+      max_nodes: 220
+      market_type: ON_DEMAND
+      # New SDK's `resources` is a full override, so include `CPU: 8`
+      # explicitly alongside the custom `proxy` resource.
+      resources:
+        CPU: 8
+        proxy: 1

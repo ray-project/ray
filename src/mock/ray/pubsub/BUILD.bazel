@@ -1,0 +1,9 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "mock_publisher",
+    hdrs = ["publisher.h"],
+    deps = [
+        "//src/ray/pubsub:publisher_interface",
+    ],
+)

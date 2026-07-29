@@ -1,0 +1,125 @@
+import pickle
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
+
+import ray
+from ray.data.block import Block, BlockAccessor, CallableClass
+
+if TYPE_CHECKING:
+    from ray._raylet import StreamingGeneratorStats
+    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data.block import BlockMetadataWithSchema
+
+
+def merge_label_selector(
+    ray_remote_args: Dict[str, Any],
+    ctx_label_selector: Optional[Dict[str, str]],
+) -> Dict[str, Any]:
+    """Merge a DataContext-level label_selector into ``ray_remote_args``.
+
+    Operator-level keys (already in ``ray_remote_args["label_selector"]``) win on
+    conflict so existing node-pin selectors are preserved. Returns a new dict;
+    the input is not mutated. If ``ctx_label_selector`` is falsy, returns the
+    input unchanged.
+    """
+    if not ctx_label_selector:
+        return ray_remote_args
+    op_selector = ray_remote_args.get("label_selector") or {}
+    merged = {**ctx_label_selector, **op_selector}
+    out = dict(ray_remote_args)
+    out["label_selector"] = merged
+    return out
+
+
+def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
+    """Create ref bundles from a list of block data.
+
+    One bundle is created for each input block.
+    """
+    import pandas as pd
+    import pyarrow as pa
+
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+
+    output = []
+    for block in simple_data:
+        block = pd.DataFrame({"id": block})
+        output.append(
+            RefBundle(
+                [
+                    BlockEntry(
+                        ray.put(block),
+                        BlockAccessor.for_block(block).get_metadata(),
+                    )
+                ],
+                owns_blocks=True,
+                schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
+            )
+        )
+    return output
+
+
+memory_units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
+
+
+def memory_string(num_bytes: float) -> str:
+    """Return a human-readable memory string for the given amount of bytes."""
+    k = 0
+    while num_bytes >= 1024 and k < len(memory_units) - 1:
+        num_bytes /= 1024
+        k += 1
+    return f"{num_bytes:.1f}{memory_units[k]}"
+
+
+def locality_string(locality_hits: int, locality_misses) -> str:
+    """Return a human-readable string for object locality stats."""
+    if not locality_misses:
+        return "[all objects local]"
+    return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
+
+
+def yield_block_with_stats(
+    block: Block,
+    build_metadata: "Callable[[Optional[float]], BlockMetadataWithSchema]",
+) -> Generator[Union[Block, bytes], "StreamingGeneratorStats", None]:
+    """Yield a block then its pickled metadata, per the streaming-gen protocol.
+
+    Args:
+        block: The block to emit.
+        build_metadata: Given the block serialization time in seconds (or ``None``
+            if Ray didn't report it), returns the block's metadata to pickle.
+
+    Yields:
+        Union[Block, bytes]: The block, followed by its pickled
+        ``BlockMetadataWithSchema``.
+    """
+    gen_stats: "StreamingGeneratorStats" = yield block
+    block_ser_time_s = gen_stats.object_creation_dur_s if gen_stats else None
+    yield pickle.dumps(build_metadata(block_ser_time_s))
+
+
+def make_callable_class_single_threaded(callable_cls: CallableClass) -> CallableClass:
+    """Returns a thread-safe CallableClass with the same logic as the provided
+    `callable_cls`.
+
+    This function allows the usage of concurrent actors by safeguarding user logic
+    behind a separate thread.
+
+    This allows batch slicing and formatting to occur concurrently, to overlap with the
+    user provided UDF.
+    """
+
+    class _SingleThreadedWrapper(callable_cls):
+        def __init__(self, *args, **kwargs):
+            self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
+            super().__init__(*args, **kwargs)
+
+        def __repr__(self):
+            return super().__repr__()
+
+        def __call__(self, *args, **kwargs):
+            # ThreadPoolExecutor will reuse the same thread for every submit call.
+            future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
+            return future.result()
+
+    return _SingleThreadedWrapper

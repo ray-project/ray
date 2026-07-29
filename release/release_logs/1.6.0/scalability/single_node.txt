@@ -1,0 +1,23 @@
+Finished many args
+Finished many returns
+Putting test objects:
+Getting objects
+Asserting correctness
+Done with dese
+Putting test objects:
+Getting objects
+Asserting correctness
+Done with zero copy
+Finished ray.get on many objects
+Submitting many tasks
+Unblocking tasks
+Finished queueing many tasks
+Generating object
+Putting object
+Getting object
+Done
+Many args time: 13.604580292000009 (10000 args)
+Many returns time: 5.815769784000025 (3000 returns)
+Ray.get time: 26.803473274999988 (10000 args)
+Queued task time: 153.99888931100003 (1000000 tasks)
+Ray.get large object time: 261.104296373 (107374182400 bytes)

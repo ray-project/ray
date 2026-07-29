@@ -1,0 +1,68 @@
+// Copyright 2022 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package ray.rpc.syncer;
+
+enum MessageType {
+  RESOURCE_VIEW = 0;
+  COMMANDS = 1;
+}
+
+message CommandsSyncMessage {
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 1;
+}
+
+message ResourceViewSyncMessage {
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 1;
+  // Total resource capacity configured for this node manager.
+  map<string, double> resources_total = 2;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 3;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will be 0.
+  int64 idle_duration_ms = 4;
+  // Whether the node is being drained.
+  bool is_draining = 5;
+  // Timestamp when the node to be drained will be force killed.
+  int64 draining_deadline_timestamp_ms = 6;
+  // Why the node is not idle.
+  repeated string node_activity = 7;
+  // The key-value labels of this node.
+  map<string, string> labels = 8;
+}
+
+message RaySyncMessage {
+  // The version of the message. -1 means the version is not set.
+  int64 version = 1;
+  // The type of this message.
+  MessageType message_type = 2;
+  // The actual payload.
+  bytes sync_message = 3;
+  // The node id which initially sent this message.
+  bytes node_id = 4;
+}
+
+message RaySyncMessageBatch {
+  // Batch of RaySyncMessages.
+  repeated RaySyncMessage messages = 1;
+}
+
+service RaySyncer {
+  rpc StartSync(stream RaySyncMessageBatch) returns (stream RaySyncMessageBatch);
+}

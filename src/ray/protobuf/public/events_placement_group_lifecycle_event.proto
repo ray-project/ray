@@ -1,0 +1,80 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "google/protobuf/timestamp.proto";
+
+message PlacementGroupLifecycleEvent {
+  // Node placement of a placement group bundle.
+  message BundlePlacement {
+    // Zero-based bundle index within this placement group.
+    int32 bundle_index = 1;
+    // Node ID where this bundle is placed.
+    bytes node_id = 2;
+  }
+
+  // State of the placement group itself.
+  enum State {
+    // Placement group is pending creation or scheduling.
+    PENDING = 0;
+    // Placement group resources are prepared on selected nodes.
+    PREPARED = 1;
+    // Placement group is fully created.
+    CREATED = 2;
+    // Placement group is removed.
+    REMOVED = 3;
+    // Placement group is being rescheduled (for example, after node failure).
+    RESCHEDULING = 4;
+  }
+
+  // Scheduler-level state associated with a placement group transition.
+  enum SchedulingState {
+    // Queued for scheduling.
+    QUEUED = 0;
+    // Scheduling canceled because the placement group was removed.
+    SCHEDULING_REMOVED = 1;
+    // Scheduling has started for the current attempt.
+    SCHEDULING_STARTED = 2;
+    // Scheduling failed because no node has sufficient resources.
+    NO_RESOURCES = 3;
+    // Scheduling failed because resource requests are infeasible.
+    INFEASIBLE = 4;
+    // Scheduling failed while committing resources (e.g., node failures).
+    FAILED_TO_COMMIT_RESOURCES = 5;
+    // Scheduling finished successfully.
+    FINISHED = 6;
+  }
+
+  // Snapshot of lifecycle state and scheduler stats at emission time.
+  message StateTransition {
+    // Placement group lifecycle state for this transition.
+    State state = 1;
+    // Timestamp when this transition event is emitted.
+    google.protobuf.Timestamp timestamp = 2;
+    // Scheduler state observed at this transition.
+    SchedulingState scheduling_state = 3;
+    // Scheduling attempt counter during this transition.
+    uint32 scheduling_attempt = 4;
+    // Maximum retry backoff delay observed so far, in milliseconds.
+    double highest_retry_delay_ms = 5;
+    // Bundle placements associated with this lifecycle transition. only populated for PREPARED states.
+    repeated BundlePlacement bundle_placements = 6;
+  }
+
+  bytes placement_group_id = 1;
+  repeated StateTransition state_transitions = 2;
+}

@@ -1,0 +1,11 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+head_node:
+  instance_type: n2-standard-4 # m5.xlarge
+
+worker_nodes:
+  - instance_type: n2-standard-4 # m5.xlarge
+    min_nodes: 4
+    max_nodes: 4
+    market_type: ON_DEMAND

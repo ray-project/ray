@@ -1,0 +1,12 @@
+diff --git include/msgpack/v1/adaptor/fixint.hpp include/msgpack/v1/adaptor/fixint.hpp
+--- include/msgpack/v1/adaptor/fixint.hpp
++++ include/msgpack/v1/adaptor/fixint.hpp
+@@ -24,7 +24,7 @@ template <typename T>
+ struct fix_int {
+     typedef T value_type;
+     fix_int() : value(0) { }
+-    fix_int(T value) : value(value) { }
++    fix_int(T _value) : value(_value) { }
+ 
+     operator T() const { return value; }
+ 

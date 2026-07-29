@@ -1,0 +1,16 @@
+# NOTE:
+# - This test runs with py38 (see the entry in release_tests.yaml)
+# - This test installs dependencies on top of a base ray image
+#   instead of using the default ray-ml image. See dreambooth/requirements.txt.
+base_image: "anyscale/ray:nightly-py38-cu118"
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

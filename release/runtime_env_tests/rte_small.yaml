@@ -1,0 +1,13 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.xlarge
+    # Test's wait_for_nodes is 4 (head + 3 workers); head must be a usable node.
+    resources:
+      CPU: 4
+
+worker_nodes:
+    - instance_type: m5.xlarge
+      min_nodes: 3
+      max_nodes: 3
+      market_type: ON_DEMAND

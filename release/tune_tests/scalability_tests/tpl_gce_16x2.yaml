@@ -1,0 +1,14 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: n2d-standard-2
+    resources:
+      CPU: 2
+
+worker_nodes:
+    - instance_type: n2d-standard-2
+      min_nodes: 15
+      max_nodes: 15
+      market_type: ON_DEMAND
