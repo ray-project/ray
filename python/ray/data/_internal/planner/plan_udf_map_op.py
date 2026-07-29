@@ -602,7 +602,7 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
                         self._cur_output_iter = res
                 except ValueError as e:
                     read_only_msgs = [
-                        "assignment destination is read-only",
+                        "assignment destination  is read-only",
                         "buffer source array is read-only",
                     ]
                     err_msg = str(e)
