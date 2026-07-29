@@ -42,22 +42,22 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
-- name: "read_large_parquet_{{scaling}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because they want opposite bin budgets, and a matrix would take the cartesian
+# product. Files here are ~3.9 GiB uncompressed with ~69 MiB row groups, so the
+# default budget can't fit two row groups and every one becomes its own read
+# task (~5.8k tasks for 103 files). On a fixed cluster that task explosion
+# dominates and a larger budget wins; on an autoscaling cluster the extra tasks
+# give the autoscaler demand to act on earlier and the default wins.
+- name: "read_large_parquet_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        # Files here are ~3.9 GiB uncompressed with ~69 MiB row groups. The
-        # default bin budget can't fit two row groups, so every one becomes its
-        # own read task (~5.8k tasks for 103 files). 4 GiB packs a file per bin,
-        # matching the whole-file granularity the V1 partitioner produced.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=4294967296
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+        # 1 GiB packs ~14 row groups per bin, cutting the task count ~14x.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: "fixed_size_cpu_compute.yaml"
 
   run:
     timeout: 3600
@@ -66,6 +66,21 @@
     # heap memory, we need to manually specify the memory to prevent OOMs.
     #
     # 3650722201 is ~3.4 GiB, the maximum heap memory observed in our tests.
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles --memory 3650722201
+
+- name: "read_large_parquet_autoscaling"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    # Default budget: -25% vs master here, against +2% at 4 GiB.
+    cluster_compute: "autoscaling_cpu_compute.yaml"
+
+  run:
+    timeout: 3600
+    # See the fixed_size variant for why --memory is pinned.
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
@@ -124,7 +139,8 @@
       runtime_env:
         # sf1000 lineitem is read with its full 17-column schema: ~1.16 GiB
         # uncompressed per file over 1000 files. 1.25 GiB packs ~one file per
-        # bin (~943 read tasks vs ~1000 blocks under V1); the default budget
+        # bin (~943 read tasks vs the ~1000 blocks master's round-robin
+        # partitioner produced); the default budget
         # would produce ~18k tasks.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
   run:
@@ -215,12 +231,14 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-        # ``groupby_benchmark`` reads sf100 lineitem with its full 17-column
-        # schema: ~1.17 GiB uncompressed per file over 100 files. 1.25 GiB packs
-        # ~one file per bin (~95 read tasks), matching the whole-file
-        # granularity of the V1 partitioner. The default budget yields ~2500
-        # read tasks, which starves the downstream shuffle.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
+        # 32 MiB: half the default, so the scan yields ~2x the read tasks.
+        # Measured on both shuffle strategies. It's the first setting to move
+        # fixed_size/84-groups/sort_shuffle, which had been stuck at 220-259s
+        # against master's 145s under every other budget (default 64 MiB and
+        # the 1.25 GiB that helps ``map_groups`` on this same dataset); 32 MiB
+        # brings it to 192s. Aggregation wants more, smaller read tasks here --
+        # the opposite of ``map_groups``, despite the identical scan.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=33554432
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -294,7 +312,7 @@
         - RAYTEST_FAIL_ON_SPILLING=0
         # Both sides are read with their full schema: ~1.17 GiB uncompressed
         # per lineitem file. 1.25 GiB packs ~one file per bin (~95 read tasks
-        # vs 100 blocks under V1).
+        # vs the 100 blocks master's round-robin partitioner produced).
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
@@ -318,7 +336,18 @@
 # Wide Schema tests
 ###############
 
-- name: wide_schema_pipeline_{{data_type}}
+# NOTE: `primitives` and `tensors` are spelled out rather than folded into the
+# matrix below because each wants its own bin budget, and a matrix takes the
+# cartesian product of its lists (see the read_large_parquet NOTE above). Their
+# names match the matrix-generated ones exactly so baseline history is unbroken.
+#
+# The bin budget is compared against row-group `total_byte_size` -- data-page
+# bytes only, post-encoding. For these 5000-column datasets that is a poor proxy
+# for the work a read task does: `primitives` files are 21.4 MiB on S3 but
+# report only 0.45 MiB, because dictionary + RLE collapses the repeated 500-char
+# values and the real weight is dictionary pages plus a 5000-column footer
+# carrying per-chunk min/max statistics.
+- name: wide_schema_pipeline_primitives
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -331,13 +360,46 @@
         - RAYTEST_FAIL_ON_SPILLING=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
-        # No bin budget override here. These datasets are 10-40 MB in total
-        # across 9-27 single-row-group files, so every budget from 64 MiB up
-        # packs them into a single bin -- except `tensors`, whose 37.25 MiB row
-        # groups already exceed the 64 MiB default's two-per-bin threshold and
-        # so land one per bin on their own. Splitting `primitives` (0.45 MiB
-        # per file), `nested_structs` (1.3 MiB) and `objects` (4.2 MiB) needs a
-        # minimum-block-count floor, not a byte budget.
+        # 27 single-row-group files reporting 0.45 MiB each: at the 64 MiB
+        # default all 27 land in one shared bin, so the whole 579 MiB dataset
+        # reads as a single task. 256 KiB is below one row group, so each gets
+        # its own bin (indivisible-oversize relaxation in OnlineBinPacker._place)
+        # -> 27 tasks, the ceiling while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=262144
+        #
+        # 27 actors x batch size 1 == one footer read per actor, so all 27
+        # footers are read in a single concurrent wave. Worth the extra actor
+        # startup here because these footers are unusually expensive: 5000
+        # column chunks each carrying 500-char min/max statistics.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=27
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type primitives
+
+- name: wide_schema_pipeline_tensors
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 39 MiB sits just above these 37.25 MiB row groups, so one fills a bin
+        # and the next cannot join it -- one row group per read task, same
+        # placement the 64 MiB default already produced via its two-per-bin
+        # threshold, but pinned so it survives a change to the default.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=40894464
         #
         # These datasets are small enough that the footer-reader pool is pure
         # startup cost; keep it narrow and spread the few files across it.
@@ -346,15 +408,80 @@
         - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
     cluster_compute: fixed_size_cpu_compute.yaml
 
-  matrix:
-    setup:
-      data_type: [primitives, tensors, objects, nested_structs]
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type tensors
+
+- name: wide_schema_pipeline_nested_structs
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 21 single-row-group files reporting 1.30 MiB each: at the 64 MiB
+        # default all 21 land in one shared bin and the dataset reads as a
+        # single task. 2 MiB is the widest budget that still keeps one file per
+        # bin -- two would need 2.6 MiB -- so this is 21 tasks, the ceiling
+        # while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=2097152
+        #
+        # 21 actors x batch size 1 == one footer read per actor, so all 21
+        # footers are read in a single concurrent wave -- same shape as
+        # `primitives`. Worth the extra actor startup here because these
+        # footers are unusually expensive: 15000 column chunks each carrying
+        # min/max statistics.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=21
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 300
     script: >
       python wide_schema_pipeline_benchmark.py
-      --data-type {{data_type}}
+      --data-type nested_structs
+
+- name: wide_schema_pipeline_objects
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 9 single-row-group files of 4.23 MiB: at the 64 MiB default all 9 land
+        # in one shared bin and the dataset reads as a single task. 4.20 MiB sits
+        # just under one row group, so each is oversized and gets its own bin;
+        # the smallest possible pair (2 x 2.71 MiB) also exceeds it, so no two
+        # files ever share -> 9 tasks, the ceiling while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=4404020
+        #
+        # 9 actors x batch size 1 == one footer read per actor, so all 9 footers
+        # are read in a single concurrent wave -- same shape as the other three.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=9
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type objects
 
 #######################
 # Streaming split tests
@@ -374,8 +501,9 @@
         # streamed result cuts that to ~149 fetches.
         - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50
         - RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50
-        # imagenet does not compress (uncompressed/on-disk = 1.00), so the V1
-        # partitioner's 5x encoding estimate over-counted by 5x and it landed on
+        # imagenet does not compress (uncompressed/on-disk = 1.00), so master's
+        # round-robin partitioner over-counted by 5x -- it sizes on-disk bytes
+        # through a fixed 5x encoding estimate -- and it landed on
         # ~4 files (~31 MB) per block. Matching that granularity was tried at
         # 36 MiB and made things worse -- it doubles the block count, and block
         # generation is ~4 ms per manifest block. Left at the default.
@@ -415,11 +543,12 @@
       runtime_env:
         # No bin budget override: at the default this dataset (513 single-row-
         # group files of ~88 MB) already packs ~one file per bin, matching the
-        # granularity the V1 partitioner produced.
+        # granularity master's round-robin partitioner produced.
         #
         # This benchmark opens 8 datasets over the same path, so the footer
-        # path costs 8 x 513 footer reads and 8 x 32 reader actors -- work V1
-        # never did, and enough to dominate the ~40s `random_mix` variants.
+        # path costs 8 x 513 footer reads and 8 x 32 reader actors -- work
+        # master never did, and enough to dominate the ~40s `random_mix`
+        # variants.
         # Narrow the pool; the per-actor IO concurrency still covers 513 files.
         - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
@@ -711,6 +840,16 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # sf1000 lineitem, full 17-column schema: 1000 files x 49 row groups of
+        # 24.36 MiB uncompressed = 1.16 GiB per file, and the distribution is
+        # flat (p0 24.35 MiB, p100 24.78 MiB). 1 GiB packs 42 row groups per bin
+        # at 99% fill -> ~1170 read tasks, close to the ~1000 one-task-per-file
+        # that DSv1 runs on master. The 64 MiB default is the worst case here:
+        # three row groups exceed it, so bins take two and sit 24% empty, giving
+        # 24.5k read tasks (measured 24,432).
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -1214,6 +1353,15 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # sf1000 lineitem: 1000 files x 49 row groups, 24.36 MiB uncompressed
+        # per row group at the full 17-column schema. q1 projects 7 of those
+        # columns and pre-filters on l_shipdate, so the packer sizes on a
+        # fraction of that -- which is why this lands well below the 1 GiB the
+        # full-schema readers of the same table (map_batches, write_parquet)
+        # want. 192 MiB measured best here, matching q20 on the same table.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1515,7 +1663,8 @@
       runtime_env:
         # q20 projects 4 of lineitem's 17 columns -> ~160 MiB uncompressed per
         # file. At the default budget that splits each file ~4 ways (400 blocks
-        # vs the 100 the V1 partitioner produced), and the extra blocks become
+        # vs the 100 master's round-robin partitioner produced), and the extra
+        # blocks become
         # extra shuffle-map tasks feeding HashAggregate. 192 MiB packs one file
         # per bin. Per-query value: the same table under q21's 2-column
         # projection is only ~92 MiB per file.

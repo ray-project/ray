@@ -111,7 +111,13 @@ def main(args: argparse.Namespace) -> None:
             )
 
     def benchmark_fn():
-        ds = ray.data.read_parquet(path, num_cpus=0.99)
+        # Leave ``num_cpus`` unset: the fusion rule canonicalizes an unspecified
+        # ``num_cpus`` to 1, so any other value here (0.99 included) makes the
+        # read incompatible with the downstream ``map_batches`` ops and they
+        # stop fusing. Unfused, every read output crosses the object store --
+        # 1.13 TiB on sf1000 lineitem, ~485s of serialization against ~0.6s
+        # fused.
+        ds = ray.data.read_parquet(path)
 
         # Apply the map transformation.
         if args.api == "map":

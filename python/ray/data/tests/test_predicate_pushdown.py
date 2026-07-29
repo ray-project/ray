@@ -37,6 +37,10 @@ from ray.data.tests.test_util import (
 )
 from ray.tests.conftest import *  # noqa
 
+# Keep the footer-reader pool tiny: this module reads small local Parquet
+# fixtures, and the default 32-actor pool times out under CI parallelism.
+os.environ["RAY_DATA_PARQUET_FOOTER_NUM_ACTORS"] = "1"
+
 # Pattern to match read operators in logical plans.
 # Matches V1 ``Read[Read<Format>]`` or the V2 ``ListFiles → ReadFiles``
 # chain where the consumer is named ``ReadFiles<Format>`` (e.g.

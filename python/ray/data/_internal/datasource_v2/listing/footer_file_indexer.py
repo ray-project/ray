@@ -114,6 +114,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             if max_shared_open_bins is not None
             else _DEFAULT_MAX_SHARED_OPEN_BINS
         )
+        self._max_bin_bytes = env_integer(
+            "RAY_DATA_PARQUET_BIN_PACKING_BYTES", _DEFAULT_BIN_PACKING_BYTES
+        )
 
     @property
     def yields_read_units(self) -> bool:
@@ -132,7 +135,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
-        max_bin_bytes = _DEFAULT_BIN_PACKING_BYTES
+        max_bin_bytes = self._max_bin_bytes
         file_infos = self.list_file_infos(
             paths,
             filesystem=filesystem,
@@ -189,10 +192,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             if batch is None:
                 return False
             actor: ActorProxy[FooterReader] = actors[batch_no % len(actors)]
-            # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``.
+            # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``
+            # and don't preserve the method's keyword args.
             # pyrefly: ignore[bad-assignment]
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
-                batch, result_batch_size=self._result_batch_size
+                batch,
+                result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1
