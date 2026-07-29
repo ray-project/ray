@@ -93,6 +93,11 @@ const absl::flat_hash_set<std::string> &SoftDurableTables() {
     // Set-but-empty deliberately means "no table is soft-durable" (F4 fully off).
     tables->clear();
     std::string spec(override_env);
+    // Explicit sentinel for the same thing, because an empty env value does not
+    // survive every CI layer reliably (bazel --test_env, docker -e).
+    if (spec == "NONE" || spec == "none") {
+      return tables;
+    }
     std::string::size_type start = 0;
     while (start <= spec.size()) {
       const auto comma = spec.find(',', start);
