@@ -13,6 +13,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_kv_event_routing_stats,
     resolve_kv_event_source_endpoint,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
+    _maybe_setup_kv_aware_routing,
+)
 from ray.serve.llm.request_router import KVAwareRouter
 
 
@@ -63,6 +66,31 @@ class TestConfigureKvEvents:
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
         assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "0"
         assert llm_config.runtime_env["env_vars"]["EXISTING_ENV"] == "value"
+
+    def test_non_kv_aware_router_preserves_kv_offload_config(self):
+        """Non-KV-aware routers retain the user's KV offload configuration."""
+        llm_config = make_kv_aware_llm_config(
+            runtime_env={
+                "env_vars": {
+                    "EXISTING_ENV": "value",
+                    "VLLM_USE_SIMPLE_KV_OFFLOAD": "1",
+                }
+            },
+            engine_kwargs={
+                "kv_offloading_size": 2.0,
+                "kv_offloading_backend": "native",
+            },
+        )
+        llm_config.deployment_config["request_router_config"][
+            "request_router_class"
+        ] = "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+
+        _maybe_setup_kv_aware_routing(llm_config.deployment_config, llm_config)
+
+        assert "kv_events_config" not in llm_config.engine_kwargs
+        assert llm_config.engine_kwargs["kv_offloading_size"] == 2.0
+        assert llm_config.engine_kwargs["kv_offloading_backend"] == "native"
+        assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "1"
 
     @pytest.mark.parametrize(
         "offload_size, expected",
