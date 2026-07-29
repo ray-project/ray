@@ -59,6 +59,10 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
+# PCI vendor ID for Google TPUs (used to validate VFIO devices).
+# See https://github.com/ray-project/ray/issues/65034.
+TPU_PCI_VENDOR_ID = "0x1ae0"
+
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 
@@ -563,6 +567,50 @@ def reserve_tpu_slice(
     return (slice_name, head_placement_group)
 
 
+def _is_vfio_group_a_tpu(group: int) -> bool:
+    """Return True iff the VFIO group is backed by a Google TPU PCI device.
+
+    The VFIO framework exposes any device bound to ``vfio-pci`` as
+    ``/dev/vfio/<iommu_group>``. The directory entry alone does not identify
+    the underlying device — for example, NVIDIA BlueField-3's SoC Management
+    Interface is bound to ``vfio-pci`` by RShim and surfaces as
+    ``/dev/vfio/96`` even though the device is not a TPU. See
+    https://github.com/ray-project/ray/issues/65034.
+
+    To distinguish TPU groups from non-TPU groups we inspect
+    ``/sys/kernel/iommu_groups/<group>/devices/*/vendor`` and look for
+    Google's PCI vendor ID (``0x1ae0``).
+
+    Args:
+        group: The numeric IOMMU group id found under ``/dev/vfio``.
+
+    Returns:
+        True if the group is backed by a Google TPU PCI device. If the
+        sysfs entry is missing or unreadable, returns False — we fail
+        closed because a false positive here would prevent the actual
+        accelerators (e.g. NVIDIA GPUs) from being registered.
+    """
+    sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
+    try:
+        devices = os.listdir(sysfs_root)
+    except OSError:
+        # Any failure to enumerate the group (missing entry, permission
+        # denied, EIO from a wedged sysfs node, ...) fails closed: we cannot
+        # confirm the group is a TPU, so we do not count it. Letting the
+        # exception propagate would break Ray startup on hosts with flaky
+        # sysfs.
+        return False
+    for device in devices:
+        try:
+            with open(os.path.join(sysfs_root, device, "vendor")) as f:
+                vendor = f.read().strip()
+        except OSError:
+            continue
+        if vendor.lower() == TPU_PCI_VENDOR_ID:
+            return True
+    return False
+
+
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
@@ -613,10 +661,15 @@ class TPUAcceleratorManager(AcceleratorManager):
         try:
             vfio_entries = os.listdir("/dev/vfio")
             numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
-            return len(numeric_entries)
         except FileNotFoundError as e:
             logger.debug("Failed to detect number of TPUs: %s", e)
             return 0
+
+        tpu_count = 0
+        for group in numeric_entries:
+            if _is_vfio_group_a_tpu(group):
+                tpu_count += 1
+        return tpu_count
 
     @staticmethod
     def is_valid_tpu_accelerator_type(tpu_accelerator_type: str) -> bool:

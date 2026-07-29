@@ -43,9 +43,103 @@ def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
-    mock_list.return_value = [f"{i}" for i in range(4)]
+    # Four VFIO groups. Each group is backed by a single Google TPU PCI device
+    # (vendor 0x1ae0) at /sys/kernel/iommu_groups/<n>/devices/<bdf>/vendor.
+    mock_list.side_effect = [
+        [f"{i}" for i in range(4)],
+        [f"{i:04x}:00:00.0" for i in range(4)],
+        [f"{i:04x}:00:00.0" for i in range(4)],
+        [f"{i:04x}:00:00.0" for i in range(4)],
+        [f"{i:04x}:00:00.0" for i in range(4)],
+    ]
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x1ae0\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_ignores_non_tpu_vendor(mock_list, mock_glob):
+    # Regression test for https://github.com/ray-project/ray/issues/65034.
+    # NVIDIA BlueField-3's SoC Management Interface is bound to vfio-pci by
+    # RShim and surfaces as /dev/vfio/96. The underlying device is vendor
+    # 0x15b3 (Mellanox), not Google (0x1ae0). Ray must NOT count it as a TPU,
+    # otherwise NVIDIA GPUs on the same node would fail to register.
+    mock_glob.return_value = []
+    mock_list.side_effect = [
+        ["96"],
+        ["0000:c2:00.0"],
+    ]
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x15b3\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_mixed_groups(mock_list, mock_glob):
+    # Two VFIO groups: one is a Google TPU (vendor 0x1ae0), the other is the
+    # BlueField-3 SoC (vendor 0x15b3). Only the TPU-backed group is counted.
+    mock_glob.return_value = []
+    mock_list.side_effect = [
+        ["10", "96"],
+        ["0000:01:00.0"],
+        ["0000:c2:00.0"],
+    ]
+    open_mock = mock.mock_open()
+    open_mock.side_effect = [
+        mock.mock_open(read_data="0x1ae0\n").return_value,
+        mock.mock_open(read_data="0x15b3\n").return_value,
+    ]
+    with patch("builtins.open", open_mock):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 1
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_missing_sysfs_fails_closed(mock_list, mock_glob):
+    # If /sys/kernel/iommu_groups/<group>/devices does not exist (e.g. an
+    # unusual sandbox or kernel without IOMMU groups), fail closed and do not
+    # count the group as a TPU. False positives here would mask the real
+    # accelerators on the node.
+    mock_glob.return_value = []
+    mock_list.side_effect = [
+        ["96"],
+        FileNotFoundError,
+    ]
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_sysfs_eio_fails_closed(mock_list, mock_glob):
+    # A bare OSError (e.g. EIO from a wedged sysfs node) must not propagate;
+    # that would break Ray startup on hosts with flaky sysfs. Fail closed
+    # instead and report zero TPUs for the affected group.
+    mock_glob.return_value = []
+    mock_list.side_effect = [
+        ["96"],
+        OSError(5, "Input/output error"),
+    ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("os.listdir")
+def test_is_vfio_group_a_tpu_listdir_oserror_fails_closed(mock_list):
+    # The helper itself must swallow any OSError from os.listdir — not just
+    # FileNotFoundError / PermissionError — otherwise the exception would
+    # escape get_current_node_num_accelerators and abort Ray startup.
+    mock_list.side_effect = OSError(5, "Input/output error")
+    assert tpu._is_vfio_group_a_tpu(96) is False
 
 
 @patch("glob.glob")
