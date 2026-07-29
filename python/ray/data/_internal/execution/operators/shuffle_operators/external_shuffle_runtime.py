@@ -193,8 +193,7 @@ class ShuffleManagerAnomalyError(RuntimeError):
 # shared with the fetch client below.
 # =============================================================================
 # Per-Result body size. Each flight.Result buffer is materialized whole in RAM
-# when sent, so chunking bounds the ShuffleManager actor's memory — a large range
-# would otherwise be read into one giant buffer.
+# when sent, so chunking bounds the ShuffleManager actor's memory.
 _FLIGHT_CHUNK = MiB
 
 
