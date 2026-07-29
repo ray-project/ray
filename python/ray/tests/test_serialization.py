@@ -936,14 +936,10 @@ def test_worker_startup_failed_error_deserialization(monkeypatch):
     ctx = SerializationContext.__new__(SerializationContext)
     metadata = str(ErrorType.Value("WORKER_STARTUP_FAILED")).encode()
 
-    worker_id = b"\x01\x02\x03\x04"
     with_context = RayErrorInfo()
     with_context.error_type = ErrorType.WORKER_STARTUP_FAILED
     bootstrap_error = with_context.worker_bootstrap_error
     bootstrap_error.error_message = "Failed to startup worker after retrying 3 times."
-    bootstrap_error.attempts = 3
-    bootstrap_error.worker_id = worker_id
-    bootstrap_error.stderr_ref = "node_id:raylet.err (pid 1)"
     monkeypatch.setattr(
         ctx, "_deserialize_error_info", lambda data, fields: with_context
     )
@@ -957,12 +953,6 @@ def test_worker_startup_failed_error_deserialization(monkeypatch):
 
     assert isinstance(result, WorkerBootstrapError)
     assert "Failed to startup worker after retrying 3 times." in str(result)
-    assert result.attempts == 3
-    assert result.worker_id == worker_id
-    assert result.stderr_ref == "node_id:raylet.err (pid 1)"
-    # Unset optionals arrive as None rather than as the proto default, because
-    # "not reported" and "reported as empty" are different claims.
-    assert result.stderr_tail is None
 
     without_context = RayErrorInfo()
     without_context.error_type = ErrorType.WORKER_STARTUP_FAILED

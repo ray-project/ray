@@ -133,15 +133,6 @@ def _rdt_ref_deserializer(
     return obj_ref
 
 
-def _optional_proto_field(message, field_name: str):
-    """Read an optional proto field, returning None when it is unset.
-
-    The zero value is a real signal for these fields, so the proto default
-    cannot stand in for "the sender did not report this".
-    """
-    return getattr(message, field_name) if message.HasField(field_name) else None
-
-
 def _actor_handle_deserializer(serialized_obj, weak_ref):
     # If this actor handle was stored in another object, then tell the
     # core worker.
@@ -541,15 +532,8 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_STARTUP_FAILED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 if error_info.HasField("worker_bootstrap_error"):
-                    bootstrap_error = error_info.worker_bootstrap_error
                     return WorkerBootstrapError(
-                        error_message=bootstrap_error.error_message,
-                        attempts=_optional_proto_field(bootstrap_error, "attempts"),
-                        worker_id=_optional_proto_field(bootstrap_error, "worker_id"),
-                        stderr_tail=_optional_proto_field(
-                            bootstrap_error, "stderr_tail"
-                        ),
-                        stderr_ref=_optional_proto_field(bootstrap_error, "stderr_ref"),
+                        error_message=error_info.worker_bootstrap_error.error_message
                     )
                 # The plain-task path sets this error type without a context, so
                 # it keeps raising the exception type it has always raised.

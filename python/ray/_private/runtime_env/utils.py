@@ -35,6 +35,66 @@ def redact_url_credentials(text: str) -> str:
     return _URL_USERINFO_RE.sub(r"\g<scheme><redacted>@", text)
 
 
+# Hard cap on customer-origin text placed on the structured-failure path.
+#
+# That path travels off the node to a consumer that has no offload of its own, so
+# one short line is the entire budget. It buys the thing a bare exit code cannot
+# -- telling two failures of the same command apart at a glance -- while the full
+# text stays reachable through the log file the failure points at, the
+# error-event feed, and the job's own message, all of which do have somewhere to
+# put it.
+MAX_SUMMARY_LINE_CHARS = 200
+
+
+def summary_line(text: Optional[str]) -> Optional[str]:
+    """The last non-empty line of `text`, credential-redacted and length-capped.
+
+    The last line is taken because every producer on this path puts the
+    actionable sentence there: pip's "No matching distribution found for X", the
+    shell's "command not found", a traceback's "ValueError: boom". Nothing is
+    parsed out of it and no meaning is derived from it -- it is carried so a
+    human or agent can read it, and the cause always comes from typed fields.
+
+    Args:
+        text: Free text, typically a formatted exception or installer output.
+
+    Returns:
+        One redacted line of at most MAX_SUMMARY_LINE_CHARS characters, or None
+        if `text` holds nothing. None rather than "" so the caller omits the
+        field instead of reporting a blank one, which would read as a fact.
+    """
+    if not text:
+        return None
+    for raw_line in reversed(text.strip().splitlines()):
+        line = redact_url_credentials(raw_line.strip())
+        if not line:
+            continue
+        if len(line) > MAX_SUMMARY_LINE_CHARS:
+            return line[: MAX_SUMMARY_LINE_CHARS - 3] + "..."
+        return line
+    return None
+
+
+def sole_requirement(packages: Optional[List[str]]) -> Optional[str]:
+    """The single requirement in `packages`, when blaming it is unambiguous.
+
+    Returns None unless the list holds exactly one entry naming a package
+    outright. A set of requirements is excluded because which member failed is
+    stated only in the installer's own output, and parsing that is the pattern
+    matching this whole path exists to avoid. A lone ``-r requirements.txt`` is
+    excluded for the same reason: it expands to a set.
+
+    An unset field is honest. A confidently wrong package name is worse than
+    none, because it sends someone to fix the wrong dependency.
+    """
+    if not packages or len(packages) != 1:
+        return None
+    only = str(packages[0]).strip()
+    if not only or only.startswith("-"):
+        return None
+    return only
+
+
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
     """The subprocess.CalledProcessError with stripped stdout."""
 

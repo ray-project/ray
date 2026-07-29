@@ -29,7 +29,10 @@ from ray._private.runtime_env.plugin import (
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
-from ray._private.runtime_env.utils import SubprocessCalledProcessError
+from ray._private.runtime_env.utils import (
+    SubprocessCalledProcessError,
+    summary_line,
+)
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
@@ -370,12 +373,16 @@ class RuntimeEnvAgent:
         existing consumers are unaffected.
         """
         setup_failure = reply.setup_failure
-        setup_failure.error_message = error_message or ""
+        # One redacted line, not the traceback. `reply.error_message` above still
+        # carries the full text for the callers that already read it -- it is the
+        # structured field, which travels further, that is held to one line.
+        setup_failure.error_message = summary_line(error_message) or ""
         for attempt in attempts:
             entry = setup_failure.attempts.add()
             entry.attempt = attempt["attempt"]
-            if attempt.get("error_message"):
-                entry.error_message = attempt["error_message"]
+            attempt_summary = summary_line(attempt.get("error_message"))
+            if attempt_summary:
+                entry.error_message = attempt_summary
             if attempt.get("duration_ms") is not None:
                 entry.duration_ms = attempt["duration_ms"]
             # Tested against None, not truthiness: 0 is a real exit code, and

@@ -14,9 +14,12 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
+    MAX_SUMMARY_LINE_CHARS,
     SubprocessCalledProcessError,
     check_output_cmd,
     redact_url_credentials,
+    sole_requirement,
+    summary_line,
 )
 from ray._private.test_utils import (
     chdir,
@@ -362,6 +365,69 @@ def test_subprocess_error_redacts_index_credentials():
     assert "corp.example.com" in text
     assert "torch" in text
     assert "boom" in text
+
+
+def test_summary_line():
+    # Nothing in, nothing out -- and None rather than "", so a caller omits the
+    # field instead of reporting a blank one, which would read as a fact.
+    assert summary_line(None) is None
+    assert summary_line("") is None
+    assert summary_line("  \n \n ") is None
+
+    # The last line is taken because every producer on this path puts the
+    # actionable sentence there.
+    assert (
+        summary_line(
+            'Traceback (most recent call last):\n  File "x.py", line 1\n'
+            "ValueError: boom"
+        )
+        == "ValueError: boom"
+    )
+    assert (
+        summary_line("ERROR: No matching distribution found for nope\n\n\n")
+        == "ERROR: No matching distribution found for nope"
+    )
+
+    assert (
+        summary_line("pip install --index-url https://u:sekrit@example.com/s nope")
+        == "pip install --index-url https://<redacted>@example.com/s nope"
+    )
+
+    # 200 characters is the entire budget for customer-origin text on this path.
+    capped = summary_line("x" * 500)
+    assert len(capped) == MAX_SUMMARY_LINE_CHARS
+    assert capped.endswith("...")
+    assert summary_line("y" * 200) == "y" * 200
+    assert len(summary_line("y" * 201)) == MAX_SUMMARY_LINE_CHARS
+
+
+def test_summary_line_redacts_before_truncating():
+    # ORDER MATTERS: redact first, then cap. Reversed, a credential sitting past
+    # the cap would be cut rather than masked -- which happens to be safe -- but a
+    # credential sitting *before* it would be masked either way, so the reversal
+    # looks harmless in testing and is not. Capping a redacted line can only ever
+    # remove more text, never reveal any.
+    out = summary_line("https://user:verysecrettoken@example.com/s " + "z" * 400)
+    assert "verysecrettoken" not in out
+    assert len(out) == MAX_SUMMARY_LINE_CHARS
+
+
+def test_sole_requirement():
+    assert sole_requirement(None) is None
+    assert sole_requirement([]) is None
+    assert sole_requirement(["nope-xyz==1.0"]) == "nope-xyz==1.0"
+    assert sole_requirement(["  torch==2.9.1 "]) == "torch==2.9.1"
+
+    # A set is excluded: which member failed is stated only in the installer's
+    # own output, and parsing that is the pattern matching this avoids. A wrong
+    # package name is worse than none, because it sends someone to fix the wrong
+    # dependency.
+    assert sole_requirement(["a", "b"]) is None
+    # These expand to a set, so they are not a single requirement either.
+    assert sole_requirement(["-r requirements.txt"]) is None
+    assert sole_requirement(["--requirement reqs.txt"]) is None
+    assert sole_requirement(["--no-deps"]) is None
+    assert sole_requirement(["   "]) is None
 
 
 @pytest.mark.asyncio

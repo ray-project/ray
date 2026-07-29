@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 from dataclasses import asdict
 from unittest.mock import AsyncMock, MagicMock
@@ -276,8 +275,6 @@ def test_job_info_json_to_proto():
     # does not know silently blanks the entire job_info record.
     assert info_proto.failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
     assert info_proto.failure_info.driver_exit_code == -9
-    # A negative returncode means the direct child took signal N.
-    assert info_proto.failure_info.driver_exit_signal == 9
     assert info_proto.failure_info.WhichOneof("context") == "driver_run"
     assert info_proto.failure_info.driver_run.exception_class == "ValueError"
     # Unset optionals inside the context must stay unset, not default-false.
@@ -359,29 +356,21 @@ def test_runtime_env_failure_info_json_to_proto():
 
 
 def test_worker_bootstrap_failure_info_json_to_proto():
-    worker_id = b"\x01\x02\x03\x04"
     failure_info = _parse_failure_info(
         make_failure_info(
             JobFailureStage.WORKER_BOOTSTRAP,
             context_key="worker_bootstrap",
             context={
-                "error_message": "Failed to startup worker after retrying 3 times.",
-                "attempts": 3,
-                "worker_id": base64.b64encode(worker_id).decode(),
-                "stderr_tail": None,
-                "stderr_ref": "node_id:raylet.err (pid 1)",
+                "error_message": "Failed to startup worker after retrying 3 times."
             },
         )
     )
     assert failure_info.stage == JobFailureInfo.Stage.WORKER_BOOTSTRAP
     assert failure_info.WhichOneof("context") == "worker_bootstrap"
-    assert failure_info.worker_bootstrap.attempts == 3
-    assert failure_info.worker_bootstrap.stderr_ref == "node_id:raylet.err (pid 1)"
-    # protobuf JSON represents bytes as base64, so the encoding on the writing
-    # side has to be exactly this parse's inverse. Raw bytes would not survive
-    # json.dumps at all, so this is not a field that can be passed through.
-    assert failure_info.worker_bootstrap.worker_id == worker_id
-    assert not failure_info.worker_bootstrap.HasField("stderr_tail")
+    assert (
+        failure_info.worker_bootstrap.error_message
+        == "Failed to startup worker after retrying 3 times."
+    )
 
 
 def test_supervisor_failure_info_json_to_proto():

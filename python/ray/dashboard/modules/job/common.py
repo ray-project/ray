@@ -135,7 +135,6 @@ def make_failure_info(
     context_key: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None,
     driver_exit_code: Optional[int] = None,
-    termination_reason: Optional[str] = None,
     log_excerpt_ref: Optional[str] = None,
     infra_cause: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -160,8 +159,8 @@ def make_failure_info(
             "runtime_env". Must name one of JobFailureInfo's oneof branches.
         context: The context dict itself, passed together with context_key.
         driver_exit_code: The entrypoint's exit code, when it ran and exited.
-        termination_reason: Raw kernel or runtime termination token, e.g.
-            "oom-kill", when something upstream reported one.
+            Note this does not separate a kernel OOM from `kill -9`; see the
+            proto comment on the field.
         log_excerpt_ref: Reference to the captured log excerpt for this failure.
             A reference rather than the bytes: the output is unbounded, and pip
             and uv echo index URLs that can carry credentials.
@@ -176,17 +175,14 @@ def make_failure_info(
     """
     info: Dict[str, Any] = {"stage": stage.value}
     if driver_exit_code is not None:
+        # No signal is derived from a negative returncode. CPython only reports
+        # one when the *direct* child was signalled, and the entrypoint runs
+        # under shell=True, so the direct child is /bin/sh -- a signal to the
+        # Python process under it arrives as a positive 128+N. Verified against a
+        # real run: SIGKILL of the driver surfaced as exit 137 and no signal.
+        # Naming the signal needs the node's own termination reason, which this
+        # process cannot see.
         info["driver_exit_code"] = driver_exit_code
-        # CPython reports a negative returncode when the *direct* child was
-        # killed by a signal. That is the only signal we can see here: the
-        # entrypoint runs under shell=True, so the direct child is /bin/sh and a
-        # kernel OOM of the Python grandchild arrives as a positive 128+N,
-        # indistinguishable from `kill -9`. Resolving that needs the node's
-        # termination reason, which this process has no access to.
-        if driver_exit_code < 0:
-            info["driver_exit_signal"] = -driver_exit_code
-    if termination_reason is not None:
-        info["termination_reason"] = termination_reason
     if log_excerpt_ref is not None:
         info["log_excerpt_ref"] = log_excerpt_ref
     if infra_cause:

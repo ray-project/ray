@@ -14,7 +14,7 @@ from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
-from ray._private.runtime_env.utils import check_output_cmd
+from ray._private.runtime_env.utils import check_output_cmd, sole_requirement
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
@@ -260,10 +260,13 @@ class PipProcessor:
 
         logger.info("Installing python requirements to %s", virtualenv_path)
 
-        # No attributed_package here: this cmd installs the whole requirement
-        # set, and which member of it failed is only stated in pip's output.
         await check_output_cmd(
-            pip_install_cmd, logger=logger, cwd=cwd, env=pip_env, phase="install"
+            pip_install_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install",
+            attributed_package=sole_requirement(self._pip_config.get("packages")),
         )
 
     async def _run(self):

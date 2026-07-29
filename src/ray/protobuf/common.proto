@@ -385,7 +385,15 @@ message ActorDeathCause {
 // Note: RuntimeEnvFailedContext is used in the export API and state API so it is public.
 // Any modifications must be backward compatible.
 message RuntimeEnvFailedContext {
-  // TODO(sang,lixin) Get this error message from agent.
+  // At most the final line of the installer's own output, credential-redacted
+  // and hard-capped at 200 characters.
+  //
+  // Deliberately not the full text. This field travels off the node to a
+  // consumer with no offload path of its own, and the full text is already
+  // reachable three other ways -- the log file that stderr_ref names down to
+  // cmd[N], the error-event feed, and the job's own message. One line is enough
+  // to tell two failures apart at a glance; anything more is a second copy of
+  // customer content on the one path that cannot store it.
   string error_message = 1;
   // Which runtime env plugin failed, e.g. "uv", "pip", "conda", "working_dir",
   // "container". Raw plugin name rather than an enum so a new plugin is a new
@@ -419,6 +427,10 @@ message RuntimeEnvSetupAttempt {
   // 1-based attempt number.
   int32 attempt = 1;
   optional int32 exit_code = 2;
+  // Same rule as RuntimeEnvFailedContext.error_message: one redacted line, 200
+  // characters. Present per attempt only because attempts can genuinely fail for
+  // different reasons -- a network timeout then a resolution conflict -- which
+  // the exit code alone does not distinguish.
   optional string error_message = 3;
   optional uint64 duration_ms = 4;
 }
@@ -484,27 +496,17 @@ message OomContext {
 // Note: WorkerBootstrapContext is used in the export API and state API so it is
 // public. Any modifications must be backward compatible.
 message WorkerBootstrapContext {
+  // Ray-generated text, not customer output.
+  //
+  // Only this field is declared. The raylet's channel for a cancelled lease is a
+  // flat string, so per-worker detail (attempt count, worker id, exit code,
+  // output location) has no producer on this path and would be permanently null:
+  // a declared field is a promise, and consumers reason from absence. The
+  // worker's own bytes are interleaved into raylet.err with every other
+  // concurrently starting worker anyway, so there is no per-worker tail to point
+  // at. Adding any of it later means adding a field, which is the honest signal
+  // that a producer now exists.
   string error_message = 1;
-  // Not populated: a worker spawned before registration inherits the raylet's
-  // stderr, so its bytes are interleaved into raylet.err with every other
-  // concurrently starting worker and no per-worker marker. Slicing a tail out
-  // of that would attach some other worker's traceback to this failure, so
-  // stderr_ref below is used instead. Declared so that filling it in, once
-  // workers get their own stream at spawn time, is not a schema change.
-  optional string stderr_tail = 2;
-  // Number of registration attempts made before giving up.
-  optional int32 attempts = 3;
-  optional bytes worker_id = 4;
-  // Not populated, for two independent reasons: the raylet leaves SIGCHLD as
-  // SIG_IGN on the default path, so the kernel reaps the worker and waitpid
-  // returns ECHILD; and Process::Wait() consults its lifetime pipe first, which
-  // is always created, so the waitpid is unreachable for a spawned worker even
-  // when it would have succeeded. Restoring SIGCHLD alone will not fill this in.
-  // Declared so that adding it later is not a schema change.
-  optional int32 exit_code = 5;
-  // Where the worker's output went, e.g. "<node_id>:raylet.err (pid <N>)", so
-  // the bytes stay a two-hop lookup rather than a misattributed tail.
-  optional string stderr_ref = 6;
 }
 
 // ---Actor death contexts end----
@@ -534,22 +536,18 @@ message JobFailureInfo {
 
   Stage stage = 1;
 
-  // How the driver process ended. Both fields are needed: a kernel OOM kill
-  // and `kill -9` are both exit 137, and only the termination reason
-  // distinguishes them.
+  // How the driver process ended. Note that this does not separate a kernel OOM
+  // kill from `kill -9`: the entrypoint runs under a shell, so a signal to the
+  // Python process arrives here as a positive 128+N and the two are
+  // indistinguishable at this layer. Naming which one it was requires a
+  // node-level termination reason, which this process cannot observe, so no
+  // field for it is declared here.
   optional int32 driver_exit_code = 2;
-  // The terminating signal, if the process was signalled.
-  optional int32 driver_exit_signal = 3;
-  // Raw kernel or runtime termination token, e.g. "oom-kill". Deliberately a
-  // raw string rather than an `oom_killed` boolean, so that a new termination
-  // kind is a new value rather than a new field.
-  optional string termination_reason = 4;
 
   oneof context {
     RuntimeEnvFailedContext runtime_env = 5;
     WorkerBootstrapContext worker_bootstrap = 6;
     SupervisorDeathContext supervisor = 7;
-    OomContext oom = 8;
     DriverRunContext driver_run = 10;
   }
 
@@ -563,10 +561,13 @@ message JobFailureInfo {
 
 // Death of the job supervisor actor, as data rather than as its string form.
 message SupervisorDeathContext {
+  // One redacted line, 200 characters, per the rule on
+  // RuntimeEnvFailedContext.error_message. The supervisor's death text can
+  // include a traceback from the job's own creation task, which is customer
+  // content; death_cause below carries the part that is not.
   string error_message = 1;
-  // The structured death cause, instead of str() of it. Not populated yet:
-  // the supervisor path currently flattens ActorDiedError.cause into an
-  // f-string.
+  // The structured death cause rather than str() of it, so that an OOM kill or a
+  // node death stays a distinguishable branch instead of collapsing into text.
   optional ActorDeathCause death_cause = 2;
   // Exception class observed on the supervisor path, e.g. "ActorDiedError".
   optional string exception_class = 3;

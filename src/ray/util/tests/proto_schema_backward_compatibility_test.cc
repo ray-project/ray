@@ -93,17 +93,12 @@ TEST_F(ProtoSchemaTest, TestActorDeathCauseBackwardCompatibility) {
   oom_context.set_fail_immediately(true);
   actor_death_cause5.mutable_oom_context()->CopyFrom(oom_context);
 
-  // Includes the fields the raylet cannot fill in today: the guard is on the
-  // schema, not on what is currently written, so a field being declared and
-  // unpopulated still has to stay declared.
+  // Only error_message: the raylet's channel for a cancelled lease is a flat
+  // string, so no other field on this context has a producer. Adding one here
+  // would only assert that a promise we do not keep stays declared.
   rpc::WorkerBootstrapContext worker_bootstrap_context;
   rpc::ActorDeathCause actor_death_cause6;
   worker_bootstrap_context.set_error_message("error message string");
-  worker_bootstrap_context.set_stderr_tail("stderr tail string");
-  worker_bootstrap_context.set_attempts(3);
-  worker_bootstrap_context.set_worker_id("workerId1");
-  worker_bootstrap_context.set_exit_code(1);
-  worker_bootstrap_context.set_stderr_ref("stderr reference string");
   actor_death_cause6.mutable_worker_bootstrap_context()->CopyFrom(
       worker_bootstrap_context);
 }

@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import copy
 import logging
 import os
@@ -16,6 +15,7 @@ from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VA
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
 from ray._private.label_utils import validate_label_selector
+from ray._private.runtime_env.utils import summary_line
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -369,20 +369,10 @@ class JobManager:
                         target_failure_info = make_failure_info(
                             JobFailureStage.WORKER_BOOTSTRAP,
                             context_key="worker_bootstrap",
-                            context={
-                                "error_message": str(e),
-                                "attempts": e.attempts,
-                                # base64 because that is how protobuf JSON
-                                # represents bytes, and because raw bytes do
-                                # not survive json.dumps at all.
-                                "worker_id": (
-                                    base64.b64encode(e.worker_id).decode()
-                                    if e.worker_id is not None
-                                    else None
-                                ),
-                                "stderr_tail": e.stderr_tail,
-                                "stderr_ref": e.stderr_ref,
-                            },
+                            # Ray-generated text, so it is carried whole. The
+                            # raylet's channel for a cancelled lease is a flat
+                            # string, so there is no per-worker detail to add.
+                            context={"error_message": str(e)},
                         )
 
                     elif isinstance(e, ActorUnschedulableError):
@@ -414,7 +404,11 @@ class JobManager:
                             JobFailureStage.SUPERVISOR_START,
                             context_key="supervisor",
                             context={
-                                "error_message": str(e),
+                                # One line: an actor that died in its creation
+                                # task renders the job's own traceback here, which
+                                # is customer content. death_cause below carries
+                                # the part that is not.
+                                "error_message": summary_line(str(e)),
                                 "exception_class": type(e).__name__,
                                 "death_cause": _supervisor_death_cause(e),
                             },

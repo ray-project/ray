@@ -1073,41 +1073,18 @@ class WorkerBootstrapError(RayError):
     Args:
         error_message: The error message that explains why worker startup
             failed.
-        attempts: How many startup attempts were made before giving up, when
-            reported.
-        worker_id: ID of the worker that failed to register, when reported.
-        stderr_tail: Tail of the worker's own output, when reported. A worker
-            that dies before registering writes into the raylet's stderr,
-            interleaved with every other worker starting at the same time, so
-            this is normally left unset in favour of stderr_ref.
-        stderr_ref: Where the worker's output went, e.g.
-            ``"<node_id>:raylet.err (pid <N>)"``.
     """
 
-    def __init__(
-        self,
-        error_message: str,
-        attempts: Optional[int] = None,
-        worker_id: Optional[bytes] = None,
-        stderr_tail: Optional[str] = None,
-        stderr_ref: Optional[str] = None,
-    ):
+    def __init__(self, error_message: str):
         # BaseException.__reduce__ rebuilds the exception from self.args, which
         # is only seeded by positional arguments. This one is constructed with
         # keywords, so seed it here or the class cannot be unpickled -- and
         # RayError.to_bytes pickles it.
         super().__init__(error_message)
         self.error_message = error_message
-        self.attempts = attempts
-        self.worker_id = worker_id
-        self.stderr_tail = stderr_tail
-        self.stderr_ref = stderr_ref
 
     def __str__(self):
-        msgs = [self.error_message]
-        if self.stderr_ref:
-            msgs.append(f"The worker's output is in {self.stderr_ref}.")
-        return "\n".join(msgs)
+        return self.error_message
 
 
 @DeveloperAPI
