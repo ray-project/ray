@@ -1,9 +1,7 @@
 import argparse
-import asyncio
 import dataclasses
 import inspect
 import json
-import os
 import typing
 from typing import (
     TYPE_CHECKING,
@@ -54,11 +52,11 @@ from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
-    is_kv_aware,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware import (
     token_channel,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,

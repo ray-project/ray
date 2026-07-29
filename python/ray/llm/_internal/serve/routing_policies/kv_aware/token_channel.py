@@ -303,7 +303,7 @@ def _install_prompt_token_forwarding(
             return await orig(request, *args, **kw)
         return await orig(request, raw_request, *args, **kw)
 
-    setattr(wrapped, "_kv_token_channel_wrapped", True)
+    wrapped._kv_token_channel_wrapped = True
     setattr(serving, method_name, wrapped)
 
 

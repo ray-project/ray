@@ -25,6 +25,9 @@ from ray.llm._internal.serve.core.ingress.router import (
     _parse_routing_payload,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_METADATA_KEY,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -241,9 +244,7 @@ class TestDirectStreamingLLMRouter:
         replica = _DirectRouterReplica(
             "r1",
             full_id="DeploymentName#r1",
-            routing_stats={
-                "kv_prompt_token_metadata": {"endpoint": "tcp://10.0.0.1:7557"}
-            },
+            routing_stats={KV_TOKEN_METADATA_KEY: {"endpoint": "tcp://10.0.0.1:7557"}},
         )
         handle = MagicMock()
         handle.choose_replica = _choose_replica_returning(replica)

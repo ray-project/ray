@@ -16,12 +16,13 @@ import pytest_asyncio
 import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
+
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
