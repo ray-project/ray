@@ -183,6 +183,10 @@ class ActorPoolStrategy(ComputeStrategy):
 
     @property
     def enable_true_multi_threading(self) -> bool:
+        if "_enable_true_multi_threading" not in self.__dict__:
+            self._enable_true_multi_threading = self.__dict__.get(
+                "enable_true_multi_threading", None
+            )
         return bool(self._enable_true_multi_threading)
 
     def __eq__(self, other: Any) -> bool:
