@@ -76,7 +76,7 @@ Users have high expectations for certain exposure levels, so we need to be cauti
   - No annotations mean it is a developer API by default
 * - Can you remove or change this API's parameters?
   - Yes. The API should emit warning messages and you must set a deadline for the end-of-life of the original version that is **six months or +25 Ray minor versions, whichever comes first**. During the transition period, you must support both the new and old parameters.
-  - Yes. The API should emit warning messages and you must set a deadline for the change in **three months or +12 Ray minor versions**. During the transition period, you must support both the new and old parameters.
+  - Yes. The API should emit warning messages and you must set a deadline for the change in **three months or +12 Ray minor versions, whichever comes first**. During the transition period, you must support both the new and old parameters.
   - Users must allow for and expect breaking changes in alpha components, and must have no expectations of stability.
   - No
   - Yes
