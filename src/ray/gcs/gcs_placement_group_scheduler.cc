@@ -281,6 +281,11 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
   RAY_LOG(DEBUG) << "Removing " << bundle_specs.size()
                  << " bundle(s) for placement group " << placement_group_id << " at node "
                  << node_id;
+
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    RemoveBundleResources(node_id, bundle_specs);
+  }
+
   const auto raylet_client = GetRayletClientFromNode(node.value());
 
   raylet_client->RemovePlacementGroupBundles(
@@ -320,6 +325,24 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
               std::chrono::milliseconds(1000) /* milliseconds */);
         }
       });
+}
+
+void GcsPlacementGroupScheduler::RemoveBundleResources(
+    const NodeID &node_id,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
+  for (const auto &bundle_spec : bundle_specs) {
+    std::vector<scheduling::ResourceID> resource_ids;
+
+    for (const auto &[resource_id, value] : bundle_spec->GetFormattedResources()) {
+      resource_ids.emplace_back(resource_id);
+    }
+
+    cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
+        scheduling::NodeID(node_id.Binary()), resource_ids);
+
+    cluster_resource_scheduler_.GetClusterResourceManager().ReleaseResources(
+        scheduling::NodeID(node_id.Binary()), bundle_spec->GetRequiredResources());
+  }
 }
 
 std::shared_ptr<RayletClientInterface>
