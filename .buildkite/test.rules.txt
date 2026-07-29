@@ -215,17 +215,26 @@ docker/
 # and crosses `/`, so it would also swallow every example script under
 # `doc/source/<lib>/doc_code/` and stop those from reaching the per-library
 # rules below. Add a module here when `conf.py` grows a new import.
+#
+# The two `llms_txt` entries are routed ahead of the files existing: they land
+# with ray-project/ray#64458, which adds a hermetic Sphinx-extension test and
+# the summary text that test and the build both consume. A rule for an absent
+# path is inert, and pre-routing them means that PR merges correctly scoped
+# rather than leaving the test on the `doc/*.py` catch-all, which would run Ray
+# Core's doctests and examples for a test that imports no Ray code.
 doc/source/conf.py
 doc/source/custom_directives.py
 doc/source/api_autogen.py
 doc/source/api_mock_imports.py
 doc/source/template_collections.py
 doc/source/preprocess_github_markdown.py
+doc/source/llms_txt_summary.txt
 doc/source/_ext/
 doc/load_doc_cache.py
 doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
+doc/test_llms_txt.py
 doc/requirements-doc.txt
 .vale.ini
 .vale/
