@@ -264,6 +264,12 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
+# Dependency ordered shutdown deletes deployments in tiers, callers before
+# callees. This is the max time to wait on a tier before advancing past it.
+RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S", 30.0
+)
+
 # Dirty-set health-check reconcile: each control tick polls only replicas with an
 # in-flight check plus a round-robin slice, so a tick costs O(slice) instead of O(N).
 # CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION is how long one full sweep takes as a fraction of the

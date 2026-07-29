@@ -214,9 +214,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.102 \
-    --hash=sha256:12cbe08c37a0f15ef88d432bb60c9cd9d32a4fbf5742ec3303e1cbc0da571f25 \
-    --hash=sha256:3b7c3e342c183cb9a26f2fd9722aba59f903c0e097119c4af2ece8ececa8d333
+anyscale==0.26.105 \
+    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
+    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
 argcomplete==3.3.0 \
     --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
@@ -4268,7 +4268,9 @@ patsy==1.0.2 \
 peft==0.19.1 \
     --hash=sha256:0d97542fe96dcdaa20d3b81c06f26f988618f416a73544ab23c3618ccb674a40 \
     --hash=sha256:2113f72a81621b5913ef28f9022204c742df111890c5f49d812716a4a301e356
-    # via lm-eval
+    # via
+    #   -r release/ray_release/byod/requirements_ml_byod_3.13.in
+    #   lm-eval
 petastorm==0.12.1 \
     --hash=sha256:25f7737bbbd8ebcbe6aac9546c50ee7e739902facd434c1dd2d4c6fe7c0acfe9
     # via -r release/ray_release/byod/requirements_ml_byod_3.13.in
