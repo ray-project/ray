@@ -183,6 +183,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
     @property
     def enable_true_multi_threading(self) -> bool:
+        # backwards compatibility from serialization.
         if "_enable_true_multi_threading" not in self.__dict__:
             self._enable_true_multi_threading = self.__dict__.get(
                 "enable_true_multi_threading", None
