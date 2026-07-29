@@ -84,27 +84,23 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 _DEFAULT_FETCH_THREADS = 16
 
 
-def _index_to_csr(index, num_partitions):
-    """Compact the per-partition range index into 3 flat CSR arrays.
+def _build_range_index(index, num_partitions):
+    """Dense per-partition (offset, length) index: one row per partition.
 
-    Partition ``p``'s ranges are ``zip(off[a:b], length[a:b])`` with
-    ``a=part_start[p]``, ``b=part_start[p+1]``. Replaces the old
-    ``Dict[pid, List[(off,len)]]`` whose per-entry Python objects, held by every
-    reducer for every mapper, were the O(maps × partitions) OOM.
+    Row ``p`` is ``(offset, length)`` of partition ``p``'s IPC frame; absent or
+    empty partitions stay ``(0, 0)`` (``length == 0`` => the reducer skips them).
+    Each partition is written exactly once per map (whole-frame: one frame per
+    partition), so ``partition_id`` is the row index directly — no CSR pointer
+    needed.
+
+    Self-describing (position == partition) and a single ``[P, 2]`` int64 array,
+    so no per-range Python objects: the O(maps × partitions) reducer-held OOM a
+    ``Dict[pid, List[(off,len)]]`` caused stays gone.
     """
-    part_start = np.zeros(num_partitions + 1, dtype=np.int64)
-    for pid, ranges in index.items():
-        part_start[pid + 1] = len(ranges)
-    np.cumsum(part_start, out=part_start)
-    total = int(part_start[-1])
-    off = np.empty(total, dtype=np.int64)
-    length = np.empty(total, dtype=np.int64)
-    for pid, ranges in index.items():
-        s = int(part_start[pid])
-        for i, (o, ln) in enumerate(ranges):
-            off[s + i] = o
-            length[s + i] = ln
-    return off, length, part_start
+    ranges = np.zeros((num_partitions, 2), dtype=np.int64)
+    for pid, frame_range in index.items():
+        ranges[pid] = frame_range[0]  # (offset, length); one frame per partition
+    return ranges
 
 
 def _decoded_to_array(decoded, num_partitions):
@@ -302,13 +298,12 @@ def _external_shuffle_map_task(
             pass
         raise
 
-    _idx_off, _idx_len, _idx_pstart = _index_to_csr(writer.index, num_partitions)
+    _idx_ranges = _build_range_index(writer.index, num_partitions)
     return {
         "path": os.path.realpath(final_path),
-        # CSR per-partition range index (see _index_to_csr).
-        "index_off": _idx_off,
-        "index_len": _idx_len,
-        "index_part_start": _idx_pstart,
+        # Dense per-partition range index (see _build_range_index): row ``p`` is
+        # ``(offset, length)`` of partition ``p``'s frame.
+        "index_ranges": _idx_ranges,
         # ShuffleManager identity: reducers rebuild the actor name from
         # (shuffle_id, node_id) and call ``_lookup_manager`` when they need
         # the handle.

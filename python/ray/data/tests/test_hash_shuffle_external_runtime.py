@@ -1,8 +1,10 @@
 """Unit / integration tests for the external-shuffle runtime primitives.
 
-Covers the wire protocol, ``ShuffleManager`` actor lifecycle, connection
-handshake, fetch semantics, and error classification.
+Covers the Arrow Flight fetch transport, ``ShuffleManager`` actor lifecycle,
+the shard codec, prefetch layout, and error classification.
 """
+
+import contextlib
 import os
 import socket
 import struct
@@ -16,16 +18,15 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     ShuffleManagerAnomalyError,
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
-    _FetchHandler,
+    _encode_shard,
+    _FileRanges,
     _group_by_manager,
+    _make_flight_server,
     _NodeGroup,
-    _NodeMember,
     _PwriteSink,
+    _read_ipc,
     _SourceRef,
-    _threading_server_for,
-    _ThreadingServer,
-    _ThreadingServerV6,
-    open_shuffle_connection,
+    _stream_members_flight,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.tests.conftest import *  # noqa: F401, F403
@@ -41,11 +42,24 @@ def _make_manager(tmp_path, token="test-token"):
     return actor, endpoint
 
 
-def _write_source_file(tmp_path, name, payload: bytes) -> str:
-    """Write a raw byte blob into the manager's base_dir and return abs path."""
-    p = tmp_path / name
-    p.write_bytes(payload)
-    return str(p.resolve())
+@contextlib.contextmanager
+def _running_flight_server(base_dir, token):
+    """Start a bare Flight server (no Ray) on loopback; yield its (host, port)."""
+    srv = _make_flight_server("127.0.0.1", str(base_dir), token)
+    endpoint = ("127.0.0.1", srv.port)
+    t = threading.Thread(target=srv.serve, daemon=True)
+    t.start()
+    try:
+        yield endpoint
+    finally:
+        srv.shutdown()
+
+
+def _open_sink(tmp_path, size=64):
+    """Open a fresh pwrite sink over a ``size``-byte file at offset 0."""
+    fd = os.open(str(tmp_path / "sink.bin"), os.O_RDWR | os.O_CREAT, 0o644)
+    os.ftruncate(fd, size)
+    return fd, _PwriteSink(fd, base_offset=0)
 
 
 # --------------------------------------------------------- _PwriteSink testers
@@ -81,7 +95,7 @@ def test_pwrite_sink_reset(tmp_path):
 # ----------------------------------------------- ShuffleManager actor lifecycle
 def test_shuffle_manager_lifecycle(ray_start_regular_shared_2_cpus, tmp_path):
     # Creating a manager should (1) mkdir the base_dir on disk, (2) return a
-    # well-formed endpoint, and (3) leave the endpoint reachable via TCP.
+    # well-formed endpoint, and (3) leave the Flight endpoint reachable via TCP.
     sub = tmp_path / "does-not-exist-yet"
     _actor, (host, port) = _make_manager(sub)
 
@@ -93,154 +107,81 @@ def test_shuffle_manager_lifecycle(ray_start_regular_shared_2_cpus, tmp_path):
     s.close()
 
 
-# ----------------------------------------------------------------- IPv6 support
-def test_threading_server_for_picks_family():
-    # IPv4 literals + hostnames + non-IP strings → default V4 class.
-    assert _threading_server_for("127.0.0.1") is _ThreadingServer
-    assert _threading_server_for("192.168.1.1") is _ThreadingServer
-    assert _threading_server_for("localhost") is _ThreadingServer
-    assert _threading_server_for("not-an-ip") is _ThreadingServer
-    # IPv6 literals → V6 subclass with AF_INET6.
-    assert _threading_server_for("::1") is _ThreadingServerV6
-    assert _threading_server_for("2001:db8::1") is _ThreadingServerV6
-
-
-def test_ipv6_server_binds_and_reachable(tmp_path):
-    try:
-        probe = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        probe.bind(("::1", 0))
-        probe.close()
-    except OSError:
-        pytest.skip("IPv6 not available on this host")
-
-    server = _ThreadingServerV6(("::1", 0), _FetchHandler)
-    server.token = "unused"
-    server.base_dir = str(tmp_path)
-    host, port = server.server_address[:2]
-    assert host == "::1"
-    assert 1024 < port < 65536
-
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-    try:
-        s = socket.create_connection((host, port), timeout=5)
-        s.close()
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-# --------------------------------------------------------------------- handshake
-def test_handshake_token_validation(ray_start_regular_shared_2_cpus, tmp_path):
-    _actor, endpoint = _make_manager(tmp_path, token="correct")
-    # Good token yields a live connection.
-    with open_shuffle_connection(endpoint, "correct") as conn:
-        assert conn is not None
-    # Bad token is terminal (PermissionError, not retryable).
-    with pytest.raises(PermissionError):
-        open_shuffle_connection(endpoint, "wrong")
-
-
-def test_handshake_unreachable_endpoint_raises_connection_error():
-    # Bind a socket without listen()ing so the kernel returns ECONNREFUSED deterministically
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        with pytest.raises((ConnectionError, OSError)):
-            open_shuffle_connection(("127.0.0.1", port), "any-token")
-    finally:
-        s.close()
-
-
-# --------------------------------------------- fetch_into (streaming to sink)
-def test_fetch_error_paths(ray_start_regular_shared_2_cpus, tmp_path):
-    # Missing path → FileNotFoundError; path outside base_dir → PermissionError.
-    # Errors fire on the response status byte, before anything hits the sink.
-    _actor, endpoint = _make_manager(tmp_path, token="t")
-
-    sink_path = tmp_path / "sink.bin"
-    fd = os.open(str(sink_path), os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        os.ftruncate(fd, 16)
-        sink = _PwriteSink(fd, base_offset=0)
-
-        with open_shuffle_connection(endpoint, "t") as conn:
-            with pytest.raises(FileNotFoundError):
-                conn.fetch_into([(str(tmp_path / "missing.bin"), [(0, 4)])], sink)
-
-        outside = tmp_path.parent / "outside.bin"
-        outside.write_bytes(b"secret")
-        try:
-            with open_shuffle_connection(endpoint, "t") as conn:
-                with pytest.raises(PermissionError):
-                    conn.fetch_into([(str(outside), [(0, 6)])], sink)
-        finally:
-            outside.unlink(missing_ok=True)
-    finally:
-        os.close(fd)
-
-
-def test_fetch_into_wire_format(ray_start_regular_shared_2_cpus, tmp_path):
-    # fetch_into writes a flat (u32 len + bytes)* stream to the sink.
-    _actor, endpoint = _make_manager(tmp_path, token="t")
+# ------------------------------------------------ Arrow Flight fetch transport
+def test_flight_fetch_wire_format(tmp_path):
+    # do_action streams each range as [u32 len][frame bytes] into the sink,
+    # back-to-back, in request order.
     payload = b"HELLO_WORLD_" * 4  # 48 bytes
-    path = _write_source_file(tmp_path, "s.bin", payload)
+    (tmp_path / "s.bin").write_bytes(payload)
 
-    sink_path = tmp_path / "sink.bin"
-    fd = os.open(str(sink_path), os.O_RDWR | os.O_CREAT, 0o644)
+    fd, sink = _open_sink(tmp_path)
     try:
-        os.ftruncate(fd, 64)
-        sink = _PwriteSink(fd, base_offset=0)
-        with open_shuffle_connection(endpoint, "t") as conn:
-            conn.fetch_into([(path, [(0, 12), (12, 12)])], sink)
-
+        with _running_flight_server(tmp_path, "t") as endpoint:
+            _stream_members_flight(
+                endpoint,
+                "t",
+                [_FileRanges(path="s.bin", ranges=[(0, 12), (12, 12)])],
+                max_bytes=1 << 20,
+                sink=sink,
+            )
         # Record 1: u32(12) + payload[0:12]
-        len0 = struct.unpack(">I", os.pread(fd, 4, 0))[0]
-        assert len0 == 12
+        assert struct.unpack(">I", os.pread(fd, 4, 0))[0] == 12
         assert os.pread(fd, 12, 4) == payload[0:12]
-
         # Record 2: u32(12) + payload[12:24] immediately after
-        len1 = struct.unpack(">I", os.pread(fd, 4, 16))[0]
-        assert len1 == 12
+        assert struct.unpack(">I", os.pread(fd, 4, 16))[0] == 12
         assert os.pread(fd, 12, 20) == payload[12:24]
     finally:
         os.close(fd)
 
 
-def test_fetch_into_reset_and_retry(ray_start_regular_shared_2_cpus, tmp_path):
-    # Simulate the retry path in _prefetch_node_into: partial write, reset,
-    # write again, then data at the base offset should be the second attempt.
-    _actor, endpoint = _make_manager(tmp_path, token="t")
-    path_a = _write_source_file(tmp_path, "a.bin", b"AAAAAA")
-    path_b = _write_source_file(tmp_path, "b.bin", b"BBBBBB")
-
-    sink_path = tmp_path / "sink.bin"
-    fd = os.open(str(sink_path), os.O_RDWR | os.O_CREAT, 0o644)
+def test_flight_auth_fail_is_terminal(tmp_path):
+    # Wrong token -> server rejects -> PermissionError (terminal, not retryable).
+    (tmp_path / "s.bin").write_bytes(b"x" * 16)
+    fd, sink = _open_sink(tmp_path)
     try:
-        os.ftruncate(fd, 128)
-        sink = _PwriteSink(fd, base_offset=0)
-        with open_shuffle_connection(endpoint, "t") as conn:
-            conn.fetch_into([(path_a, [(0, 6)])], sink)
-        sink.reset()
-        with open_shuffle_connection(endpoint, "t") as conn:
-            conn.fetch_into([(path_b, [(0, 6)])], sink)
-
-        # Expect u32(6) + b"BBBBBB" at offset 0.
-        len0 = struct.unpack(">I", os.pread(fd, 4, 0))[0]
-        assert len0 == 6
-        assert os.pread(fd, 6, 4) == b"BBBBBB"
+        with _running_flight_server(tmp_path, "correct") as endpoint:
+            with pytest.raises(PermissionError):
+                _stream_members_flight(
+                    endpoint,
+                    "wrong",
+                    [_FileRanges(path="s.bin", ranges=[(0, 4)])],
+                    max_bytes=1 << 20,
+                    sink=sink,
+                )
     finally:
         os.close(fd)
+
+
+def test_flight_unreachable_is_connection_error(tmp_path):
+    # Bind a port with nothing listening -> connect refused -> ConnectionError
+    # (retryable transport fault, distinct from the terminal auth failure).
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]  # bound but never listen()ed
+        fd, sink = _open_sink(tmp_path)
+        try:
+            with pytest.raises(ConnectionError):
+                _stream_members_flight(
+                    ("127.0.0.1", port),
+                    "t",
+                    [_FileRanges(path="x.bin", ranges=[(0, 4)])],
+                    max_bytes=1 << 20,
+                    sink=sink,
+                )
+        finally:
+            os.close(fd)
+    finally:
+        s.close()
 
 
 # --------------------------- reducer helpers (no Ray and no sockets)
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,
     # and single-range-larger-than-budget (must stand alone as its own batch).
-    m1 = _NodeMember(path="a", ranges=[(0, 10), (10, 10)])  # 20 total
-    m2 = _NodeMember(path="b", ranges=[(0, 30)])  # 30 total
-    m3 = _NodeMember(path="c", ranges=[(0, 5), (5, 5)])  # 10 total
+    m1 = _FileRanges(path="a", ranges=[(0, 10), (10, 10)])  # 20 total
+    m2 = _FileRanges(path="b", ranges=[(0, 30)])  # 30 total
+    m3 = _FileRanges(path="c", ranges=[(0, 5), (5, 5)])  # 10 total
 
     # Budget 100 -> everything fits in one batch.
     batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=100))
@@ -251,7 +192,7 @@ def test_chunk_members_by_bytes():
     batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=25))
     assert len(batches) == 3
     assert batches[0] == [m1]
-    assert batches[1] == [_NodeMember(path="b", ranges=[(0, 30)])]
+    assert batches[1] == [_FileRanges(path="b", ranges=[(0, 30)])]
     assert batches[2] == [m3]
 
     # Empty input -> no batches.
@@ -260,9 +201,9 @@ def test_chunk_members_by_bytes():
 
 def test_group_by_manager():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
-    s0 = _SourceRef("sh", "n1", "tok", "a", [(0, 4)])
-    s1 = _SourceRef("sh", "n2", "tok", "b", [(0, 8)])
-    s2 = _SourceRef("sh", "n1", "tok", "c", [(0, 2)])
+    s0 = _SourceRef("sh", "n1", "tok", _FileRanges("a", [(0, 4)]))
+    s1 = _SourceRef("sh", "n2", "tok", _FileRanges("b", [(0, 8)]))
+    s2 = _SourceRef("sh", "n1", "tok", _FileRanges("c", [(0, 2)]))
 
     groups = _group_by_manager([s0, s1, s2])
     by_node = {g.node_id: g for g in groups}
@@ -281,7 +222,7 @@ def test_compute_prefetch_layout():
         "n1",
         "tok",
         members=[
-            _NodeMember(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
+            _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
         ],
     )
     g1 = _NodeGroup(
@@ -289,7 +230,7 @@ def test_compute_prefetch_layout():
         "n2",
         "tok",
         members=[
-            _NodeMember(path="b", ranges=[(0, 100)]),  # 4+100 = 104
+            _FileRanges(path="b", ranges=[(0, 100)]),  # 4+100 = 104
         ],
     )
     total, base_offsets, sizes = _compute_prefetch_layout([g0, g1])
@@ -299,6 +240,21 @@ def test_compute_prefetch_layout():
 
     # Empty layout.
     assert _compute_prefetch_layout([]) == (0, [], [])
+
+
+# -------------------------------------------------------- shard codec roundtrip
+def test_encode_read_ipc_roundtrip():
+    import pyarrow as pa
+
+    # Multi-chunk table to exercise combine_chunks in _encode_shard.
+    t = pa.concat_tables(
+        [
+            pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+            pa.table({"a": [4, 5], "b": ["p", "q"]}),
+        ]
+    )
+    buf = _encode_shard(t)
+    assert _read_ipc(buf).equals(t.combine_chunks())
 
 
 # --------------------------------------------------- error class sanity checks

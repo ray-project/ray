@@ -14,16 +14,26 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Literal,
     Optional,
     Tuple,
     TypedDict,
     Union,
 )
 
+# pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
+# ``data_context.hash_shuffle_compression``.
+Compression = Optional[
+    Literal[
+        "none", "gzip", "bz2", "brotli", "lz4", "lz4_frame", "lz4_raw", "zstd", "snappy"
+    ]
+]
+
 import pyarrow as pa
 
 import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.util import MiB
 from ray.exceptions import (
     ActorDiedError,
     ActorUnavailableError,
@@ -33,6 +43,10 @@ from ray.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# SHARED: shard codec, page-cache hint, ShuffleManager identity/lookup, the
+# ShuffleHandle type, and the error hierarchy — used by BOTH map and reduce.
+# =============================================================================
 # Each range's payload length is framed as a u32 in the sink, so no single
 # range/IPC frame may exceed 4 GiB - 1. Checked at mapper write time so an
 # oversized IPC buffer fails at the mapper task.
@@ -47,14 +61,14 @@ _MAX_RANGE_BYTES: int = (1 << 32) - 1
 _WF_HEADER = struct.Struct("<Q")
 
 
-def _codec_for(compression: Optional[str]) -> Optional["pa.Codec"]:
+def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
     """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
     if not compression or compression == "none":
         return None
     return pa.Codec(compression)
 
 
-def _encode_shard(table: pa.Table, compression: Optional[str] = "zstd") -> pa.Buffer:
+def _encode_shard(table: pa.Table, compression: Compression = "zstd") -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression). ``compression`` comes from
     ``data_context.hash_shuffle_compression``."""
@@ -73,7 +87,7 @@ def _encode_shard(table: pa.Table, compression: Optional[str] = "zstd") -> pa.Bu
 
 
 def _read_ipc(
-    buf: Union[bytes, "pa.Buffer", memoryview], compression: Optional[str] = "zstd"
+    buf: Union[bytes, "pa.Buffer", memoryview], compression: Compression = "zstd"
 ) -> pa.Table:
     """Decode a whole-frame shard: read the u64 size header, one decompress of
     the rest (per ``compression``, same value the map encoded with), then read
@@ -124,12 +138,75 @@ def _lookup_manager(shuffle_id: str, node_id: str) -> "ray.actor.ActorHandle":
     )
 
 
+class ShuffleHandle(TypedDict, total=False):
+    """Handle written by each mapper task, consumed by reducer.
+
+    Only the fields the runtime consumes are declared; the mapper task can
+    add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
+    """
+
+    path: str
+    # Dense per-partition range index (see _build_range_index): row ``p`` is
+    # ``(offset, length)`` of partition ``p``'s frame; ``length == 0`` => the
+    # partition is absent/empty. One frame per partition per map, so
+    # ``partition_id`` indexes the row directly — no CSR pointer.
+    index_ranges: "np.ndarray"  # shape [num_partitions, 2], int64
+    shuffle_id: str
+    node_id: str
+    token: str
+    schema: Optional["pa.Schema"]
+
+
+class ShuffleDiskError(RuntimeError):
+    """Terminal: reducer's local disk exhausted (ENOSPC / EDQUOT).
+    Retrying doesn't reclaim space."""
+
+
+# errno values that indicate the reducer's local disk is exhausted.
+# EDQUOT is glibc's quota-exceeded error; not all platforms expose it.
+_DISK_EXHAUSTED_ERRNOS = frozenset(
+    e
+    for e in (
+        errno.ENOSPC,
+        getattr(errno, "EDQUOT", None),
+    )
+    if e is not None
+)
+
+
+def _is_disk_exhausted(exc: BaseException) -> bool:
+    return isinstance(exc, OSError) and exc.errno in _DISK_EXHAUSTED_ERRNOS
+
+
+class ShuffleManagerAnomalyError(RuntimeError):
+    """Terminal shuffle-manager failure: a driver-level retry cannot fix it.
+
+    We run with ``max_restarts=-1``, ``lifetime="detached"``,
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
+    the actor on any mid-life crash (os.exit) and surfaces ``ActorUnavailableError``
+    during the restart window. So the anomalous states we key off of are:
+
+    - ``ActorDiedError``          -> ``__init__`` raised, or external
+                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
+                                    relocation. Terminal at the shuffle layer;
+                                    an upstream lineage layer must re-execute
+                                    the mapper on healthy capacity.
+    - ``ValueError`` (from ``ray.get_actor``) -> actor name is not registered
+                                                (never created or gc'd).
+    - The Flight fetch failed but the endpoint is unchanged and Ray RPC still
+      works, which is often a network-configuration problem (``NetworkPolicy``,
+      firewall, routing).
+    """
+
+
 # =============================================================================
-# Arrow Flight transport: server streams shuffle byte-ranges via DoAction;
-# reducer fetches them over a Flight client. Payload is opaque bytes (the
-# whole-frame shard blob), so no RecordBatch (de)serialization on the path.
+# SERVER SIDE (created by map tasks; serves reduce fetches). Arrow Flight over
+# gRPC: DoAction streams opaque byte-ranges (the whole-frame shard blob — no
+# RecordBatch (de)serialization). ``_grpc_location`` / ``_FLIGHT_CHUNK`` are
+# shared with the fetch client below.
 # =============================================================================
-_FLIGHT_CHUNK = 1 << 20  # Flight Result body size; keep under gRPC's ~4 MiB frame
+_FLIGHT_CHUNK = MiB  # Flight Result body size; keep under gRPC's ~4 MiB frame
 
 
 # Flight fetch request (Action body): JSON ``{"t": token, "s": [[path, [[off, len], ...]], ...]}``.
@@ -210,80 +287,20 @@ class ShuffleManager:
 
 
 @ray.remote(num_cpus=0)
-def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str, expected_node_id: str) -> None:
-    """Best-effort ``rmtree`` of this shuffle's map + reduce staging dirs.
-    NodeAffinity(soft=True) may land us off-target; no-op then."""
-    if ray.get_runtime_context().get_node_id() != expected_node_id:
-        return
+def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
+    """Best-effort ``rmtree`` of this shuffle's map + reduce staging dirs. Pinned
+    to its node with ``NodeAffinity(soft=False)``: on a live node it runs there;
+    if the node is gone the task just fails."""
     import shutil
 
     shutil.rmtree(map_dir, ignore_errors=True)
     shutil.rmtree(reduce_dir, ignore_errors=True)
 
 
-class ShuffleHandle(TypedDict, total=False):
-    """Handle written by each mapper task, consumed by reducer.
-
-    Only the fields the runtime consumes are declared; the mapper task can
-    add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
-    """
-
-    path: str
-    # CSR per-partition range index (3 int64 arrays; see _index_to_csr).
-    # Partition ``p``: ``zip(index_off[a:b], index_len[a:b])``,
-    # ``a=index_part_start[p]``, ``b=index_part_start[p+1]``.
-    index_off: "np.ndarray"
-    index_len: "np.ndarray"
-    index_part_start: "np.ndarray"
-    shuffle_id: str
-    node_id: str
-    token: str
-    schema: Optional["pa.Schema"]
-
-
-class ShuffleDiskError(RuntimeError):
-    """Terminal: reducer's local disk exhausted (ENOSPC / EDQUOT).
-    Retrying doesn't reclaim space."""
-
-
-# errno values that indicate the reducer's local disk is exhausted.
-# EDQUOT is glibc's quota-exceeded error; not all platforms expose it.
-_DISK_EXHAUSTED_ERRNOS = frozenset(
-    e
-    for e in (
-        errno.ENOSPC,
-        getattr(errno, "EDQUOT", None),
-    )
-    if e is not None
-)
-
-
-def _is_disk_exhausted(exc: BaseException) -> bool:
-    return isinstance(exc, OSError) and exc.errno in _DISK_EXHAUSTED_ERRNOS
-
-
-class ShuffleManagerAnomalyError(RuntimeError):
-    """Terminal shuffle-manager failure: a driver-level retry cannot fix it.
-
-    We run with ``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash (os.exit) and surfaces ``ActorUnavailableError``
-    during the restart window. So the anomalous states we key off of are:
-
-    - ``ActorDiedError``          -> ``__init__`` raised, or external
-                                    ``ray.kill(actor, no_restart=True)``.
-    - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
-                                    relocation. Terminal at the shuffle layer;
-                                    an upstream lineage layer must re-execute
-                                    the mapper on healthy capacity.
-    - ``ValueError`` (from ``ray.get_actor``) -> actor name is not registered
-                                                (never created or gc'd).
-    - The Flight fetch failed but the endpoint is unchanged and Ray RPC still
-      works, which is often a network-configuration problem (``NetworkPolicy``,
-      firewall, routing).
-    """
-
-
+# =============================================================================
+# FETCH SIDE (reduce tasks): resolve manager endpoints, stream shards from each
+# over a Flight client into the prefetch sink at disjoint offsets, then decode.
+# =============================================================================
 # Process-global cache of ShuffleManager endpoints: {actor_name: (ip, port)}.
 # Stale entries are popped by ``_prefetch_node_into`` on fetch failure; the next
 # ``_resolve()`` call re-queries the actor. The lock guards concurrent access
@@ -297,26 +314,26 @@ _ENDPOINT_CACHE_LOCK = threading.Lock()
 
 
 @dataclass(slots=True, frozen=True)
-class _SourceRef:
-    """One (mapper file, partition slice) the reducer needs to pull.
+class _FileRanges:
+    """A shuffle file and the byte ranges to read from it — the fetch unit
+    shared by a reducer's source refs and its per-node fetch groups."""
 
-    Built once per input handle for a given partition_id at reducer start.
-    The (shuffle_id, node_id) pair is the manager's named-actor identity;
-    """
-
-    shuffle_id: str
-    node_id: str
-    token: str
     path: str
     ranges: List[Tuple[int, int]]
 
 
 @dataclass(slots=True, frozen=True)
-class _NodeMember:
-    """A source's ranges as they appear within a per-node fetch group."""
+class _SourceRef:
+    """A ``_FileRanges`` tagged with its ShuffleManager identity.
 
-    path: str
-    ranges: List[Tuple[int, int]]
+    Built once per input handle for a given partition_id at reducer start.
+    The (shuffle_id, node_id) pair is the manager's named-actor identity.
+    """
+
+    shuffle_id: str
+    node_id: str
+    token: str
+    file: _FileRanges
 
 
 @dataclass(slots=True)
@@ -329,7 +346,7 @@ class _NodeGroup:
     shuffle_id: str
     node_id: str
     token: str
-    members: List[_NodeMember] = field(default_factory=list)
+    members: List[_FileRanges] = field(default_factory=list)
 
 
 class _PwriteSink:
@@ -351,7 +368,7 @@ class _PwriteSink:
     def reset(self) -> None:
         self._pos = self._base_offset
 
-    def write(self, data) -> int:
+    def write(self, data: Union[bytes, bytearray, memoryview, "pa.Buffer"]) -> int:
         mv = memoryview(data)
         total = 0
         n_total = len(mv)
@@ -370,7 +387,13 @@ class _PwriteSink:
         return total
 
 
-def _stream_members_flight(endpoint, token, members, max_bytes, sink) -> None:
+def _stream_members_flight(
+    endpoint: Tuple[str, int],
+    token: str,
+    members: List[_FileRanges],
+    max_bytes: int,
+    sink: _PwriteSink,
+) -> None:
     """Arrow Flight DoAction: one client, batched fetch requests. Response
     ``Result`` bodies carry ``[u32 len][frame]`` framing, so they stream
     verbatim into the sink. Transport failures map to
@@ -419,7 +442,7 @@ def _prefetch_node_into(
     shuffle_id: str,
     node_id: str,
     token: str,
-    members: List[_NodeMember],
+    members: List[_FileRanges],
     max_bytes_per_fetch: int,
 ) -> None:
     """Stream every member's shards into ``out_file_obj`` over ONE Flight
@@ -525,9 +548,9 @@ def _prefetch_node_into(
 
 
 def _chunk_members_by_bytes(
-    members: List[_NodeMember],
+    members: List[_FileRanges],
     max_bytes: int,
-) -> Iterable[List[_NodeMember]]:
+) -> Iterable[List[_FileRanges]]:
     """Yield sub-batches of members whose total requested bytes ≤ ``max_bytes``.
 
     A source's ranges MAY be split across batches: the source appears as
@@ -536,21 +559,21 @@ def _chunk_members_by_bytes(
     split as each range is one Arrow IPC frame at the mapper, so a
     sub-range cut would break the reducer's decode.
     """
-    batch: List[_NodeMember] = []
+    batch: List[_FileRanges] = []
     batch_bytes = 0
     for member in members:
         pending: List[Tuple[int, int]] = []
         for off, length in member.ranges:
             if (batch or pending) and batch_bytes + length > max_bytes:
                 if pending:
-                    batch.append(_NodeMember(path=member.path, ranges=pending))
+                    batch.append(_FileRanges(path=member.path, ranges=pending))
                     pending = []
                 yield batch
                 batch, batch_bytes = [], 0
             pending.append((off, length))
             batch_bytes += length
         if pending:
-            batch.append(_NodeMember(path=member.path, ranges=pending))
+            batch.append(_FileRanges(path=member.path, ranges=pending))
     if batch:
         yield batch
 
@@ -569,22 +592,25 @@ def _handle_batch_size(handles, batch_bytes):
     if not isinstance(probe, dict):
         probe = ray.get(probe)
     try:
-        npart = int(probe.get("num_partitions") or len(probe["index_part_start"]) - 1)
+        npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
     except Exception:
         npart = 1
     per_handle = max(1, npart * 16)
     return max(1, min(len(handles), batch_bytes // per_handle))
 
 
+_DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB  # materialized metadata per resolve batch
+
+
 def _handles_to_sources(
     handles: List["ShuffleHandle"],
     partition_id: int,
-    batch_bytes: int = 64 * 1024 * 1024,
+    batch_bytes: int = _DEFAULT_HANDLE_BATCH_BYTES,
 ) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
     """Extract per-partition source refs from a reducer's input handles.
 
-    Resolves handle refs in ≈``batch_bytes`` batches, slices this partition's
-    ranges out of each handle's CSR arrays, then frees the batch — so in-flight
+    Resolves handle refs in ≈``batch_bytes`` batches, reads this partition's row
+    out of each handle's dense range index, then frees the batch — so in-flight
     handle memory stays constant, not O(maps × partitions). Skips handles with
     zero bytes for this partition; picks the first non-None schema.
     """
@@ -593,30 +619,31 @@ def _handles_to_sources(
     if not handles:
         return sources, output_schema
 
-    k = _handle_batch_size(handles, batch_bytes)
-    for start in range(0, len(handles), k):
-        batch = handles[start : start + k]
-        refs = [h for h in batch if not isinstance(h, dict)]
+    batch_size = _handle_batch_size(handles, batch_bytes)
+    for start in range(0, len(handles), batch_size):
+        batch = handles[start : start + batch_size]
+        refs = [handle for handle in batch if not isinstance(handle, dict)]
         vals = iter(ray.get(refs)) if refs else iter(())
-        resolved = [h if isinstance(h, dict) else next(vals) for h in batch]
-        for h in resolved:
+        resolved = [
+            handle if isinstance(handle, dict) else next(vals) for handle in batch
+        ]
+        for handle in resolved:
             if output_schema is None:
-                output_schema = h.get("schema")
-            # CSR slice: only this partition's ranges materialize as Python
-            # objects; the rest stay as (zero-copy) numpy buffers.
-            ps = h["index_part_start"]
-            s = int(ps[partition_id])
-            e = int(ps[partition_id + 1])
-            if e > s:
-                offs = h["index_off"][s:e].tolist()
-                lens = h["index_len"][s:e].tolist()
+                output_schema = handle.get("schema")
+            # Dense index: partition_id is the row; only this row materializes
+            # as a Python range, the rest stay as (zero-copy) numpy buffers.
+            off, length = handle["index_ranges"][partition_id]
+            length = int(length)
+            if length > 0:
                 sources.append(
                     _SourceRef(
-                        shuffle_id=h["shuffle_id"],
-                        node_id=h["node_id"],
-                        token=h["token"],
-                        path=h["path"],
-                        ranges=list(zip(offs, lens)),
+                        shuffle_id=handle["shuffle_id"],
+                        node_id=handle["node_id"],
+                        token=handle["token"],
+                        file=_FileRanges(
+                            path=handle["path"],
+                            ranges=[(int(off), length)],
+                        ),
                     )
                 )
         # Free this batch's resolved handles before resolving the next, so
@@ -632,18 +659,18 @@ def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
     used as the collapse key.
     """
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for s in sources:
-        key = (s.shuffle_id, s.node_id)
+    for source in sources:
+        key = (source.shuffle_id, source.node_id)
         group = by_key.get(key)
         if group is None:
             group = _NodeGroup(
-                shuffle_id=s.shuffle_id,
-                node_id=s.node_id,
-                token=s.token,
+                shuffle_id=source.shuffle_id,
+                node_id=source.node_id,
+                token=source.token,
                 members=[],
             )
             by_key[key] = group
-        group.members.append(_NodeMember(path=s.path, ranges=s.ranges))
+        group.members.append(source.file)
     return list(by_key.values())
 
 

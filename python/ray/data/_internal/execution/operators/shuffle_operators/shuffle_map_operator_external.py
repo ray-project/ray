@@ -518,9 +518,9 @@ class ExternalHashShuffleMapOp(
                 cleanup_refs.append(
                     _cleanup_shuffle_dir.options(
                         scheduling_strategy=NodeAffinitySchedulingStrategy(
-                            node_id, soft=True
+                            node_id, soft=False
                         ),
-                    ).remote(self._map_dir, self._reduce_dir, node_id)
+                    ).remote(self._map_dir, self._reduce_dir)
                 )
             except Exception:
                 pass
