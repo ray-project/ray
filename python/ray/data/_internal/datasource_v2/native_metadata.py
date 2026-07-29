@@ -83,6 +83,11 @@ def read_native_metadata(path: str, filesystem: Optional["FileSystem"]):
     from pyarrow.fs import S3FileSystem
 
     if isinstance(filesystem, S3FileSystem):
+        # pyarrow filesystem paths are normally scheme-less ("bucket/key"), but
+        # strip a leading "s3://" defensively so we never split it into a bogus
+        # "s3:" bucket.
+        if path.startswith("s3://"):
+            path = path[len("s3://") :]
         bucket, _, key = path.partition("/")
         cfg = s3_config(filesystem)
         return ray_data_arrow_rs.read_metadata_s3(

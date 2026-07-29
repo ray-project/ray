@@ -682,6 +682,7 @@ fn open_local_reader(
 #[pyo3(signature = (path, row_groups=None, columns=None, batch_size=131072, decode_budget_bytes=2*1024*1024, k=1, split_threshold_bytes=134217728, predicate_json=None))]
 #[allow(clippy::too_many_arguments)]
 fn read_row_groups(
+    py: Python<'_>,
     path: String,
     row_groups: Option<Vec<usize>>,
     columns: Option<Vec<String>>,
@@ -694,17 +695,22 @@ fn read_row_groups(
     // in Python post-decode, so this only avoids IO/decode, never changes rows.
     predicate_json: Option<String>,
 ) -> PyResult<ArrowStream> {
-    let reader = open_local_reader(
-        path,
-        row_groups,
-        columns,
-        batch_size,
-        decode_budget_bytes,
-        k,
-        split_threshold_bytes,
-        predicate_json,
-    )
-    .map_err(to_py)?;
+    // Footer read + reader construction is blocking file I/O; release the GIL so
+    // sibling Python read threads (Ray's fragment pool) run in parallel.
+    let reader = py
+        .allow_threads(|| {
+            open_local_reader(
+                path,
+                row_groups,
+                columns,
+                batch_size,
+                decode_budget_bytes,
+                k,
+                split_threshold_bytes,
+                predicate_json,
+            )
+        })
+        .map_err(to_py)?;
     Ok(into_py_stream(reader))
 }
 
@@ -974,6 +980,7 @@ fn build_s3_store(
                     prefetch_windows=2, predicate_json=None))]
 #[allow(clippy::too_many_arguments)]
 fn read_row_groups_s3(
+    py: Python<'_>,
     bucket: String,
     key: String,
     region: String,
@@ -1018,22 +1025,27 @@ fn read_row_groups_s3(
     // unselected pages by byte range), and build the projected output schema up
     // front from an empty stream (no network). Reporting the projected schema is
     // what keeps it matching the projected batches at the FFI boundary.
-    let (meta, mask, schema) = rt
-        .block_on(async {
-            let opts = reader_options(PageIndexPolicy::Optional);
-            let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
-            let meta = ArrowReaderMetadata::load_async(&mut probe, opts).await?;
-            let mask = projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
-            let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
-                ParquetObjectReader::new(store.clone(), obj_path.clone()),
-                meta.clone(),
-            )
-            .with_projection(mask.clone())
-            .with_row_groups(vec![])
-            .build()?
-            .schema()
-            .clone();
-            Ok::<_, parquet::errors::ParquetError>((meta, mask, schema))
+    // Blocking async footer fetch; release the GIL so sibling Python read
+    // threads (Ray's fragment pool) issue their own S3 requests in parallel.
+    let (meta, mask, schema) = py
+        .allow_threads(|| {
+            rt.block_on(async {
+                let opts = reader_options(PageIndexPolicy::Optional);
+                let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
+                let meta = ArrowReaderMetadata::load_async(&mut probe, opts).await?;
+                let mask =
+                    projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
+                let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
+                    ParquetObjectReader::new(store.clone(), obj_path.clone()),
+                    meta.clone(),
+                )
+                .with_projection(mask.clone())
+                .with_row_groups(vec![])
+                .build()?
+                .schema()
+                .clone();
+                Ok::<_, parquet::errors::ParquetError>((meta, mask, schema))
+            })
         })
         .map_err(to_py)?;
 
@@ -1118,10 +1130,14 @@ fn read_row_groups_s3(
 /// counts. Page index is skipped (not needed for metadata). Lets the Python reader
 /// stop building a PyArrow dataset to learn the schema / row-group layout.
 #[pyfunction]
-fn read_metadata(path: String) -> PyResult<ParquetFileMetadata> {
-    let opts = reader_options(PageIndexPolicy::Skip);
-    let meta =
-        ArrowReaderMetadata::load(&File::open(&path).map_err(to_py)?, opts).map_err(to_py)?;
+fn read_metadata(py: Python<'_>, path: String) -> PyResult<ParquetFileMetadata> {
+    // Blocking footer read; release the GIL for sibling Python threads.
+    let meta = py
+        .allow_threads(|| {
+            let opts = reader_options(PageIndexPolicy::Skip);
+            ArrowReaderMetadata::load(&File::open(&path)?, opts)
+        })
+        .map_err(to_py)?;
     Ok(build_file_metadata(&meta))
 }
 
@@ -1133,6 +1149,7 @@ fn read_metadata(path: String) -> PyResult<ParquetFileMetadata> {
                     virtual_hosted_style=false))]
 #[allow(clippy::too_many_arguments)]
 fn read_metadata_s3(
+    py: Python<'_>,
     bucket: String,
     key: String,
     region: String,
@@ -1158,11 +1175,14 @@ fn read_metadata_s3(
     .map_err(to_py)?;
     let obj_path = ObjPath::from(key);
     let rt = shared_runtime();
-    let meta = rt
-        .block_on(async {
-            let opts = reader_options(PageIndexPolicy::Skip);
-            let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
-            ArrowReaderMetadata::load_async(&mut probe, opts).await
+    // Blocking async footer fetch; release the GIL for sibling Python threads.
+    let meta = py
+        .allow_threads(|| {
+            rt.block_on(async {
+                let opts = reader_options(PageIndexPolicy::Skip);
+                let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
+                ArrowReaderMetadata::load_async(&mut probe, opts).await
+            })
         })
         .map_err(to_py)?;
     Ok(build_file_metadata(&meta))
@@ -1175,10 +1195,18 @@ fn read_metadata_s3(
 /// set up front. Page index is skipped (stats live in the footer).
 #[pyfunction]
 #[pyo3(signature = (path, predicate_json=None))]
-fn select_row_groups(path: String, predicate_json: Option<String>) -> PyResult<Vec<usize>> {
-    let opts = reader_options(PageIndexPolicy::Skip);
-    let meta =
-        ArrowReaderMetadata::load(&File::open(&path).map_err(to_py)?, opts).map_err(to_py)?;
+fn select_row_groups(
+    py: Python<'_>,
+    path: String,
+    predicate_json: Option<String>,
+) -> PyResult<Vec<usize>> {
+    // Blocking footer read; release the GIL for sibling Python threads.
+    let meta = py
+        .allow_threads(|| {
+            let opts = reader_options(PageIndexPolicy::Skip);
+            ArrowReaderMetadata::load(&File::open(&path)?, opts)
+        })
+        .map_err(to_py)?;
     let all: Vec<usize> = (0..meta.metadata().num_row_groups()).collect();
     Ok(apply_predicate(&meta, all, &predicate_json))
 }

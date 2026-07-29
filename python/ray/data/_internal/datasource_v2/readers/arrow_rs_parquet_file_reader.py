@@ -112,13 +112,10 @@ import pyarrow.dataset as pds
 from typing_extensions import override
 
 from ray._common.utils import env_integer
-from ray.data._internal.object_extensions.arrow import (
-    raise_on_pickle_object_columns,
-)
 from ray.data._internal.datasource_v2.native_metadata import (
     read_native_metadata as _read_native_metadata_via_crate,
+    s3_config as _s3_config,
 )
-from ray.data._internal.datasource_v2.native_metadata import s3_config as _s3_config
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     _ARROW_SCANNER_BATCH_READAHEAD,
@@ -126,6 +123,9 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
     ParquetFileReader,
     _estimate_batch_size_from_metadata,
+)
+from ray.data._internal.object_extensions.arrow import (
+    raise_on_pickle_object_columns,
 )
 from ray.data._internal.util import MiB
 from ray.util.annotations import DeveloperAPI
@@ -1025,7 +1025,13 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         filesystem (GCS, ABFS, HTTP, …) falls back to PyArrow."""
         from pyarrow.fs import LocalFileSystem, S3FileSystem
 
-        return isinstance(self._filesystem, (LocalFileSystem, S3FileSystem))
+        # ``None`` means the default local filesystem (matching
+        # ``native_metadata_supported_filesystem`` and the non-S3 native read
+        # path); treat it as supported so eligible local reads don't silently
+        # fall back to PyArrow.
+        return self._filesystem is None or isinstance(
+            self._filesystem, (LocalFileSystem, S3FileSystem)
+        )
 
     def _blocking_format_kwargs(self, aligned_ok: bool) -> Dict[str, Any]:
         """Parquet-format kwargs (the ``dataset_kwargs`` payload spread into
@@ -1410,6 +1416,11 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         fs = self._filesystem
         if isinstance(fs, S3FileSystem):
+            # pyarrow filesystem paths are normally scheme-less ("bucket/key"),
+            # but strip a leading "s3://" defensively so we never split it into
+            # a bogus "s3:" bucket.
+            if path.startswith("s3://"):
+                path = path[len("s3://") :]
             bucket, _, key = path.partition("/")
             cfg = _s3_config(fs)
             reader = ray_data_arrow_rs.read_row_groups_s3(
