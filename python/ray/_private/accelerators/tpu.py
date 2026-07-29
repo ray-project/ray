@@ -661,7 +661,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         try:
             vfio_entries = os.listdir("/dev/vfio")
             numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
-        except FileNotFoundError as e:
+        except OSError as e:
             logger.debug("Failed to detect number of TPUs: %s", e)
             return 0
 
