@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+import weakref
 from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
@@ -16,11 +17,15 @@ from ray._common.usage import usage_lib
 from ray.util import log_once
 
 try:
-    from joblib._parallel_backends import SafeFunction
     from joblib.parallel import BatchedCalls, parallel_backend
 except ImportError:
     BatchedCalls = None
     parallel_backend = None
+
+try:
+    from joblib._parallel_backends import SafeFunction
+except ImportError:
+    # SafeFunction is a legacy compatibility wrapper removed in Joblib 1.5.
     SafeFunction = None
 
 
@@ -214,7 +219,9 @@ class ResultThread(threading.Thread):
         self._single_result = single_result
         self._callback = callback
         self._error_callback = error_callback
-        self._total_object_refs = total_object_refs or len(object_refs)
+        self._total_object_refs = (
+            len(object_refs) if total_object_refs is None else total_object_refs
+        )
         self._indices = {}
         # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
@@ -229,6 +236,12 @@ class ResultThread(threading.Thread):
 
     def add_object_ref(self, object_ref):
         self._new_object_refs.put(object_ref)
+
+    def finish(self, total_object_refs):
+        self._total_object_refs = total_object_refs
+        # Wake the thread if it is waiting for its first dynamically submitted
+        # ObjectRef (including the empty-iterable case).
+        self._new_object_refs.put(self.END_SENTINEL)
 
     def run(self):
         unready = copy.copy(self._object_refs)
@@ -247,8 +260,12 @@ class ResultThread(threading.Thread):
                     new_object_ref = self._new_object_refs.get(block=block)
                     if new_object_ref is self.END_SENTINEL:
                         # Receiving the END_SENTINEL object is the signal to stop.
-                        # Store the total number of objects.
-                        self._total_object_refs = len(self._object_refs)
+                        # Store the total number of objects unless the producer
+                        # already supplied it before all refs were dispatched.
+                        if self._total_object_refs == float("inf"):
+                            self._total_object_refs = len(self._object_refs)
+                        if self._num_ready >= self._total_object_refs:
+                            return
                     else:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -330,13 +347,25 @@ class AsyncResult:
     """
 
     def __init__(
-        self, chunk_object_refs, callback=None, error_callback=None, single_result=False
+        self,
+        chunk_object_refs,
+        callback=None,
+        error_callback=None,
+        single_result=False,
+        total_object_refs=None,
     ):
         self._single_result = single_result
         self._result_thread = ResultThread(
-            chunk_object_refs, single_result, callback, error_callback
+            chunk_object_refs,
+            single_result,
+            callback,
+            error_callback,
+            total_object_refs=total_object_refs,
         )
         self._result_thread.start()
+
+    def add_object_ref(self, object_ref):
+        self._result_thread.add_object_ref(object_ref)
 
     def wait(self, timeout: Optional[float] = None):
         """
@@ -421,7 +450,6 @@ class IMapIterator:
         if self._finished_iterating:
             return
 
-        actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
         # Check whether we have run out of samples.
@@ -431,18 +459,35 @@ class IMapIterator:
             # Reached end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
+                if self._pool._autoscale:
+                    self._result_thread.finish(len(self._submitted_chunks))
                 # Nothing to do, return.
                 return
         chunk_iterator = iter(chunk_list)
 
-        new_chunk_id = self._pool._submit_chunk(
-            self._func, chunk_iterator, self._chunksize, actor_index
-        )
+        if self._pool._autoscale:
+            final_chunk = self._finished_iterating
+
+            def add_object_ref(object_ref):
+                self._result_thread.add_object_ref(object_ref)
+                if final_chunk:
+                    self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
+
+            self._pool._submit_chunk(
+                self._func,
+                chunk_iterator,
+                self._chunksize,
+                add_object_ref=add_object_ref,
+            )
+        else:
+            actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
+            new_chunk_id = self._pool._submit_chunk(
+                self._func, chunk_iterator, self._chunksize, actor_index
+            )
+            self._result_thread.add_object_ref(new_chunk_id)
         self._submitted_chunks.append(False)
-        # Wait for the result
-        self._result_thread.add_object_ref(new_chunk_id)
         # If we submitted the final chunk, notify the result thread
-        if self._finished_iterating:
+        if self._finished_iterating and not self._pool._autoscale:
             self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
 
     def __iter__(self):
@@ -573,6 +618,19 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
             the pool. See :func:`ray.remote` for details.
+        autoscale: if True, the pool keeps warm actors and grows on demand
+            (capped at max_size) instead of eagerly creating a fixed pool.
+            Actors request num_cpus=1 so pending placements drive the
+            autoscaler. Idle actors are reaped after idle_timeout_s.
+        min_size: minimum number of actors to keep alive when autoscaling.
+            Defaults to 0 (reap all idle actors).
+        max_size: maximum number of actors when autoscaling. Defaults to
+            processes. May exceed the current cluster CPUs; pending actors
+            surface demand to the autoscaler.
+        initial_size: number of actors to pre-warm at startup when
+            autoscaling. Defaults to 0 (fully lazy).
+        idle_timeout_s: seconds an actor may be idle before reaping when
+            autoscaling. Defaults to 60.
     """
 
     def __init__(
@@ -584,6 +642,16 @@ class Pool:
         context: Any = None,
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        # Autoscaling (opt-in, experimental). When autoscale=True the pool
+        # keeps warm actors and grows on demand (capped at max_size) instead
+        # of eagerly creating a fixed pool with a readiness barrier. Idle
+        # actors are reaped after idle_timeout_s down to min_size, so the
+        # cluster can scale back down.
+        autoscale: bool = False,
+        min_size: int = 0,
+        max_size: Optional[int] = None,
+        initial_size: Optional[int] = None,
+        idle_timeout_s: float = 60.0,
     ):
         usage_lib.record_library_usage("util.multiprocessing.Pool")
 
@@ -598,6 +666,20 @@ class Pool:
         self._ray_remote_args = ray_remote_args or {}
         self._pool_actor = None
 
+        # Autoscaling config.
+        self._autoscale = autoscale
+        self._min_size = min_size
+        self._idle_timeout_s = idle_timeout_s
+        self._pool_lock = threading.Lock()
+        self._last_used: List[float] = []
+        self._ready_actor_indices = collections.deque()
+        self._starting_actor_refs = {}
+        self._running_actor_refs = {}
+        self._autoscale_queue = queue.Queue()
+        self._dispatcher_wakeup = threading.Event()
+        self._dispatcher_terminate = threading.Event()
+        self._dispatcher_thread: Optional[threading.Thread] = None
+
         if context and log_once("context_argument_warning"):
             logger.warning(
                 "The 'context' argument is not supported using "
@@ -605,7 +687,28 @@ class Pool:
                 "to control ray initialization."
             )
 
+        if autoscale:
+            # Resource-bearing actors so pending placements drive the
+            # autoscaler (num_cpus=0 actors surface no CPU demand).
+            self._ray_remote_args.setdefault("num_cpus", 1)
+
         processes = self._init_ray(processes, ray_address)
+
+        if autoscale:
+            self._max_size = max_size if max_size is not None else processes
+            self._initial_size = initial_size if initial_size is not None else 0
+            if self._max_size <= 0:
+                raise ValueError("max_size must be greater than 0.")
+            if not 0 <= self._min_size <= self._max_size:
+                raise ValueError("min_size must be between 0 and max_size.")
+            if not 0 <= self._initial_size <= self._max_size:
+                raise ValueError("initial_size must be between 0 and max_size.")
+            if self._idle_timeout_s < 0:
+                raise ValueError("idle_timeout_s must be greater than or equal to 0.")
+        else:
+            self._max_size = processes
+            self._initial_size = processes
+
         self._start_actor_pool(processes)
 
     def _init_ray(self, processes=None, ray_address=None):
@@ -636,7 +739,10 @@ class Pool:
             processes = ray_cpus
         if processes <= 0:
             raise ValueError("Processes in the pool must be >0.")
-        if ray_cpus < processes:
+        # For autoscaling, processes (= max_size) may exceed the current cluster
+        # CPUs — that is the point: pending num_cpus=1 actors drive the
+        # autoscaler. Only the fixed-pool default requires CPUs >= processes.
+        if not self._autoscale and ray_cpus < processes:
             raise ValueError(
                 "Tried to start a pool with {} processes on an "
                 "existing ray cluster, but there are only {} "
@@ -647,8 +753,33 @@ class Pool:
 
     def _start_actor_pool(self, processes):
         self._pool_actor = None
-        self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
-        ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
+        if self._autoscale:
+            # Validate actor options synchronously even when no actors are
+            # initially created. Dispatcher failures must not strand results.
+            self._pool_actor = PoolActor.options(**self._ray_remote_args)
+            # Fixed-length slot list (target_concurrency = max_size). Slots
+            # are None until lazily created on demand by the dispatcher. No eager
+            # create-all + ping barrier (the #22048 deadlock lever); lazy
+            # creation means pending num_cpus=1 actors drive the autoscaler
+            # instead of deadlocking construction.
+            target = self._max_size
+            self._actor_pool: List[Optional[Tuple[Any, int]]] = [None] * target
+            self._last_used = [0.0] * target
+            for i in range(self._initial_size):
+                self._start_autoscale_actor(i, demand=False)
+            wakeup = self._dispatcher_wakeup
+            pool_ref = weakref.ref(self, lambda _: wakeup.set())
+            self._dispatcher_thread = threading.Thread(
+                target=Pool._dispatch_autoscale_batches,
+                args=(pool_ref,),
+                daemon=True,
+            )
+            self._dispatcher_thread.start()
+        else:
+            # Preserve the default eager create-all + ping barrier.
+            self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
+            self._last_used = [time.monotonic()] * processes
+            ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
 
     def _wait_for_stopping_actors(self, timeout=None):
         if len(self._actor_deletion_ids) == 0:
@@ -688,6 +819,7 @@ class Pool:
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
+        # The default fixed-pool path is unchanged.
         actor, count = self._actor_pool[actor_index]
         object_ref = actor.run_batch.remote(func, batch)
         count += 1
@@ -697,6 +829,208 @@ class Pool:
             actor, count = self._new_actor_entry()
         self._actor_pool[actor_index] = (actor, count)
         return object_ref
+
+    def _start_autoscale_actor(self, actor_index, demand=True):
+        entry = self._new_actor_entry()
+        self._actor_pool[actor_index] = entry
+        self._last_used[actor_index] = time.monotonic()
+        actor, _ = entry
+        object_ref = actor.ping.remote()
+        self._starting_actor_refs[object_ref] = (actor_index, demand)
+        self._wake_dispatcher_when_ready(object_ref)
+
+    def _enqueue_autoscale_batch(self, func, batch, add_object_ref):
+        with self._pool_lock:
+            if self._closed:
+                if self._dispatcher_terminate.is_set():
+                    error = RuntimeError("Pool was terminated")
+                else:
+                    error = ValueError("Pool not running")
+            else:
+                self._autoscale_queue.put((func, batch, add_object_ref))
+                self._dispatcher_wakeup.set()
+                return
+        add_object_ref(ray.put([PoolTaskError(error)]))
+
+    def _wake_dispatcher_when_ready(self, object_ref):
+        # ObjectRef callbacks may run on a core-worker thread. They only wake
+        # the dispatcher; all pool state remains owned by the dispatcher.
+        # Capture the Event rather than the Pool so the callback does not
+        # extend the Pool's lifetime.
+        wakeup = self._dispatcher_wakeup
+        object_ref._on_completed(lambda _: wakeup.set())
+
+    def _drain_autoscale_queue(self, pending):
+        while True:
+            try:
+                pending.append(self._autoscale_queue.get_nowait())
+            except queue.Empty:
+                return
+
+    def _update_autoscale_actor_states(self):
+        refs = list(self._starting_actor_refs) + list(self._running_actor_refs)
+        if not refs:
+            return
+        ready, _ = ray.wait(refs, num_returns=len(refs), timeout=0)
+        now = time.monotonic()
+        for object_ref in ready:
+            if object_ref in self._starting_actor_refs:
+                actor_index, _ = self._starting_actor_refs.pop(object_ref)
+                try:
+                    ray.get(object_ref)
+                except ray.exceptions.RayError as error:
+                    self._actor_pool[actor_index] = None
+                    self._last_used[actor_index] = 0.0
+                    return error
+                else:
+                    self._last_used[actor_index] = now
+                    self._ready_actor_indices.append(actor_index)
+            else:
+                actor_index, retire = self._running_actor_refs.pop(object_ref)
+                if retire:
+                    actor, _ = self._actor_pool[actor_index]
+                    self._stop_actor(actor)
+                    self._actor_pool[actor_index] = None
+                    self._last_used[actor_index] = 0.0
+                else:
+                    self._last_used[actor_index] = now
+                    self._ready_actor_indices.append(actor_index)
+        return None
+
+    def _resize_autoscale_actor_pool(self, desired):
+        live = sum(slot is not None for slot in self._actor_pool)
+        while live < desired:
+            actor_index = self._actor_pool.index(None)
+            self._start_autoscale_actor(actor_index)
+            live += 1
+
+        # Pending actors created for backlog are only demand signals. Remove
+        # excess ones once the backlog shrinks; initial warm actors are left
+        # for normal idle-timeout reaping.
+        for object_ref, (actor_index, demand) in list(
+            self._starting_actor_refs.items()
+        ):
+            if live <= desired:
+                break
+            if demand:
+                actor, _ = self._actor_pool[actor_index]
+                self._starting_actor_refs.pop(object_ref)
+                self._actor_pool[actor_index] = None
+                self._last_used[actor_index] = 0.0
+                ray.kill(actor)
+                live -= 1
+
+    def _dispatch_ready_batches(self, pending):
+        while pending and self._ready_actor_indices:
+            func, batch, add_object_ref = pending.popleft()
+            actor_index = self._ready_actor_indices.popleft()
+            actor, count = self._actor_pool[actor_index]
+            object_ref = actor.run_batch.remote(func, batch)
+            add_object_ref(object_ref)
+            count += 1
+            assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
+            retire = count == self._maxtasksperchild
+            self._actor_pool[actor_index] = (actor, count)
+            self._running_actor_refs[object_ref] = (actor_index, retire)
+            self._wake_dispatcher_when_ready(object_ref)
+
+    def _reap_idle_autoscale_actors(self):
+        now = time.monotonic()
+        live = sum(slot is not None for slot in self._actor_pool)
+        for actor_index in list(self._ready_actor_indices):
+            if live <= self._min_size:
+                break
+            if now - self._last_used[actor_index] > self._idle_timeout_s:
+                actor, _ = self._actor_pool[actor_index]
+                self._ready_actor_indices.remove(actor_index)
+                self._actor_pool[actor_index] = None
+                self._last_used[actor_index] = 0.0
+                self._stop_actor(actor)
+                live -= 1
+
+    def _fail_pending_autoscale_batches(self, pending, error):
+        self._drain_autoscale_queue(pending)
+        while pending:
+            _, _, add_object_ref = pending.popleft()
+            add_object_ref(ray.put([PoolTaskError(error)]))
+
+    def _stop_autoscale_actors(self, force=False):
+        starting = {
+            actor_index for actor_index, _ in self._starting_actor_refs.values()
+        }
+        for actor_index, slot in enumerate(self._actor_pool):
+            if slot is None:
+                continue
+            actor, _ = slot
+            if force or actor_index in starting:
+                ray.kill(actor)
+            else:
+                self._stop_actor(actor)
+
+    def _next_autoscale_idle_timeout(self):
+        live = sum(slot is not None for slot in self._actor_pool)
+        if live <= self._min_size or not self._ready_actor_indices:
+            return None
+        next_deadline = min(
+            self._last_used[actor_index] + self._idle_timeout_s
+            for actor_index in self._ready_actor_indices
+        )
+        return max(0.0, next_deadline - time.monotonic())
+
+    @staticmethod
+    def _dispatch_autoscale_batches(pool_ref):
+        # State-machine invariants:
+        # - only this thread mutates actor lifecycle and scheduling state;
+        # - starting actors carry resource demand but never receive batches;
+        # - ready actors have no in-flight batch;
+        # - running actors have exactly one ObjectRef in _running_actor_refs;
+        # - completion callbacks only set _dispatcher_wakeup.
+        pending = collections.deque()
+        while True:
+            pool = pool_ref()
+            if pool is None:
+                return
+
+            # Clear before checking queues and refs. A callback racing after
+            # this point leaves the Event set, so the following wait cannot
+            # lose a completion notification.
+            pool._dispatcher_wakeup.clear()
+            pool._drain_autoscale_queue(pending)
+            if pool._dispatcher_terminate.is_set():
+                pool._fail_pending_autoscale_batches(
+                    pending, RuntimeError("Pool was terminated")
+                )
+                return
+
+            with pool._pool_lock:
+                startup_error = pool._update_autoscale_actor_states()
+                if startup_error is not None:
+                    pool._closed = True
+                    pool._fail_pending_autoscale_batches(pending, startup_error)
+                    pool._stop_autoscale_actors(force=True)
+                    return
+
+                desired = min(
+                    pool._max_size,
+                    max(
+                        pool._min_size,
+                        len(pending) + len(pool._running_actor_refs),
+                    ),
+                )
+                pool._resize_autoscale_actor_pool(desired)
+                pool._dispatch_ready_batches(pending)
+                pool._reap_idle_autoscale_actors()
+
+                if pool._closed and not pending and pool._autoscale_queue.empty():
+                    pool._stop_autoscale_actors()
+                    return
+
+                idle_timeout = pool._next_autoscale_idle_timeout()
+
+            wakeup = pool._dispatcher_wakeup
+            if not pending and not pool._running_actor_refs:
+                pool = None
+            wakeup.wait(timeout=idle_timeout)
 
     def apply(
         self,
@@ -745,6 +1079,16 @@ class Pool:
 
         self._check_running()
         func = self._convert_to_ray_batched_calls_if_needed(func)
+        if self._autoscale:
+            result = AsyncResult(
+                [],
+                callback,
+                error_callback,
+                single_result=True,
+                total_object_refs=1,
+            )
+            self._enqueue_autoscale_batch(func, [(args, kwargs)], result.add_object_ref)
+            return result
         object_ref = self._run_batch(self._next_actor_index(), func, [(args, kwargs)])
         return AsyncResult([object_ref], callback, error_callback, single_result=True)
 
@@ -768,7 +1112,7 @@ class Pool:
         orginal_func = func
         # SafeFunction is a Python 2 leftover and can be
         # safely removed.
-        if isinstance(func, SafeFunction):
+        if SafeFunction is not None and isinstance(func, SafeFunction):
             func = func.func
         if isinstance(func, BatchedCalls):
             func = RayBatchedCalls(
@@ -790,7 +1134,15 @@ class Pool:
             chunksize += 1
         return chunksize
 
-    def _submit_chunk(self, func, iterator, chunksize, actor_index, unpack_args=False):
+    def _submit_chunk(
+        self,
+        func,
+        iterator,
+        chunksize,
+        actor_index=None,
+        unpack_args=False,
+        add_object_ref=None,
+    ):
         chunk = []
         while len(chunk) < chunksize:
             try:
@@ -803,6 +1155,10 @@ class Pool:
 
         # Nothing to submit. The caller should prevent this.
         assert len(chunk) > 0
+
+        if self._autoscale:
+            self._enqueue_autoscale_batch(func, chunk, add_object_ref)
+            return None
 
         return self._run_batch(actor_index, func, chunk)
 
@@ -825,6 +1181,32 @@ class Pool:
 
         return chunk_object_refs
 
+    def _chunk_and_run_autoscale(
+        self, func, iterable, chunksize, unpack_args, callback, error_callback
+    ):
+        if not hasattr(iterable, "__len__"):
+            iterable = list(iterable)
+        if chunksize is None:
+            chunksize = self._calculate_chunksize(iterable)
+
+        num_chunks = 0 if not iterable else div_round_up(len(iterable), chunksize)
+        result = AsyncResult(
+            [],
+            callback,
+            error_callback,
+            total_object_refs=num_chunks,
+        )
+        iterator = iter(iterable)
+        for _ in range(num_chunks):
+            self._submit_chunk(
+                func,
+                iterator,
+                chunksize,
+                unpack_args=unpack_args,
+                add_object_ref=result.add_object_ref,
+            )
+        return result
+
     def _map_async(
         self,
         func,
@@ -835,14 +1217,18 @@ class Pool:
         error_callback=None,
     ):
         self._check_running()
+        if self._autoscale:
+            return self._chunk_and_run_autoscale(
+                func, iterable, chunksize, unpack_args, callback, error_callback
+            )
         object_refs = self._chunk_and_run(
             func, iterable, chunksize=chunksize, unpack_args=unpack_args
         )
         return AsyncResult(object_refs, callback, error_callback)
 
     def map(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = None):
-        """Run the given function on each element in the iterable round-robin
-        on the actor processes and return the results synchronously.
+        """Run the given function on each element in the iterable using the
+        actor processes and return the results synchronously.
 
         Args:
             func: function to run.
@@ -867,9 +1253,8 @@ class Pool:
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
-        """Run the given function on each element in the iterable round-robin
-        on the actor processes and return an asynchronous interface to the
-        results.
+        """Run the given function on each element in the iterable using the
+        actor processes and return an asynchronous interface to the results.
 
         Args:
             func: function to run.
@@ -990,8 +1375,17 @@ class Pool:
 
         self._registry.clear()
         self._registry_hashable.clear()
-        for actor, _ in self._actor_pool:
-            self._stop_actor(actor)
+        if self._autoscale:
+            with self._pool_lock:
+                self._closed = True
+            self._dispatcher_wakeup.set()
+            gc.collect()
+            return
+
+        with self._pool_lock:
+            for slot in self._actor_pool:
+                if slot is not None:
+                    self._stop_actor(slot[0])
         self._closed = True
         gc.collect()
 
@@ -1002,10 +1396,25 @@ class Pool:
         outstanding work.
         """
 
+        if self._autoscale:
+            self._registry.clear()
+            self._registry_hashable.clear()
+            with self._pool_lock:
+                self._closed = True
+                self._dispatcher_terminate.set()
+            self._dispatcher_wakeup.set()
+            if self._dispatcher_thread is not None:
+                self._dispatcher_thread.join()
+            with self._pool_lock:
+                self._stop_autoscale_actors(force=True)
+            gc.collect()
+            return
+
         if not self._closed:
             self.close()
-        for actor, _ in self._actor_pool:
-            ray.kill(actor)
+        for slot in self._actor_pool:
+            if slot is not None:
+                ray.kill(slot[0])
 
     def join(self):
         """Wait for the actors in a closed pool to exit.
@@ -1018,4 +1427,6 @@ class Pool:
 
         if not self._closed:
             raise ValueError("Pool is still running")
+        if self._autoscale and self._dispatcher_thread is not None:
+            self._dispatcher_thread.join()
         self._wait_for_stopping_actors()

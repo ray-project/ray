@@ -22,13 +22,27 @@ class RayBackend(MultiprocessingBackend):
         nesting_level: Optional[int] = None,
         inner_max_num_threads: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        # Autoscaling params (forwarded to Pool via configure).
+        autoscale: bool = False,
+        min_size: int = 0,
+        max_size: Optional[int] = None,
+        initial_size: Optional[int] = None,
+        idle_timeout_s: float = 60.0,
         **kwargs
     ):
         """``ray_remote_args`` will be used to configure Ray Actors
-        making up the pool."""
+        making up the pool. The autoscaling params are stored here and
+        forwarded to ``Pool`` in ``configure``."""
         usage_lib.record_library_usage("util.joblib")
 
         self.ray_remote_args = ray_remote_args
+        self._autoscale = autoscale
+        self._autoscale_kwargs = dict(
+            min_size=min_size,
+            max_size=max_size,
+            initial_size=initial_size,
+            idle_timeout_s=idle_timeout_s,
+        )
         super().__init__(
             nesting_level=nesting_level,
             inner_max_num_threads=inner_max_num_threads,
@@ -73,8 +87,29 @@ class RayBackend(MultiprocessingBackend):
                 else:
                     logger.info("Starting local ray cluster")
                 ray.init()
-            ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
+            ray_cpus = max(int(ray.cluster_resources().get("CPU", 1)), 1)
             n_jobs = ray_cpus
+
+        # Forward autoscaling params through
+        # MemmappingPool -> PicklingPool -> Pool.__init__. joblib's n_jobs
+        # remains the concurrency limit; max_size may only lower that limit.
+        if self._autoscale:
+            autoscale_kwargs = self._autoscale_kwargs.copy()
+            pool_size = self.effective_n_jobs(n_jobs)
+            configured_max = autoscale_kwargs["max_size"]
+            autoscale_kwargs["max_size"] = (
+                pool_size if configured_max is None else min(configured_max, pool_size)
+            )
+            autoscale_kwargs["min_size"] = min(
+                autoscale_kwargs["min_size"], autoscale_kwargs["max_size"]
+            )
+            configured_initial = autoscale_kwargs["initial_size"]
+            if configured_initial is not None:
+                autoscale_kwargs["initial_size"] = min(
+                    configured_initial, autoscale_kwargs["max_size"]
+                )
+            memmappingpool_args["autoscale"] = True
+            memmappingpool_args.update(autoscale_kwargs)
 
         eff_n_jobs = super(RayBackend, self).configure(
             n_jobs,
@@ -90,7 +125,10 @@ class RayBackend(MultiprocessingBackend):
 
     def effective_n_jobs(self, n_jobs):
         eff_n_jobs = super(RayBackend, self).effective_n_jobs(n_jobs)
-        if n_jobs == -1:
-            ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
-            eff_n_jobs = ray_cpus
+        if n_jobs == -1 and ray.is_initialized():
+            # Resolve to the cluster CPU count only when Ray is already up;
+            # if this is called before configure()/ray.init() (e.g. via
+            # joblib.effective_n_jobs()), fall back to joblib's default rather
+            # than crashing on cluster_resources().
+            eff_n_jobs = max(int(ray.cluster_resources().get("CPU", 1)), 1)
         return eff_n_jobs
