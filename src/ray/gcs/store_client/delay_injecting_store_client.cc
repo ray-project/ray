@@ -88,12 +88,12 @@ DelayInjectingStoreClient::DelayInjectingStoreClient(
   timer_thread_ = std::thread([this]() { timer_io_context_.run(); });
 
   RAY_LOG(WARNING) << "TEST-ONLY DelayInjectingStoreClient installed: write_delay_ms="
-                   << config_.write_delay_ms
-                   << " read_delay_ms=" << config_.read_delay_ms
+                   << config_.write_delay_ms << " read_delay_ms=" << config_.read_delay_ms
                    << " io_concurrency=" << config_.io_concurrency
                    << " tables=" << (config_.tables.empty() ? "<all>" : "<filtered>")
                    << " trigger_file="
-                   << (config_.trigger_file.empty() ? "<always-on>" : config_.trigger_file);
+                   << (config_.trigger_file.empty() ? "<always-on>"
+                                                    : config_.trigger_file);
 }
 
 DelayInjectingStoreClient::~DelayInjectingStoreClient() {

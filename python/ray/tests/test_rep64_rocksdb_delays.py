@@ -297,7 +297,12 @@ class _Pressure:
         for _ in range(self._spec.get("mem_procs", 0)):
             self._procs.append(
                 subprocess.Popen(
-                    [sys.executable, "-c", _MEM_BURN, str(self._spec.get("mem_mb", 512))],
+                    [
+                        sys.executable,
+                        "-c",
+                        _MEM_BURN,
+                        str(self._spec.get("mem_mb", 512)),
+                    ],
                     stdout=devnull,
                     stderr=devnull,
                 )
@@ -322,6 +327,7 @@ class _Pressure:
             except subprocess.TimeoutExpired:
                 pass
         return False
+
 
 # Arms whose name starts with "E" exercise the real RocksDB storage backend.
 _ROCKSDB_ARMS = {

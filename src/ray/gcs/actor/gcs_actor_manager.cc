@@ -15,10 +15,9 @@
 #include "ray/gcs/actor/gcs_actor_manager.h"
 
 #include <algorithm>
-#include <cstdlib>
-
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -1164,21 +1163,19 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
              std::getenv("RAY_TESTING_GCS_ACTOR_PUBLISH_DELAY_MS");
          const int64_t actor_pub_delay_ms =
              actor_pub_delay_env != nullptr ? std::atoll(actor_pub_delay_env) : 0;
-         auto publish_actor = [this,
-                               actor_id,
-                               data = GenActorDataOnlyWithStates(*actor_table_data)]() {
-           gcs_publisher_->PublishActor(actor_id, data);
-         };
+         auto publish_actor =
+             [this, actor_id, data = GenActorDataOnlyWithStates(*actor_table_data)]() {
+               gcs_publisher_->PublishActor(actor_id, data);
+             };
          if (actor_pub_delay_ms > 0) {
            auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
            timer->expires_from_now(boost::posix_time::milliseconds(actor_pub_delay_ms));
-           timer->async_wait(
-               [timer, publish_actor = std::move(publish_actor)](
-                   const boost::system::error_code &ec) {
-                 if (!ec) {
-                   publish_actor();
-                 }
-               });
+           timer->async_wait([timer, publish_actor = std::move(publish_actor)](
+                                 const boost::system::error_code &ec) {
+             if (!ec) {
+               publish_actor();
+             }
+           });
          } else if (!actor_publish_before_persist) {
            publish_actor();  // product default: publish-after-persist.
          }

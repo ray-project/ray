@@ -32,8 +32,8 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_worker_manager.h"
 #include "ray/gcs/grpc_services.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/delay_injecting_store_client.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #if defined(__linux__)

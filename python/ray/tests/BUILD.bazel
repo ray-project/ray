@@ -1404,3 +1404,26 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+# REP-64 provenance harnesses (PR #64187 -- DO NOT MERGE).
+# These deliberately stall the GCS store client / apply CPU, disk and memory
+# pressure to characterise the node-death publish path, so they are far too slow
+# and too invasive to run in CI. They are tagged "manual" and are driven by
+# run_rep64.sh / run_rep64_rocksdb.sh, which invoke pytest directly. The targets
+# exist only so ci/pipeline/check-test-run.py can account for the files.
+py_test_module_list(
+    size = "enormous",
+    files = [
+        "test_rep64_node_death_hang.py",
+        "test_rep64_rocksdb_delays.py",
+    ],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

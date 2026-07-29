@@ -17,9 +17,9 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
-#include <system_error>
 #include <memory>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -166,16 +166,14 @@ class DelayInjectingStoreClient : public StoreClient {
     const int64_t delay_ms = DelayForMs(table_name, is_write);
 
     if (config_.io_concurrency > 0) {
-      boost::asio::post(*pool_,
-                        [delay_ms, work = std::forward<Work>(work)]() mutable {
-                          if (delay_ms > 0) {
-                            // Occupy this pool thread for the delay, exactly as a
-                            // blocking fsync occupies a RocksDB I/O thread.
-                            std::this_thread::sleep_for(
-                                std::chrono::milliseconds(delay_ms));
-                          }
-                          work();
-                        });
+      boost::asio::post(*pool_, [delay_ms, work = std::forward<Work>(work)]() mutable {
+        if (delay_ms > 0) {
+          // Occupy this pool thread for the delay, exactly as a
+          // blocking fsync occupies a RocksDB I/O thread.
+          std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        }
+        work();
+      });
       return;
     }
 

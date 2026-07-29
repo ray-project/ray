@@ -546,9 +546,10 @@ CoreWorker::CoreWorker(
     periodical_runner_->RunFnPeriodically(
         [this] {
           gcs_client_->Nodes().AsyncGetAll(
-              [this](const Status &status,
-                     const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>,
-                                                    int64_t>> &result) {
+              [this](
+                  const Status &status,
+                  const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                      &result) {
                 if (!status.ok() || !result.has_value()) {
                   return;
                 }

@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/post.hpp>
 #include <chrono>
 #include <cstdlib>
 #include <limits>
@@ -22,9 +24,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/asio/post.hpp>
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/protobuf_utils.h"
@@ -753,13 +752,11 @@ void GcsNodeManager::InternalOnNodeFailure(
     }
 
     auto on_done = [this,
-                    node_id,
                     node_table_updated_callback,
                     node,
                     node_publish_before_persist,
                     publish_node_death](const Status &status) mutable {
       auto complete = [this,
-                       node_id,
                        node_table_updated_callback,
                        node,
                        node_publish_before_persist,
