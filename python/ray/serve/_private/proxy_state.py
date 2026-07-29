@@ -320,10 +320,6 @@ class ActorProxyWrapper(ProxyWrapper):
         """Kills the proxy actor after graceful shutdown."""
         # Prevent multiple concurrent kill attempts
         if self.is_shutdown():
-            try:
-                ray.kill(self._actor_handle, no_restart=True)
-            except Exception as e:
-                logger.warning(f"Force kill of proxy actor failed: {e}")
             return
 
         try:

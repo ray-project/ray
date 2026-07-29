@@ -1,12 +1,17 @@
 import asyncio
 import concurrent.futures
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.exceptions import RayTaskError
+from ray.exceptions import (
+    ActorUnschedulableError,
+    GetTimeoutError,
+    RayActorError,
+    RayTaskError,
+)
 from ray.serve._private.proxy_state import ActorProxyWrapper, wrap_as_future
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import LoggingConfig
@@ -325,6 +330,88 @@ def test_kill_does_not_raise_when_actor_unschedulable(ray_shutdown):
     # Wait until the actor is actually unschedulable, then kill() is a no-op.
     wait_for_condition(wrapper.is_shutdown, timeout=30)
     wrapper.kill()  # must not raise
+
+
+def test_is_shutdown():
+    actor_handle_mock = Mock()
+    proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
+
+    with patch("ray.get") as mock_ray_get:
+        # Test 1: Actor is alive
+        mock_ray_get.side_effect = GetTimeoutError
+        assert not proxy_wrapper.is_shutdown()
+
+        # Test 2: Actor is dead (RayActorError)
+        mock_ray_get.side_effect = RayActorError
+        assert proxy_wrapper.is_shutdown()
+
+        # Test 3: Actor is unschedulable (ActorUnschedulableError)
+        mock_ray_get.side_effect = ActorUnschedulableError("msg")
+        assert proxy_wrapper.is_shutdown()
+
+
+def test_kill_shutdown_fails():
+    actor_handle_mock = Mock()
+    proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
+
+    with patch("ray.get") as mock_ray_get, patch("ray.kill") as mock_ray_kill:
+        # Simulate is_shutdown returning False
+        proxy_wrapper.is_shutdown = Mock(return_value=False)
+
+        # Simulate shutdown.remote() throwing a generic Exception
+        mock_ray_get.side_effect = Exception("shutdown failed")
+
+        proxy_wrapper.kill()
+
+        # Verify that ray.kill was still called despite the exception
+        mock_ray_kill.assert_called_once_with(actor_handle_mock, no_restart=True)
+
+
+def test_kill_ray_kill_fails():
+    actor_handle_mock = Mock()
+    proxy_wrapper = _create_mocked_actor_proxy_wrapper(actor_handle_mock)
+
+    with patch("ray.get"), patch("ray.kill") as mock_ray_kill:
+        proxy_wrapper.is_shutdown = Mock(return_value=False)
+
+        # Simulate ray.kill throwing an Exception
+        mock_ray_kill.side_effect = Exception("ray.kill failed")
+
+        # Should not crash
+        proxy_wrapper.kill()
+        mock_ray_kill.assert_called_once_with(actor_handle_mock, no_restart=True)
+
+
+@ray.remote
+class FakeProxy:
+    def check_health(self):
+        return True
+
+    def shutdown(self):
+        return True
+
+    def update_draining(self, draining):
+        pass
+
+
+def test_real_actor_kill(ray_shutdown):
+    ray.init()
+    # Create actor on non-existent node
+    fake_node_id = ray.NodeID.from_random().hex()
+    actor_handle = FakeProxy.options(
+        scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+            node_id=fake_node_id, soft=False
+        )
+    ).remote()
+
+    wrapper = ActorProxyWrapper(
+        logging_config=LoggingConfig(),
+        actor_handle=actor_handle,
+        node_id=fake_node_id,
+    )
+
+    # This should not crash, and should catch ActorUnschedulableError
+    wrapper.kill()
 
 
 if __name__ == "__main__":
