@@ -22,4 +22,4 @@ REQUEST_TRACKING_TTL_S = 3600
 
 # Bound best-effort lifecycle broadcast delivery so one slow ingress replica
 # cannot stall an engine replica's whole lifecycle-event queue indefinitely.
-LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 30
+LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3
