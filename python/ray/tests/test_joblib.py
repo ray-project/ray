@@ -235,5 +235,22 @@ def test_task_to_actor_assignment(shutdown_only):
             assert abs(launch_times[i] - launch_times[j]) < 1
 
 
+def test_effective_n_jobs_before_init(shutdown_only):
+    # effective_n_jobs(-1) must not crash or start Ray when called before
+    # configure() (e.g. via joblib.effective_n_jobs()); it falls back to
+    # joblib's default rather than calling cluster_resources() unguarded.
+    register_ray()
+    assert not ray.is_initialized()
+    assert RayBackend().effective_n_jobs(-1) == joblib.cpu_count()
+    assert not ray.is_initialized()
+
+
+@pytest.mark.parametrize("resources", [{}, {"CPU": 0.5}])
+def test_effective_n_jobs_missing_or_fractional_cluster_cpu(monkeypatch, resources):
+    monkeypatch.setattr(ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: resources)
+    assert RayBackend().effective_n_jobs(-1) == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
