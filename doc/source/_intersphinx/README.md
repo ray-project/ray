@@ -30,10 +30,18 @@ at all; see the next section.
 
 ## What staleness costs
 
-Every target in `_intersphinx_targets` points at upstream's *moving* docs —
-`.../stable/`, `.../latest/`, `.../main/`, or an unversioned root. None is
-pinned to a version. An inventory therefore changes when the upstream project
-*releases*, independently of anything Ray pins in its own requirements.
+Most targets resolve against upstream's *moving* docs — `.../stable/`,
+`.../latest/`, `.../main/`, or an unversioned root — so their inventory changes
+when the upstream project *releases*, independently of anything Ray pins in its
+own requirements. There is no Ray-side event to refresh against.
+
+Four targets are the exception, because they set an explicit inventory URL
+rather than deriving it from `base_url`: `pandas` and `scipy` read frozen
+`object-mirror-*` release assets under `ray-project`, `torch` is pinned to
+`docs/2.7/`, and `tensorflow` reads a third-party GPflow mirror that tracks its
+own `master`. For the three frozen ones a refresh is a no-op — they change only
+when someone re-cuts the mirror or repoints the URL — so committing a snapshot
+of them changes nothing about their staleness.
 
 So these snapshots must be refreshed on a clock, and the refresh cadence is what
 bounds two failure modes:
