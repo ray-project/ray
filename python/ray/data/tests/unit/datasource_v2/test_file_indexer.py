@@ -181,6 +181,53 @@ class TestMissingPaths:
         assert results == [(str(real), 10)]
 
 
+class TestSkipPaths:
+    def test_skips_named_existing_file(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(b)}
+        )
+
+        results = _list_all(indexer, [str(a), str(b)])
+        assert results == [(str(a), 10)]
+
+    def test_skips_missing_named_path_without_ignore_missing(self, tmp_path):
+        # ``skip_paths`` drops a named path *before* the existence check, so a
+        # missing entry is skipped even with ``ignore_missing_paths=False``.
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        results = _list_all(indexer, [str(a), missing])
+        assert results == [(str(a), 10)]
+
+    def test_skips_file_discovered_under_directory(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(a)}
+        )
+
+        results = _list_all(indexer, [str(tmp_path)])
+        assert results == [(str(b), 20)]
+
+    def test_empty_skip_paths_is_noop(self, tmp_path):
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False, skip_paths=None)
+
+        results = _list_all(indexer, [str(a)])
+        assert results == [(str(a), 10)]
+
+
 class TestManifestBatching:
     def test_splits_into_multiple_manifests(self, tmp_path):
         indexer = NonSamplingFileIndexer(

@@ -208,6 +208,77 @@ def test_read_parquet_v2_empty_dir_raises(tmp_path, restore_ctx):
         ray.data.read_parquet(str(tmp_path))
 
 
+def _rows(ds):
+    return sorted(r["a"] for r in ds.take_all())
+
+
+def test_read_parquet_v2_missing_path_raises_without_flag(tmp_path, restore_ctx):
+    restore_ctx.use_datasource_v2 = True
+    real = tmp_path / "a.parquet"
+    _write(real, pa.table({"a": [1, 2]}))
+    missing = str(tmp_path / "gone.parquet")
+
+    with pytest.raises(FileNotFoundError):
+        ray.data.read_parquet([str(real), missing]).take_all()
+
+
+def test_read_parquet_v2_ignore_missing_paths(tmp_path, restore_ctx):
+    restore_ctx.use_datasource_v2 = True
+    real = tmp_path / "a.parquet"
+    _write(real, pa.table({"a": [1, 2]}))
+    missing = str(tmp_path / "gone.parquet")
+
+    ds = ray.data.read_parquet([str(real), missing], ignore_missing_paths=True)
+    assert _rows(ds) == [1, 2]
+
+
+def test_read_parquet_v2_skip_paths_drops_existing_file(tmp_path, restore_ctx):
+    restore_ctx.use_datasource_v2 = True
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    _write(b, pa.table({"a": [3, 4]}))
+
+    ds = ray.data.read_parquet([str(a), str(b)], skip_paths=[str(b)])
+    assert _rows(ds) == [1, 2]
+
+
+def test_read_parquet_v2_skip_paths_drops_missing_without_ignore(tmp_path, restore_ctx):
+    # ``skip_paths`` excludes a named path before the existence check, so a
+    # missing entry is dropped even without ``ignore_missing_paths``.
+    restore_ctx.use_datasource_v2 = True
+    a = tmp_path / "a.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    missing = str(tmp_path / "gone.parquet")
+
+    ds = ray.data.read_parquet([str(a), missing], skip_paths=[missing])
+    assert _rows(ds) == [1, 2]
+
+
+def test_read_parquet_v2_skip_paths_excludes_file_under_directory(
+    tmp_path, restore_ctx
+):
+    restore_ctx.use_datasource_v2 = True
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    _write(b, pa.table({"a": [3, 4]}))
+
+    ds = ray.data.read_parquet([str(tmp_path)], skip_paths=[str(a)])
+    assert _rows(ds) == [3, 4]
+
+
+def test_read_parquet_v1_rejects_new_params(tmp_path, restore_ctx):
+    restore_ctx.use_datasource_v2 = False
+    a = tmp_path / "a.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+
+    with pytest.raises(NotImplementedError, match="V2 datasource"):
+        ray.data.read_parquet([str(a)], ignore_missing_paths=True)
+    with pytest.raises(NotImplementedError, match="V2 datasource"):
+        ray.data.read_parquet([str(a)], skip_paths=[str(a)])
+
+
 if __name__ == "__main__":
     import sys
 
