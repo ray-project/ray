@@ -118,6 +118,11 @@ class Node:
             ray_params.resource_isolation_config
         )
         self.all_processes: dict = {}
+        # Process types that were SIGKILLed but could not be reaped within
+        # KILLED_PROCESS_REAP_TIMEOUT_SECONDS. They stay in `all_processes` so
+        # liveness checks still report them, but they are not killed again:
+        # retrying only pays the timeout a second time.
+        self._unreaped_process_types: set = set()
         self.removal_lock = threading.Lock()
 
         self.ray_init_cluster = ray_init_cluster
@@ -1829,6 +1834,11 @@ class Node:
         """See `_kill_process_type`."""
         if process_type not in self.all_processes:
             return
+        if process_type in self._unreaped_process_types:
+            # Already SIGKILLed and left unreaped. Killing it again would only
+            # pay KILLED_PROCESS_REAP_TIMEOUT_SECONDS a second time, and
+            # `kill_all_processes` reaches raylet and GCS twice by design.
+            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
@@ -1918,6 +1928,7 @@ class Node:
 
         if unreaped_process_infos:
             self.all_processes[process_type] = unreaped_process_infos
+            self._unreaped_process_types.add(process_type)
         else:
             del self.all_processes[process_type]
 
