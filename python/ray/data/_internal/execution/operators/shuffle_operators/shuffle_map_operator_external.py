@@ -154,9 +154,13 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # is the last-resort fallback since ``base_dir`` sits under ``$TMPDIR``.
         self._token: str = secrets.token_hex(16)
         self._shuffle_id: str = secrets.token_hex(8)
-        self._base_dir: str = os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}_map"
+        _prefix = os.path.join(
+            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
         )
+        # Map writes shards to _map_dir (also the ShuffleManager's served base);
+        # reducers stage prefetch files under _reduce_dir. Both cleaned at teardown.
+        self._map_dir: str = f"{_prefix}_map"
+        self._reduce_dir: str = f"{_prefix}_reduce"
 
         # -- Partition-wrapper emission state --------------------------------
         # Each completed mapper's handle_ref goes into
@@ -267,7 +271,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
-            out_dir=self._base_dir,
+            out_dir=self._map_dir,
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             token=self._token,
@@ -333,8 +337,13 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # `task_done_callback` fires only after the handle ref is ready,
         # so this is just local deserialization.
         handle = ray.get(handle_ref)
-        for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
-            self._partition_bytes[pid] += nbytes
+        # decoded_bytes is a dense per-partition int64 array (was a Dict).
+        # Consumed one handle per completed map task, so accumulation stays
+        # incremental (no need to batch as the reducer does).
+        dec = handle.get("decoded_bytes")
+        if dec is not None:
+            for pid in dec.nonzero()[0]:
+                self._partition_bytes[int(pid)] += int(dec[pid])
         if self._output_schema is None:
             self._output_schema = handle.get("schema")
 
@@ -524,7 +533,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
                         scheduling_strategy=NodeAffinitySchedulingStrategy(
                             node_id, soft=True
                         ),
-                    ).remote(self._base_dir, node_id)
+                    ).remote(self._map_dir, self._reduce_dir, node_id)
                 )
             except Exception:
                 pass
@@ -582,7 +591,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
 
     @property
     def base_dir(self) -> str:
-        return self._base_dir
+        return self._map_dir
 
     @property
     def token(self) -> str:

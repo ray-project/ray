@@ -2,6 +2,7 @@
 
 import logging
 import math
+import os
 import time
 import typing
 from dataclasses import replace
@@ -218,11 +219,25 @@ def _gather_input_shards(
     """Fetch + decompress every shard of one input for one partition."""
     tables: List[pa.Table] = []
     num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
+    _reduce_get_profile = os.environ.get("RAY_DATA_SHUFFLE_REDUCE_GET_PROFILE") == "1"
     for batch_index, batch_start in enumerate(range(0, len(shard_refs), batch_size)):
         batch = shard_refs[batch_start : batch_start + batch_size]
-        for buf in _get_shard_batch(
+        _get_start_s = time.perf_counter()
+        _bufs = _get_shard_batch(
             batch, partition_id, batch_index, num_batches, get_timeout_s
-        ):
+        )
+        if _reduce_get_profile:
+            # One line per batch: reduce ray.get profiling. bytes = total shard
+            # bytes fetched this batch, so get_ms can be correlated with the
+            # actual data volume (isolates data-size vs fixed per-get overhead).
+            _batch_bytes = sum(len(b) for b in _bufs if b is not None)
+            print(
+                f"REDUCE_GET p={partition_id} b={batch_index}/{num_batches} "
+                f"n={len(batch)} bytes={_batch_bytes} "
+                f"get_ms={(time.perf_counter() - _get_start_s) * 1e3:.1f}",
+                flush=True,
+            )
+        for buf in _bufs:
             if buf is None:
                 continue
             table = _read_partition_ipc(buf)
