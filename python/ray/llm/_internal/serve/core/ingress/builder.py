@@ -79,6 +79,14 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
+def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> Optional[dict]:
+    runtime_env = llm_config.runtime_env
+    if runtime_env is None or "env_vars" not in runtime_env:
+        return None
+
+    return {"env_vars": runtime_env["env_vars"]}
+
+
 def _build_openai_ingress_request_router(
     *, server: Application, llm_config: LLMConfig
 ) -> Application:
@@ -97,10 +105,16 @@ def _build_openai_ingress_request_router(
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
+    ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
+    if is_kv_aware(llm_config):
+        runtime_env = _get_tokenizing_router_runtime_env(llm_config)
+        if runtime_env is not None:
+            ray_actor_options["runtime_env"] = runtime_env
+
     deployment = serve.deployment(
         LLMRouter,
         max_ongoing_requests=1000,
-        ray_actor_options={"num_cpus": 0},
+        ray_actor_options=ray_actor_options,
     )
     return deployment.bind(
         server=server,

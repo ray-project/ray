@@ -370,6 +370,64 @@ class TestKvScoring:
         await async_wait_for_condition(routes_to_cached_replica, timeout=120)
 
 
+class TestFastokens:
+    @pytest.fixture(scope="class")
+    def fastokens_handle(self):
+        if not ray.is_initialized():
+            ray.init(address="auto")
+        serve.shutdown()
+
+        llm_config = LLMConfig(
+            model_loading_config=dict(
+                model_id="qwen3-0.6b",
+                model_source="Qwen/Qwen3-0.6B",
+            ),
+            runtime_env=dict(env_vars={"VLLM_USE_FASTOKENS": "1"}),
+            deployment_config=dict(
+                autoscaling_config=dict(min_replicas=1, max_replicas=2),
+                request_router_config=dict(request_router_class=KVAwareRouter),
+            ),
+        )
+        serve.run(
+            build_openai_app({"llm_configs": [llm_config]}),
+            name="fastokens_test",
+        )
+        yield
+        serve.shutdown()
+
+    @pytest.mark.timeout(600)
+    @pytest.mark.parametrize(
+        "path,payload",
+        [
+            pytest.param(
+                "/v1/chat/completions",
+                {
+                    "model": "qwen3-0.6b",
+                    "messages": [{"role": "user", "content": "Say hello."}],
+                    "max_tokens": 8,
+                },
+                id="chat",
+            ),
+            pytest.param(
+                "/v1/completions",
+                {
+                    "model": "qwen3-0.6b",
+                    "prompt": "Say hello.",
+                    "max_tokens": 8,
+                },
+                id="completion",
+            ),
+        ],
+    )
+    def test_fastokens_with_pre_routing_tokenization(
+        self, fastokens_handle, path, payload
+    ):
+        response = requests.post(
+            f"http://localhost:8000{path}", json=payload, timeout=120
+        )
+        assert response.status_code == 200, response.text
+
+
 if __name__ == "__main__":
     if not ray.is_initialized():
         ray.init(address="auto")

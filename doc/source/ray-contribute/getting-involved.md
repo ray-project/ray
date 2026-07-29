@@ -17,6 +17,7 @@ myst:
 
 development
 ci
+dependency-management
 docs
 writing-style
 writing-code-snippets

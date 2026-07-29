@@ -85,6 +85,7 @@ class MockDeploymentStateManager:
         self.deployment_infos: Dict[DeploymentID, DeploymentInfo] = dict()
         self.deployment_statuses: Dict[DeploymentID, DeploymentStatusInfo] = dict()
         self.deleting: Dict[DeploymentID, bool] = dict()
+        self._shutting_down = False
 
         # Recover
         recovered_deployments = self.kv_store.get("fake_deployment_state_checkpoint")
@@ -208,6 +209,9 @@ class MockDeploymentStateManager:
         """Mock method to return outbound deployments for a deployment."""
         # Return None by default, tests can override this
         return getattr(self, f"_outbound_deps_{id.name}_{id.app_name}", None)
+
+    def is_shutting_down(self) -> bool:
+        return self._shutting_down
 
 
 @pytest.fixture
@@ -836,6 +840,31 @@ def test_deploy_and_delete_app(mocked_application_state):
     deployment_state_manager.set_deployment_deleted(d2_id)
     ready_to_be_deleted = app_state.update()
     assert ready_to_be_deleted
+
+
+def test_delete_app_does_not_bypass_full_shutdown(mocked_application_state):
+    """Deleting an app must not delete its deployments
+    directly while a full instance shutdown is in progress.
+    """
+
+    app_state, deployment_state_manager = mocked_application_state
+
+    d1_id = DeploymentID(name="d1", app_name="test_app")
+    d2_id = DeploymentID(name="d2", app_name="test_app")
+    app_state.deploy_app(
+        {"d1": deployment_info("d1"), "d2": deployment_info("d2")},
+        external_scaler_enabled=False,
+    )
+    app_state.update()
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
+
+    deployment_state_manager._shutting_down = True
+    app_state.delete()
+    app_state.update()
+
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
 
 
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
