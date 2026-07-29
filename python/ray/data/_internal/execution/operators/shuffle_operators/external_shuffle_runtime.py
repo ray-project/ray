@@ -192,7 +192,10 @@ class ShuffleManagerAnomalyError(RuntimeError):
 # RecordBatch (de)serialization). ``_grpc_location`` / ``_FLIGHT_CHUNK`` are
 # shared with the fetch client below.
 # =============================================================================
-_FLIGHT_CHUNK = MiB  # Flight Result body size; keep under gRPC's ~4 MiB frame
+# Per-Result body size. Each flight.Result buffer is materialized whole in RAM
+# when sent, so chunking bounds the ShuffleManager actor's memory — a large range
+# would otherwise be read into one giant buffer.
+_FLIGHT_CHUNK = MiB
 
 
 # Flight fetch request (Action body): JSON ``{"t": token, "s": [[path, [[off, len], ...]], ...]}``.
