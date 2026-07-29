@@ -9,12 +9,19 @@ resilient we commit a snapshot of each inventory under this directory and point
 ``intersphinx_mapping`` in ``doc/source/conf.py`` at the local file first,
 falling back to the network only if a snapshot is missing.
 
-This script rebuilds those snapshots. Run it when bumping the pinned docs
-dependencies (see DOC-932) or whenever a cross-reference to an upstream project
-stops resolving::
+This script rebuilds those snapshots. A scheduled monthly job runs it and opens
+a PR when anything drifted -- every target tracks upstream's moving ``stable`` /
+``latest`` / ``main`` docs, so inventories change when upstream *releases*, not
+when Ray bumps a pin. Run it by hand after adding a target, or when a
+cross-reference to a symbol that does exist upstream stops resolving::
 
     python doc/source/_intersphinx/refresh.py              # refresh all
     python doc/source/_intersphinx/refresh.py numpy torch  # refresh a subset
+
+A refresh must land as a reviewed PR, never auto-merged: if upstream removed a
+symbol Ray's docs reference, the stale snapshot was silently resolving it, and
+the refresh PR's ``-W`` build is what surfaces the now-broken reference. See this
+directory's README.
 
 The list of projects and their upstream inventory locations is read directly
 from ``_intersphinx_targets`` in ``doc/source/conf.py`` -- that mapping is the
