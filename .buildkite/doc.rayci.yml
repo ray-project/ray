@@ -84,7 +84,7 @@ steps:
     key: doc_test_llms_txt
     instance_type: small
     commands:
-      - python doc/test_llms_txt.py
+      - python doc/source/_ext/test_llms_txt.py
     depends_on: docbuild
     job_env: docbuild-py3.11
     tags:

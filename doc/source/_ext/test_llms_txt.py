@@ -10,15 +10,15 @@ import) that exercises:
 * the ``## Optional`` section, and
 * the per-directory ``llms-full.txt`` shards + the root manifest.
 
-Run directly (``python doc/test_llms_txt.py``) or under pytest. It needs
-``sphinx`` + ``myst-parser`` but not the full Ray docs toolchain.
+Run directly (``python doc/source/_ext/test_llms_txt.py``) or under pytest. It
+needs ``sphinx`` + ``myst-parser`` but not the full Ray docs toolchain.
 """
 
 import io
 import tempfile
 from pathlib import Path
 
-_EXT_DIR = str(Path(__file__).resolve().parent / "source" / "_ext")
+_EXT_DIR = str(Path(__file__).resolve().parent)
 
 CONF = f"""\
 import sys
