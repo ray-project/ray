@@ -140,7 +140,7 @@ with pytest.raises(ValueError) as e:
     ray.get(tensor)
 
 assert (
-    "Trying to use two-sided tensor transport: GLOO for ray.get. This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
+    "ray.get is not allowed on RDT objects using the two-sided transport"
     in str(e.value)
 )
 

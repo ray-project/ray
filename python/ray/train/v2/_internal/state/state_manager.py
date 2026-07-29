@@ -65,7 +65,6 @@ class TrainStateManager:
         datasets: Dict[str, ray.data.Dataset],
         dataset_config: DataConfig,
     ) -> None:
-
         run_config_schema = RunConfigSchema(
             name=run_config.name,
             failure_config=FailureConfigSchema(
@@ -79,9 +78,7 @@ class TrainStateManager:
                 checkpoint_score_order=run_config.checkpoint_config.checkpoint_score_order,
             ),
             storage_path=run_config.storage_path,
-            storage_filesystem=str(run_config.storage_filesystem)
-            if run_config.storage_filesystem is not None
-            else None,
+            storage_filesystem=run_config.storage_filesystem,
         )
 
         scaling_config_schema = ScalingConfigSchema(
@@ -123,7 +120,11 @@ class TrainStateManager:
             run_settings=run_settings,
         )
         self._runs[run.id] = run
-        self._create_or_update_train_run(run)
+        # Block so the initial run state isn't lost if the controller exits
+        # right after. Without this, the .remote() task could still be in the
+        # caller's outbound queue when the controller dies, leaving the state
+        # actor with no record of the run.
+        self._create_or_update_train_run(run, block=True)
 
     def update_train_run_scheduling(
         self,
@@ -177,7 +178,8 @@ class TrainStateManager:
         run.status = RunStatus.FINISHED
         run.status_detail = None
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run)
+        # Block on terminal status so the final state isn't lost if the controller exits right after.
+        self._create_or_update_train_run(run, block=True)
 
     def update_train_run_errored(
         self,
@@ -188,7 +190,8 @@ class TrainStateManager:
         run.status = RunStatus.ERRORED
         run.status_detail = status_detail
         run.end_time_ns = current_time_ns()
-        self._create_or_update_train_run(run)
+        # Block on terminal status so the final state isn't lost if the controller exits right after.
+        self._create_or_update_train_run(run, block=True)
 
     def update_train_run_aborted(
         self,
@@ -196,7 +199,8 @@ class TrainStateManager:
     ):
         run = self._runs[run_id]
         update_train_run_aborted(run=run, graceful=True)
-        self._create_or_update_train_run(run)
+        # Block on terminal status so the final state isn't lost if the controller exits right after.
+        self._create_or_update_train_run(run, block=True)
 
     def update_train_run_framework_versions(
         self, run_id: str, framework_versions: Dict[str, str]
@@ -270,7 +274,8 @@ class TrainStateManager:
         run_attempt.status_detail = None
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt)
+        # Block to avoid case where controller is dead but attempt is not terminal.
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def update_train_run_attempt_errored(
         self,
@@ -283,7 +288,8 @@ class TrainStateManager:
         run_attempt.status_detail = status_detail
         run_attempt.end_time_ns = current_time_ns()
         mark_workers_dead(run_attempt)
-        self._create_or_update_train_run_attempt(run_attempt)
+        # Block to avoid case where controller is dead but attempt is not terminal.
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def update_train_run_attempt_aborted(
         self,
@@ -292,22 +298,25 @@ class TrainStateManager:
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
         update_train_run_attempt_aborted(run_attempt=run_attempt, graceful=True)
-        self._create_or_update_train_run_attempt(run_attempt)
+        # Block to avoid case where controller is dead but attempt is not terminal.
+        self._create_or_update_train_run_attempt(run_attempt, block=True)
 
     def get_train_run_framework(self, run_id: str) -> Optional[TrainingFramework]:
         run = self._runs[run_id]
         return run.run_settings.backend_config.framework
 
-    def _create_or_update_train_run(self, run: TrainRun) -> None:
+    def _create_or_update_train_run(
+        self, run: TrainRun, *, block: bool = False
+    ) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)
-        # Block to avoid case where controller is dead but run is not terminal.
-        if run.status.is_terminal():
+        if block:
             ray.get(ref)
 
-    def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        # Block to avoid case where controller is dead but attempt is not terminal.
+    def _create_or_update_train_run_attempt(
+        self, run_attempt: TrainRunAttempt, *, block: bool = False
+    ) -> None:
         ref = self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
-        if run_attempt.status.is_terminal():
+        if block:
             ray.get(ref)
 
 

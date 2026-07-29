@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/accessor_factory_interface.h"

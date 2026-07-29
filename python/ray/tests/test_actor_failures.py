@@ -1150,15 +1150,13 @@ def test_exit_actor_queued(shutdown_only):
     @ray.remote
     class RegressionSync:
         def f(self):
-            import time
-
             time.sleep(1)
             exit_actor()
 
         def ping(self):
             pass
 
-    @ray.remote
+    @ray.remote(max_concurrency=1)
     class RegressionAsync:
         async def f(self):
             await asyncio.sleep(1)
@@ -1167,21 +1165,21 @@ def test_exit_actor_queued(shutdown_only):
         def ping(self):
             pass
 
-    # Test async case.
+    # Test async actor.
     # https://github.com/ray-project/ray/issues/32376
     # If we didn't fix this issue, this will segfault.
     a = RegressionAsync.remote()
     a.f.remote()
-    refs = [a.ping.remote() for _ in range(10000)]
+    refs = [a.ping.remote() for _ in range(1000)]
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(refs)
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
-    # Test a sync case.
+    # Test sync actor.
     a = RegressionSync.remote()
     a.f.remote()
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
-        ray.get([a.ping.remote() for _ in range(10000)])
+        ray.get([a.ping.remote() for _ in range(1000)])
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
 

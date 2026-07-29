@@ -2,13 +2,9 @@
 
 # Resource Isolation with Writable Cgroups on Google Kubernetes Engine (GKE)
 
-This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups).
-Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroups v2 to reserve dedicated CPU and memory
-resources for critical system processes.
+This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups). Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroups v2 to reserve dedicated CPU and memory resources for critical system processes.
 
-Historically, enabling resource isolation required privileged containers capable of writing to the `/sys/fs/cgroup` file system.
-This approach was not recommended due to the security risks associated with privileged containers. In newer versions of GKE,
-you can enable writable cgroups, granting containers read-write access to the cgroups API without requiring privileged mode.
+Historically, enabling resource isolation required privileged containers capable of writing to the `/sys/fs/cgroup` file system. This approach was not recommended due to the security risks associated with privileged containers. In newer versions of GKE, you can enable writable cgroups, granting containers read-write access to the cgroups API without requiring privileged mode.
 
 ## Prerequisites
 
@@ -46,8 +42,7 @@ Create a RayCluster with writable cgroups enabled:
 $ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-resource-isolation.gke.yaml
 ```
 
-The applied manifest enables Ray resource isolation by setting `--enable-resource-isolation` in the `ray start` command. It also includes annotations on the Head and Worker Pods
-to enable writable cgroups, allowing for hierarchical cgroup management within the container:
+The applied manifest enables Ray resource isolation by setting `--enable-resource-isolation` in the `ray start` command. It also includes annotations on the Head and Worker Pods to enable writable cgroups, allowing for hierarchical cgroup management within the container:
 ```yaml
 metadata:
   annotations:
@@ -114,12 +109,7 @@ cgroup.procs            cpu.stat                memory.low           memory.swap
 cgroup.stat             cpu.stat.local          memory.max           memory.swap.events
 ```
 
-You can inspect specific files to confirm the reserved CPU and memory for system and user processes.
-The RayCluster created in an earlier step creates containers requesting a total of 2 CPUs.
-Based on Ray's default calculation of system resources (`min(3.0, max(1.0, 0.05 * num_cores_on_the_system))`),
-we should expect 1 CPU for system processes. However, since CPU is a compressible resource, cgroups v2 expresses
-CPU resources using weights rather than core units, with a total weight of 10000. If Ray has
-2 CPUs and reserves 1 CPU for system processes, expect a CPU weight of 5000 for the system processes.
+You can inspect specific files to confirm the reserved CPU and memory for system and user processes. The RayCluster created in an earlier step creates containers requesting a total of 2 CPUs. Based on Ray's default calculation of system resources (`min(3.0, max(1.0, 0.05 * num_cores_on_the_system))`), we should expect 1 CPU for system processes. However, since CPU is a compressible resource, cgroups v2 expresses CPU resources using weights rather than core units, with a total weight of 10000. If Ray has 2 CPUs and reserves 1 CPU for system processes, expect a CPU weight of 5000 for the system processes.
 
 ```bash
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ cat /sys/fs/cgroup/ray-node*/system/cpu.weight
@@ -128,8 +118,7 @@ CPU resources using weights rather than core units, with a total weight of 10000
 
 ## Verify cgroup hierarchy for system processes
 
-Verify the list of processes under the `system` cgroup hierarchy by inspecting the `cgroup.procs` file.
-The example below shows that the `gcs_server` process is correctly placed in the system cgroup:
+Verify the list of processes under the `system` cgroup hierarchy by inspecting the `cgroup.procs` file. The example below shows that the `gcs_server` process is correctly placed in the system cgroup:
 
 ```bash
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ cat /sys/fs/cgroup/ray-node*/system/leaf/cgroup.procs
@@ -197,5 +186,4 @@ Observe the new processes:
 
 ## Configuring system reserved CPU and memory
 
-You can configure system reserved resources for CPU and memory by setting flags `--system-reserved-cpu` and `--system-reserved-memory` respectively.
-See [this KubeRay example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster-resource-isolation-with-overrides.gke.yaml) for how to configure these flags in RayCluster.
+You can configure system reserved resources for CPU and memory by setting flags `--system-reserved-cpu` and `--system-reserved-memory` respectively. See [this KubeRay example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster-resource-isolation-with-overrides.gke.yaml) for how to configure these flags in RayCluster.

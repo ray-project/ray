@@ -70,7 +70,7 @@ For a high-level overview, see this example:
 
         # Sample from a random function, in this case one that
         # depends on another value from the search space
-        "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
+        "func": tune.sample_from(lambda config: config["uniform"] * 0.01),
 
         # Do a grid search over these values. Every value will be sampled
         # ``num_samples`` times (``num_samples`` is the parameter you pass to ``tune.TuneConfig``,

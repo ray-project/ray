@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 
 namespace ray {
@@ -41,7 +41,7 @@ class WorkerKillingPolicyInterface {
   virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
   SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,
                       const ProcessesMemorySnapshot &process_memory_snapshot,
-                      const SystemMemorySnapshot &system_memory) = 0;
+                      const MemoryUsageSnapshot &system_memory) = 0;
 
   virtual ~WorkerKillingPolicyInterface() = default;
 

@@ -273,7 +273,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
             await response.prepare(req)
             await response.write(first_chunk)
         except StopAsyncIteration:
-            pass
+            # Empty log stream (e.g. task log byte range has zero length:
+            # start_offset == end_offset). We must still prepare the response before
+            # write_eof(), otherwise aiohttp raises AssertionError.
+            await response.prepare(req)
         except asyncio.CancelledError:
             # This happens when the client side closes the connection.
             # Force close the connection and do no-op.

@@ -57,7 +57,8 @@ class Autoscaler:
         event_logger: Optional[AutoscalerEventLogger] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
-        """
+        """Initialize the autoscaler.
+
         Args:
             session_name: The current Ray session name.
             config_reader: The config reader.
@@ -106,6 +107,7 @@ class Autoscaler:
             self._cloud_instance_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,
+                gcs_client=self._gcs_client,
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address

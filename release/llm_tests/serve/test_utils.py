@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import time
 import uuid
 from contextlib import contextmanager
@@ -10,7 +11,6 @@ from typing import Any, Dict, List, Optional, Union
 import requests
 from openai import OpenAI
 
-import anyscale
 import boto3
 import ray
 import yaml
@@ -32,6 +32,7 @@ SECRET_NAME = "llm_release_test_hf_token"
 # Buildkite is also configured to have read access to this bucket
 S3_BUCKET = "rayllm-ci-results"
 S3_PREFIX = "vllm_perf_results"
+ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR = "ANYSCALE_JOB_CLUSTER_COMPUTE_NAME"
 
 
 def check_service_state(
@@ -84,7 +85,7 @@ def start_service(
     add_unique_suffix: bool = True,
     cloud: Optional[str] = None,
     env_vars: Optional[Dict[str, str]] = None,
-    timeout_s: int = 600,  # seconds
+    timeout_s: int = 900,  # seconds
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -169,11 +170,20 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config():
-    """Get the compute config of the current job."""
-    job_id = os.environ["ANYSCALE_JOB_ID"]
-    job_status = anyscale.job.status(id=job_id)
-    return job_status.config.compute_config
+def get_service_compute_config(
+    compute_config: Optional[str] = None,
+) -> str:
+    """Get the compute config to use when starting the Anyscale Service."""
+    service_compute_config = compute_config or os.environ.get(
+        ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR
+    )
+    if service_compute_config is None:
+        raise RuntimeError(
+            "No compute config was provided for the Anyscale Service. Set "
+            f"--compute-config or {ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR}; "
+            "release jobs should provide this automatically."
+        )
+    return service_compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:
@@ -270,3 +280,35 @@ def wait_for_server_ready(
         print(f"Waiting for server at {url} to be ready...")
         time.sleep(retry_interval)
     raise TimeoutError(f"Server at {url} not ready within {timeout}s")
+
+
+def get_gpu_memory_used_mb() -> List[float]:
+    """Return GPU memory used (MB) per device via nvidia-smi."""
+    result = subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()]
+
+
+def get_total_gpu_memory_mb() -> float:
+    """Return total GPU memory used (MB) across all devices."""
+    return sum(get_gpu_memory_used_mb())
+
+
+def wait_for_gpu_memory_to_clear(threshold_mb: float, timeout: float = 240) -> None:
+    """Block until total GPU memory used falls below threshold_mb.
+
+    serve.shutdown() can return before a replica has released its GPU memory,
+    since the engine tears down asynchronously and, under direct ingress, the
+    drain keeps the old replica resident for its graceful shutdown window. A
+    test that redeploys on the same GPUs must wait for the previous replica to
+    free memory first or the next deployment OOMs.
+    """
+    wait_for_condition(
+        lambda: get_total_gpu_memory_mb() < threshold_mb,
+        timeout=timeout,
+        retry_interval_ms=2000,
+    )

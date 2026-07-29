@@ -24,8 +24,8 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/io_service_pool.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/open_telemetry_metric_recorder.h"
@@ -93,6 +93,13 @@ static inline void Init(
   }
 
   // Set interval.
+  // NOTE: this floored value (max(metrics_report_interval_ms, 1000)) is the effective
+  // report/export cadence returned by GetReportInterval() and used to drive the OTLP
+  // export in InitOpenTelemetryExporter. The dashboard agent derives its gauge-metric
+  // TTL as 2x this effective interval, including the same 1000ms floor (see
+  // `_resolve_gauge_ttl_seconds` in
+  // python/ray/_private/telemetry/open_telemetry_metric_recorder.py). If this floor or
+  // interval changes, update that derivation accordingly.
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
       RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
   StatsConfig::instance().SetHarvestInterval(
@@ -124,8 +131,13 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
   }
+  // NOTE: GetReportInterval() below (the floored report interval set in Init above) is
+  // the cadence at which live gauge values reach the dashboard agent. The agent derives
+  // its gauge-metric TTL as 2x this interval (see `_resolve_gauge_ttl_seconds` in
+  // python/ray/_private/telemetry/open_telemetry_metric_recorder.py). If this export
+  // cadence changes, update that derivation accordingly.
   OpenTelemetryMetricRecorder::GetInstance().Start(
-      /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+      /*endpoint=*/BuildAddress(GetLocalhostIP(), metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),

@@ -6,7 +6,7 @@ ray_cc_test(
     srcs = ["client_connection_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:network_util",

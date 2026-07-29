@@ -1,7 +1,7 @@
 """This test suite does not need sglang to be installed."""
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -9,7 +9,6 @@ import ray
 from ray.data.llm import SGLangEngineProcessorConfig
 from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
 from ray.llm._internal.batch.processor.sglang_engine_proc import (
     build_sglang_engine_processor,
 )
@@ -35,9 +34,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         batch_size=64,
         max_concurrent_batches=4,
         max_pending_requests=111,
-        apply_chat_template=True,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
@@ -76,40 +75,6 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
 
 
 class TestSGLangEngineProcessorConfig:
-    @pytest.mark.parametrize(
-        "experimental_config",
-        [
-            {"max_tasks_in_flight_per_actor": 10},
-            {},
-        ],
-    )
-    def test_experimental_max_tasks_in_flight_per_actor_usage(
-        self, experimental_config
-    ):
-        """Tests that max_tasks_in_flight_per_actor is set properly in the ActorPoolStrategy."""
-
-        with patch("ray.data.ActorPoolStrategy") as mock_actor_pool:
-            mock_actor_pool.return_value = MagicMock()
-
-            config = SGLangEngineProcessorConfig(
-                model_source="unsloth/Llama-3.2-1B-Instruct",
-                experimental=experimental_config,
-            )
-            build_sglang_engine_processor(config)
-
-            mock_actor_pool.assert_called()
-            call_kwargs = mock_actor_pool.call_args[1]
-            if experimental_config:
-                assert (
-                    call_kwargs["max_tasks_in_flight_per_actor"]
-                    == experimental_config["max_tasks_in_flight_per_actor"]
-                )
-            else:
-                assert (
-                    call_kwargs["max_tasks_in_flight_per_actor"]
-                    == DEFAULT_MAX_TASKS_IN_FLIGHT
-                )
-
     def test_build_processor_autoconfig_failure_with_trust_remote_code(self):
         config = SGLangEngineProcessorConfig(
             model_source="nonexistent-org/nonexistent-model",

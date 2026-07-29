@@ -48,17 +48,17 @@ class TestWandaImageName:
             ),
             (
                 RayType.RAY_LLM,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
                 RayType.RAY_LLM_EXTRA,
-                "3.11",
+                "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
                 DEFAULT_ARCHITECTURE,
-                f"ray-llm-extra-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
+                f"ray-llm-extra-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             # TPU images
             (RayType.RAY, "3.10", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.10-tpu"),
@@ -138,10 +138,10 @@ class TestValidateValid:
         RayImage("ray-extra", "3.12", "cu11.8.0-cudnn8").validate()
 
     def test_ray_llm(self):
-        RayImage("ray-llm", "3.11", "cu12.8.1-cudnn").validate()
+        RayImage("ray-llm", "3.12", "cu13.0.0-cudnn").validate()
 
     def test_ray_llm_extra(self):
-        RayImage("ray-llm-extra", "3.11", "cu12.8.1-cudnn").validate()
+        RayImage("ray-llm-extra", "3.12", "cu13.0.0-cudnn").validate()
 
     def test_ray_aarch64(self):
         RayImage("ray", "3.10", "cpu", "aarch64").validate()
@@ -156,11 +156,11 @@ class TestValidateInvalid:
         with pytest.raises(
             RayImageError, match="Invalid python version 3.10 for ray-llm"
         ):
-            RayImage("ray-llm", "3.10", "cu12.8.1-cudnn").validate()
+            RayImage("ray-llm", "3.10", "cu13.0.0-cudnn").validate()
 
     def test_invalid_platform_for_ray_llm(self):
         with pytest.raises(RayImageError, match="Invalid platform cpu for ray-llm"):
-            RayImage("ray-llm", "3.11", "cpu").validate()
+            RayImage("ray-llm", "3.12", "cpu").validate()
 
     def test_invalid_platform_for_ray(self):
         with pytest.raises(RayImageError, match="Invalid platform cu99.9.9 for ray"):
@@ -170,7 +170,7 @@ class TestValidateInvalid:
         with pytest.raises(
             RayImageError, match="Invalid architecture aarch64 for ray-llm"
         ):
-            RayImage("ray-llm", "3.11", "cu12.8.1-cudnn", "aarch64").validate()
+            RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "aarch64").validate()
 
 
 class TestImageTypeConfig:

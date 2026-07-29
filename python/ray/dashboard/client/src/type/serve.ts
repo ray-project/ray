@@ -37,6 +37,7 @@ export type ServeDeployment = {
   message: string;
   deployment_config: ServeDeploymentConfig;
   replicas: ServeReplica[];
+  recent_dead_replicas?: ServeReplica[];
 };
 
 export type ServeDeploymentConfig = {
@@ -67,6 +68,7 @@ export enum ServeReplicaState {
   RECOVERING = "RECOVERING",
   RUNNING = "RUNNING",
   STOPPING = "STOPPING",
+  STOPPED = "STOPPED",
 }
 
 export type ServeReplica = {

@@ -34,7 +34,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
@@ -56,6 +56,7 @@ from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_executor_resource_management import SMALL_STR
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import (
@@ -964,7 +965,7 @@ def test_setting_initial_size_for_actor_pool():
         ray_remote_args={"num_cpus": 1},
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op._actor_pool.get_actor_info() == ActorPoolInfo(
         running=0,
@@ -983,7 +984,9 @@ def _create_bundle_with_single_row(row):
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+    return RefBundle(
+        [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+    )
 
 
 @pytest.mark.parametrize("min_rows_per_bundle", [2, None])
@@ -1003,7 +1006,7 @@ def test_internal_input_queue_is_empty_after_early_completion(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     # Complete init sequence by completing pending metadata tasks (performed
     # by the executor)
     run_op_tasks_sync(op)
@@ -1060,7 +1063,7 @@ def test_actor_pool_input_queue_draining(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Finalize operator initialization sequence and make it schedulable
     run_op_tasks_sync(op, only_existing=True)
@@ -1282,7 +1285,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     downstream_op = IdentityOperator(
         "Downstream", input_dependencies=[actor_pool_map_op], data_context=data_context
     )
-    topology = build_streaming_topology(downstream_op, ExecutionOptions())
+    topology = build_streaming_topology(
+        downstream_op, ExecutionOptions(), noop_counter()
+    )
 
     # SETUP: Add a bundle to the upstream operator's external output queue. This is
     # necessary to reproduce the bug where the actor pool operator wouldn't complete if
@@ -1292,7 +1297,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
         num_rows=None, size_bytes=1, exec_stats=None, input_files=None
     )
     ref_bundle = RefBundle(
-        blocks=[(block_ref, block_metadata)], schema=None, owns_blocks=True
+        blocks=[BlockEntry(block_ref, block_metadata)],
+        schema=None,
+        owns_blocks=True,
     )
     topology[upstream_op].add_output(ref_bundle)
 
@@ -1514,7 +1521,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
     )
 
     with pytest.raises(RayActorError, match=r"init_failed"):
-        op.start(ExecutionOptions())
+        op.start(ExecutionOptions(), noop_counter())
 
 
 @pytest.mark.parametrize(
@@ -1567,7 +1574,7 @@ def test_actor_pool_map_operator_should_add_input(
         ray_remote_args={"max_concurrency": max_concurrency},
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Cannot add input until actor has started.
     assert not op.can_add_input()
@@ -1610,7 +1617,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     actor_pool = op._actor_pool
 
     # Wait for the op to scale up to the min size.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     run_op_tasks_sync(op)
     assert actor_pool.num_running_actors() == num_actors
     assert op.num_active_tasks() == 0
@@ -1663,6 +1670,41 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
     # Also verify that when src_fn_name IS set, __repr__ returns it correctly
     worker.src_fn_name = "TestFunction"
     assert repr(worker) == "MapWorker(TestFunction)"
+
+
+def test_merge_ray_remote_args_inject_context_label_selector(restore_data_context):
+    """ExecutionOptions.label_selector should propagate to actor remote args."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={"num_cpus": 1},
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "train"}
+
+
+def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
+    """Operator-level label_selector wins on key conflict."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={
+            "num_cpus": 1,
+            "label_selector": {"subcluster": "val", "node": "X"},
+        },
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
 
 
 if __name__ == "__main__":

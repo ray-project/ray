@@ -19,7 +19,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
@@ -127,7 +127,9 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(std::make_unique<ActorTaskExecutionArgWaiter>(
-            [](const std::vector<rpc::ObjectReference> &args, int64_t tag) {})) {
+            [](const std::vector<rpc::ObjectReference> &args,
+               const TaskID &task_id,
+               int32_t attempt_number) {})) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,

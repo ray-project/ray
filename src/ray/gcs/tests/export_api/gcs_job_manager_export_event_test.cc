@@ -29,6 +29,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/util/clock.h"
 
 using json = nlohmann::json;
 
@@ -87,6 +88,7 @@ class GcsJobManagerTest : public ::testing::Test {
   observability::FakeCounter fake_finished_job_counter_;
   observability::FakeGauge fake_job_duration_in_seconds_gauge_;
   RuntimeEnvManager runtime_env_manager_;
+  Clock clock_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
 };
@@ -109,7 +111,8 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
                                      "test_session_name",
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
-                                     fake_job_duration_in_seconds_gauge_);
+                                     fake_job_duration_in_seconds_gauge_,
+                                     clock_);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(gcs_init_data);
   auto job_api_job_id = JobID::FromInt(100);
@@ -159,7 +162,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      "test_session_name",
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
-                                     fake_job_duration_in_seconds_gauge_);
+                                     fake_job_duration_in_seconds_gauge_,
+                                     clock_);
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(gcs_init_data);

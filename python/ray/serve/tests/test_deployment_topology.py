@@ -705,7 +705,7 @@ class TestDeploymentTopology:
         signal = SignalActor.remote()
 
         # Initial deployment
-        @serve.deployment(name="ServiceA", version="v1")
+        @serve.deployment(name="ServiceA")
         class ServiceA:
             def __call__(self):
                 return "v1"

@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -28,8 +29,22 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
+
+// A publisher that counts how many messages have been published, so tests can
+// observe *when* (relative to the durable write) node death is broadcast.
+class RecordingPublisher : public pubsub::FakePublisher {
+ public:
+  explicit RecordingPublisher(std::atomic_int *publish_count)
+      : publish_count_(publish_count) {}
+  void Publish(rpc::PubMessage pub_message) override { ++(*publish_count_); }
+
+ private:
+  std::atomic_int *publish_count_;
+};
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
@@ -55,6 +70,7 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  Clock clock_;
 };
 
 TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
@@ -71,7 +87,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   auto node = GenNodeInfo();
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -88,8 +105,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 
   // Test the node definition event + alive node lifecycle event
   ASSERT_EQ(register_events.size(), 2);
-  auto ray_event_0 = std::move(*register_events[0]).Serialize();
-  auto ray_event_1 = std::move(*register_events[1]).Serialize();
+  auto ray_event_0 = std::move(*register_events[0]).Serialize().value();
+  auto ray_event_1 = std::move(*register_events[1]).Serialize().value();
   ASSERT_EQ(ray_event_0.event_type(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
   ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
@@ -122,7 +139,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
   auto drain_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(drain_events.size(), 1);
-  auto ray_event_02 = std::move(*drain_events[0]).Serialize();
+  auto ray_event_02 = std::move(*drain_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_02.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
@@ -151,7 +168,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(unregister_events.size(), 1);
-  auto ray_event_03 = std::move(*unregister_events[0]).Serialize();
+  auto ray_event_03 = std::move(*unregister_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_03.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);
@@ -169,6 +186,94 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
             "mock reason message");
 }
 
+TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
+  // Regression test for the lost-wakeup fixed in this PR (root-cause proof in
+  // the provenance PR #64187, not merged): a health-check node failure must
+  // broadcast DEAD on the pub/sub layer *before* (and independent of) the
+  // durable node-table write completing, so that a slow backend (e.g. RocksDB
+  // fsync) cannot delay cluster-wide death detection.
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  NodeID node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  publish_count = 0;
+
+  bool persist_completed = false;
+  node_manager.OnNodeFailure(node_id,
+                             [&persist_completed]() { persist_completed = true; });
+
+  // The publish is posted onto io_context ahead of the durable write's
+  // completion callback. Executing exactly one queued handler must run the
+  // publish -- and must NOT have run the persist-completion callback yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_FALSE(persist_completed);
+
+  // Draining the rest runs the persist completion afterwards.
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_TRUE(persist_completed);
+}
+
+TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
+  // Same guarantee as above for the graceful-unregistration path
+  // (HandleUnregisterNode): death is published before the durable write, whose
+  // completion callback is what writes the DEAD export event.
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  fake_ray_event_recorder_->FlushBuffer();
+  publish_count = 0;
+
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node->node_id());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  rpc::UnregisterNodeReply unregister_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &unregister_reply,
+      [](ray::Status, std::function<void()>, std::function<void()>) {},
+      "");
+
+  // One queued handler runs the publish; the DEAD export event (written from
+  // the persist-completion callback) must not have fired yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_TRUE(fake_ray_event_recorder_->FlushBuffer().empty());
+
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_FALSE(fake_ray_event_recorder_->FlushBuffer().empty());
+}
+
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
@@ -177,7 +282,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -198,7 +304,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -273,7 +380,8 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -305,7 +413,8 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -385,7 +494,8 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -425,7 +535,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes with different properties
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -624,7 +735,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;

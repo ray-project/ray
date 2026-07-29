@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import (
@@ -40,6 +41,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta_datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -54,13 +56,15 @@ from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasi
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.interfaces.ref_bundle import (
+    BlockEntry,
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan, SourceOperator
 from ray.data._internal.logical.operators import (
     Count,
     Filter,
@@ -70,6 +74,8 @@ from ray.data._internal.logical.operators import (
     Limit,
     MapBatches,
     MapRows,
+    Mix as MixLogicalOperator,
+    MixStoppingCondition,
     Project,
     RandomizeBlocks,
     RandomShuffle,
@@ -82,7 +88,6 @@ from ray.data._internal.logical.operators import (
     Zip,
 )
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -92,6 +97,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -130,10 +136,12 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.data.datatype import DataType
+from ray.data.exceptions import omit_traceback_stdout
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.debug import log_once
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -153,7 +161,9 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+    from ray.data.catalog import Catalog
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -277,26 +287,48 @@ class Dataset:
 
     def __init__(
         self,
-        plan: ExecutionPlan,
         logical_plan: LogicalPlan,
+        context: DataContext,
+        in_stats: DatasetStats,
+        cache: Optional["_ExecutionCache"] = None,
+        dataset_name: Optional[str] = None,
     ):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
-        self._plan = plan
         self._logical_plan = logical_plan
-        self._plan.link_logical_plan(logical_plan)
+        self._context = context
+        self._in_stats = in_stats
+        self._cache = cache if cache is not None else _ExecutionCache()
+        self._dataset_name = dataset_name
+        self._run_index = -1
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
+        # Bind context to logical plan.
+        self._logical_plan.context = context
+
         self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
+
+    @classmethod
+    def _from_parent(cls, parent: "Dataset", logical_plan: LogicalPlan) -> "Dataset":
+        """Create a new Dataset from a transformation on a parent Dataset.
+
+        Copies the parent's cache (shallow), in_stats, context, and dataset_name.
+        """
+        return cls(
+            logical_plan,
+            parent._context,
+            parent._in_stats,
+            cache=parent._cache.copy(),
+            dataset_name=parent._dataset_name,
+        )
 
     @staticmethod
     def copy(
@@ -305,9 +337,21 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._logical_plan)
+            return _as(
+                copy.copy(ds._logical_plan),
+                ds._context.copy(),
+                copy.copy(ds._in_stats),
+                cache=ds._cache.deep_copy(),
+                dataset_name=ds._dataset_name,
+            )
         else:
-            return _as(ds._plan.copy(), ds._logical_plan)
+            return _as(
+                ds._logical_plan,
+                ds._context,
+                ds._in_stats,
+                cache=ds._cache.copy(),
+                dataset_name=ds._dataset_name,
+            )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
@@ -444,7 +488,6 @@ class Dataset:
             ray_remote_args,
         )
 
-        plan = self._plan.copy()
         map_op = MapRows(
             fn,
             input_dependencies=[self._logical_plan.dag],
@@ -457,7 +500,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
@@ -468,7 +511,7 @@ class Dataset:
 
         Used as a prefix for metrics tags.
         """
-        self._plan._dataset_name = name
+        self._dataset_name = name
 
     @property
     @Deprecated(message="Use name() instead", warning=True)
@@ -478,13 +521,13 @@ class Dataset:
     @property
     def name(self) -> Optional[str]:
         """Returns the user-defined dataset name"""
-        return self._plan._dataset_name
+        return self._dataset_name
 
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
         """
-        return self._plan.get_dataset_id()
+        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{self._run_index}"
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -810,7 +853,6 @@ class Dataset:
 
         batch_format = _apply_batch_format(batch_format)
 
-        plan = self._plan.copy()
         map_batches_op = MapBatches(
             fn,
             input_dependencies=[self._logical_plan.dag],
@@ -828,7 +870,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_column(
@@ -910,7 +952,6 @@ class Dataset:
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
 
-        plan = self._plan.copy()
         if isinstance(expr, DownloadExpr):
             download_op = Download(
                 uri_column_names=[expr.uri_column_name],
@@ -928,7 +969,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1095,7 +1136,10 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised. Column names must be unique.
+                an exception is raised. Column names must be unique. When the
+                input schema is known statically, missing columns are reported
+                at the ``drop_columns`` call; otherwise the error surfaces
+                during materialization.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -1105,10 +1149,45 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the specified columns removed.
         """  # noqa: E501
+        import pyarrow as pa
 
-        if len(cols) != len(set(cols)):
+        # Dropping no columns is a no-op; return early to avoid schema
+        # inference, the uniqueness check, and a redundant ``Project`` that
+        # would just select every column.
+        if not cols:
+            return self
+
+        cols_set = set(cols)
+        if len(cols) != len(cols_set):
             raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
+        # When the input schema is known, reshape into a ``Project`` over the
+        # surviving columns so the typed schema chain stays intact and
+        # ``Dataset.schema()`` resolves without a ``limit(1)`` execution.
+        # When ``keep`` is empty (all columns dropped), fall through to the
+        # ``MapBatches`` path — ``select_columns([])`` would yield an
+        # internal ``__bsp_stub`` placeholder column, but the empty-table
+        # semantics of ``pyarrow.Table.drop(all_columns)`` are what users
+        # expect from ``drop_columns``.
+        input_schema = self._logical_plan.dag.infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            input_schema_names_set = set(input_schema.names)
+            missing = [c for c in cols if c not in input_schema_names_set]
+            if missing:
+                raise KeyError(
+                    f"drop_columns: column(s) not found in dataset schema: "
+                    f"{missing}. Available columns: {input_schema.names}"
+                )
+            keep = [c for c in input_schema.names if c not in cols_set]
+            if keep:
+                return self.select_columns(
+                    keep,
+                    compute=compute,
+                    concurrency=concurrency,
+                    **ray_remote_args,
+                )
+
+        # Fallback: input schema unknown (UDF chain) or all columns dropped.
         def drop_columns(batch):
             return batch.drop(cols)
 
@@ -1192,7 +1271,6 @@ class Dataset:
             )
         compute = TaskPoolStrategy(size=concurrency)
 
-        plan = self._plan.copy()
         select_op = Project(
             exprs=exprs,
             input_dependencies=[self._logical_plan.dag],
@@ -1200,7 +1278,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
@@ -1320,7 +1398,6 @@ class Dataset:
 
         compute = TaskPoolStrategy(size=concurrency)
 
-        plan = self._plan.copy()
         select_op = Project(
             exprs=[StarExpr(), *exprs],
             input_dependencies=[self._logical_plan.dag],
@@ -1328,7 +1405,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
@@ -1459,7 +1536,6 @@ class Dataset:
             ray_remote_args,
         )
 
-        plan = self._plan.copy()
         op = FlatMap(
             fn=fn,
             input_dependencies=[self._logical_plan.dag],
@@ -1472,7 +1548,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
@@ -1634,7 +1710,11 @@ class Dataset:
                 # expr is an Expr object (predicate expression)
                 predicate_expr = expr
 
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            filter_compute = get_compute_strategy(
+                fn=None,
+                compute=compute,
+                concurrency=concurrency,
+            )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -1672,9 +1752,8 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
 
-        plan = self._plan.copy()
         logical_plan = LogicalPlan(filter_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -1798,7 +1877,6 @@ class Dataset:
             raise ValueError(
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
-        plan = self._plan.copy()
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
                 target_num_rows_per_block=target_num_rows_per_block,
@@ -1815,7 +1893,7 @@ class Dataset:
             )
 
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1890,14 +1968,13 @@ class Dataset:
             seed, use_timestamp_as_default=True
         )
 
-        plan = self._plan.copy()
         op = RandomShuffle(
             seed_config=seed_config,
             input_dependencies=[self._logical_plan.dag],
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1944,13 +2021,12 @@ class Dataset:
 
         seed_config = RandomSeedConfig.create_seed_config(seed)
 
-        plan = self._plan.copy()
         op = RandomizeBlocks(
             seed_config=seed_config,
             input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
@@ -2130,7 +2206,6 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        plan = self._plan.copy()
         op = StreamingSplit(
             num_splits=n,
             equal=equal,
@@ -2138,7 +2213,7 @@ class Dataset:
             locality_hints=locality_hints,
         )
         logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset(plan, logical_plan)
+        split_dataset = Dataset._from_parent(self, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
@@ -2219,11 +2294,12 @@ class Dataset:
                 f"doesn't equal the number of splits {n}."
             )
 
-        bundle: RefBundle = self._plan.execute()
+        bundle: RefBundle = self._execute()
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
         stats = self._raw_stats()
-        block_refs, metadata = zip(*bundle.blocks)
+        block_refs = bundle.block_refs
+        metadata = bundle.metadata
 
         if locality_hints is None:
             block_refs_splits = np.array_split(block_refs, n)
@@ -2235,7 +2311,9 @@ class Dataset:
             ):
                 ref_bundles = [
                     RefBundle(
-                        [(b, m)], owns_blocks=owned_by_consumer, schema=bundle.schema
+                        [BlockEntry(b, m)],
+                        owns_blocks=owned_by_consumer,
+                        schema=bundle.schema,
                     )
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
@@ -2245,8 +2323,9 @@ class Dataset:
                 )
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(stats, self.context.copy()),
                         logical_plan,
+                        self.context.copy(),
+                        stats,
                     )
                 )
             return split_datasets
@@ -2350,7 +2429,7 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata)),
+                tuple(BlockEntry(b, m) for b, m in zip(blocks, metadata)),
                 owns_blocks=owned_by_consumer,
                 schema=bundle.schema,
             )
@@ -2365,8 +2444,9 @@ class Dataset:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(stats, self.context.copy()),
                     logical_plan,
+                    self.context.copy(),
+                    stats,
                 )
             )
         return split_datasets
@@ -2420,9 +2500,9 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        bundle: RefBundle = self._plan.execute()
+        bundle: RefBundle = self._execute()
         blocks, metadata = _split_at_indices(
-            bundle.blocks,
+            [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
             False,
         )
@@ -2434,7 +2514,7 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
-                RefBundle([(b, m)], owns_blocks=False, schema=bundle.schema)
+                RefBundle([BlockEntry(b, m)], owns_blocks=False, schema=bundle.schema)
                 for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(
@@ -2444,8 +2524,9 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(stats, self.context.copy()),
                     logical_plan,
+                    self.context.copy(),
+                    stats,
                 )
             )
         return splits
@@ -2872,9 +2953,9 @@ class Dataset:
         start_time = time.perf_counter()
 
         datasets = [self] + list(other)
-        logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+        logical_plans = [union_ds._logical_plan for union_ds in datasets]
         op = UnionLogicalOperator(
-            *[plan.dag for plan in logical_plans],
+            [plan.dag for plan in logical_plans],
         )
         logical_plan = LogicalPlan(op, self.context)
 
@@ -2884,8 +2965,89 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(stats, self.context.copy()),
             logical_plan,
+            self.context.copy(),
+            stats,
+        )
+
+    @PublicAPI(stability="alpha", api_group=SMJ_API_GROUP)
+    def mix(
+        self,
+        *other: "Dataset",
+        weights: Optional[List[float]] = None,
+        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_LONGEST_DROP,
+    ) -> "Dataset":
+        """Mix this dataset with others using weighted interleaving.
+
+        This is a streaming operator that interleaves blocks from multiple
+        input datasets into a single output stream, respecting the target row
+        ratio specified by ``weights``. Each output block is drawn from exactly
+        one input dataset; the operator tracks cumulative row counts and always
+        pulls from whichever dataset has fallen furthest behind its target ratio.
+
+        .. caution::
+            Mixed datasets aren't lineage-serializable. As a result, they can't
+            be used as a tunable hyperparameter in Ray Tune.
+
+        Examples:
+
+            >>> import ray
+            >>> ds1 = ray.data.from_items([{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}]).repartition(2)
+            >>> ds2 = ray.data.from_items([{"x": 5}, {"x": 6}, {"x": 7}, {"x": 8}]).repartition(2)
+            >>> ds = ds1.mix(ds2, weights=[0.5, 0.5])
+            >>> list(ds.iter_batches(batch_size=4))  # doctest: +SKIP
+            [{'x': [1, 2, 5, 6]}, {'x': [3, 4, 7, 8]}]
+
+        Args:
+            *other: The other datasets to mix with this one. All datasets
+                must produce the same schema.
+            weights: Target row ratios for each dataset, where the first
+                weight corresponds to ``self`` and subsequent weights
+                correspond to ``*other`` in order. If ``None``, defaults
+                to equal weight per dataset. Weights are normalized
+                internally so they don't need to sum to 1.
+            stopping_condition: Controls when the pipeline terminates.
+                See :class:`~ray.data.MixStoppingCondition` for options.
+                Defaults to ``STOP_ON_LONGEST_DROP``.
+
+        Returns:
+            A new dataset whose rows are interleaved from the input datasets
+            according to the specified weights.
+
+        Raises:
+            ValueError: If the length of ``weights`` doesn't match the
+                number of datasets.
+        """
+        datasets = [self] + list(other)
+
+        if weights is None:
+            weights = [1.0] * len(datasets)
+
+        if len(weights) != len(datasets):
+            raise ValueError(
+                f"Number of datasets ({len(datasets)}) must match "
+                f"number of weights ({len(weights)})."
+            )
+
+        start_time = time.perf_counter()
+
+        logical_plans = [ds._logical_plan for ds in datasets]
+        op = MixLogicalOperator(
+            [plan.dag for plan in logical_plans],
+            weights=weights,
+            stopping_condition=stopping_condition,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+
+        stats = DatasetStats(
+            metadata={"Mix": []},
+            parent=[d._raw_stats() for d in datasets],
+        )
+        stats.time_total_s = time.perf_counter() - start_time
+        return Dataset(
+            logical_plan,
+            self.context.copy(),
+            stats,
         )
 
     @AllToAllAPI
@@ -2927,11 +3089,10 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
-            partition_size_hint: (Optional) Hint to joining operator about the estimated
-                avg expected size of the individual partition (in bytes).
-                This is used in estimating the total dataset size and allow to tune
-                memory requirement of the individual joining workers to prevent OOMs
-                when joining very large datasets.
+            partition_size_hint: (Optional) **Deprecated** and ignored. The join is
+                now executed on the v2 hash-shuffle path, which sizes reduce-task
+                memory from observed partition sizes rather than a hint. This
+                parameter has no effect and will be removed in a future release.
             aggregator_ray_remote_args: (Optional) Parameter overriding `ray.remote`
                 args passed when constructing joining (aggregator) workers.
             validate_schemas: (Optional) Controls whether validation of provided
@@ -3039,6 +3200,15 @@ class Dataset:
         #       side ones
         right_on = right_on or on
 
+        if partition_size_hint is not None:
+            warnings.warn(
+                "`partition_size_hint` is deprecated and ignored: joins now run on "
+                "the v2 hash-shuffle path, which sizes reduce-task memory from "
+                "observed partition sizes. It will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # NOTE: By default validating schemas are disabled as it could be arbitrarily
         #       expensive (potentially executing whole pipeline to completion) to fetch
         #       one currently
@@ -3048,7 +3218,6 @@ class Dataset:
 
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
-        plan = self._plan.copy()
         op = Join(
             left_input_op=self._logical_plan.dag,
             right_input_op=ds._logical_plan.dag,
@@ -3062,7 +3231,7 @@ class Dataset:
             aggregator_ray_remote_args=aggregator_ray_remote_args,
         )
 
-        return Dataset(plan, LogicalPlan(op, self.context))
+        return Dataset._from_parent(self, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
@@ -3648,13 +3817,12 @@ class Dataset:
         if key is None:
             raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
-        plan = self._plan.copy()
         op = Sort(
             sort_key=sort_key,
             input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, *other: "Dataset") -> "Dataset":
@@ -3693,10 +3861,11 @@ class Dataset:
         Raises:
             ValueError: If the datasets have different row counts.
         """
-        plan = self._plan.copy()
-        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
+        op = Zip(
+            [self._logical_plan.dag] + [other._logical_plan.dag for other in other]
+        )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
@@ -3720,10 +3889,9 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        plan = self._plan.copy()
         op = Limit(limit=limit, input_dependencies=[self._logical_plan.dag])
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
@@ -3784,7 +3952,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._raw_stats())
+        self._cache.set_stats(limited_ds._raw_stats())
         return res
 
     @ConsumptionAPI
@@ -3835,7 +4003,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._raw_stats())
+        self._cache.set_stats(limited_ds._raw_stats())
         return output
 
     @ConsumptionAPI
@@ -3940,8 +4108,6 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        plan = self._plan.copy()
-
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
         count_op = Count(
@@ -3950,7 +4116,7 @@ class Dataset:
             ]
         )
         logical_plan = LogicalPlan(count_op, self.context)
-        count_ds = Dataset(plan, logical_plan)
+        count_ds = Dataset._from_parent(self, logical_plan)
 
         count = 0
         for batch in count_ds.iter_batches(batch_size=None):
@@ -3967,7 +4133,7 @@ class Dataset:
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Gets the underlying raw schema value not wrapped in Schema class."""
-        base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
+        base_schema = self._cache.get_schema(self._logical_plan.dag)
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
         if base_schema is None and fetch_if_missing:
@@ -3980,11 +4146,9 @@ class Dataset:
                 # that cannot be wrapped into other ops like Limit.
                 dag = dag.input_dependencies[0]
                 limited_ds = Dataset(
-                    ExecutionPlan(
-                        DatasetStats(metadata={}, parent=None),
-                        self._plan._context,
-                    ),
-                    LogicalPlan(dag, self._plan._context),
+                    LogicalPlan(dag, self.context),
+                    self.context,
+                    DatasetStats(metadata={}, parent=None),
                 ).limit(1)
             else:
                 limited_ds = self.limit(1)
@@ -3996,7 +4160,7 @@ class Dataset:
                         bundle.schema for bundle in iter_ref_bundles
                     )
         if base_schema is not None:
-            self._plan._cache.set_schema(self._logical_plan.dag, base_schema)
+            self._cache.set_schema(self._logical_plan.dag, base_schema)
         return base_schema
 
     @ConsumptionAPI(
@@ -4030,7 +4194,7 @@ class Dataset:
         """
         base_schema = self._base_schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
-            return Schema(base_schema, data_context=self._plan._context)
+            return Schema(base_schema, data_context=self.context)
         return None
 
     @ConsumptionAPI(
@@ -4105,10 +4269,10 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        cached = self._plan._cache.get_size_bytes(self._logical_plan.dag)
+        cached = self._cache.get_size_bytes(self._logical_plan.dag)
         if cached is not None:
             return cached
-        return self._plan.execute().size_bytes()
+        return self._execute().size_bytes()
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -4135,6 +4299,7 @@ class Dataset:
         *,
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        catalog: Optional["Catalog"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -4180,6 +4345,13 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.DatabricksUnityCatalog`). When provided, ``path``
+                is interpreted as a catalog table identifier (e.g.
+                ``"catalog.schema.table"``) rather than a filesystem path, and the
+                catalog resolves the physical write location and write credentials.
+                If both ``filesystem`` and ``catalog`` are given, the
+                catalog-resolved filesystem takes precedence.
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
@@ -4251,6 +4423,34 @@ class Dataset:
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
+        if catalog is not None:
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            # A catalog resolves a pre-existing, credential-vended location, so
+            # directory creation is both unnecessary and unsupported: it requires
+            # bucket-level permissions the vended (prefix-scoped) credentials
+            # typically lack.
+            if try_create_dir:
+                raise ValueError(
+                    "`try_create_dir` is not supported when writing through a "
+                    "`catalog`. The catalog resolves an existing location with "
+                    "vended credentials, and directory creation on object storage "
+                    "needs bucket-level access that the credentials may not have."
+                )
+
+            resolved = catalog.resolve(
+                path, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
+            )
+            path = resolved.path
+            if resolved.filesystem is not None:
+                if filesystem is not None:
+                    raise ValueError(
+                        "`filesystem` cannot be specified with `catalog`. The "
+                        "`catalog` will resolve the `filesystem` with appropriate "
+                        "credentials automatically."
+                    )
+                filesystem = resolved.filesystem
 
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
@@ -4410,6 +4610,7 @@ class Dataset:
         self,
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
+        catalog: Optional["Catalog"] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: "SaveMode" = SaveMode.APPEND,
         overwrite_filter: Optional["Expr"] = None,
@@ -4480,6 +4681,10 @@ class Dataset:
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.DatabricksUnityCatalog`). When provided, the catalog
+                supplies ``catalog_kwargs`` pointing at its Iceberg REST endpoint.
+                ``catalog`` is ignored if ``catalog_kwargs`` is also specified.
             snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
             mode: Write mode using SaveMode enum. Options:
@@ -4514,6 +4719,21 @@ class Dataset:
             automatically from the data being written. CREATE mode also uses this
             inferred schema to create the target table.
         """
+        if catalog is not None:
+            if catalog_kwargs:
+                raise ValueError("`catalog_kwargs` cannot be specified with `catalog`.")
+
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            resolved = catalog.resolve(
+                table_identifier,
+                reader=ReaderFormat.ICEBERG,
+                mode=CatalogAccessMode.WRITE,
+            )
+            catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
+
         datasink = IcebergDatasink(
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
@@ -4522,6 +4742,124 @@ class Dataset:
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: "SaveMode" = SaveMode.APPEND,
+        partition_by: Optional[List[str]] = None,
+        storage_options: Optional[Dict[str, str]] = None,
+        schema_mode: str = "merge",
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to a Delta Lake table.
+
+        This is a prototype that supports ``APPEND`` and ``OVERWRITE`` modes. Each
+        write task writes Parquet data files to the table location, and the driver
+        performs a single atomic commit to the Delta transaction log using the
+        ``deltalake`` library. If the table doesn't exist, it's created.
+
+        .. tip::
+            For more details on Delta Lake, see https://delta.io/ and the
+            ``deltalake`` Python library.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+                from ray.data import SaveMode
+
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+
+                # Append (default) - creates the table if it doesn't exist.
+                ds.write_delta("/tmp/my_delta_table")
+
+                # Overwrite the table contents.
+                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+
+                # Partitioned write.
+                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+
+                # A later append with an extra column adds it to the table
+                # automatically (the default schema_mode="merge") -- existing
+                # rows read back with None for it.
+                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table"
+                )
+
+                # Reject that same write instead, leaving the table untouched.
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table", schema_mode="error"
+                )
+
+        Args:
+            path: URI of the Delta table (e.g. ``/tmp/my_table`` or
+                ``s3://bucket/my_table``).
+            mode: Write mode using the :class:`~ray.data.SaveMode` enum. Options:
+
+                * ``SaveMode.APPEND`` (default): Add new data to the table.
+                * ``SaveMode.OVERWRITE``: Replace all existing data in the table.
+
+            partition_by: Optional list of columns to partition the table by.
+            storage_options: A dictionary of storage options passed to the
+                ``deltalake`` library for authentication and configuration (e.g.
+                cloud credentials).
+            schema_mode: How an ``APPEND`` handles a column present in the
+                data being written but absent from the table's current
+                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                replaces the table's schema wholesale) or when the table
+                doesn't exist yet (there's no existing schema to compare
+                against). One of:
+
+                * ``"merge"`` (default): Add the new column to the table
+                  before committing the write, like SQL's
+                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  added as nullable, and every row written before this
+                  reads back with ``None`` for it.
+                * ``"error"``: Reject the write with a ``ValueError``
+                  instead, leaving the table's schema unchanged.
+
+                A column present in *both* the data and the table, but with
+                an incompatible type (for example, writing a string into a
+                column the table has as an integer), always raises a
+                ``ValueError`` -- regardless of ``schema_mode``. Only adding
+                a brand-new column is supported; changing an existing
+                column's type is not.
+            name: Optional table name recorded in the Delta metadata when a new
+                table is created.
+            description: Optional table description recorded in the Delta metadata
+                when a new table is created.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set
+                this to control number of tasks to run concurrently. This doesn't
+                change the total number of tasks run. By default, concurrency is
+                dynamically decided based on the available resources.
+        """
+        datasink = DeltaDatasink(
+            path=path,
+            mode=mode,
+            partition_by=partition_by,
+            storage_options=storage_options,
+            schema_mode=schema_mode,
+            name=name,
+            description=description,
         )
 
         self.write_datasink(
@@ -5748,7 +6086,6 @@ class Dataset:
                 op_description="Writing to a local:// path",
             )
 
-        plan = self._plan.copy()
         write_op = Write(
             datasink,
             input_dependencies=[self._logical_plan.dag],
@@ -5771,7 +6108,7 @@ class Dataset:
                     )
                     return
 
-            self._write_ds = Dataset(plan, logical_plan).materialize()
+            self._write_ds = Dataset._from_parent(self, logical_plan).materialize()
 
             iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
@@ -5867,6 +6204,20 @@ class Dataset:
                 ...
                 {'image': array([[[[...]]]], dtype=uint8)}
 
+        .. note::
+
+            Breaking out of the for-loop above shuts the streaming executor
+            down so it stops producing blocks into the object store. If you
+            keep your own reference to the iterator (``it = iter(...)``),
+            cleanup is deferred until that reference is dropped — call
+            ``it.close()`` to release resources eagerly.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
+
         Time complexity: O(1)
 
         Args:
@@ -5915,7 +6266,9 @@ class Dataset:
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Union[TorchDeviceType, Literal["auto"]] = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], CollatedData], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -5973,12 +6326,14 @@ class Dataset:
                 ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of collate_fn.
+                If the output of ``collate_fn`` is a `TensorBatchType`, it is
+                automatically moved to the target device (see ``device``);
+                otherwise, you must handle the device transfer manually.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
@@ -5986,7 +6341,7 @@ class Dataset:
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
                 experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+                conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -5995,8 +6350,9 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
-                `pin_memory` is only supported when using `DefaultCollateFn`.
+            pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
+                `TensorBatchType`. It is recommended to use this flag to pin
+                memory instead of manually pinning memory in the `collate_fn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -6018,7 +6374,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=CD_API_GROUP)
     def iter_jax_batches(
         self,
         *,
@@ -6371,7 +6727,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+        `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
         This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
         (using Arrow as the intermediate data format).
@@ -6670,6 +7026,9 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_df = block_to_df.options(label_selector=label_selector)
         pandas_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6706,6 +7065,9 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_ndarray = block_to_ndarray.options(label_selector=label_selector)
         numpy_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6738,12 +7100,12 @@ class Dataset:
         """
         import pyarrow as pa
 
-        ref_bundle: RefBundle = self._plan.execute()
+        ref_bundle: RefBundle = self._execute()
         block_refs: List[
             ObjectRef["pyarrow.Table"]
         ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
         # Schema is safe to call since we have already triggered execution with
-        # self._plan.execute(), which will cache the schema
+        # self._execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
@@ -6752,6 +7114,9 @@ class Dataset:
             return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
@@ -6829,7 +7194,7 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
 
-        bundle: RefBundle = copy._plan.execute()
+        bundle: RefBundle = copy._execute()
         blocks_with_metadata = bundle.blocks
 
         # TODO(hchen): Here we generate the same number of blocks as
@@ -6847,14 +7212,15 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._raw_stats(), data_context=copy.context),
             logical_plan,
+            copy.context,
+            copy._raw_stats(),
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
         output.set_name(copy.name)
         output._set_uuid(copy._get_uuid())
-        output._plan.execute()  # No-op that marks the plan as fully executed.
+        output._execute()  # Populates the cache from the InputData source operator.
         return output
 
     @PublicAPI(api_group=IM_API_GROUP)
@@ -6950,7 +7316,7 @@ class Dataset:
         """
         if self._current_executor:
             summary = self._current_executor.get_stats().to_summary()
-        elif self._write_ds is not None and self._write_ds.has_computed_output():
+        elif self._write_ds is not None and self._write_ds._has_computed_output():
             summary = self._write_ds.get_stats_summary(detail=detail)
         else:
             summary = self._raw_stats().to_summary()
@@ -6979,15 +7345,16 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(1)
             >>> for ref_bundle in ds.iter_internal_ref_bundles():
-            ...     for block_ref, block_md in ref_bundle.blocks:
-            ...         block = ray.get(block_ref)
+            ...     for entry in ref_bundle.blocks:
+            ...         block = ray.get(entry.ref)
 
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
+        # We don't capture executor here so we can keep it alive post
+        # Dataset clean up.
+        iter_ref_bundles, _, _ = self._execute_to_iterator(capture_executor=False)
         self._synchronize_progress_bar()
-
         return iter_ref_bundles
 
     @Deprecated
@@ -7011,7 +7378,7 @@ class Dataset:
             "`Dataset.get_internal_block_refs()` is deprecated. Use "
             "`Dataset.iter_internal_ref_bundles()` instead.",
         )
-        block_refs = self._plan.execute().block_refs
+        block_refs = self._execute().block_refs
         self._synchronize_progress_bar()
         return block_refs
 
@@ -7094,12 +7461,9 @@ class Dataset:
                 "Dataset.write_*() APIs, and serialize a new dataset reading "
                 "from the external store using the ray.data.read_*() APIs."
             )
-        # Copy Dataset and clear the blocks from the execution plan so only the
-        # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy()
-        logical_plan_copy = copy.copy(self._logical_plan)
-        ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan._cache.clear()
+        # Copy Dataset and clear the cache so only the lineage is serialized.
+        ds = Dataset.copy(self, _deep_copy=True)
+        ds._cache.clear()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7159,7 +7523,7 @@ class Dataset:
     @DeveloperAPI
     def context(self) -> DataContext:
         """Return the DataContext used to create this Dataset."""
-        return self._plan._context
+        return self._context
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
@@ -7330,6 +7694,9 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            get_num_rows = get_num_rows.options(label_selector=label_selector)
         num_rows = []
         for ref_bundle in self.iter_internal_ref_bundles():
             for block_ref in ref_bundle.block_refs:
@@ -7341,19 +7708,14 @@ class Dataset:
 
         If the dataset hasn't been executed, returns an empty stats object.
         """
-        stats = self._plan._cache.get_stats()
+        stats = self._cache.get_stats()
         if not stats:
             return DatasetStats(metadata={}, parent=None)
         return stats
 
-    def has_computed_output(self) -> bool:
+    def _has_computed_output(self) -> bool:
         """Whether this dataset has cached output from a prior execution."""
-        return self._plan._cache.get_bundle(self._logical_plan.dag) is not None
-
-    @property
-    def has_started_execution(self) -> bool:
-        """Return ``True`` if this dataset has been partially or fully executed."""
-        return self._plan._has_started_execution
+        return self._cache.get_bundle(self._logical_plan.dag) is not None
 
     def _meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -7364,7 +7726,7 @@ class Dataset:
             The number of records of the result Dataset, or None.
         """
         dag = self._logical_plan.dag
-        num_rows = self._plan._cache.get_num_rows(dag)
+        num_rows = self._cache.get_num_rows(dag)
         if num_rows is None:
             num_rows = dag.infer_metadata().num_rows
         return num_rows
@@ -7374,8 +7736,7 @@ class Dataset:
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
-        self._plan._dataset_uuid = uuid
-        self._plan._in_stats.dataset_uuid = uuid
+        self._in_stats.dataset_uuid = uuid
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
@@ -7394,29 +7755,227 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(
-        self,
-    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
-        bundle_iter, stats, executor = self._plan.execute_to_iterator()
-        # Capture current executor to be able to clean it up properly, once
-        # dataset is garbage-collected
-        self._current_executor = executor
+    def _create_executor(self) -> "StreamingExecutor":
+        """Create a StreamingExecutor for this dataset.
 
-        return bundle_iter, stats, executor
+        Increments _run_index and tags the executor with get_dataset_id().
+
+        NOTE: Executor will be shutdown upon either of the 2 following conditions:
+
+            - Iterator is fully exhausted (ie until StopIteration is raised)
+            - Executor instances is garbage-collected
+        """
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+        self._run_index += 1
+        return StreamingExecutor(self._context, self.get_dataset_id())
+
+    def _initial_stats(self) -> DatasetStats:
+        """The initial stats to seed a fresh executor for this dataset.
+
+        For Datasets created from `read_xxx`, `self._in_stats` is empty/unused and
+        we return a fresh empty stats object — `read_xxx` operators are translated
+        into physical operators that emit their own stats.
+
+        For Datasets created from `from_xxx`, the input data isn't visible to the
+        executor (it's wrapped in `InputDataBuffer`, which is skipped when stats
+        are generated). We must seed `_in_stats` so the from-side metadata isn't
+        lost.
+        """
+        if self._cache.get_bundle(self._logical_plan.dag) is not None:
+            return self._cache.get_stats()
+        if self._logical_plan.has_lazy_input():
+            return DatasetStats(metadata={}, parent=None)
+        return self._in_stats
+
+    def _execute_dag(
+        self,
+        executor: "Executor",
+        preserve_order: bool = False,
+    ) -> "OutputIterator":
+        """Optimize the logical plan and start the executor.
+
+        Returns the executor's output iterator over RefBundles. Used by both
+        `_execute()` (which drains the iterator into a single RefBundle) and
+        `_build_bundle_iterator()` (which streams the iterator to the caller).
+        """
+        from ray.data._internal.logical.optimizers import get_execution_plan
+
+        record_operators_usage(self._logical_plan.dag)
+
+        physical_plan, callbacks = get_execution_plan(self._logical_plan)
+        dag = physical_plan.dag
+        stats = self._initial_stats()
+
+        # Enforce ordering for plans that require it (Zip, Sort).
+        if preserve_order or self._logical_plan.require_preserve_order():
+            executor._options.preserve_order = True
+
+        return executor.execute(dag, initial_stats=stats, callbacks=callbacks)
+
+    def _build_bundle_iterator(
+        self,
+        executor: "Executor",
+        preserve_order: bool = False,
+    ) -> "OutputIterator":
+        """Build a metadata-collecting bundle iterator over `executor`'s output.
+
+        The returned iterator writes num_rows / size_bytes / schema back to
+        `self._cache` once it is fully exhausted. Used by both eager dataset
+        iteration (`_execute_to_iterator`) and streaming-split iteration
+        (`StreamSplitDataIterator`).
+        """
+        bundle_iter = self._execute_dag(executor, preserve_order=preserve_order)
+        return _CacheMetadataIterator(bundle_iter, executor._topology, self)
+
+    @omit_traceback_stdout
+    def _execute(self, preserve_order: bool = False) -> RefBundle:
+        """Execute this dataset eagerly, returning a RefBundle.
+
+        Returns the cached RefBundle if execution has already happened against
+        the current logical plan; otherwise runs the StreamingExecutor end-to-end,
+        captures stats and memory-spill metrics, and writes them back to the cache.
+        """
+        if not ray.available_resources().get("CPU"):
+            if log_once("cpu_warning"):
+                logger.warning(
+                    "Warning: The Ray cluster currently does not have any "
+                    "available CPUs. The Dataset job will hang unless more CPUs "
+                    "are freed up. A common reason is that cluster resources are "
+                    "used by Actors or Tune trials; see the following link for "
+                    "more details: "
+                    "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"
+                )
+
+        if self._cache.get_bundle(self._logical_plan.dag) is None:
+            if (
+                isinstance(self._logical_plan.dag, SourceOperator)
+                and self._logical_plan.dag.output_data() is not None
+            ):
+                # Already-materialized source (e.g., `from_pandas`): skip
+                # execution and return the output data directly. Avoids
+                # recording empty-plan execution metrics.
+                stats = self._initial_stats()
+                output_bundles = self._logical_plan.dag.output_data()
+                owns_blocks = all(b.owns_blocks for b in output_bundles)
+                schema = _take_first_non_empty_schema(b.schema for b in output_bundles)
+                bundle = RefBundle(
+                    [entry for bundle in output_bundles for entry in bundle.blocks],
+                    owns_blocks=owns_blocks,
+                    schema=schema,
+                )
+            else:
+                with self._create_executor() as executor:
+                    bundles = self._execute_dag(executor, preserve_order=preserve_order)
+                    bundle = RefBundle.merge_ref_bundles(list(bundles))
+                    executor.get_stats().set_uuid_recursive(self._uuid)
+                stats = executor.get_stats()
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
+                if self._context.enable_auto_log_stats:
+                    logger.info(stats_summary_string)
+
+            # Retrieve cluster-wide memory-spill stats.
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Skipping recording memory spilled and restored statistics due "
+                    f"to exception: {e}"
+                )
+
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
+
+            stats.dataset_uuid = self._uuid
+            self._cache.set_bundle(self._logical_plan.dag, bundle)
+            self._cache.set_stats(stats)
+
+        bundle = self._cache.get_bundle(self._logical_plan.dag)
+        assert bundle is not None
+        return bundle
+
+    @omit_traceback_stdout
+    def _execute_to_iterator(
+        self, capture_executor: bool = True
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
+        """Execute this dataset and return a streaming iterator over RefBundles.
+
+        Args:
+            capture_executor: If True, store the executor on `self._current_executor`
+                so it can be shut down on Dataset GC. Set False when an intermediate
+                Dataset is about to be unreferenced (e.g.,
+                ``ds.map_batches(...).iter_internal_ref_bundles()``).
+
+        Returns:
+            Tuple ``(bundle_iterator, stats, executor)``. Executor is ``None`` on
+            cache-hit.
+        """
+        cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
+        if cached_bundle is not None:
+            if capture_executor:
+                self._current_executor = None
+            return iter([cached_bundle]), self._cache.get_stats(), None
+
+        executor = self._create_executor()
+        bundle_iter = self._build_bundle_iterator(executor)
+
+        # Force execution of the first bundle so executor.get_stats() is populated
+        # before we cache it (executor returns a generator that is lazy until next()).
+        gen = iter(bundle_iter)
+        try:
+            bundle_iter = itertools.chain([next(gen)], gen)
+        except StopIteration:
+            pass
+
+        self._cache.set_stats(executor.get_stats())
+
+        if capture_executor:
+            # Capture current executor to be able to clean it up properly,
+            # once dataset is garbage-collected
+            self._current_executor = executor
+
+        return bundle_iter, self._cache.get_stats(), executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
         return {
-            "plan": self._plan,
             "uuid": self._uuid,
             "logical_plan": self._logical_plan,
+            "dataset_name": self._dataset_name,
+            "in_stats": self._in_stats,
+            "context": self._context,
         }
 
     def __setstate__(self, state):
-        self._plan = state["plan"]
         self._uuid = state["uuid"]
         self._logical_plan = state["logical_plan"]
+        self._dataset_name = state.get("dataset_name")
+        self._in_stats = state["in_stats"]
+        self._context = state["context"]
+        self._cache = _ExecutionCache()
+        self._run_index = -1
         self._current_executor = None
+        self._write_ds = None
 
     def __del__(self):
         if not self._current_executor:
@@ -7604,6 +8163,49 @@ def _block_to_arrow(block: Block):
     return block.to_arrow()
 
 
+class _CacheMetadataIterator(OutputIterator):
+    """Wrap a bundle iterator and write metadata back to the dataset cache.
+
+    Collects num_rows / size_bytes / schema as bundles flow past, and writes
+    them to ``dataset._cache`` once the iterator is fully exhausted
+    (``StopIteration``). Used by both eager dataset iteration and
+    streaming-split iteration.
+    """
+
+    def __init__(
+        self,
+        base_iterator: OutputIterator,
+        topology: "Topology",
+        dataset: "Dataset",
+    ):
+        self._base_iterator = base_iterator
+        self._num_rows = 0
+        self._size_bytes = 0
+        self._topology = topology
+        self._dataset = dataset
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        try:
+            bundle = self._base_iterator.get_next(output_split_idx)
+            self._num_rows += bundle.num_rows()
+            self._size_bytes += bundle.size_bytes()
+            return bundle
+        except StopIteration:
+            # Get the last operator from the topology and retrieve the schema.
+            schema = (
+                next(reversed(self._topology.values()))._schema
+                if self._topology
+                else None
+            )
+
+            dag = self._dataset._logical_plan.dag
+            self._dataset._cache.set_num_rows(dag, self._num_rows)
+            self._dataset._cache.set_size_bytes(dag, self._size_bytes)
+            if schema:
+                self._dataset._cache.set_schema(dag, schema)
+            raise
+
+
 class _ExecutionCache:
     """Consolidated cache for Dataset execution results.
 
@@ -7616,7 +8218,7 @@ class _ExecutionCache:
          Valid only when _operator matches the current DAG.
       2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
          Populated when a streaming iterator is fully exhausted
-         (CacheMetadataIterator in legacy_compat.py).
+         (_CacheMetadataIterator).
 
     Getters check the bundle layer first, then the metadata layer.
     """

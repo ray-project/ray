@@ -1,3 +1,6 @@
+.. meta::
+   :description: Hyperparameter tuning and experiment execution at any scale, with algorithms like PBT and ASHA and integrations for PyTorch, XGBoost, and Optuna.
+
 .. _tune-main:
 
 Ray Tune: Hyperparameter Tuning
@@ -11,7 +14,6 @@ Ray Tune: Hyperparameter Tuning
     tutorials/overview
     examples/index
     faq
-    api/api
 
 .. image:: images/tune_overview.png
     :scale: 50%

@@ -60,7 +60,7 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -444,6 +444,10 @@ cc_binary(
 
 py_test_module_list(
     size = "medium",
+    data = [
+        "counter.so",
+        "plus.so",
+    ],
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",

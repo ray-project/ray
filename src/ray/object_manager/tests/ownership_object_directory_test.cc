@@ -23,7 +23,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs_rpc_client/accessor.h"
@@ -97,6 +97,26 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
   bool IsNodeDead(const NodeID &node_id) const override { return false; }
 };
 
+// A subscriber that captures the failure callback per subscribed key so tests
+// can simulate a subscription (long-poll) failure.
+class CapturingSubscriber : public pubsub::FakeSubscriber {
+ public:
+  void Subscribe(
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
+      const rpc::Address &owner_address,
+      const std::optional<std::string> &key_id,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    if (key_id.has_value()) {
+      failure_callbacks[*key_id] = std::move(subscription_failure_callback);
+    }
+  }
+
+  absl::flat_hash_map<std::string, pubsub::SubscriptionFailureCallback> failure_callbacks;
+};
+
 class MockGcsClient : public gcs::GcsClient {
  public:
   MockGcsClient(gcs::GcsClientOptions options,
@@ -127,7 +147,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(
             new MockGcsClient(options_, std::make_unique<MockGcsClientNodeAccessor>())),
-        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        subscriber_(std::make_shared<CapturingSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }) {
     RayConfig::instance().initialize(R"({"max_object_report_batch_size": 20})");
@@ -145,6 +165,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
 
   void MarkAsFailed(const ObjectID &object_id, const rpc::ErrorType &error_type) {
     RAY_LOG(INFO) << "Object Failed";
+    mark_as_failed_calls.emplace_back(object_id, error_type);
   }
 
   ObjectInfo CreateNewObjectInfo(const WorkerID &worker_id) {
@@ -200,11 +221,12 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   instrumented_io_context io_service_;
   gcs::GcsClientOptions options_;
   std::shared_ptr<gcs::GcsClient> gcs_client_mock_;
-  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  std::shared_ptr<CapturingSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   std::unique_ptr<OwnershipBasedObjectDirectory> obod_;
   std::unordered_set<ObjectID> used_ids_;
+  std::vector<std::pair<ObjectID, rpc::ErrorType>> mark_as_failed_calls;
   const NodeID current_node_id = NodeID::FromRandom();
 };
 
@@ -544,6 +566,65 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
 
   // Make sure metadata is cleaned up properly.
   AssertNoLeak();
+}
+
+// When the node is shutting down, an object-location subscription failure is
+// caused by our own gRPC client teardown (not a real remote owner death), so
+// the object must NOT be marked OWNER_DIED.
+TEST_F(OwnershipBasedObjectDirectoryTest, OwnerDiedSuppressedDuringShutdown) {
+  const auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_address.set_node_id(NodeID::FromRandom().Binary());
+
+  obod_->SubscribeObjectLocations(UniqueID::FromRandom(),
+                                  object_id,
+                                  owner_address,
+                                  [](const ObjectID &,
+                                     const std::unordered_set<NodeID> &,
+                                     const std::string &,
+                                     const NodeID &,
+                                     bool,
+                                     size_t) {});
+
+  auto it = subscriber_->failure_callbacks.find(object_id.Binary());
+  ASSERT_NE(it, subscriber_->failure_callbacks.end());
+
+  // Begin shutdown, then simulate the local gRPC client teardown failing the
+  // long-poll.
+  obod_->MarkShuttingDown();
+  it->second(object_id.Binary(), Status::Disconnected("GRPC client is shut down."));
+
+  // Owner (driver) is alive; no fatal OWNER_DIED should be produced.
+  ASSERT_TRUE(mark_as_failed_calls.empty());
+}
+
+// When NOT shutting down, a subscription failure is treated as a genuine owner
+// death and the object is marked OWNER_DIED (pre-existing behavior).
+TEST_F(OwnershipBasedObjectDirectoryTest, OwnerDiedMarkedWhenNotShuttingDown) {
+  const auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_address.set_node_id(NodeID::FromRandom().Binary());
+
+  obod_->SubscribeObjectLocations(UniqueID::FromRandom(),
+                                  object_id,
+                                  owner_address,
+                                  [](const ObjectID &,
+                                     const std::unordered_set<NodeID> &,
+                                     const std::string &,
+                                     const NodeID &,
+                                     bool,
+                                     size_t) {});
+
+  auto it = subscriber_->failure_callbacks.find(object_id.Binary());
+  ASSERT_NE(it, subscriber_->failure_callbacks.end());
+
+  it->second(object_id.Binary(), Status::Disconnected("GRPC client is shut down."));
+
+  ASSERT_EQ(mark_as_failed_calls.size(), 1);
+  ASSERT_EQ(mark_as_failed_calls[0].first, object_id);
+  ASSERT_EQ(mark_as_failed_calls[0].second, rpc::ErrorType::OWNER_DIED);
 }
 
 }  // namespace ray

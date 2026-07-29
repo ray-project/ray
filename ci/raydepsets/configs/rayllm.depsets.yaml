@@ -1,17 +1,9 @@
 build_arg_sets:
   cpu:
-    PYTHON_VERSION: py311
-    PYTHON_VERSION_STR: "3.11"
-    CUDA_CODE: cpu
-  cu128:
-    PYTHON_VERSION: py311
-    PYTHON_VERSION_STR: "3.11"
-    CUDA_CODE: cu128
-  cpu_py312:
     PYTHON_VERSION: py312
     PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cpu
-  cu130_py312:
+  cu130:
     PYTHON_VERSION: py312
     PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cu130
@@ -21,13 +13,19 @@ build_arg_sets:
   append_flags:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
+    # Omit the nixl-cu12 binary wheel from the compiled lockfiles. nixl-cu12
+    # and nixl-cu13 1.x wheels both install a top-level nixl_ep/ package with
+    # an identically named nixl_ep_cpp.so but different libcudart
+    # requirements; if both wheels are present the cu12 binary wins the file
+    # race and breaks vLLM's eager `import nixl_ep` on the cu130 image. The
+    # nixl meta-package (pure Python) is still required so that examples like
+    # dp_pd_example can `import nixl` to gate optional features.
+    - --unsafe-package nixl-cu12
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
-    - cu128
-    - cpu_py312
-    - cu130_py312
+    - cu130
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.

@@ -23,8 +23,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -34,6 +34,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -58,6 +59,7 @@ class ReferenceCountTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_);
   }
@@ -92,6 +94,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
@@ -154,12 +157,12 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
-        subscriber_(std::make_unique<pubsub::SubscriberState>(
-            subscriber_id,
-            /*get_time_ms=*/[]() { return 1.0; },
-            /*subscriber_timeout_ms=*/1000,
-            /*publish_batch_size=*/1000,
-            UniqueID::FromRandom())),
+        subscriber_(
+            std::make_unique<pubsub::SubscriberState>(subscriber_id,
+                                                      /*clock=*/clock_,
+                                                      /*subscriber_timeout_ms=*/1000,
+                                                      /*publish_batch_size=*/1000,
+                                                      UniqueID::FromRandom())),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
@@ -227,6 +230,9 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
+  // Declared before subscriber_ so it outlives the SubscriberState that holds a
+  // ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
@@ -325,6 +331,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *owned_object_count_metric_,
             *owned_object_size_metric_,
             /*lineage_pinning_enabled=*/false) {}
@@ -390,11 +397,6 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
                        0,
                        LineageReconstructionEligibility::INELIGIBLE_PUT,
                        /*add_local_ref=*/true);
-  }
-
-  void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
-    rc_.AddLocalReference(object_id, "");
-    rc_.AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
@@ -895,10 +897,13 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService());
+  Clock clock;
+  CoreWorkerMemoryStore store(io_context.GetIoService(), clock);
 
   // Tests putting an object with no references is ignored.
   store.Put(buffer, id2, rc->HasReference(id2));
@@ -1848,107 +1853,6 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
   ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
-}
-
-// Two tasks execute on the same worker. After the inner object id returned is
-// transited twice on the same worker, a WaitForRefRemoved RPC is still able
-// to retrieve the right containment metadata about the inner id.
-//
-// This unit test covers scenarios from test_dataset.py::test_callable_classes
-// and test_dataset_pipeline.py::test_pipeline_actors.
-//
-// @ray.remote
-// def owner_task1():
-//     inner_id = ray.put(data, _owner=owner)
-//     return inner_id
-//
-// @ray.remote
-// def owner_task2(x):
-//     ray.put(data, _owner=owner)
-//
-// return_id = owner_task1.remote()
-// inner_id = ray.get(outer_id)[0]
-// return_id2 = owner_task2.remote(inner_id)
-//
-TEST(DistributedReferenceCountTest, TestForeignOwner) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("2");
-  auto foreign_owner =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
-        if (addr.ip_address() == owner->address_.ip_address()) {
-          return owner;
-        } else
-          return caller;
-      });
-
-  //
-  // Phase 1 -- submit and execute owner_task1()
-  //
-  // Caller submits a task.
-  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
-  // Task returns inner_id as its return value.
-  auto inner_id = ObjectID::FromRandom();
-  owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  auto refs = owner->FinishExecutingTask(
-      ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  // Caller receives the owner's message, but inner_id is still in scope
-  // because caller has a reference to return_id.
-  caller->HandleSubmittedTaskFinished(
-      return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-
-  //
-  // Phase 2 -- submit and execute owner_task2(x)
-  //
-  auto return_id2 = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-  caller->rc_.RemoveLocalReference(return_id2, nullptr);
-  // Owner receives a reference to inner_id. It still has a reference when
-  // the task returns.
-  owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
-  auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
-  // owner merges ref count into the caller.
-  caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id2));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id2));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-
-  //
-  // Phase 3 -- foreign owner gets ref removed information.
-  //
-  // Emulate ref removed callback.
-  foreign_owner->rc_.AddOwnedObject(inner_id,
-                                    {},
-                                    foreign_owner->address_,
-                                    "",
-                                    0,
-                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                    /*add_local_ref=*/false);
-  foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
-
-  // Foreign owner waits on owner.
-  ASSERT_TRUE(owner->FlushBorrowerCallbacks());
-  ASSERT_TRUE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->FlushBorrowerCallbacks());
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  caller->rc_.RemoveLocalReference(inner_id, nullptr);
-
-  // Foreign owner waits on caller next.
-  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
 }
 
 // A borrower is given references to 2 different objects, which each contain a
@@ -3225,7 +3129,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
 
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
 
   // Both should be in pending_creation state initially
   auto count_metrics = owned_object_count_metric_->GetTagToValue();
@@ -3236,7 +3140,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 2: Transition from pending to in_memory (no pinned_at_node_id, not spilled)
   rc->UpdateObjectPendingCreation(pending_id1, false);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 1);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3247,7 +3151,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   NodeID node1 = NodeID::FromRandom();
   rc->UpdateObjectPendingCreation(pending_id2, false);
   rc->UpdateObjectPinnedAtRaylet(pending_id2, node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3257,7 +3161,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 4: Object spilling
   rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 1);
@@ -3267,21 +3171,21 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 5: Update object size
   rc->UpdateObjectSize(pending_id1, 150);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
 
   // Test 6: Delete objects
   std::vector<ObjectID> deleted;
   rc->RemoveLocalReference(pending_id1, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
 
   rc->RemoveLocalReference(pending_id2, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
@@ -3297,6 +3201,75 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
   ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 0);
   ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 0);
+}
+
+// This test verifies the `has_ever_owned_objects_` flag for metric emission
+// A worker emits owned-object series IF AND ONLY IF it has owned at least one
+// non-actor object in its lifetime. Once this flag is set to true,
+// it remains true forever, preventing emission drops when the active count hits 0
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsGate) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty());
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Add one owned object that is PendingCreation. the gate must
+  // flip and all four state series get written. We assert via the
+  // PendingCreation value moving from "absent" to 1.
+  ObjectID owned = ObjectID::FromRandom();
+  ASSERT_FALSE(ObjectID::IsActorID(owned));
+  rc->AddOwnedObject(owned,
+                     {},
+                     addr,
+                     "",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  auto count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 1);
+  ASSERT_TRUE(count.contains({{"State", "InMemory"}}));
+  ASSERT_TRUE(count.contains({{"State", "InPlasma"}}));
+  ASSERT_TRUE(count.contains({{"State", "Spilled"}}));
+
+  // Remove the only owned ref so the count returns to 0. The sticky
+  // flag must keep emitting
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(owned, &deleted);
+  ASSERT_EQ(deleted.size(), 1);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  rc->RecordOwnerMetrics();
+  count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 0)
+      << "Sticky broken: RecordOwnerMetrics did not re-emit after "
+         "owned count returned to 0";
+}
+
+// Actor ObjectIDs are excluded from owned-object metrics.
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsIgnoresActorOwnership) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  ObjectID actor_id =
+      ObjectID::ForActorHandle(ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1));
+  ASSERT_TRUE(ObjectID::IsActorID(actor_id));
+  rc->AddOwnedObject(actor_id,
+                     {},
+                     addr,
+                     "",
+                     /*object_size=*/0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty())
+      << "Owning an actor ObjectID must not flip has_ever_owned_objects_";
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Cleanup so the fixture teardown's AssertNoLeaks passes.
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(actor_id, &deleted);
 }
 
 TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {

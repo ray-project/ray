@@ -1,5 +1,6 @@
 import pytest
 
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.worker_group.poll import (
     ERR_CHAR_LIMIT,
     WorkerGroupPollStatus,
@@ -108,6 +109,27 @@ def test_failing_replica_group_indices_no_mapping():
     }
     poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
     assert poll_status.failing_replica_group_indices == set()
+
+
+def test_get_preemption_info_none():
+    """No worker echoes a preemption signal."""
+    statuses = {
+        0: WorkerStatus(running=True),
+        1: WorkerStatus(running=True),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.get_preemption_info() is None
+
+
+def test_get_preemption_info_returns_echoed_signal():
+    """The first non-None echoed PreemptionInfo is returned."""
+    info = PreemptionInfo(deadline_ms=123, preempted_node_to_ranks={"node-a": [0]})
+    statuses = {
+        0: WorkerStatus(running=True, preemption_info=info),
+        1: WorkerStatus(running=True),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.get_preemption_info() is info
 
 
 if __name__ == "__main__":

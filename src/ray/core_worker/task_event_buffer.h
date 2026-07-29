@@ -24,13 +24,14 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/export_task_event.pb.h"
@@ -258,7 +259,13 @@ class TaskProfileEvent : public TaskEvent {
   std::string event_name_;
   int64_t start_time_{};
   int64_t end_time_{};
-  std::string extra_data_;
+  // Defaults to a valid empty-JSON object. extra_data is an optional JSON
+  // string; callers set it via SetExtraData (the Cython ProfileEvent normally
+  // sets "{}" or a JSON payload in __exit__), but some events are flushed
+  // without SetExtraData ever being called. Without this default they carry an
+  // empty string, which is not valid JSON and makes consumers that json-parse
+  // the field (e.g. the state API) fail on that event.
+  std::string extra_data_ = "{}";
   /// The current Ray session name.
   std::string session_name_;
 };
@@ -399,7 +406,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::unique_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
       std::string session_name,
-      const NodeID &node_id);
+      const NodeID &node_id,
+      ClockInterface &clock);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -625,6 +633,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// The node id of the worker.
   const NodeID node_id_;
+
+  ClockInterface &clock_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);

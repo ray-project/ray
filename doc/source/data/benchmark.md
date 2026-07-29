@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray Data performance benchmarks across image, document, audio, and video workloads, with methodology and comparisons to Daft."
+---
+
 # Ray Data Benchmarks
 
 This page documents benchmark results and methodologies for evaluating Ray Data performance across a variety of data modalities and workloads.

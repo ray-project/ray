@@ -1,3 +1,6 @@
+.. meta::
+   :description: Scale scikit-learn across a Ray cluster by registering Ray as a Joblib backend via ray.util.joblib.register_ray.
+
 .. _ray-joblib:
 
 Distributed Scikit-learn / Joblib

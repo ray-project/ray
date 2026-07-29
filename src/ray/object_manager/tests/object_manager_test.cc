@@ -23,7 +23,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
@@ -76,8 +76,6 @@ class ObjectManagerTest : public ::testing::Test {
         [](const ObjectID &object_id) -> std::string { return ""; },
         // pin_object
         [](const ObjectID &object_id) -> std::unique_ptr<RayObject> { return nullptr; },
-        // fail_pull_request
-        [](const ObjectID &object_id, rpc::ErrorType error_type) {},
         fake_plasma_client_,
         nullptr,
         [](const std::string &address,
@@ -87,6 +85,12 @@ class ObjectManagerTest : public ::testing::Test {
               address, port, client_call_manager);
         },
         rpc_context_);
+  }
+
+  void InstallPullPlaceholder(const ObjectID &object_id, int64_t size) {
+    rpc::Address owner;
+    ASSERT_TRUE(
+        object_manager_->buffer_pool_.CreateChunk(object_id, owner, size, 0, 0).ok());
   }
 
   NodeID local_node_id_;
@@ -104,43 +108,24 @@ class ObjectManagerTest : public ::testing::Test {
   std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };
 
-uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
-  uint32_t num_free_objects_requests = 0;
-  for (const auto &[node_id, rpc_client] :
-       object_manager.remote_object_manager_clients_) {
-    auto fake_rpc_client =
-        std::dynamic_pointer_cast<ray::rpc::FakeObjectManagerClient>(rpc_client);
-    num_free_objects_requests += fake_rpc_client->num_free_objects_requests;
-  }
-  return num_free_objects_requests;
-}
+TEST_F(ObjectManagerTest, MarkObjectFailedReleasesPlaceholderAndWritesSentinel) {
+  // While a pull is in flight, we put an unsealed buffer at that
+  // ObjectID slot in plasma (so we can stream chunks into it). If the
+  // pull fails (e.g., the owner dies or it times out), we must release
+  // the slot before writing the error sentinel; otherwise the write
+  // collides with the slot and we pull forever.
+  ObjectID id = ObjectID::FromRandom();
+  InstallPullPlaceholder(id, 100);
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_.contains(id));
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_[id].second.empty());
 
-TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
-  auto object_id = ObjectID::FromRandom();
+  object_manager_->MarkObjectFailed(id, rpc::ErrorType::OWNER_DIED);
 
-  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_map_;
-  rpc::GcsNodeAddressAndLiveness self_node_info;
-  self_node_info.set_node_id(local_node_id_.Binary());
-  node_info_map_[local_node_id_] = self_node_info;
-  NodeID remote_node_id_ = NodeID::FromRandom();
-  rpc::GcsNodeAddressAndLiveness remote_node_info;
-  remote_node_info.set_node_id(remote_node_id_.Binary());
-  node_info_map_[remote_node_id_] = remote_node_info;
-
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness())
-      .WillOnce(::testing::Return(node_info_map_));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-              GetNodeAddressAndLiveness(remote_node_id_, _))
-      .WillOnce(::testing::Return(remote_node_info));
-
-  fake_plasma_client_->objects_in_plasma_[object_id] =
-      std::make_pair(std::vector<uint8_t>(1), std::vector<uint8_t>(1));
-  object_manager_->FreeObjects({object_id}, false);
-  ASSERT_EQ(fake_plasma_client_->num_free_objects_requests, 1);
-  ASSERT_TRUE(!fake_plasma_client_->objects_in_plasma_.contains(object_id));
-  ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 0);
-  ASSERT_EQ(rpc_context_.poll_one(), 1);
-  ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 1);
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_.contains(id));
+  std::string expected_meta =
+      std::to_string(static_cast<int>(rpc::ErrorType::OWNER_DIED));
+  const auto &actual_meta = fake_plasma_client_->objects_in_plasma_[id].second;
+  EXPECT_EQ(std::string(actual_meta.begin(), actual_meta.end()), expected_meta);
 }
 
 }  // namespace ray

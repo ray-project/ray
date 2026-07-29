@@ -1183,6 +1183,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo_multi_cpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
@@ -1194,6 +1195,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
+        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -1543,6 +1545,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
@@ -1552,6 +1555,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
+        "learning_tests_use_all_core",
         "team:rllib",
     ],
 )
@@ -1600,6 +1604,17 @@ py_test(
     name = "test_algorithm_config",
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_env_runner_state_server",
+    size = "small",
+    srcs = ["algorithms/tests/test_env_runner_state_server.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -1685,6 +1700,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_eval_workers_all_unhealthy",
+    size = "medium",
+    srcs = ["algorithms/tests/test_eval_workers_all_unhealthy.py"],
+    tags = [
+        "algorithms",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Specific Algorithms
 
 # APPO
@@ -1704,6 +1731,17 @@ py_test(
     name = "test_appo_learner",
     size = "medium",
     srcs = ["algorithms/appo/tests/test_appo_learner.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_appo_multi_agent_data_balance",
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_multi_agent_data_balance.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -1809,6 +1847,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# IQL
+py_test(
+    name = "test_iql_rl_module",
+    size = "small",
+    srcs = ["algorithms/iql/tests/test_iql_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # MARWIL
 py_test(
     name = "test_marwil",
@@ -1875,6 +1925,16 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_ppo_value_bootstrapping",
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_value_bootstrapping.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
 # SAC
 py_test(
     name = "test_sac",
@@ -1923,6 +1983,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_custom_resources_per_learner",
+    size = "small",
+    srcs = ["algorithms/tests/test_custom_resources_per_learner.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],
@@ -1957,7 +2028,7 @@ py_test(
 
 py_test(
     name = "algorithms/tests/test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_telemetry.py"],
     tags = [
         "algorithms",
@@ -2166,7 +2237,7 @@ py_test(
 
 py_test(
     name = "env/tests/test_env_runner_group",
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_env_runner_group.py"],
     tags = [
         "evaluation",
@@ -2924,6 +2995,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# From-checkpoint exception handling
+py_test(
+    name = "utils/tests/test_from_checkpoint_exception_handling",
+    size = "small",
+    srcs = ["utils/tests/test_from_checkpoint_exception_handling.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
 # Errors
 py_test(
     name = "test_errors",
@@ -3248,7 +3331,7 @@ py_test(
 
 py_test(
     name = "test_actor_manager",
-    size = "medium",
+    size = "large",
     srcs = ["utils/tests/test_actor_manager.py"],
     data = ["utils/tests/random_numbers.pkl"],
     tags = [
@@ -3441,18 +3524,6 @@ py_test(
     size = "small",
     srcs = ["examples/catalogs/custom_action_distribution.py"],
     main = "examples/catalogs/custom_action_distribution.py",
-    tags = [
-        "examples",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
-    size = "small",
-    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",
@@ -3672,48 +3743,6 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
-    ],
-)
-
-# IMPALA
-py_test(
-    name = "examples/connectors/flatten_observations_dict_space_impala",
-    size = "large",
-    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
-    args = [
-        "--as-test",
-        "--stop-reward=400.0",
-        "--stop-timesteps=2000000",
-        "--framework=torch",
-        "--algo=IMPALA",
-    ],
-    main = "examples/connectors/flatten_observations_dict_space.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "examples/connectors/flatten_observations_dict_space_multi_agent_impala",
-    size = "large",
-    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
-    args = [
-        "--num-agents=2",
-        "--as-test",
-        "--stop-reward=800.0",
-        "--stop-timesteps=2000000",
-        "--framework=torch",
-        "--algo=IMPALA",
-    ],
-    main = "examples/connectors/flatten_observations_dict_space.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-        # Test is failing: https://github.com/ray-project/ray/issues/47717
-        "manual",
     ],
 )
 
@@ -4720,6 +4749,21 @@ py_test(
         "--stop-iters=3",
     ],
     main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/metrics/clearing_ema",
+    size = "medium",
+    srcs = ["examples/metrics/clearing_ema.py"],
+    args = [
+        "--stop-iters=3",
+    ],
+    main = "examples/metrics/clearing_ema.py",
     tags = [
         "examples",
         "exclusive",

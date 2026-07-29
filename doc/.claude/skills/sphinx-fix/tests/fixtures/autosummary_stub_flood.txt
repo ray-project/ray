@@ -1,0 +1,22 @@
+Build: 4156675   State: Finished   Success: False   Duration: 1042s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (15):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.map_batches'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.map'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.filter'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.flat_map'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.groupby'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/ray.data.Dataset.rst:20: WARNING: autosummary: stub file not found 'ray.data.Dataset.sort'. Check your autosummary_generate setting.
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/aggregate.rst:6: WARNING: py:meth reference target not found: ray.data.Dataset.map_batches [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/aggregate.rst:6: WARNING: py:meth reference target not found: ray.data.Dataset.map [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/aggregate.rst:6: WARNING: py:meth reference target not found: ray.data.Dataset.filter [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/aggregate.rst:6: WARNING: py:meth reference target not found: ray.data.Dataset.flat_map [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/transform.rst:10: WARNING: py:meth reference target not found: ray.data.Dataset.groupby [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/transform.rst:10: WARNING: py:meth reference target not found: ray.data.Dataset.sort [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/transform.rst:10: WARNING: py:meth reference target not found: ray.data.Dataset.limit [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/doc/source/apis/data/transform.rst:10: WARNING: py:meth reference target not found: ray.data.Dataset.show [ref.meth]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64387/python/ray/train/collective/__init__.py:docstring of ray.train.collective.broadcast_from_rank_zero:: WARNING: py:exc reference target not found: pickle.PicklingError [ref.exc]
+
+Summary line: build finished with problems, 15 warnings.

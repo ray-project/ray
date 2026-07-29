@@ -38,7 +38,11 @@ from .utils import (
     is_in_databricks_runtime,
     is_port_in_use,
 )
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    parse_address,
+)
 from ray._common.utils import load_class
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -551,7 +555,7 @@ def _setup_ray_cluster(
         port_exclude_list.append(ray_dashboard_agent_port)
 
         dashboard_options = [
-            "--dashboard-host=0.0.0.0",
+            f"--dashboard-host={get_all_interfaces_ip()}",
             f"--dashboard-port={ray_dashboard_port}",
             f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
         ]
@@ -1347,6 +1351,9 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
+        **kwargs: Additional keyword arguments forwarded to
+            ``_setup_ray_cluster_internal`` for advanced/experimental options.
+
     Returns:
         returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
@@ -1728,6 +1735,12 @@ class AutoscalingCluster:
         Args:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
+            extra_provider_config: extra fields merged into the autoscaler
+                ``provider`` config.
+            upscaling_speed: maximum allowed in-flight upscaling as a
+                multiple of the current cluster size.
+            idle_timeout_minutes: minutes an idle worker node must remain
+                idle before the autoscaler removes it.
         """
         self._head_resources = head_resources.copy()
         self._head_resources["NODE_ID_AS_RESOURCE"] = HEAD_NODE_ID

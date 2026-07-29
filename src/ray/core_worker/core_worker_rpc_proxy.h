@@ -56,6 +56,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(UpdateObjectLocationBatch)
   RAY_CORE_WORKER_RPC_PROXY(GetObjectLocationsOwner)
   RAY_CORE_WORKER_RPC_PROXY(ReportGeneratorItemReturns)
+  RAY_CORE_WORKER_RPC_PROXY(UpdateGeneratorBackpressureConsumed)
   RAY_CORE_WORKER_RPC_PROXY(KillActor)
   RAY_CORE_WORKER_RPC_PROXY(CancelTask)
   RAY_CORE_WORKER_RPC_PROXY(RequestOwnerToCancelTask)
@@ -68,7 +69,6 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(DeleteSpilledObjects)
   RAY_CORE_WORKER_RPC_PROXY(PlasmaObjectReady)
   RAY_CORE_WORKER_RPC_PROXY(Exit)
-  RAY_CORE_WORKER_RPC_PROXY(AssignObjectOwner)
   RAY_CORE_WORKER_RPC_PROXY(NumPendingTasks)
 
   /// Wait until the worker is initialized.

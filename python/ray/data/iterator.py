@@ -22,8 +22,7 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -31,9 +30,7 @@ from ray.data.collate_fn import (
     DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    TensorBatchReturnType,
-    TensorBatchType,
-    is_tensor_batch_type,
+    _PinMemoryCollateFnWrapper,
 )
 from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
@@ -44,6 +41,7 @@ if TYPE_CHECKING:
     import torch
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.utils.torch_utils import FinalizeFn
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -120,6 +118,22 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
+        """Hook fired from the consumer's thread when iteration ends.
+
+        Called from the ``finally`` in ``_iter_batches`` on normal
+        exhaustion, early ``break``, or an exception. The default shuts
+        ``executor`` down (idempotent) so the local iterator path stops
+        producing blocks into the object store eagerly rather than waiting
+        for ``_ClosingIterator.__del__``. ``StreamSplitDataIterator``
+        overrides this to instead signal the ``SplitCoordinator`` actor
+        on the consumer thread, since its inner block-fetching generator
+        runs in a separate prefetch thread whose cleanup is GC-bound and
+        therefore not deterministic.
+        """
+        if executor is not None:
+            executor.shutdown(force=True)
+
     @PublicAPI
     def iter_batches(
         self,
@@ -139,6 +153,30 @@ class DataIterator(abc.ABC):
             ...     1000000
             ... ).iterator().iter_batches(): # doctest: +SKIP
             ...     print(batch) # doctest: +SKIP
+
+        .. note::
+
+            When you ``break`` out of the for-loop above, Ray Data shuts the
+            streaming executor down so it stops producing blocks into the
+            object store. This relies on Python firing ``GeneratorExit`` into
+            the implicit iterator created by the for-loop.
+
+            If you instead hold a reference to the iterator yourself, the
+            cleanup is deferred until that reference is dropped::
+
+                it = iter(ds.iter_batches())
+                for i, batch in enumerate(it):
+                    if i == 0:
+                        break
+                # The executor keeps producing blocks until ``it`` goes
+                # out of scope. Call ``it.close()`` to release resources
+                # eagerly, or stick with ``for batch in ds.iter_batches()``.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
 
         Time complexity: O(1)
 
@@ -217,7 +255,7 @@ class DataIterator(abc.ABC):
                 executor,
             ) = self._to_ref_bundle_iterator()
 
-            dataset_tag = self._get_dataset_tag()
+            dataset_tags = self._get_dataset_tag()
 
             # Create a callback to report prefetched bytes to the executor's
             # resource manager.
@@ -237,7 +275,7 @@ class DataIterator(abc.ABC):
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
                 stats=stats,
-                dataset_tag=dataset_tag,
+                dataset_tags=dataset_tags,
                 clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
@@ -248,20 +286,52 @@ class DataIterator(abc.ABC):
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
+                preserve_order=self.get_context().execution_options.preserve_order,
             )
 
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            yield from batch_iterator
-
-            if stats:
-                stats.iter_total_s.add(time.perf_counter() - time_start)
+            try:
+                yield from batch_iterator
+            finally:
+                # Flush partial-iteration stats on early `break` too, but
+                # guard `_on_iteration_end` with a nested finally so a stats
+                # error can't skip executor shutdown and leak resources.
+                try:
+                    if stats:
+                        stats.iter_total_s.add(time.perf_counter() - time_start)
+                        _StatsManager.update_iteration_metrics(
+                            stats,
+                            dataset_tags["dataset"],
+                            dataset_tags["split_index"],
+                        )
+                finally:
+                    # On early exit (e.g. ``break`` in the for-loop), the
+                    # inner ``_ClosingIterator`` would only shut down the
+                    # executor via its ``__del__``, which is non-deterministic.
+                    # The hook shuts it down eagerly (or, for
+                    # ``StreamSplitDataIterator``, signals the remote
+                    # ``SplitCoordinator``) so resources are released the
+                    # moment the consumer stops pulling.
+                    self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
-    def _get_dataset_tag(self) -> str:
-        return "unknown_dataset"
+    def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
+        """Metrics tags applied to this iterator's ``data_iter_*`` metrics.
+
+        Returns a dict with keys matching ``iter_tag_keys``:
+
+        - ``dataset``: the dataset id.
+        - ``split_index``: the output split index for stream-split iterators, or
+          ``None`` for plain iterators (which have no split dimension). ``None``
+          is coerced to the ``"no_split"`` label downstream so plain-iterator
+          metrics collapse to a single series.
+
+        Subclasses override this to supply the real dataset id and split index.
+        """
+        return {"dataset": "unknown_dataset", "split_index": None}
 
     @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:
@@ -409,15 +479,16 @@ class DataIterator(abc.ABC):
                 with ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: [Alpha] A function to customize how data batches are collated
                 before being passed to the model. This is useful for last-mile data
                 formatting such as padding, masking, or packaging tensors into custom
                 data structures. If not provided, `iter_torch_batches` automatically
-                converts batches to `torch.Tensor`s and moves them to the device
-                assigned to the current worker. The input to `collate_fn` may be:
+                converts batches to `torch.Tensor`s and moves them to the target
+                device (see ``device``). The input to `collate_fn` may be:
 
                 1. pyarrow.Table, where you should provide a callable class that
                    subclasses `ArrowBatchCollateFn` (recommended for best performance).
@@ -429,9 +500,11 @@ class DataIterator(abc.ABC):
                 3. pd.DataFrame, where you should provide a callable class that
                    subclasses `PandasBatchCollateFn`
 
-                The output can be any type. If the output is a `TensorBatchType`, it will be
-                automatically moved to the current worker's device. For other types,
-                you must handle device transfer manually in your training loop.
+                The output can be any type. Return a non-pinned `TensorBatchType` to
+                get managed memory pinning (see ``pin_memory``) and transfer to the
+                target device (see ``device``). Any other output type means you must
+                handle device transfer manually in your training loop (consider using
+                :meth:`~ray.data.DataIterator.iter_batches` instead).
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -444,70 +517,53 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
-                `pin_memory` is only supported when using `DefaultCollateFn`.
+            pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
+                `TensorBatchType`. It is recommended to use this flag to pin
+                memory instead of manually pinning memory in the `collate_fn`.
 
         Returns:
             An iterable over Torch Tensor batches.
         """
+        import torch
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
 
-        if collate_fn is not None and (dtypes is not None or device != "auto"):
+        if collate_fn is not None and dtypes is not None:
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device."
-                "You should manually move the output Torch tensors to the"
-                "desired dtype and device outside of collate_fn."
-            )
-
-        if pin_memory and collate_fn is not None:
-            raise ValueError(
-                "pin_memory is only supported when using `DefaultCollateFn`."
+                "collate_fn cannot be used with dtypes. You should manually "
+                "convert the output Torch tensors to the desired dtype "
+                "inside collate_fn."
             )
 
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-
-        from ray.data.util.torch_utils import (
-            move_tensors_to_device,
-        )
-
-        # The default finalize_fn handles the host to device data transfer.
-        # This is executed in a 1-thread pool separately from collate_fn
-        # to allow independent parallelism of these steps.
-        def default_finalize_fn(
-            batch: TensorBatchType,
-        ) -> Union[TensorBatchReturnType, Any]:
-            """Default finalize function for moving PyTorch tensors to device. If
-            batch is of type `TensorBatchType`, it will be automatically moved to the
-            current worker's device. For other types, you must handle device transfer
-            manually in your training loop.
-
-            Args:
-                batch: Input batch to move to device.
-
-            Returns:
-                Batch with tensors moved to the target device.
-                - If input is TensorBatchType, returns tensors moved to device
-                - Otherwise returns the same type as input without moving tensors
-                to device.
-            """
-            if is_tensor_batch_type(batch):
-                return move_tensors_to_device(batch, device=device)
-            else:
-                return batch
+        device = torch.device(device)
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
+            # "cuda" without an index is thread-relative: it resolves to the
+            # calling thread's *current* CUDA device. finalize_fn runs on a
+            # background fetch thread, so the device on the finalize thread
+            # and consumer thread might be different. Pin the device to a
+            # concrete index here.
+            device = torch.device("cuda", torch.cuda.current_device())
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
             # Here, we defer host to device data transfer to the subsequent
             # finalize_fn.
+            # For GPU transfer, we can skip combining the chunked arrays. This is
+            # because we can convert the chunked arrays to the corresponding numpy
+            # format and then to Tensors and transfer the corresponding list of
+            # Tensors to GPU directly. However, for CPU transfer, we need to
+            # combine the chunked arrays first before converting to numpy format
+            # and then to Tensors.
+
+            combine_chunks = device.type == "cpu"
             collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
-                device=device,
-                pin_memory=pin_memory,
+                combine_chunks=combine_chunks,
             )
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
@@ -531,6 +587,9 @@ class DataIterator(abc.ABC):
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
+        if pin_memory:
+            collate_fn = _PinMemoryCollateFnWrapper(collate_fn)
+
         return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -539,8 +598,13 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=default_finalize_fn,
+            _finalize_fn=self._get_finalize_fn(device=device),
         )
+
+    def _get_finalize_fn(self, *, device: "torch.device") -> "FinalizeFn":
+        from ray.data._internal.utils.torch_utils import DefaultFinalizeFn
+
+        return DefaultFinalizeFn(device)
 
     def iter_tf_batches(
         self,
@@ -860,7 +924,7 @@ class DataIterator(abc.ABC):
         import torch
 
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
-        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
+        from ray.data.util.torch_utils import convert_table_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -899,27 +963,30 @@ class DataIterator(abc.ABC):
         def make_generator():
             for batch in self._iter_batches(
                 batch_size=batch_size,
-                batch_format="pandas",
+                batch_format="pyarrow",
                 prefetch_batches=prefetch_batches,
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
-                    label_tensor = convert_pandas_to_torch_tensor(
+                    feature_batch = batch.select(
+                        [col for col in batch.column_names if col != label_column]
+                    )
+                    label_tensor = convert_table_to_torch_tensor(
                         batch,
                         [label_column],
                         label_column_dtype,
                         unsqueeze=unsqueeze_label_tensor,
                     )
-                    batch.pop(label_column)
                 else:
+                    feature_batch = batch
                     label_tensor = None
 
                 if isinstance(feature_columns, dict):
                     features_tensor = {
-                        key: convert_pandas_to_torch_tensor(
-                            batch,
+                        key: convert_table_to_torch_tensor(
+                            feature_batch,
                             feature_columns[key],
                             (
                                 feature_column_dtypes[key]
@@ -931,8 +998,8 @@ class DataIterator(abc.ABC):
                         for key in feature_columns
                     }
                 else:
-                    features_tensor = convert_pandas_to_torch_tensor(
-                        batch,
+                    features_tensor = convert_table_to_torch_tensor(
+                        feature_batch,
                         columns=feature_columns,
                         column_dtypes=feature_column_dtypes,
                         unsqueeze=unsqueeze_feature_tensors,
@@ -1186,15 +1253,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.

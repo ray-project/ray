@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: RLlib feature guides: callbacks, checkpoints, metrics, connectors, replay buffers, offline RL, RLModule, Learner, fault tolerance, and scaling.
 
 .. _rllib-guides:
 

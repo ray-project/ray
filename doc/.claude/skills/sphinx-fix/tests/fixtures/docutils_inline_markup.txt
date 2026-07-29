@@ -1,0 +1,9 @@
+Build: 4144240   State: Finished   Success: False   Duration: 604s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (2):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/releases-2.56.0/doc/source/data/api/doc/ray.data.ReaderFormat.rst:74:<autosummary>:1: WARNING: Inline emphasis start-string without end-string. [docutils]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/releases-2.56.0/doc/source/data/api/doc/ray.data.ReaderFormat.rst:74:<autosummary>:1: WARNING: Inline strong start-string without end-string. [docutils]
+
+Summary line: build finished with problems, 2 warnings.

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Scalable data processing for AI workloads — a streaming engine for batch inference, preprocessing, and ML training ingest across CPUs and GPUs.
+
 .. _data:
 
 ===================================================
@@ -11,7 +14,6 @@ Ray Data: Scalable Data Processing for AI Workloads
     key-concepts
     user-guide
     examples
-    api/api
     contributing/contributing
     comparisons
     benchmark

@@ -223,7 +223,6 @@ class KubeRayIPPRProvider:
                     },
                 )
                 self._patch_ippr_status(ippr_status, resizing_at=None)
-                ippr_status.resizing_at = None
                 logger.info(f"Pod {ippr_status.cloud_instance_id} resized successfully")
             except Exception as e:
                 logger.error(

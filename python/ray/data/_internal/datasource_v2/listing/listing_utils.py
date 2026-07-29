@@ -155,5 +155,5 @@ def sample_files(
         if collected_rows >= max_files:
             break
     if not collected:
-        return FileManifest.construct_manifest(paths=[], sizes=[])
+        return FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
     return FileManifest.concat(collected)

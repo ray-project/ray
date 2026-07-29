@@ -497,6 +497,9 @@ class CallbackList(Callback):
     def can_restore(self, checkpoint_dir: str) -> bool:
         """Check if the checkpoint_dir contains the saved state for this callback list.
 
+        Args:
+            checkpoint_dir: Directory to look for a saved state file in.
+
         Returns:
             can_restore: True if the checkpoint_dir contains a file of the
                 format `CKPT_FILE_TMPL`. False otherwise.

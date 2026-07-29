@@ -89,18 +89,28 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # Build the loss mask to make sure the extra added timesteps do not influence
-        # the final loss and fix the terminateds and truncateds in the batch.
-
-        # For proper v-trace execution, the rules must be as follows:
-        # Legend:
-        # T: terminal=True
-        # R: truncated=True
-        # B0: bootstrap with value 0 (also: terminal=True)
-        # Bx: bootstrap with some vf-computed value (also: terminal=True)
-
-        # batch: - - - - - - - T B0- - - - - R Bx- - - - R Bx
-        # mask : t t t t t t t t f t t t t t t f t t t t t f
+        # Build the loss mask so the appended bootstrap timestep is excluded from
+        # the loss, and write the per-timestep `terminateds` / `truncateds`
+        # columns.
+        #
+        # Convention (Gymnasium-aligned): the flag for a step describes that
+        # step's transition, not a phantom step after it.
+        #   terminated[t]=True  =>  there is no s_{t+1}; gate t -> t+1 bootstrap.
+        #   truncated[t]=True   =>  this step ends an episode chunk; V(s_{t+1})
+        #                           is a valid bootstrap, but GAE should not
+        #                           propagate across the boundary.
+        # The appended bootstrap timestep at index `len_` is a phantom slot
+        # for the value-function forward pass; it is NEVER marked terminated
+        # or truncated. The `loss_mask=False` at that index keeps it out of
+        # any downstream loss/recursion.
+        #
+        # Example layouts (T/F for terminated, R/F for truncated):
+        #   terminated episode: terminated  ... F F T F (extra)
+        #                       truncated   ... F F F F
+        #   truncated  episode: terminated  ... F F F F (extra)
+        #                       truncated   ... F F T F
+        #   mid-rollout chunk:  same as truncated (episode.is_truncated set
+        #                       to True by add_one_ts_to_episodes_and_truncate)
 
         # TODO (sven): Same situation as in TODO below, but for multi-agent episode.
         #  Maybe add a dedicated connector piece for this task?
@@ -146,16 +156,32 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 len_ + 1,
                 sa_episode,
             )
-
             terminateds = (
                 [False for _ in range(len_ - 1)]
-                + [bool(sa_episode.is_terminated)]
-                + [True]  # extra timestep
+                + [bool(sa_episode.is_terminated)]  # last real ts: real terminal
+                + [False]  # appended bootstrap ts: phantom slot
             )
             self.add_n_batch_items(
                 batch,
                 Columns.TERMINATEDS,
                 terminateds,
+                len_ + 1,
+                sa_episode,
+            )
+
+            # `sa_episode.is_truncated` here reflects the post-mutation state:
+            # add_one_ts_to_episodes_and_truncate set it to True for any
+            # non-done episode (env-truncation or mid-rollout cut). True iff
+            # bootstrapping from this state's value is appropriate.
+            truncateds = (
+                [False for _ in range(len_ - 1)]
+                + [bool(sa_episode.is_truncated)]  # last real ts: chunk boundary
+                + [False]  # appended bootstrap ts: phantom slot
+            )
+            self.add_n_batch_items(
+                batch,
+                Columns.TRUNCATEDS,
+                truncateds,
                 len_ + 1,
                 sa_episode,
             )

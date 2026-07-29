@@ -13,6 +13,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -26,6 +27,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
@@ -44,6 +46,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -60,6 +63,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -85,6 +89,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -115,10 +120,6 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -131,10 +132,6 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -215,6 +212,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -232,6 +230,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1"
         - "11.8.0"
@@ -242,6 +241,7 @@ steps:
         - "12.6.3"
         - "12.8.1"
         - "12.9.1"
+        - "13.0.0"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"

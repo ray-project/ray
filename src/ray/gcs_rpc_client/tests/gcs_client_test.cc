@@ -21,7 +21,7 @@
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
@@ -109,6 +109,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -200,6 +204,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_.reset(
@@ -496,6 +504,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());

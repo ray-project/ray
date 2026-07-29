@@ -22,6 +22,7 @@
 
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/events_event_aggregator_service.grpc.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 
@@ -62,7 +63,7 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
 
   void Connect(const int port) override {
     grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
-        "127.0.0.1", port, *client_call_manager_);
+        GetLocalhostIP(), port, *client_call_manager_);
   }
 
   VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
