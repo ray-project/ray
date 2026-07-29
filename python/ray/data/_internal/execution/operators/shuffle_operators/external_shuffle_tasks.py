@@ -16,6 +16,7 @@ sort / aggregate / join factories compose unchanged.
 
 import os
 import pickle
+import random
 import struct
 import tempfile
 import time
@@ -30,6 +31,7 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pyarrow as pa
 
 import ray
@@ -51,20 +53,18 @@ from ray.data.block import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-# ReduceFn/PartitionFn and the IPC encode helpers _encode_partition_ipc/_ipc_write_options)
-# are shared with the in-memory variant.
+# PartitionFn/ReduceFn contracts are shared with the in-memory variant.
 # External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
     PartitionFn,
     ReduceFn,
-    _encode_partition_ipc,
-    _ipc_write_options,
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _MAX_RANGE_BYTES,
     _SHUFFLE_MANAGER_NAMESPACE,
     _compute_prefetch_layout,
     _drop_pagecache,
+    _encode_shard,
     _group_by_manager,
     _handles_to_sources,
     _is_disk_exhausted,
@@ -79,7 +79,42 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
 
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
-_DEFAULT_FETCH_THREADS = 32  # concurrent per-node fetch threads at the reducer
+# CAP on fetch connections per reducer: n_threads = min(#managers, this). A
+# resource budget (bounds ShuffleManager contention + recv-buffer memory), not
+# tied to #managers.
+_DEFAULT_FETCH_THREADS = 16
+
+
+def _index_to_csr(index, num_partitions):
+    """Compact the per-partition range index into 3 flat CSR arrays.
+
+    Partition ``p``'s ranges are ``zip(off[a:b], length[a:b])`` with
+    ``a=part_start[p]``, ``b=part_start[p+1]``. Replaces the old
+    ``Dict[pid, List[(off,len)]]`` whose per-entry Python objects, held by every
+    reducer for every mapper, were the O(maps × partitions) OOM.
+    """
+    part_start = np.zeros(num_partitions + 1, dtype=np.int64)
+    for pid, ranges in index.items():
+        part_start[pid + 1] = len(ranges)
+    np.cumsum(part_start, out=part_start)
+    total = int(part_start[-1])
+    off = np.empty(total, dtype=np.int64)
+    length = np.empty(total, dtype=np.int64)
+    for pid, ranges in index.items():
+        s = int(part_start[pid])
+        for i, (o, ln) in enumerate(ranges):
+            off[s + i] = o
+            length[s + i] = ln
+    return off, length, part_start
+
+
+def _decoded_to_array(decoded, num_partitions):
+    """Dense per-partition decoded-byte counts (was a Dict[pid,int] in every
+    handle — a second O(partitions) bloat). One int64 array indexed by pid."""
+    arr = np.zeros(num_partitions, dtype=np.int64)
+    for pid, nbytes in decoded.items():
+        arr[pid] = nbytes
+    return arr
 
 
 class _PartitionSpillWriter:
@@ -101,9 +136,10 @@ class _PartitionSpillWriter:
         "_f",
         "_map_id",
         "_pool_budget_bytes",
-        "_ipc_write_options",
+        "_compression",
         "_staging",
         "_staging_bytes",
+        "_staging_total",
         "_index",
         "_decoded_bytes_per_partition",
         "_peak_inflight",
@@ -119,15 +155,17 @@ class _PartitionSpillWriter:
         self._f = f
         self._map_id = map_id
         self._pool_budget_bytes = pool_budget_bytes
-        self._ipc_write_options = _ipc_write_options(compression)
+        # Codec from data_context.hash_shuffle_compression (same field the reduce reads).
+        self._compression = compression
         self._staging: Dict[int, List[pa.Table]] = {}
         self._staging_bytes: Dict[int, int] = {}
+        self._staging_total = 0  # running sum -> _pool_size is O(1)
         self._index: Dict[int, List[Tuple[int, int]]] = {}
         self._decoded_bytes_per_partition: Dict[int, int] = {}
         self._peak_inflight = 0
 
     def _pool_size(self) -> int:
-        return sum(self._staging_bytes.values())
+        return self._staging_total
 
     def _flush(self, pid: int) -> None:
         shards = self._staging.get(pid)
@@ -138,7 +176,9 @@ class _PartitionSpillWriter:
         self._decoded_bytes_per_partition[pid] = (
             self._decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
         )
-        buf = _encode_partition_ipc(tbl, self._ipc_write_options)
+        buf = _encode_shard(
+            tbl, self._compression
+        )  # whole-frame codec (see _encode_shard)
         # Refuse frames the u32 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
@@ -151,13 +191,20 @@ class _PartitionSpillWriter:
         self._f.write(memoryview(buf))
         self._index.setdefault(pid, []).append((off, buf.size))
         self._staging[pid] = []
+        self._staging_total -= self._staging_bytes[pid]
         self._staging_bytes[pid] = 0
 
-    def add_shard(self, pid: int, shard: pa.Table) -> None:
+    def add_shard(self, pid: int, shard: pa.Table, avg_row_bytes: int) -> None:
         if not shard.num_rows:
             return
+        # Estimate bytes as rows x avg_row_bytes (O(1)); avoids per-shard
+        # shard.nbytes (O(slice), paid N times => map's O(partitions) wall).
+        # Only drives the pool-budget heuristic; exact decoded size still comes
+        # from tbl.nbytes at flush.
+        nb = shard.num_rows * avg_row_bytes
         self._staging.setdefault(pid, []).append(shard)
-        self._staging_bytes[pid] = self._staging_bytes.get(pid, 0) + shard.nbytes
+        self._staging_bytes[pid] = self._staging_bytes.get(pid, 0) + nb
+        self._staging_total += nb
         self._peak_inflight = max(self._peak_inflight, self._pool_size())
         # Spill LARGEST bucket(s) on overflow so total staging stays
         # bounded by ``pool_budget_bytes``.
@@ -256,19 +303,17 @@ def _external_shuffle_map_task(
         if blk.num_rows <= batch_rows:
             # block's partition spike is already ≤ pool → whole-block, no overhead
             for pid, shard in partition_fn(blk).items():
-                yield pid, shard
+                yield pid, shard, avg_row
         else:
             for batch in blk.to_batches(max_chunksize=batch_rows):
                 bt = pa.Table.from_batches([batch], schema=blk.schema)
                 for pid, shard in partition_fn(bt).items():
-                    yield pid, shard
+                    yield pid, shard, avg_row
 
     final_size_on_close = -1
     try:
         with open(tmp_path, "wb") as f:
-            writer = _PartitionSpillWriter(
-                f, map_id, pool_budget_bytes, compression
-            )
+            writer = _PartitionSpillWriter(f, map_id, pool_budget_bytes, compression)
             for blk in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
@@ -280,8 +325,8 @@ def _external_shuffle_map_task(
                     # First-seen schema; reducer uses it to type empty
                     # partitions (ShuffleHandle["schema"]).
                     output_schema = getattr(blk, "schema", None)
-                for pid, shard in _partition_units(blk):
-                    writer.add_shard(pid, shard)
+                for pid, shard, avg_row in _partition_units(blk):
+                    writer.add_shard(pid, shard, avg_row)
             writer.flush_all()
 
             # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
@@ -319,9 +364,13 @@ def _external_shuffle_map_task(
             pass
         raise
 
+    _idx_off, _idx_len, _idx_pstart = _index_to_csr(writer.index, num_partitions)
     return {
         "path": os.path.realpath(final_path),
-        "index": writer.index,
+        # CSR per-partition range index (see _index_to_csr).
+        "index_off": _idx_off,
+        "index_len": _idx_len,
+        "index_part_start": _idx_pstart,
         # ShuffleManager identity: reducers rebuild the actor name from
         # (shuffle_id, node_id) and call ``_lookup_manager`` when they need
         # the handle.
@@ -333,7 +382,10 @@ def _external_shuffle_map_task(
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,
-        "decoded_bytes": writer.decoded_bytes_per_partition,
+        # Dense per-partition decoded bytes (was a Dict[pid,int]).
+        "decoded_bytes": _decoded_to_array(
+            writer.decoded_bytes_per_partition, num_partitions
+        ),
         "schema": output_schema,
     }
 
@@ -409,9 +461,7 @@ def _external_shuffle_reduce_task(
             yield from _yield_with_stats(block)
             return
         assert map_task_context is not None and data_context is not None
-        with DataContext.current(data_context), TaskContext.current(
-            map_task_context
-        ):
+        with DataContext.current(data_context), TaskContext.current(map_task_context):
             map_transformer.override_target_max_block_size(
                 map_task_context.target_max_block_size_override
             )
@@ -453,6 +503,13 @@ def _external_shuffle_reduce_task(
         accum_tables: List[pa.Table] = []
         accum_bytes: int = 0
         output_buffer: Optional[BlockOutputBuffer] = None
+        # Coalesce each region's shards into one chunk so the write sees
+        # O(num_nodes) chunks, not O(num_maps) (env "0" disables).
+        _combine_regions = os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE", "1") != "0"
+        # Codec from data_context.hash_shuffle_compression (same field the map used).
+        _compression = (
+            data_context if data_context is not None else DataContext.get_current()
+        ).hash_shuffle_compression
 
         def _flush(tables: List[pa.Table]):
             """Call reduce_fn on ``tables`` and yield reshaped output."""
@@ -507,36 +564,39 @@ def _external_shuffle_reduce_task(
                     group.members,
                     max_bytes_per_fetch,
                 )
+                if size > 0:
+                    # fsync here (fetch thread) overlaps other fetches' network I/O.
+                    os.fsync(fd)
                 return base, size
 
             n_threads = min(len(groups), max(1, fetch_threads))
             work = list(zip(base_offsets, node_sizes, groups))
-            # Rotate submission order by partition_id to spread simultaneous
-            # fan-in across all managers (avoids every reducer hitting the same
-            # first N managers when n_threads < #managers).
+            # Randomize submission order per reducer (seeded by partition_id →
+            # deterministic/retry-stable) so concurrent fan-in spreads evenly
+            # across managers. Disjoint offsets make reordering safe.
             if work:
-                _rot = partition_id % len(work)
-                work = work[_rot:] + work[:_rot]
+                random.Random(partition_id).shuffle(work)
 
             def _decode_region(base: int, size: int):
-                """Walk frames in [base, base+size), accumulate for the
-                final reduce, then fdatasync + fadvise DONTNEED as a
-                best-effort hint to release this region's pages (the
-                kernel is free to ignore DONTNEED under memory pressure,
-                and buffered filesystems may retain pages briefly)."""
+                """Decode + coalesce a region's shards into one chunk, then drop
+                its pages (already fsync'd on the fetch thread)."""
                 nonlocal accum_bytes
                 pos = base
                 end = base + size
+                region_tables: List[pa.Table] = []
                 while pos < end:
                     length = struct.unpack(">I", os.pread(fd, 4, pos))[0]
                     ipc_buf = os.pread(fd, length, pos + 4)
                     pos += 4 + length
-                    table = _read_ipc(ipc_buf)
-                    accum_tables.append(table)
+                    table = _read_ipc(ipc_buf, _compression)
                     accum_bytes += table.nbytes
-                # fsync turns this fd's dirty pwrite'd pages clean,
-                # so the DONTNEED that follows actually evicts them.
-                os.fsync(fd)
+                    region_tables.append(table)
+                if _combine_regions and len(region_tables) > 1:
+                    accum_tables.append(
+                        pa.concat_tables(region_tables).combine_chunks()
+                    )
+                else:
+                    accum_tables.extend(region_tables)
                 _drop_pagecache(fd, base, size)
 
             with ThreadPoolExecutor(max_workers=n_threads) as ex:
@@ -556,13 +616,10 @@ def _external_shuffle_reduce_task(
         finally:
             os.close(fd)
     finally:
-        # ``rmdir`` only succeeds for the last reducer out; earlier ones fail
-        # cleanly since the dir is shared.
+        # Unlink only this reducer's own file. NOT rmdir(staging_dir): the dir
+        # is shared per-node and rmdir races a concurrent reducer's open
+        # (FileNotFoundError at 8TB). Teardown reclaims the empty dir.
         try:
             os.unlink(prefetch_file)
-        except OSError:
-            pass
-        try:
-            os.rmdir(staging_dir)
         except OSError:
             pass
