@@ -221,8 +221,7 @@ def _grpc_location(host: str, port) -> str:
 
 def _make_flight_server(host: str, base_dir: str, token: str):
     """Build (not start) an Arrow Flight server serving shuffle byte-ranges via
-    DoAction. Each range is framed as ``[u32 length][frame bytes]`` — the layout
-    the reducer's sink expects, so the decode path is unchanged."""
+    DoAction. Each range is framed as ``[u32 length][frame bytes]``."""
     import pyarrow.flight as flight
 
     class _ShuffleFlightServer(flight.FlightServerBase):
