@@ -24,7 +24,7 @@ def test_runtime_env_agent_bundle_uses_fixed_dependency_versions():
     module = ast.parse(setup_py.read_text())
 
     assert _assignment_value(module, "RUNTIME_ENV_AGENT_PIP_PACKAGES") == [
-        "aiohttp==3.14.0",
+        "aiohttp==3.14.3",
         "idna==3.15",
     ]
 
