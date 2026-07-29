@@ -102,10 +102,9 @@ class IQLConfig(MARWILConfig):
         """Sets the training related configuration.
 
         Args:
-            beta: The temperature to scaling advantages in exponential terms.
-                Must be >> 0.0. The higher this parameter the less greedy
-                (exploitative) the policy becomes. It also means that the policy
-                is fitting less to the best actions in the dataset.
+            beta: The coefficient used to scale advantages in the exponential
+                actor-loss weight. Must be greater than 0.0. Higher values give
+                relatively more weight to higher-advantage actions.
             twin_q: If a twin-Q architecture should be used (advisable).
             expectile: The expectile to use in expectile regression for the value
                 function. For high expectiles the value function tries to match
@@ -199,9 +198,7 @@ class IQLConfig(MARWILConfig):
     @override(MARWILConfig)
     def _validate_beta(self) -> None:
         if self.beta <= 0.0:
-            self._value_error(
-                "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
-            )
+            self._value_error("`beta` must be greater than 0.0.")
 
     @override(MARWILConfig)
     def validate(self) -> None:
