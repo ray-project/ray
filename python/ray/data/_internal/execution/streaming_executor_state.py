@@ -43,6 +43,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.exceptions import UserCodeException
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
@@ -685,7 +686,14 @@ def process_completed_tasks(
                 " To ignore this exception and continue, set"
                 " DataContext.max_errored_blocks."
             )
-            logger.exception(error_message)
+            # For a user-code error the traceback is re-logged (cleaned) when the
+            # exception propagates to the top-level handler, so don't dump it here
+            # too. Genuine internal / system errors keep the full traceback in
+            # place for diagnostics.
+            if isinstance(e, UserCodeException):
+                logger.error(error_message)
+            else:
+                logger.error(error_message, exc_info=e)
             raise e from None
 
     if active_tasks:

@@ -821,6 +821,7 @@ void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
 }
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  RAY_LOG(DEBUG).WithField(spec.TaskId()) << "Queueing generator for resubmit.";
   absl::MutexLock lock(&mu_);
   if (cancelled_tasks_.contains(spec.TaskId())) {
     // The user cancelled the task.

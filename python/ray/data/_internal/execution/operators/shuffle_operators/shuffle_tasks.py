@@ -11,6 +11,7 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
+BlockTransformer = Callable[[Block], Block]
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -99,6 +101,7 @@ def _shuffle_map_task(
     partition_fn: PartitionFn,
     num_partitions: int,
     compression: Optional[str],
+    block_transformer: Optional[BlockTransformer] = None,
 ) -> Tuple[
     Union[Tuple[BlockMetadata, Dict[int, Tuple[int, int]], "pa.Schema"], pa.Buffer],
     ...,
@@ -111,15 +114,34 @@ def _shuffle_map_task(
     total_rows = sum(a.num_rows() for a in accessors)
     total_bytes = sum((a.size_bytes() or 0) for a in accessors)
 
+    if block_transformer is not None:
+        arrow_inputs = [
+            TableBlockAccessor.try_convert_block_type(b, block_type=BlockType.ARROW)
+            for a, b in zip(accessors, blocks)
+            if a.num_rows() > 0
+        ] or [
+            TableBlockAccessor.try_convert_block_type(
+                blocks[0], block_type=BlockType.ARROW
+            )
+        ]
+        combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
+        shard_source_blocks: Tuple[Block, ...] = (block_transformer(combined_input),)
+        partition_accumulators = _partition_blocks_to_shards(
+            shard_source_blocks, partition_fn
+        )
+    else:
+        shard_source_blocks = blocks
+        partition_accumulators = (
+            {}
+            if total_rows == 0
+            else _partition_blocks_to_shards(shard_source_blocks, partition_fn)
+        )
+
     ipc_write_options = _ipc_write_options(compression)
     output_schema = TableBlockAccessor.try_convert_block_type(
-        blocks[0], block_type=BlockType.ARROW
+        shard_source_blocks[0], block_type=BlockType.ARROW
     ).schema
     empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
-
-    partition_accumulators = (
-        {} if total_rows == 0 else _partition_blocks_to_shards(blocks, partition_fn)
-    )
 
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[pa.Buffer] = []

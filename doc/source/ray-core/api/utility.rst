@@ -26,6 +26,8 @@ Utility
 
    ray.util.tpu.SlicePlacementGroup
    ray.util.tpu.slice_placement_group
+   ray.util.tpu.SubslicePlacementGroup
+   ray.util.tpu.subslice_placement_group
    ray.util.tpu.dispatch
 
    ray.nodes

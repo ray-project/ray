@@ -711,6 +711,31 @@ def test_schedule_replica():
         "resources": {"my_rs": 1},
     }
 
+    # target_node_id set on the request pins with hard node affinity. The
+    # ingress request router uses this so a replica lands on its proxy node or
+    # not at all, unlike the soft param path above.
+    r5_id = ReplicaID(unique_id="r5", deployment_id=d_id)
+    node_id_2 = NodeID.from_random().hex()
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r5_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r5"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        target_node_id=node_id_2,
+    )
+    scheduler._pending_replicas[d_id][r5_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+    )
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_2
+    assert scheduling_strategy.soft is False
+    assert scheduling_strategy._spill_on_unavailable is False
+
 
 def test_downscale_multiple_deployments():
     """Test to make sure downscale prefers replicas without node id

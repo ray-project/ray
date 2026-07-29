@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Iterable, List, Optional, Tuple
 
 from ray.data._internal.stats import IterationStage, TimeSpan
 from ray.data.block import Block, DataBatch
@@ -110,6 +110,7 @@ class Batch:
     data: DataBatch
 
 
+@dataclass
 class CollatedBatch(Batch):
     """A batch of collated data.
 
@@ -119,6 +120,27 @@ class CollatedBatch(Batch):
     """
 
     data: Any
+
+
+@dataclass
+class FinalizedData:
+    """A wrapper for finalized data.
+
+    Returned by finalize functions with an optional callback.
+
+    Note: ``on_consume`` will be called right before the batch is
+        returned to the user.
+    """
+
+    data: Any
+    on_consume: Optional[Callable[[], None]] = None
+
+
+@dataclass
+class FinalizedBatch(CollatedBatch):
+    """A finalized batch."""
+
+    on_consume: Optional[Callable[[], None]] = None
 
 
 class BlockPrefetcher(metaclass=abc.ABCMeta):
