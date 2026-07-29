@@ -121,11 +121,11 @@ class LLMRouter:
         if llm_config is not None:
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
-                Tokenizer,
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
+                tokenizer,
             )
 
-            self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
+            self._tokenizer = await asyncio.to_thread(tokenizer.Tokenizer, llm_config)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -147,15 +147,15 @@ class LLMRouter:
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
-                TokenizeError,
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
+                tokenizer,
             )
 
             try:
                 request_token_ids = await self._tokenizer.tokenize(
                     vars(routing_payload)
                 )
-            except TokenizeError as e:
+            except tokenizer.TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as

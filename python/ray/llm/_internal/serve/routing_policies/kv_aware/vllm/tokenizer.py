@@ -37,7 +37,7 @@ class TokenizeError(Exception):
 
 
 def build_tokenize_request(
-    payload: Dict[str, Any]
+    payload: Dict[str, Any],
 ) -> Optional[Union[ChatCompletionRequest, TokenizeCompletionRequest]]:
     """Build the request the engine renders the prompt from, so routing ids
     match the prefill tokens. Chat bodies build the full ``ChatCompletionRequest``
@@ -137,12 +137,7 @@ class Tokenizer:
             if isinstance(request, ChatCompletionRequest):
                 rendered_inputs = await self._render_chat(request)
             else:
-                rendered_inputs = await self._renderer.preprocess_completion(
-                    request,
-                    prompt_input=request.prompt,
-                    prompt_embeds=None,
-                    skip_mm_cache=True,
-                )
+                rendered_inputs = await self._render_completion(request)
         except TokenizeError:
             raise
         except (ValueError, jinja2.TemplateError) as e:
@@ -169,3 +164,11 @@ class Tokenizer:
             )
         _, rendered_inputs = result
         return rendered_inputs
+
+    async def _render_completion(self, request: TokenizeCompletionRequest):
+        return await self._renderer.preprocess_completion(
+            request,
+            prompt_input=request.prompt,
+            prompt_embeds=None,
+            skip_mm_cache=True,
+        )

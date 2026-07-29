@@ -16,7 +16,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
 )
@@ -173,7 +173,7 @@ class TestRoute:
         router._pick_replica.assert_not_called()
 
 
-def _build_llm_app(request_router_class):
+def _build_llm_app(request_router_class, runtime_env=None):
     """Build a direct-streaming OpenAI app, optionally pinning a router class."""
     deployment_config = {"autoscaling_config": {"min_replicas": 1, "max_replicas": 1}}
     if request_router_class is not None:
@@ -187,12 +187,17 @@ def _build_llm_app(request_router_class):
         },
         accelerator_type=None,
         deployment_config=deployment_config,
+        runtime_env=runtime_env,
     )
     return build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
 
 def _router_init_kwargs(app) -> Dict[str, Any]:
     return app._ingress_request_router._bound_deployment.init_kwargs
+
+
+def _router_ray_actor_options(app) -> Dict[str, Any]:
+    return app._ingress_request_router._bound_deployment.ray_actor_options
 
 
 class TestPreRoutingTokenization:
@@ -220,6 +225,15 @@ class TestPreRoutingTokenization:
         # A non-None llm_config is the sole signal for pre-routing tokenization;
         # it must be bound exactly when the router is KV-aware.
         assert (init_kwargs["llm_config"] is not None) is expected
+
+    def test_runtime_env_reaches_tokenizing_router(self):
+        app = _build_llm_app(
+            KVAwareRouter,
+            runtime_env={"env_vars": {"VLLM_USE_FASTOKENS": "1", "EXTRA_VAR": "value"}},
+        )
+        runtime_env = _router_ray_actor_options(app)["runtime_env"]
+        llm_config = _router_init_kwargs(app)["llm_config"]
+        assert runtime_env == {"env_vars": llm_config.runtime_env["env_vars"]}
 
 
 if __name__ == "__main__":
