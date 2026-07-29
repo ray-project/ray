@@ -67,12 +67,32 @@ class ParquetScanner(ArrowFileScanner):
         return schema
 
     def create_reader(self) -> ParquetFileReader:
-        """Create a ParquetFileReader configured for this scanner.
+        """Create the Parquet reader configured for this scanner.
+
+        Returns the experimental arrow-rs reader when
+        ``DataContext.use_arrow_rs_parquet_reader`` is set, otherwise the
+        PyArrow ``ParquetFileReader``. The two share an identical constructor,
+        so the reader class is the only thing that changes.
 
         Returns:
-            ParquetFileReader with all pushdowns and adaptive batch sizing.
+            A reader with all pushdowns and adaptive batch sizing.
         """
-        return ParquetFileReader(
+        from ray.data.context import DataContext
+
+        reader_cls = ParquetFileReader
+        if DataContext.get_current().use_arrow_rs_parquet_reader:
+            # Import lazily so the default PyArrow path never imports the
+            # optional native extension. A missing extension raises inside
+            # the reader's ``_iter_fragment_tables`` with a build hint rather
+            # than silently falling back — silent fallback would corrupt
+            # benchmark attribution.
+            from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (  # noqa: E501
+                ArrowRsParquetFileReader,
+            )
+
+            reader_cls = ArrowRsParquetFileReader
+
+        return reader_cls(
             batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,

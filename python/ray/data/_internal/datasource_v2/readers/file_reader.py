@@ -229,18 +229,11 @@ class FileReader(Reader[FileManifest]):
 
         # Split the requested columns into ones the on-disk file has
         # (pyarrow reads these) and ones we need to synthesize post-read
-        # (hive partition keys, "path"). ``self._columns is None`` means
-        # "no projection" — read every file column and synthesize every
-        # available partition/path column.
+        # (hive partition keys, "path").
         on_disk_column_names = set(dataset.schema.names)
-        if self._columns is None:
-            columns_to_read_from_file: Optional[List[str]] = None
-            columns_to_synthesize: Optional[Set[str]] = None
-        else:
-            columns_to_read_from_file = [
-                c for c in self._columns if c in on_disk_column_names
-            ]
-            columns_to_synthesize = set(self._columns) - on_disk_column_names
+        columns_to_read_from_file, columns_to_synthesize = self._split_columns(
+            on_disk_column_names
+        )
 
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
@@ -252,10 +245,46 @@ class FileReader(Reader[FileManifest]):
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
+        triples = self._read_fragment_batches(dataset, scanner_kwargs, input_split)
+        yield from self._postprocess(triples, columns_to_synthesize)
+
+    def _split_columns(
+        self, on_disk_column_names: Set[str]
+    ) -> Tuple[Optional[List[str]], Optional[Set[str]]]:
+        """Split the requested ``columns`` into (read-from-file, synthesize).
+
+        ``self._columns is None`` means "no projection" — read every file
+        column and synthesize every available partition/path column, so both
+        halves are ``None``. Otherwise the requested columns are partitioned by
+        whether they exist on disk; the rest (hive partition keys, ``path``,
+        ``row_hash``) are synthesized post-read. Shared by the base pyarrow
+        ``read()`` and subclass front-ends (e.g. the arrow-rs reader).
+        """
+        if self._columns is None:
+            return None, None
+        columns_to_read_from_file = [
+            c for c in self._columns if c in on_disk_column_names
+        ]
+        columns_to_synthesize = set(self._columns) - on_disk_column_names
+        return columns_to_read_from_file, columns_to_synthesize
+
+    def _postprocess(
+        self,
+        triples: Iterator[Tuple[pa.Table, str, int]],
+        columns_to_synthesize: Optional[Set[str]],
+    ) -> Iterator[pa.Table]:
+        """Apply the format-agnostic per-table finishing steps to a stream of
+        ``(table, fragment_path, fragment_row_offset)`` triples: ``limit``
+        slicing, partition/``path`` synthesis, ``row_hash`` synthesis, column
+        projection/reordering, and the zero-column stub guard. Yields the
+        finished tables.
+
+        Factored out of :meth:`read` so any front-end that can produce the same
+        triples — pyarrow scanners *or* the native arrow-rs decode path — reuses
+        identical post-read semantics (row hashes, partition columns, limit).
+        """
         rows_read = 0
-        for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
-            dataset, scanner_kwargs, input_split
-        ):
+        for table, fragment_path, fragment_row_offset in triples:
             if self._limit is not None:
                 if rows_read >= self._limit:
                     break
@@ -420,8 +449,6 @@ class FileReader(Reader[FileManifest]):
         which we materialize below anyway. File data is still read lazily
         by the worker threads.
         """
-        ctx = DataContext.get_current()
-
         # ``preserve_ordering=True`` would drain the input iterator
         # eagerly anyway, so materialize once here to (a) cap
         # ``num_workers`` at the actual fragment count and (b) avoid
@@ -430,9 +457,26 @@ class FileReader(Reader[FileManifest]):
         # ``_get_fragments_to_read`` to fan out chunk-level
         # sub-fragments from the manifest's chunk metadata.
         fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
+        yield from self._dispatch_fragment_reads(fragments_with_offsets, scanner_kwargs)
+
+    def _dispatch_fragment_reads(
+        self,
+        fragments_with_offsets: List[Tuple[pds.Fragment, int]],
+        scanner_kwargs: dict,
+    ) -> Iterator[Tuple[pa.Table, str, int]]:
+        """Read a pre-materialized ``[(fragment, file_row_offset)]`` list, either
+        sequentially or across a bounded thread pool, preserving fragment order.
+
+        Split out of :meth:`_read_fragment_batches` so front-ends that build the
+        fragment list some other way — e.g. the arrow-rs reader assembling native
+        and pyarrow-fallback fragments per file — reuse the same threading, retry,
+        and ordering semantics. ``fragment`` need only expose ``.path`` and be
+        accepted by :meth:`_iter_fragment_tables`.
+        """
         if not fragments_with_offsets:
             return
 
+        ctx = DataContext.get_current()
         num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
