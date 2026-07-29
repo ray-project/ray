@@ -922,11 +922,23 @@ class Pool:
 
     def _dispatch_ready_batches(self, pending):
         while pending and self._ready_actor_indices:
-            func, batch, add_object_ref = pending.popleft()
+            func, batch, add_object_ref = pending[0]
             actor_index = self._ready_actor_indices.popleft()
             actor, count = self._actor_pool[actor_index]
-            object_ref = actor.run_batch.remote(func, batch)
+            try:
+                object_ref = actor.run_batch.remote(func, batch)
+            except Exception as error:
+                # Submission may fail synchronously (for example, when func or
+                # batch contains an unserializable value). Fail only this
+                # batch and keep the dispatcher and actor available for later
+                # work, matching multiprocessing.Pool's asynchronous errors.
+                add_object_ref(ray.put([PoolTaskError(error)]))
+                pending.popleft()
+                self._ready_actor_indices.append(actor_index)
+                continue
+
             add_object_ref(object_ref)
+            pending.popleft()
             count += 1
             assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
             retire = count == self._maxtasksperchild

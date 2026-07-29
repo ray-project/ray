@@ -9,6 +9,7 @@ them by value and Ray workers never need to import this test module.
 
 import gc
 import sys
+import threading
 import time
 import weakref
 
@@ -181,6 +182,52 @@ def test_autoscale_actor_start_failures_do_not_hang(shutdown_only):
     )
     assert pool._closed
     pool.terminate()
+
+
+def test_autoscale_serialization_error_does_not_stop_dispatcher(shutdown_only):
+    """A bad batch must fail without stranding later valid submissions."""
+    ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=4, autoscale=True, max_size=4, initial_size=0)
+
+    def identity(value):
+        return value
+
+    assert pool.apply(identity, (1,)) == 1
+
+    bad_result = pool.apply_async(identity, (threading.Lock(),))
+    valid_result = pool.apply_async(identity, (2,))
+
+    with pytest.raises(TypeError):
+        bad_result.get(timeout=10)
+    assert valid_result.get(timeout=10) == 2
+    assert pool.apply(identity, (3,)) == 3
+    assert pool._dispatcher_thread.is_alive()
+    pool.terminate()
+
+
+def test_joblib_autoscale_propagates_serialization_errors(shutdown_only):
+    """Joblib must report serialization failures instead of timing out."""
+    from joblib import Parallel, delayed, parallel_backend
+
+    from ray.util.joblib import register_ray
+
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    register_ray(autoscale=True, max_size=4, initial_size=0)
+
+    def identity(value):
+        return value
+
+    with pytest.raises(TypeError):
+        with parallel_backend("ray", n_jobs=4):
+            Parallel(timeout=10)(
+                delayed(identity)(value) for value in [1, threading.Lock(), 2]
+            )
+
+    with parallel_backend("ray", n_jobs=4):
+        assert Parallel(timeout=10)(delayed(identity)(value) for value in [3, 4]) == [
+            3,
+            4,
+        ]
 
 
 def test_joblib_autoscale_propagates_errors_and_can_be_reused(shutdown_only):
