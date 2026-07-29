@@ -234,14 +234,27 @@ def _make_flight_server(host: str, base_dir: str, token: str):
                 fpath = os.path.join(base_dir, os.path.basename(path))
                 with open(fpath, "rb") as f:
                     for off, length in ranges:
-                        # u32 length header, then the frame bytes (sink layout).
-                        yield flight.Result(pa.py_buffer(struct.pack(">I", length)))
                         f.seek(off)
-                        remaining = length
+                        # Pack the u32 length header into the first chunk: a
+                        # 4-byte header in its own Result would pay a whole gRPC
+                        # message's overhead (protobuf tag, HTTP/2 frame, flow
+                        # control) for a 4-byte payload.
+                        first = f.read(min(length, _FLIGHT_CHUNK))
+                        yield flight.Result(
+                            pa.py_buffer(struct.pack(">I", length) + first)
+                        )
+                        remaining = length - len(first)
                         while remaining:
                             buf = f.read(min(remaining, _FLIGHT_CHUNK))
                             if not buf:
-                                break
+                                # Header already promised `length` bytes but the
+                                # file is short (truncated / stale / bad offset).
+                                # Fail the stream: a short send silently desyncs
+                                # every later frame at the client (SPARK-34534).
+                                raise ValueError(
+                                    f"short read: {fpath} @{off}+{length}, "
+                                    f"got {length - remaining}"
+                                )
                             remaining -= len(buf)
                             yield flight.Result(pa.py_buffer(buf))
 
