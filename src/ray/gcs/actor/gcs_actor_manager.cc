@@ -1123,6 +1123,24 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
 
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
+
+  // TEST-ONLY (REP-64 provenance): "F3 for the actor channel" -- publish actor
+  // death on the in-memory transition instead of from the durable write's
+  // completion callback, mirroring what F3 does for the node channel. The
+  // original provenance never had this knob because the `actor_publish_delayed`
+  // arm suggested the actor channel self-heals; that conclusion assumed the
+  // fetch-on-subscribe read stays fast, which is exactly what a saturated
+  // RocksDB I/O pool breaks. Inert unless the env var is set.
+  const bool actor_publish_before_persist =
+      std::getenv("RAY_TESTING_GCS_ACTOR_PUBLISH_BEFORE_PERSIST") != nullptr;
+  if (actor_publish_before_persist) {
+    io_context_.post(
+        [this, actor_id, data = GenActorDataOnlyWithStates(*actor_table_data)]() {
+          gcs_publisher_->PublishActor(actor_id, data);
+        },
+        "GcsActorManager.PublishActorDeathBeforePersist");
+  }
+
   // The backend storage is reliable in the future, so the status must be ok.
   gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
@@ -1132,6 +1150,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor_id,
         actor_table_data,
         is_restartable,
+        actor_publish_before_persist,
         done_callback = std::move(done_callback)](Status status) {
          if (done_callback) {
            done_callback();
@@ -1160,8 +1179,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                    publish_actor();
                  }
                });
-         } else {
-           publish_actor();
+         } else if (!actor_publish_before_persist) {
+           publish_actor();  // product default: publish-after-persist.
          }
          if (!is_restartable) {
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,

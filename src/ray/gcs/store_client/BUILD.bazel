@@ -63,6 +63,21 @@ ray_cc_library(
     ],
 )
 
+# TEST-ONLY (REP-64 provenance): storage-layer latency/contention injection used
+# to model the RocksDB backend's delay surface. Inert unless RAY_TESTING_GCS_STORE_*
+# env vars are set.
+ray_cc_library(
+    name = "delay_injecting_store_client",
+    srcs = ["delay_injecting_store_client.cc"],
+    hdrs = ["delay_injecting_store_client.h"],
+    deps = [
+        ":store_client",
+        "//src/ray/util:logging",
+        "@boost//:asio",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
 # Embedded RocksDB StoreClient for GCS fault tolerance (REP-64). Built
 # minimally — librocksdb.a only, no compression, no jemalloc — via
 # rules_foreign_cc; see bazel/rocksdb.BUILD.

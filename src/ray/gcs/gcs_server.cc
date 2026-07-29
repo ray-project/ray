@@ -33,6 +33,7 @@
 #include "ray/gcs/gcs_worker_manager.h"
 #include "ray/gcs/grpc_services.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/delay_injecting_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #if defined(__linux__)
@@ -236,6 +237,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 #endif
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
+  }
+
+  // TEST-ONLY (REP-64 provenance): optionally interpose storage-layer latency /
+  // pool contention so a single build can model the RocksDB delay surface on any
+  // backend. Inert (and not even installed) unless RAY_TESTING_GCS_STORE_* is set.
+  // Deliberately wraps only the cluster table storage -- the tables carrying the
+  // death notifications under study -- and not the separate InternalKV instance.
+  if (DelayInjectingStoreClient::EnabledFromEnv()) {
+    store_client = std::make_shared<DelayInjectingStoreClient>(
+        std::move(store_client), DelayInjectingStoreClient::EnvConfig());
   }
 
   gcs_table_storage_ = std::make_unique<GcsTableStorage>(std::move(store_client));

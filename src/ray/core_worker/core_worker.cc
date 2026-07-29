@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <future>
 #include <memory>
@@ -893,6 +894,17 @@ void CoreWorker::SubscribeToNodeChanges() {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
                "reconstruction is not enabled.";
+        // TEST-ONLY (REP-64 provenance): timestamp the *owner-side receipt* of
+        // node death. Paired with the GCS-side stamps, a single CI run shows
+        // which hop of transition -> publish -> delivery -> recovery is slow,
+        // which is what we cannot observe by reproducing locally.
+        if (std::getenv("RAY_TESTING_REP64_TRACE") != nullptr) {
+          RAY_LOG(WARNING).WithField(node_id)
+              << "REP64_TRACE owner_received_node_dead us="
+              << std::chrono::duration_cast<std::chrono::microseconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+                     .count();
+        }
         reference_counter->ResetObjectsOnRemovedNode(node_id);
         raylet_client_pool->Disconnect(node_id);
         core_worker_client_pool->Disconnect(node_id);

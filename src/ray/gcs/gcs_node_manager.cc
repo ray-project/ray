@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <limits>
 #include <memory>
@@ -718,7 +719,26 @@ void GcsNodeManager::InternalOnNodeFailure(
     //   RAY_TESTING_GCS_NODE_PUBLISH_BEFORE_PERSIST  F3 fix: publish node death on the
     //                                                in-memory transition, decoupled from
     //                                                the durable write completing
-    auto publish_node_death = [this, node_id, node_info_delta]() {
+    // TEST-ONLY (REP-64 provenance): stamp the in-memory DEAD transition and
+    // the moment the publish actually runs. Compared against the owner-side
+    // stamp in core_worker.cc, this attributes any delay to a specific hop.
+    const bool rep64_trace = std::getenv("RAY_TESTING_REP64_TRACE") != nullptr;
+    if (rep64_trace) {
+      RAY_LOG(WARNING).WithField(node_id)
+          << "REP64_TRACE gcs_inmemory_dead us="
+          << std::chrono::duration_cast<std::chrono::microseconds>(
+                 std::chrono::system_clock::now().time_since_epoch())
+                 .count();
+    }
+
+    auto publish_node_death = [this, node_id, node_info_delta, rep64_trace]() {
+      if (rep64_trace) {
+        RAY_LOG(WARNING).WithField(node_id)
+            << "REP64_TRACE gcs_publish_running us="
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   std::chrono::system_clock::now().time_since_epoch())
+                   .count();
+      }
       PublishNodeInfoToPubsub(node_id, node_info_delta);
     };
     const bool node_publish_before_persist =
