@@ -1,0 +1,14 @@
+name: "ray-torch-anyscale-py$PYTHON_VERSION-$GPU$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-torch-py$PYTHON_VERSION-$GPU-base"
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+dockerfile: ci/docker/ray-image.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - IMAGE_TYPE=ray-torch
+  - BASE_VARIANT=base
+  - PLATFORM=$GPU
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION
