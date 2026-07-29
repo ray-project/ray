@@ -3826,7 +3826,7 @@ class Dataset:
 
     @Deprecated(
         message=(
-            "`zip` is deprecated and will be removed in Ray 2.56. Use `join` on a "
+            "`DAtaset.zip` is deprecated and will be removed in Ray 2.56. Use `join` on a "
             "shared key instead. `zip` relies on deterministic ordering for "
             "correctness, which Ray Data doesn't gaurantee by default."
         ),
