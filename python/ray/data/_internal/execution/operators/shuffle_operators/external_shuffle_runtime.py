@@ -125,16 +125,6 @@ def _manager_name(shuffle_id: str, node_id: str) -> str:
     return f"shuffle_mgr:{shuffle_id}:{node_id}"
 
 
-def _lookup_manager(shuffle_id: str, node_id: str) -> "ray.actor.ActorHandle":
-    """Locate the ShuffleManager for this shuffle+node in the named-actor
-    namespace. Raises ``ValueError`` if the actor has never been registered
-    (or has been terminated and garbage-collected)."""
-    return ray.get_actor(
-        _manager_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_MANAGER_NAMESPACE,
-    )
-
-
 class ShuffleHandle(TypedDict, total=False):
     """Handle written by each mapper task, consumed by reducer.
 
@@ -145,8 +135,7 @@ class ShuffleHandle(TypedDict, total=False):
     path: str
     # Dense per-partition range index (see _build_range_index): row ``p`` is
     # ``(offset, length)`` of partition ``p``'s frame; ``length == 0`` => the
-    # partition is absent/empty. One frame per partition per map, so
-    # ``partition_id`` indexes the row directly — no CSR pointer.
+    # partition is absent/empty.
     index_ranges: "np.ndarray"  # shape [num_partitions, 2], int64
     shuffle_id: str
     node_id: str
@@ -475,7 +464,10 @@ def _prefetch_node_into(
         if ep is not None:
             return ep
         try:
-            manager = _lookup_manager(shuffle_id, node_id)
+            manager = ray.get_actor(
+                _manager_name(shuffle_id, node_id),
+                namespace=_SHUFFLE_MANAGER_NAMESPACE,
+            )
         except ValueError as e:
             # Actor name isn't registered (never created or cleaned up)
             raise ShuffleManagerAnomalyError(
