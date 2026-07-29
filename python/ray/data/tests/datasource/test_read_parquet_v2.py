@@ -243,6 +243,18 @@ def test_read_parquet_v2_skip_paths_drops_existing_file(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
+def test_read_parquet_v2_skip_paths_accepts_single_string(tmp_path, restore_ctx):
+    # ``skip_paths`` accepts a bare string (like ``paths``), not just a list.
+    restore_ctx.use_datasource_v2 = True
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    _write(b, pa.table({"a": [3, 4]}))
+
+    ds = ray.data.read_parquet([str(a), str(b)], skip_paths=str(b))
+    assert _rows(ds) == [1, 2]
+
+
 def test_read_parquet_v2_skip_paths_drops_missing_without_ignore(tmp_path, restore_ctx):
     # ``skip_paths`` excludes a named path before the existence check, so a
     # missing entry is dropped even without ``ignore_missing_paths``.
@@ -277,6 +289,17 @@ def test_read_parquet_v1_rejects_new_params(tmp_path, restore_ctx):
         ray.data.read_parquet([str(a)], ignore_missing_paths=True)
     with pytest.raises(NotImplementedError, match="V2 datasource"):
         ray.data.read_parquet([str(a)], skip_paths=[str(a)])
+
+
+def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
+    # An empty ``skip_paths`` requests nothing, so it must not trip the V1
+    # guard even though V1 doesn't implement the parameter.
+    restore_ctx.use_datasource_v2 = False
+    a = tmp_path / "a.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+
+    ds = ray.data.read_parquet([str(a)], skip_paths=[])
+    assert _rows(ds) == [1, 2]
 
 
 if __name__ == "__main__":

@@ -1359,7 +1359,7 @@ def read_parquet(
     include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     ignore_missing_paths: bool = False,
-    skip_paths: Optional[List[str]] = None,
+    skip_paths: Optional[Union[str, List[str]]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -1499,10 +1499,11 @@ def read_parquet(
         ignore_missing_paths: If "True", ignores any file/directory paths in "paths"
             that are not found. This only tolerates paths that are already missing
             when the files are listed.
-        skip_paths: An explicit list of file paths to exclude from the read. Any
-            listed or expanded file whose path matches an entry is skipped.
-            Use this to deterministically drop known-bad paths
-            (e.g. from a manifest diff) without paying to read them.
+        skip_paths: A path, or list of paths, to exclude from the read. Any
+            listed or expanded file whose path matches an entry is skipped,
+            whether or not it exists. Use this to deterministically drop
+            known-bad paths (e.g. from a manifest diff) without paying to read
+            them. Composes with ``ignore_missing_paths``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -1673,7 +1674,9 @@ def read_parquet(
 
     # ``ignore_missing_paths`` / ``skip_paths`` are only implemented on the V2
     # datasource path. Fail loudly rather than silently ignoring them on V1.
-    if ignore_missing_paths or skip_paths is not None:
+    # An empty ``skip_paths`` (``[]``) is a no-op, so only raise when the caller
+    # actually requested one of these behaviors.
+    if ignore_missing_paths or skip_paths:
         raise NotImplementedError(
             "`ignore_missing_paths` and `skip_paths` on `read_parquet` require "
             "the V2 datasource. Enable it with "

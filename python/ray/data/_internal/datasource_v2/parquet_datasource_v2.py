@@ -74,7 +74,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         partitioning: Optional[Partitioning] = Partitioning(PartitionStyle.HIVE),
         file_extensions: Optional[List[str]] = None,
         ignore_missing_paths: bool = False,
-        skip_paths: Optional[List[str]] = None,
+        skip_paths: Optional[Union[str, List[str]]] = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
@@ -105,8 +105,16 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # handling, etc.). Stored as a set for O(1) membership checks in the
         # per-file listing hot path.
         if skip_paths:
+            # Accept a single path or any iterable of paths, mirroring how
+            # ``paths`` is handled. Normalize to a list first so a bare string
+            # isn't treated as an iterable of characters and non-list iterables
+            # (set, tuple) don't reach ``_resolve_paths_and_filesystem``, which
+            # only accepts str/pathlib.Path/list.
+            skip_paths_list = (
+                [skip_paths] if isinstance(skip_paths, str) else list(skip_paths)
+            )
             resolved_skip_paths, _ = _resolve_paths_and_filesystem(
-                skip_paths, self._filesystem
+                skip_paths_list, self._filesystem
             )
             self._skip_paths = frozenset(resolved_skip_paths)
         else:
