@@ -246,15 +246,45 @@ class ResourceManager:
                     )
                     divergence = brc_bytes - queue_based_total
                     if divergence != 0 and ds_pending > 0:
+                        # Get cumulative BRC stats
+                        brc_stats = self._block_ref_counter.get_debug_stats(op.id)
+                        live_blocks = (
+                            brc_stats["produced_blocks"] - brc_stats["freed_blocks"]
+                        )
+                        avg_block_size = (
+                            brc_bytes // live_blocks if live_blocks > 0 else 0
+                        )
+                        diverge_blocks = (
+                            divergence // avg_block_size if avg_block_size > 0 else 0
+                        )
+                        # Get downstream task counts
+                        ds_tasks_running = sum(
+                            dep.metrics.num_tasks_running
+                            for dep in op.output_dependencies
+                        )
+                        ds_tasks_finished = sum(
+                            dep.metrics.num_tasks_finished
+                            for dep in op.output_dependencies
+                        )
                         logger.warning(
                             f"BRC-DIVERGE {op.name}: "
-                            f"divergence={divergence}B, "
+                            f"divergence={divergence}B "
+                            f"(~{diverge_blocks} blocks "
+                            f"@ ~{avg_block_size}B each), "
                             f"brc={brc_bytes}, "
                             f"queue_based={queue_based_total} "
                             f"(internal_out={internal_out}, "
                             f"topo_queue={topo_queue}, "
                             f"ds_inqueue={ds_inqueue}, "
-                            f"ds_pending={ds_pending})"
+                            f"ds_pending={ds_pending}), "
+                            f"brc_stats=("
+                            f"produced={brc_stats['produced_blocks']}blks/"
+                            f"{brc_stats['produced_bytes']}B, "
+                            f"freed={brc_stats['freed_blocks']}blks/"
+                            f"{brc_stats['freed_bytes']}B, "
+                            f"live={live_blocks}blks), "
+                            f"ds_tasks=(running={ds_tasks_running}, "
+                            f"finished={ds_tasks_finished})"
                         )
             except (TypeError, AttributeError):
                 pass
