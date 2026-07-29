@@ -35,6 +35,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.context import DataContext
 from ray._raylet import (
@@ -528,7 +529,9 @@ def _external_shuffle_reduce_task(
                 # O(num_nodes) chunks, not O(num_maps).
                 if len(region_tables) > 1:
                     accum_tables.append(
-                        pa.concat_tables(region_tables).combine_chunks()
+                        transform_pyarrow.combine_chunks(
+                            pa.concat_tables(region_tables)
+                        )
                     )
                 else:
                     accum_tables.extend(region_tables)
