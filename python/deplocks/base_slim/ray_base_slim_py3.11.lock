@@ -3287,6 +3287,7 @@ six==1.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   anyscale
+    #   azure-core
     #   kubernetes
     #   oauth2client
     #   opencensus
