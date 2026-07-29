@@ -316,9 +316,10 @@ class ServeHead(SubprocessModule):
                     # Non-RayError exceptions are intentionally not caught so
                     # unexpected bugs remain visible.
                     logger.info(
-                        "Cached Serve controller handle is unusable (%s); "
+                        "Cached Serve controller handle is unusable (%s: %s); "
                         "re-resolving by name.",
                         type(e).__name__,
+                        e,
                     )
                 self._controller = None
 
