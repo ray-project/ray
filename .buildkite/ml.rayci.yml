@@ -292,6 +292,7 @@ steps:
     depends_on: [ "minbuild-ml(python=3.10)", "forge" ]
 
   - label: ":train: ml: doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - train
       - tune

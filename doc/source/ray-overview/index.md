@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Introduction to Ray, the open-source framework for scaling AI and Python workloads — its core primitives, AI libraries, and cluster integrations."
+---
+
 (overview-overview)=
 # Overview
 

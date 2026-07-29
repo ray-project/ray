@@ -369,7 +369,7 @@ class PDOrchestratorMixin:
                 stream must be drained to exhaustion, never abandoned. Prefill
                 is clamped to a single token, so draining is bounded either way.
         """
-        prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
+        prefill_task = asyncio.create_task(_drain_prefill(prefill_resp))
         completed = False
         local_gen = None
         next_fut = None

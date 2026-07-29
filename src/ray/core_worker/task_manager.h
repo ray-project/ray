@@ -176,11 +176,6 @@ class ObjectRefStream {
    */
   void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
-  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
-  ///
-  /// \return A list of object IDs that are not read yet.
-  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
-
   /// Pop all ObjectIDs that are not read yet via
   /// TryReadNextItem.
   ///
@@ -196,6 +191,24 @@ class ObjectRefStream {
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
 
+  /// Whether the caller has requested deletion of this stream (i.e. the
+  /// language-frontend generator went out of scope). The stream may still be
+  /// retained after this point until EOF is written and the lineage of its
+  /// consumed returns goes out of scope.
+  void MarkCallerDeleted() { caller_deleted_ = true; }
+  bool IsCallerDeleted() const { return caller_deleted_; }
+
+  /// Record that a reported return was stored in plasma. These are the returns
+  /// that can be lost (e.g. their node dies) and must be failed if the generator
+  /// task fails before its first completion recorded them on the task spec.
+  /// Inline returns live in the owner's memory store and are not lost this way.
+  void MarkReportedInPlasma(const ObjectID &object_id) {
+    reported_plasma_refs_.insert(object_id);
+  }
+  std::vector<ObjectID> GetReportedPlasmaRefs() const {
+    return {reported_plasma_refs_.begin(), reported_plasma_refs_.end()};
+  }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
   bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
@@ -208,6 +221,9 @@ class ObjectRefStream {
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
   // A set of refs that's already written to a stream -> size of the object.
   absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  /// Reported returns that were stored in plasma (and can therefore be lost).
+  /// See MarkReportedInPlasma.
+  absl::flat_hash_set<ObjectID> reported_plasma_refs_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -224,6 +240,10 @@ class ObjectRefStream {
   int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
   int64_t total_num_object_consumed_{};
+  /// Set once the caller requests deletion of the stream (the generator went
+  /// out of scope). Used to decide whether a backpressured executor should be
+  /// released while the stream is still retained. See MarkCallerDeleted.
+  bool caller_deleted_ = false;
 };
 
 class TaskManager : public TaskManagerInterface {
@@ -260,15 +280,15 @@ class TaskManager : public TaskManagerInterface {
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
         clock_(clock) {
+    // On change, only retract keys that dropped to zero (emit their final 0). Live
+    // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+    // emitting them here too would double-record. Keeps each key recorded once/tick.
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              task_by_state_counter_.Record(
-                  task_counter_.Get(key),
-                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name", std::get<0>(key)},
-                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
-                   {"Source", "owner"}});
+              if (task_counter_.Get(key) == 0) {
+                RecordTaskState(key, /*value=*/0);
+              }
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -603,6 +623,16 @@ class TaskManager : public TaskManagerInterface {
   void RecordMetrics();
 
  private:
+  /// Records the owner-side task-state gauge for a single key. Shared by the
+  /// on-change callback and the per-tick re-emit in RecordMetrics so both go
+  /// through one implementation.
+  ///
+  /// \param key The (function name, task status, is_retry) key to record.
+  /// \param value The current count for `key`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordTaskState(const std::tuple<std::string, rpc::TaskStatus, bool> &key,
+                       int64_t value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,
               int num_retries_left,
@@ -756,6 +786,13 @@ class TaskManager : public TaskManagerInterface {
       const TaskID &task_id, bool *first_execution = nullptr) const
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// The plasma-backed object ids reported to the streaming generator's object
+  /// ref stream so far, or empty if the stream no longer exists. Used to fail
+  /// already-reported returns when the task fails before its first completion
+  /// recorded them on the task spec.
+  std::vector<ObjectID> GetStreamingGeneratorReportedPlasmaRefs(
+      const ObjectID &generator_id) const ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_);
+
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -803,6 +840,41 @@ class TaskManager : public TaskManagerInterface {
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// Detect whether a streaming generator replay produced a different number
+  /// of objects than the first successful attempt, and if so, fail the task.
+  /// Returns true when inconsistency was detected and the task was failed
+  /// (caller must not run normal completion logic in that case). Must run
+  /// early in CompletePendingTask: before any return object is written to the
+  /// store (so downstream consumers cannot observe the inconsistent objects)
+  /// and before SetTaskStatus(FINISHED) (FailPendingTask RAY_CHECKs
+  /// IsPending()). Whether this is a replay is determined internally from the
+  /// task's successful-execution count. The caller must skip this check on
+  /// application-error completions, which already route through the failure
+  /// path.
+  bool FailStreamingGeneratorReplayIfInconsistent(const TaskID &task_id,
+                                                  const rpc::PushTaskReply &reply)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Fail a streaming generator task whose replay produced a different number
+  /// of objects than the first successful attempt. Two failure modes:
+  /// - fewer objects: downstream consumers block on indices that will never
+  ///   be produced (silent hang).
+  /// - more objects: extras beyond the pinned EOF are silently dropped by
+  ///   ObjectRefStream::InsertToStream (silent data loss).
+  /// Failing the task (rather than only marking object refs) propagates the
+  /// failure through lineage to downstream tasks that haven't run yet.
+  ///
+  /// \param task_id The streaming generator task id.
+  /// \param generator_id The generator ObjectID (for logging context).
+  /// \param expected_count Number of objects reported by the first successful
+  ///   attempt (recorded on the task spec).
+  /// \param actual_count Number of objects reported by the replay attempt.
+  void FailStreamingGeneratorReplayInconsistency(const TaskID &task_id,
+                                                 const ObjectID &generator_id,
+                                                 int64_t expected_count,
+                                                 int64_t actual_count)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
                                                         const ObjectID &generator_id)
@@ -830,12 +902,6 @@ class TaskManager : public TaskManagerInterface {
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
-
-  /// Tracks active streams that may receive backpressured generator reports.
-  /// Erasing an entry marks the stream deleted while the ObjectRefStream may
-  /// remain around until EOF/lineage cleanup.
-  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
-      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Report visibility is acknowledged immediately and consumed progress is
   /// pushed separately to the executor.

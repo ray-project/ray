@@ -34,3 +34,19 @@ steps:
       - forge
     commands:
       - ./ci/lint/lint.sh pre_commit_pydoclint
+
+  # Scope guard for the "docs-go" label: runs only when the label is present,
+  # and fails unless the PR is content-only (changes under doc/, excluding
+  # BUILD files). This is the check the label cannot turn off, so the label
+  # can skip doc/library tests on a content PR but never on a code, CI, or
+  # build change.
+  - label: ":lint-roller: lint: validate docs-go scope"
+    key: docs-go-scope
+    if: build.pull_request.labels includes "docs-go"
+    tags:
+      - oss
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/validate_docs_go_scope.sh

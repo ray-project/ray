@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Monitor and debug Ray Serve applications using the Ray dashboard, serve status and serve config CLI commands, Ray logging with Loki, and built-in Serve metrics."
+---
+
 (serve-monitoring)=
 
 # Monitor Your Application

@@ -81,6 +81,21 @@ def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def rocksdb_gcs_test_enabled():
+    """True when the test suite should run against the RocksDB GCS backend
+    (REP-64). Set by the buildkite ":ray: core: rocksdb tests" job.
+    """
+    return os.environ.get("TEST_GCS_ROCKSDB") == "1"
+
+
+def persistent_gcs_test_enabled():
+    """True when the GCS backend under test persists state across restart
+    (external Redis or RocksDB). Use this — not external_redis_test_enabled —
+    to branch test assertions on "is GCS state durable across restart?".
+    """
+    return external_redis_test_enabled() or rocksdb_gcs_test_enabled()
+
+
 def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 

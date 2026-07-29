@@ -1,7 +1,9 @@
 import asyncio
 import inspect
 import logging
-from types import FunctionType
+
+# Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
+from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
 from typing import Any, Dict, List, Tuple, Union
 
 from pydantic import BaseModel
@@ -138,7 +140,7 @@ def _create_controller_and_proxy_refs(
         proxy_location=proxy_location,
     )
 
-    proxy_handles = ray.get(controller.get_proxies.remote())
+    proxy_handles: Any = ray.get(controller.get_proxies.remote())
     proxy_ready_refs = (
         [handle.ready.remote() for handle in proxy_handles.values()]
         if len(proxy_handles) > 0

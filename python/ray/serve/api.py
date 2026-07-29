@@ -53,11 +53,11 @@ from ray.serve.context import (
     DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
+    _disconnect,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_deployment_actor_context,
     _get_internal_replica_context,
-    _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -152,7 +152,7 @@ def shutdown():
             return
 
     client.shutdown()
-    _set_global_client(None)
+    _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -180,7 +180,7 @@ async def shutdown_async():
             return
 
     await client.shutdown_async()
-    _set_global_client(None)
+    _disconnect()
 
 
 @DeveloperAPI

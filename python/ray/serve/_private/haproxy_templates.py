@@ -81,6 +81,11 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
+    {%- if config.close_spread_time_s is not none %}
+    # Spread soft-stop idle-connection closes over this window so a reloaded-out
+    # worker doesn't hold them until hard-stop-after.
+    close-spread-time {{ config.close_spread_time_s }}s
+    {%- endif %}
     {%- if config.grpc_enabled %}
     tune.h2.max-frame-size {{ config.h2_max_frame_size }}
     tune.h2.be.initial-window-size {{config.h2_be_initial_window_size}}

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Collective communication primitives (allreduce, broadcast, send/recv) for Ray actors and tasks via ray.util.collective, on NCCL and GLOO.
+
 ..
   This part of the docs is generated from the ray.util.collective readme using m2r
   To update:

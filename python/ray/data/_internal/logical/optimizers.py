@@ -21,6 +21,7 @@ from ray.data._internal.logical.rules import (
     LimitPushdownRule,
     PredicatePushdown,
     ProjectionPushdown,
+    PushdownCountFiles,
     SetReadParallelismRule,
 )
 from ray.util.annotations import DeveloperAPI
@@ -31,6 +32,7 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
+        PushdownCountFiles,
     ]
 )
 

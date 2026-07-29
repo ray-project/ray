@@ -65,34 +65,14 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
       ObjectManagerInterface &object_manager,
       ray::observability::MetricInterface &task_by_state_counter)
       : object_manager_(object_manager), task_by_state_counter_(task_by_state_counter) {
+    // On change, only retract keys that dropped to zero (emit their final 0). Live
+    // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+    // emitting them here too would double-record. Keeps each key recorded once/tick.
     waiting_leases_counter_.SetOnChangeCallback(
-        [this](std::pair<std::string, bool> key) mutable {
-          int64_t num_total = waiting_leases_counter_.Get(key);
-          // Of the waiting tasks of this name, some fraction may be inactive (blocked on
-          // object store memory availability). Get this breakdown by querying the pull
-          // manager.
-          int64_t num_inactive = std::min(
-              num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
-          // Offset the metric values recorded from the owner process.
-          task_by_state_counter_.Record(
-              -num_total,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          task_by_state_counter_.Record(
-              num_total - num_inactive,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          task_by_state_counter_.Record(
-              num_inactive,
-              {{"State",
-                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+        [this](const std::pair<std::string, bool> &key) mutable {
+          if (waiting_leases_counter_.Get(key) == 0) {
+            RecordWaitingLeaseState(key, /*num_total=*/0);
+          }
         });
   }
 
@@ -210,6 +190,16 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   void RecordMetrics();
 
  private:
+  /// Records the dependency-manager-side task-state gauge for a single waiting-lease
+  /// key: the PENDING_NODE_ASSIGNMENT negation plus the PENDING_ARGS_FETCH /
+  /// PENDING_OBJ_STORE_MEM_AVAIL breakdown. Shared by the on-change callback and the
+  /// per-tick re-emit in RecordMetrics so both go through one implementation.
+  ///
+  /// \param key The (task name, is_retry) key to record.
+  /// \param num_total The current count for `key`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordWaitingLeaseState(const TaskMetricsKey &key, int64_t num_total);
+
   /// Metadata for an object that is needed by at least one executing worker
   /// and/or one queued lease.
   struct ObjectDependencies {

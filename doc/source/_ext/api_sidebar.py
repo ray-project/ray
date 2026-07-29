@@ -26,9 +26,13 @@ import os
 import re
 
 import bs4
-from pydata_sphinx_theme.toctree import add_collapse_checkboxes
 from sphinx.environment.adapters.toctree import global_toctree_for_doc
 from sphinx.util import logging as sphinx_logging
+
+# Reuse the in-repo copy rather than importing from ``pydata_sphinx_theme.toctree``:
+# that symbol isn't part of the theme's public API, so importing it directly makes
+# the docs build fragile across theme upgrades. See the docstring on the vendored copy.
+from custom_directives import add_collapse_checkboxes
 
 logger = sphinx_logging.getLogger(__name__)
 

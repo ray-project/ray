@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Hands-on tutorial: convert a HuggingFace model to a Ray Serve deployment, test it locally over HTTP, and compose two models into a single application."
+---
+
 (serve-getting-started)=
 
 # Getting Started

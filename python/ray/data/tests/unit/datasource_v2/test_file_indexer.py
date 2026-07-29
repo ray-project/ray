@@ -1,35 +1,18 @@
 import os
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    FileChunker,
     LineDelimitedFileChunker,
     ParquetFileChunker,
     WholeFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileInfo,
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
-
-
-class _CountingChunker(FileChunker):
-    """Fake chunker that emits a fixed number of chunks per file and reports it
-    reads metadata, so the indexer takes the threaded fan-out path."""
-
-    reads_file_metadata = True
-
-    def __init__(self, chunks_per_file: int):
-        self._chunks_per_file = chunks_per_file
-
-    def generate_chunk_metadatas(self, path, file_size, filesystem=None):
-        for i in range(self._chunks_per_file):
-            yield {"chunk_index": i}, file_size
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -246,13 +229,10 @@ class TestFileChunkerIntegration:
         assert list(manifest.file_chunk_metadatas) == [None]
         assert list(manifest.file_sizes) == [100]
 
-    def test_parquet_chunker_splits_file_on_row_group_boundaries(self, tmp_path):
-        # A real Parquet file with 8 row groups; the chunker reads the footer
-        # at listing time and (target < row-group size) emits one chunk per
-        # row group with an explicit half-open range.
-        table = pa.table({"a": list(range(80))})
-        pq.write_table(table, str(tmp_path / "big.parquet"), row_group_size=10)
-        chunker = ParquetFileChunker(target_chunk_size=1)
+    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
+        # Write a "Parquet" file by name only — the chunker doesn't open it.
+        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
+        chunker = ParquetFileChunker(target_chunk_size=1024)
         indexer = NonSamplingFileIndexer(
             ignore_missing_paths=False,
             num_workers=1,
@@ -265,36 +245,12 @@ class TestFileChunkerIntegration:
             for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
                 rows.append((str(path), int(size), md))
 
-        # 8 row groups → 8 chunks, contiguous half-open ranges.
-        assert len(rows) == 8
-        ranges = [(md["row_group_start"], md["row_group_end"]) for _, _, md in rows]
-        assert ranges == [(i, i + 1) for i in range(8)]
-
-    def test_parquet_chunker_parallel_footer_reads(self, tmp_path):
-        # With num_workers > 1 the chunker's footer reads fan across the
-        # thread pool (reads_file_metadata=True). Verify correctness is
-        # unaffected: every file's row groups are represented exactly once.
-        for f in range(4):
-            table = pa.table({"a": list(range(30))})
-            pq.write_table(table, str(tmp_path / f"f{f}.parquet"), row_group_size=10)
-        chunker = ParquetFileChunker(target_chunk_size=1)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=4,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        per_path_ranges = {}
-        for m in manifests:
-            for path, _, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                per_path_ranges.setdefault(str(path), []).append(
-                    (md["row_group_start"], md["row_group_end"])
-                )
-        # 4 files × 3 row groups each.
-        assert len(per_path_ranges) == 4
-        for ranges in per_path_ranges.values():
-            assert sorted(ranges) == [(0, 1), (1, 2), (2, 3)]
+        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
+        assert len(rows) == 10
+        for i, (_, _, md) in enumerate(rows):
+            assert md is not None
+            assert md["chunk_idx"] == i
+            assert md["total_num_chunks"] == 10
 
     def test_line_delimited_chunker_byte_ranges(self, tmp_path):
         (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
@@ -317,33 +273,6 @@ class TestFileChunkerIntegration:
         # Byte ranges must tile the file exactly.
         assert rows[0][2]["chunk_byte_start_idx"] == 0
         assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
-
-    def test_parallel_chunking_preserves_discovery_order(self):
-        """Regression: with num_workers>1 and preserve_order, a multi-chunk-per-
-        file chunker's records stay grouped per file in discovery order.
-
-        ``make_async_gen`` only preserves order for a 1:1 map, so the indexer
-        must emit one record list per file (not yield chunk rows individually) --
-        otherwise its round-robin merge interleaves chunks across the files
-        processed concurrently, e.g. f0,f1,f2,f3,f0,f1,... instead of f0,f0,f0,...
-        """
-        chunker = _CountingChunker(chunks_per_file=3)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False, num_workers=4, file_chunker=chunker
-        )
-        file_infos = [FileInfo(path=f"f{i}.parquet", size=100 + i) for i in range(8)]
-        records = list(
-            indexer._generate_chunk_records(
-                file_infos, filesystem=None, preserve_order=True
-            )
-        )
-        # 8 files x 3 chunks each, contiguous per file in discovery order.
-        assert [path for path, _, _ in records] == [
-            f"f{i}.parquet" for i in range(8) for _ in range(3)
-        ]
-        assert [md["chunk_index"] for _, _, md in records] == [
-            i for _ in range(8) for i in range(3)
-        ]
 
 
 if __name__ == "__main__":

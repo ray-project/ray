@@ -657,20 +657,14 @@ class TestPipFreezeArtifact:
             == "ray-extra:2.56.0.d7951f-extra-py311-cpu-aarch64_pip-freeze.txt"
         )
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
-    def test_export_pip_freeze_writes_artifact(self, mock_export, tmp_path):
-        import os
+    @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
+    def test_export_pip_freeze_writes_artifact(self, mock_read, tmp_path):
+        from ci.ray_ci.automation.push_ray_image import (
+            PIP_FREEZE_PATH_IN_IMAGE,
+            _export_pip_freeze,
+        )
 
-        from ci.ray_ci.automation.push_ray_image import _export_pip_freeze
-
-        # Simulate crane export laying down the image filesystem.
-        def fake_export(src_ref, export_dir):
-            freeze = os.path.join(export_dir, "home", "ray", "pip-freeze.txt")
-            os.makedirs(os.path.dirname(freeze), exist_ok=True)
-            with open(freeze, "w") as f:
-                f.write("ray==2.56.0\nnumpy==1.26.4\n")
-
-        mock_export.side_effect = fake_export
+        mock_read.return_value = b"ray==2.56.0\nnumpy==1.26.4\n"
 
         artifact_dir = tmp_path / "image-info"
         with mock.patch(
@@ -690,19 +684,19 @@ class TestPipFreezeArtifact:
         expected = artifact_dir / "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
         assert dest == str(expected)
         assert expected.read_text() == "ray==2.56.0\nnumpy==1.26.4\n"
-        mock_export.assert_called_once_with(
-            "work-repo:build123-ray-py3.10-cpu", mock.ANY
+        mock_read.assert_called_once_with(
+            "work-repo:build123-ray-py3.10-cpu", PIP_FREEZE_PATH_IN_IMAGE
         )
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
-    def test_export_pip_freeze_missing_file_raises(self, mock_export, tmp_path):
+    @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
+    def test_export_pip_freeze_missing_file_raises(self, mock_read, tmp_path):
         from ci.ray_ci.automation.push_ray_image import (
             PushRayImageError,
             _export_pip_freeze,
         )
 
-        # crane export "succeeds" but produces no pip-freeze.txt.
-        mock_export.side_effect = lambda src_ref, export_dir: None
+        # crane export "succeeds" but the image has no pip-freeze.txt.
+        mock_read.return_value = None
 
         with mock.patch(
             "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
@@ -712,8 +706,8 @@ class TestPipFreezeArtifact:
             with pytest.raises(PushRayImageError, match="pip-freeze.txt not found"):
                 _export_pip_freeze("work-repo:tag", ctx)
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
-    def test_export_pip_freeze_wraps_crane_error(self, mock_export, tmp_path):
+    @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
+    def test_export_pip_freeze_wraps_crane_error(self, mock_read, tmp_path):
         from ci.ray_ci.automation.crane_lib import CraneError
         from ci.ray_ci.automation.push_ray_image import (
             PushRayImageError,
@@ -722,7 +716,28 @@ class TestPipFreezeArtifact:
 
         # crane export itself fails -> wrapped as PushRayImageError (mirrors how
         # _copy_image wraps ImageTagsError), not propagated as a raw CraneError.
-        mock_export.side_effect = CraneError("crane export failed (rc=1)")
+        mock_read.side_effect = CraneError("crane export failed (rc=1)")
+
+        with mock.patch(
+            "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
+            str(tmp_path / "image-info"),
+        ):
+            ctx = make_ctx(platform="cpu", branch="releases/2.56.0")
+            with pytest.raises(PushRayImageError, match="Failed to export pip-freeze"):
+                _export_pip_freeze("work-repo:tag", ctx)
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.read_file_from_image")
+    def test_export_pip_freeze_wraps_os_error(self, mock_read, tmp_path):
+        from ci.ray_ci.automation.push_ray_image import (
+            PushRayImageError,
+            _export_pip_freeze,
+        )
+
+        # An OSError from the export/read path (e.g. non-executable crane binary
+        # -> PermissionError, or a full disk -> TemporaryDirectory) must be
+        # wrapped as PushRayImageError, not escape raw. Guards the docstring's
+        # "CraneError / OSError are wrapped" contract.
+        mock_read.side_effect = PermissionError("crane: permission denied")
 
         with mock.patch(
             "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
