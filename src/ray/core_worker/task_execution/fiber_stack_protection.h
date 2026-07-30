@@ -33,6 +33,54 @@
 namespace ray {
 namespace core {
 
+/** Signature of CPython's `PyUnstable_ThreadState_SetStackProtection`. */
+using SetStackProtectionFn = int (*)(PyThreadState *, void *, size_t);
+
+/** Result of a single attempt to re-anchor stack protection. */
+enum class ReanchorOutcome {
+  /** The caller is not on a tracked fiber stack, so nothing was changed. */
+  kNotOnFiberStack,
+  /** CPython refused the bounds. The caller must clear the pending error. */
+  kRejected,
+  /** The fiber's bounds are now installed on the thread state. */
+  kApplied,
+};
+
+/**
+ * Installs the current fiber's stack bounds through \p set_stack_protection.
+ *
+ * Split out from ReanchorStackProtectionToCurrentFiberStack so it can be tested:
+ * it touches no interpreter state beyond the arguments it is handed, so a test
+ * can pass a stub and a dummy thread state and assert on the bounds that would
+ * reach CPython. It is also compiled on every Python version, unlike the caller.
+ *
+ * \param set_stack_protection CPython entry point. Must not be nullptr;
+ *   resolving the symbol is the caller's responsibility.
+ * \param thread_state Thread state to update; passed through untouched.
+ * \return Which branch was taken; see ReanchorOutcome.
+ */
+inline ReanchorOutcome ApplyCurrentFiberStackProtection(
+    SetStackProtectionFn set_stack_protection, PyThreadState *thread_state) {
+  void *stack_start_addr = nullptr;
+  size_t stack_size = 0;
+  if (!FiberState::GetCurrentFiberStackBounds(&stack_start_addr, &stack_size)) {
+    // Both call sites are meant to run on a tracked fiber stack, so reaching
+    // here means the caller drifted off the fiber or onto an untracked one.
+    // Leaving the bounds alone is safe, but the leak this guards against comes
+    // back, so make that visible rather than silent.
+    RAY_LOG_EVERY_N(WARNING, 1000)
+        << "Async actor task is not running on a tracked fiber stack; leaving "
+           "CPython stack protection unchanged. On Python 3.14+ this "
+           "reintroduces a per-task memory leak in async actors.";
+    return ReanchorOutcome::kNotOnFiberStack;
+  }
+
+  if (set_stack_protection(thread_state, stack_start_addr, stack_size) < 0) {
+    return ReanchorOutcome::kRejected;
+  }
+  return ReanchorOutcome::kApplied;
+}
+
 /**
  * Points CPython's C-stack-overflow detection at the Boost fiber stack that the
  * calling thread is currently running on.
@@ -58,31 +106,18 @@ namespace core {
  */
 inline void ReanchorStackProtectionToCurrentFiberStack() {
 #if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
-  using SetStackProtectionFn = int (*)(PyThreadState *, void *, size_t);
   static SetStackProtectionFn set_stack_protection =
       reinterpret_cast<SetStackProtectionFn>(
           dlsym(RTLD_DEFAULT, "PyUnstable_ThreadState_SetStackProtection"));
   if (set_stack_protection == nullptr) {
+    // CPython 3.14.0 and 3.14.1 do not export the API yet.
     return;
   }
 
-  void *stack_start_addr = nullptr;
-  size_t stack_size = 0;
-  if (!FiberState::GetCurrentFiberStackBounds(&stack_start_addr, &stack_size)) {
-    // Both call sites are meant to run on a tracked fiber stack, so reaching
-    // here means the caller drifted off the fiber or onto an untracked one.
-    // Leaving the bounds alone is safe, but the leak this guards against comes
-    // back, so make that visible rather than silent.
-    RAY_LOG_EVERY_N(WARNING, 1000)
-        << "Async actor task is not running on a tracked fiber stack; leaving "
-           "CPython stack protection unchanged. On Python 3.14+ this "
-           "reintroduces a per-task memory leak in async actors.";
-    return;
-  }
-
-  if (set_stack_protection(PyThreadState_Get(), stack_start_addr, stack_size) < 0) {
-    // Only fails for sizes below _PyOS_MIN_STACK_SIZE, which Ray's fiber stacks
-    // are comfortably above. Clear it regardless so no exception escapes.
+  if (ApplyCurrentFiberStackProtection(set_stack_protection, PyThreadState_Get()) ==
+      ReanchorOutcome::kRejected) {
+    // Only happens for sizes below _PyOS_MIN_STACK_SIZE, which Ray's fiber
+    // stacks are comfortably above. Clear it regardless so nothing escapes.
     PyErr_Clear();
   }
 #endif
