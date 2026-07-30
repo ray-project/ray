@@ -297,6 +297,9 @@ PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
 PROXY_READY_CHECK_TIMEOUT_S = get_env_float_positive(
     "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
+PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S", 5.0
+)
 
 # Number of times in a row that a HTTP proxy must fail the health check before
 # being marked unhealthy.
