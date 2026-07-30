@@ -567,7 +567,7 @@ class PlacementGroupState(StateSchema):
     #: The topology strategy for this placement group: a dict mapping each
     #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
     #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
-    #: topology-aware scheduling.
+    #: a topology strategy.
     #:
     #: NOTE: This field is experimental and may change in the future.
     topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)

@@ -25,7 +25,7 @@ def assert_pg_nodes_label_value(cluster_nodes, pg, label, value):
 
 
 def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
-    """Verify topology-aware rescheduling after total rack failure.
+    """Verify topology strategy rescheduling after total rack failure.
 
     Creates a PG on rack 1 (the only available rack at the time). After
     removing one rack 1 node, the PG enters RESCHEDULING but stays pinned to
