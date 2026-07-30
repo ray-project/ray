@@ -11,8 +11,7 @@ and the actual ``read_metadata`` call) so neither layer imports the other.
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-    from pyarrow.fs import FileSystem
+    from pyarrow.fs import FileSystem, S3FileSystem
 
 
 def native_metadata_supported_filesystem(
@@ -30,7 +29,7 @@ def native_metadata_supported_filesystem(
     return filesystem is None or isinstance(filesystem, (LocalFileSystem, S3FileSystem))
 
 
-def s3_config(fs: "pa.fs.S3FileSystem") -> dict:
+def s3_config(fs: "S3FileSystem") -> dict:
     """Recover the full S3 connection config from a pyarrow ``S3FileSystem`` so
     the native crate connects *identically* — same endpoint, credentials, region,
     addressing style — instead of rebuilding a default client from the ambient env
