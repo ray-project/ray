@@ -220,6 +220,44 @@ class TestModelConfig:
         assert engine_config.hf_model_id == bucket_uri
         assert engine_config.mirror_config is None
 
+    def test_az_streaming_model_source_passes_uri_as_model(self):
+        """An az:// streaming source is passed through to vLLM as the model.
+
+        ``az://`` is a remote scheme, so with a streaming load format the URI
+        must reach vLLM as ``model`` (streamed directly) rather than being
+        mirrored to disk.
+        """
+        bucket_uri = "az://container/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+            engine_kwargs={"load_format": "runai_streamer"},
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == bucket_uri
+        assert engine_config.mirror_config is None
+
+    def test_az_non_streaming_model_source_is_mirrored(self):
+        """An az:// non-streaming source is mirrored like the other schemes.
+
+        Without a streaming load format the weights are downloaded, so the URI
+        must be carried by mirror_config while hf_model_id falls back to the
+        user-supplied model_id (keeping the HF cache directory name clean).
+        """
+        bucket_uri = "az://container/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.mirror_config is not None
+        assert engine_config.mirror_config.bucket_uri == bucket_uri
+
     def test_hf_model_source_used_as_hf_model_id(self):
         """A plain HuggingFace model_source is used directly as hf_model_id."""
         llm_config = LLMConfig(

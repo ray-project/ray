@@ -45,7 +45,9 @@ class PyArrowFileSystem(BaseCloudFileSystem):
         # Check for anonymous access pattern (only for S3/GCS)
         # e.g. s3://anonymous@bucket/path
         if "@" in object_uri and not (
-            object_uri.startswith("abfss://") or object_uri.startswith("azure://")
+            object_uri.startswith("abfss://")
+            or object_uri.startswith("azure://")
+            or object_uri.startswith("az://")
         ):
             parts = object_uri.split("@", 1)
             # Check if the first part ends with "anonymous"
@@ -71,6 +73,8 @@ class PyArrowFileSystem(BaseCloudFileSystem):
             fs, path = PyArrowFileSystem._create_abfss_filesystem(object_uri)
         elif object_uri.startswith("azure://"):
             fs, path = PyArrowFileSystem._create_azure_filesystem(object_uri)
+        elif object_uri.startswith("az://"):
+            fs, path = PyArrowFileSystem._create_az_filesystem(object_uri)
         else:
             raise ValueError(f"Unsupported URI scheme: {object_uri}")
 
@@ -169,6 +173,66 @@ class PyArrowFileSystem(BaseCloudFileSystem):
             Tuple of (PyArrow FileSystem, path without abfss:// prefix)
         """
         return PyArrowFileSystem._create_azure_filesystem(object_uri)
+
+    @staticmethod
+    def _create_az_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create a filesystem for an az:// Azure Blob Storage URI.
+
+        Unlike ``azure://``/``abfss://``, which embed the storage account in the
+        hostname, the ``az://`` scheme takes the form ``az://container/path`` and
+        reads the account from the ``AZURE_STORAGE_ACCOUNT_NAME`` environment
+        variable. This matches the convention the RunAI streamer uses, so the same
+        ``az://`` URI can be used for both streaming and downloading.
+
+        Args:
+            object_uri: az:// URI (az://container/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without the az:// prefix)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If the az:// URI format is invalid or the account name
+                environment variable is not set.
+        """
+        try:
+            import adlfs
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise ImportError(
+                "You must `pip install adlfs azure-identity` "
+                "to use az:// URIs. "
+                "Note that these must be preinstalled on all nodes in the Ray cluster."
+            )
+
+        azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+        if not azure_storage_account_name:
+            raise ValueError(
+                "az:// URIs require the AZURE_STORAGE_ACCOUNT_NAME environment "
+                f"variable to identify the storage account: {object_uri}"
+            )
+
+        # Strip the scheme and validate the container name
+        path_without_scheme = object_uri[len("az://") :]
+        container_part = path_without_scheme.split("/")[0]
+        if not container_part:
+            raise ValueError(
+                f"Invalid az:// URI format - missing container name: {object_uri}"
+            )
+
+        # Create the adlfs filesystem
+        adlfs_fs = adlfs.AzureBlobFileSystem(
+            account_name=azure_storage_account_name,
+            credential=DefaultAzureCredential(),
+        )
+
+        # Wrap with PyArrow's PyFileSystem for compatibility
+        fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
+
+        # Return the path without the scheme prefix
+        path = path_without_scheme
+
+        return fs, path
 
     @staticmethod
     def _filter_files(

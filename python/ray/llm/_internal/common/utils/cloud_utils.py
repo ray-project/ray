@@ -45,6 +45,7 @@ def is_remote_path(path: str) -> bool:
         or path.startswith("gs://")
         or path.startswith("abfss://")
         or path.startswith("azure://")
+        or path.startswith("az://")
         or path.startswith("pyarrow-")
     )
 
@@ -58,7 +59,7 @@ class CloudMirrorConfig(BaseModelExtended):
     """Unified mirror config for cloud storage (S3, GCS, or Azure).
 
     Args:
-        bucket_uri: URI of the bucket (s3://, gs://, abfss://, or azure://)
+        bucket_uri: URI of the bucket (s3://, gs://, abfss://, azure://, or az://)
         extra_files: Additional files to download
     """
 
@@ -74,7 +75,8 @@ class CloudMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", '
+                '"azure://", or "az://".'
             )
         return value
 
@@ -89,7 +91,7 @@ class CloudMirrorConfig(BaseModelExtended):
             return "gcs"
         elif self.bucket_uri.startswith("abfss://"):
             return "abfss"
-        elif self.bucket_uri.startswith("azure://"):
+        elif self.bucket_uri.startswith(("azure://", "az://")):
             return "azure"
         return None
 
@@ -109,13 +111,14 @@ class LoraMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", '
+                '"azure://", or "az://".'
             )
         return value
 
     @property
     def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://", "abfss://", "azure://"]:
+        for prefix in ["s3://", "gs://", "abfss://", "azure://", "az://"]:
             if self.bucket_uri.startswith(prefix):
                 return self.bucket_uri[len(prefix) :]
         return self.bucket_uri
@@ -162,7 +165,7 @@ class CloudFileSystem:
             return S3FileSystem
         elif bucket_uri.startswith("gs://"):
             return GCSFileSystem
-        elif bucket_uri.startswith(("abfss://", "azure://")):
+        elif bucket_uri.startswith(("abfss://", "azure://", "az://")):
             return AzureFileSystem
         else:
             raise ValueError(f"Unsupported URI scheme: {bucket_uri}")
