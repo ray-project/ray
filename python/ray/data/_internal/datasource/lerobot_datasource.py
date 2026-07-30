@@ -128,6 +128,59 @@ class _ReadGranularity(str, enum.Enum):
     EPISODE = "episode"
 
 
+def _delta_tensor_type(data_type: pa.DataType) -> "pa.ExtensionType":
+    """Build the output tensor type for a windowed tabular Arrow field.
+
+    LeRobot stores vectors as list columns and higher-rank features either as
+    nested lists or Hugging Face ``ArrayXD`` extension types backed by nested
+    lists. A temporal window adds one leading dimension to the stored feature.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorType
+
+    if isinstance(data_type, pa.ExtensionType):
+        data_type = data_type.storage_type
+
+    ndim = 1
+    while (
+        pa.types.is_fixed_size_list(data_type)
+        or pa.types.is_list(data_type)
+        or pa.types.is_large_list(data_type)
+    ):
+        ndim += 1
+        data_type = data_type.value_type
+
+    return ArrowVariableShapedTensorType(data_type, ndim=ndim)
+
+
+def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
+    """Materialize a uniformly shaped nested-list column as a typed ndarray."""
+    shape = [len(column)]
+    values = column
+    while (
+        pa.types.is_fixed_size_list(values.type)
+        or pa.types.is_list(values.type)
+        or pa.types.is_large_list(values.type)
+    ):
+        if pa.types.is_fixed_size_list(values.type):
+            unique_lengths = {values.type.list_size}
+            if values.null_count:
+                unique_lengths.add(None)
+        else:
+            # Keep the common, uniformly shaped path inside Arrow. Converting
+            # every row's length to Python is prohibitively expensive for the
+            # large action/state columns found in real LeRobot datasets.
+            unique_lengths = set(pc.unique(pc.list_value_length(values)).to_pylist())
+        if len(unique_lengths) != 1 or None in unique_lengths:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} must have one uniform "
+                f"shape, but found list lengths {unique_lengths}."
+            )
+        shape.append(unique_lengths.pop())
+        values = values.flatten()
+
+    return values.to_numpy(zero_copy_only=False).reshape(shape)
+
+
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
 # ---------------------------------------------------------------------------
@@ -173,19 +226,9 @@ def _build_schema(
             # Encoded-byte image struct -> decoded uint8 tensor (4-D if windowed).
             return pa.field(f.name, delta_frame_type if f.name in delta else frame_type)
         if f.name in delta:
-            # Tabular feature gains a leading time axis. A list column (fixed or
-            # variable) stacks to (T, dim) -> ndim 2 over its element type; a
-            # scalar column stacks to (T,) -> ndim 1 over its own type.
-            is_list = (
-                pa.types.is_fixed_size_list(f.type)
-                or pa.types.is_list(f.type)
-                or pa.types.is_large_list(f.type)
-            )
-            value_type = f.type.value_type if is_list else f.type
-            return pa.field(
-                f.name,
-                ArrowVariableShapedTensorType(value_type, ndim=2 if is_list else 1),
-            )
+            # A temporal window adds one leading dimension to the stored
+            # scalar/vector/matrix/... feature.
+            return pa.field(f.name, _delta_tensor_type(f.type))
         return f
 
     # Image columns live in the parquet as encoded-byte structs; swap them for
@@ -892,13 +935,16 @@ def _prepare_delta_segment(
     tabular_base: Dict[str, np.ndarray] = {}
     for name in delta_tabular_keys:
         col = full.column(name).combine_chunks()
-        if (
+        if isinstance(col.type, pa.ExtensionType):
+            # Hugging Face ArrayXD columns already expose a typed, shaped NumPy
+            # representation.
+            tabular_base[name] = np.asarray(col.to_numpy(zero_copy_only=False))
+        elif (
             pa.types.is_fixed_size_list(col.type)
             or pa.types.is_list(col.type)
             or pa.types.is_large_list(col.type)
         ):
-            flat = col.flatten().to_numpy(zero_copy_only=False)
-            tabular_base[name] = flat.reshape(len(col), -1)
+            tabular_base[name] = _nested_list_column_to_numpy(col, name)
         else:
             tabular_base[name] = col.to_numpy(zero_copy_only=False)
     return _DeltaSegment(
