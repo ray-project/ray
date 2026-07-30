@@ -124,6 +124,17 @@ class ServeControllerClient:
         except Exception:
             pass
 
+    def _shutdown_wait_from_budget(self, budget_s: Optional[float]) -> float:
+        """Client wait for a fetched controller shutdown budget.
+
+        ``budget_s`` is None when the controller could not report it in time
+        (wedged before answering), in which case fall back to a fixed budget.
+        Add the backstop slack before force-killing in either case.
+        """
+        if budget_s is None:
+            budget_s = RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S
+        return budget_s + RAY_SERVE_SHUTDOWN_BACKSTOP_S
+
     def _resolve_shutdown_timeout_s(self) -> Optional[float]:
         """Wait derived from the controller's shutdown budget, or None if the
         controller is already gone."""
@@ -134,8 +145,8 @@ class ServeControllerClient:
         except ray.exceptions.RayActorError:
             return None
         except TimeoutError:
-            budget_s = RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S
-        return budget_s + RAY_SERVE_SHUTDOWN_BACKSTOP_S
+            budget_s = None
+        return self._shutdown_wait_from_budget(budget_s)
 
     async def _resolve_shutdown_timeout_s_async(self) -> Optional[float]:
         """Async variant of ``_resolve_shutdown_timeout_s``."""
@@ -146,8 +157,8 @@ class ServeControllerClient:
         except ray.exceptions.RayActorError:
             return None
         except (TimeoutError, asyncio.TimeoutError):
-            budget_s = RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S
-        return budget_s + RAY_SERVE_SHUTDOWN_BACKSTOP_S
+            budget_s = None
+        return self._shutdown_wait_from_budget(budget_s)
 
     def shutdown(self, timeout_s: Optional[float] = None) -> None:
         """Completely shut down the connected Serve instance.

@@ -77,6 +77,7 @@ from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
+TEST_DEPLOYMENT_ID_3 = DeploymentID(name="test_deployment_3", app_name="test_app")
 
 
 def deployment_info(
@@ -84,6 +85,7 @@ def deployment_info(
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
     replica_config: Optional[ReplicaConfig] = None,
+    ingress: bool = False,
     ingress_request_router: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
@@ -96,6 +98,7 @@ def deployment_info(
         ),
         replica_config=replica_config or ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
+        ingress=ingress,
         ingress_request_router=ingress_request_router,
     )
 
@@ -963,6 +966,31 @@ def test_max_graceful_shutdown_timeout_s(mock_deployment_state_manager):
     info_2, _ = deployment_info(graceful_shutdown_timeout_s=35)
     dsm.deploy(TEST_DEPLOYMENT_ID_2, info_2)
     assert dsm.max_graceful_shutdown_timeout_s() == 35
+
+
+def test_max_graceful_shutdown_timeout_s_direct_ingress_floor(
+    mock_deployment_state_manager, monkeypatch
+):
+    """An ingress deployment's timeout is floored to the direct-ingress period."""
+    monkeypatch.setattr(ds_mod, "RAY_SERVE_ENABLE_DIRECT_INGRESS", True)
+    monkeypatch.setattr(ds_mod, "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", 30)
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Ingress deployment below the floor is raised to it.
+    info, _ = deployment_info(graceful_shutdown_timeout_s=5, ingress=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    assert dsm.max_graceful_shutdown_timeout_s() == 30
+
+    # A non-ingress deployment is not floored, even below the period.
+    info_2, _ = deployment_info(graceful_shutdown_timeout_s=5)
+    dsm.deploy(TEST_DEPLOYMENT_ID_2, info_2)
+    assert dsm.max_graceful_shutdown_timeout_s() == 30
+
+    # An ingress deployment already above the floor keeps its own timeout.
+    info_3, _ = deployment_info(graceful_shutdown_timeout_s=45, ingress=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID_3, info_3)
+    assert dsm.max_graceful_shutdown_timeout_s() == 45
 
 
 def test_create_delete_single_replica(mock_deployment_state_manager):
