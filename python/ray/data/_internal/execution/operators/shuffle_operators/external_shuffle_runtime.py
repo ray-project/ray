@@ -49,7 +49,7 @@ Compression = Optional[
 
 # =============================================================================
 # SHARED: shard codec, page-cache hint, ShuffleFileServer identity/lookup, the
-# ShuffleHandle type, and the error hierarchy — used by BOTH map and reduce.
+# ShuffleHandle type, and the error hierarchy, which are used by both map and reduce.
 # =============================================================================
 # Each range's payload length is framed as a u32 in the sink, so no single
 # range/IPC frame may exceed 4 GiB - 1. Checked at mapper write time so an
@@ -192,9 +192,7 @@ class ShuffleFileServerAnomalyError(RuntimeError):
 
 # =============================================================================
 # SERVER SIDE (created by map tasks; serves reduce fetches). Arrow Flight over
-# gRPC: DoAction streams opaque byte-ranges (the whole-frame shard blob — no
-# RecordBatch (de)serialization). ``_grpc_location`` / ``_FLIGHT_CHUNK`` are
-# shared with the fetch client below.
+# gRPC: DoAction streams opaque byte-ranges (the whole-frame shard blob).
 # =============================================================================
 # Per-Result body size. Each flight.Result buffer is materialized whole in RAM
 # when sent, so chunking bounds the ShuffleFileServer actor's memory.
@@ -275,9 +273,8 @@ class ShuffleFileServer:
 
     def _run_server(self) -> None:
         # If the server loop ever returns/raises, the endpoint is dead but the
-        # actor process would keep answering RPCs — a false-positive that breaks
-        # the "actor alive ⇒ server alive" invariant reducers rely on. Kill the
-        # process so Ray restarts the actor (max_restarts=-1).
+        # actor process would keep answering RPCs. Kill the process so Ray
+        # restarts the actor (max_restarts=-1).
         try:
             self._server.serve()  # gRPC Flight server; blocks until shutdown
         except BaseException:
@@ -318,8 +315,7 @@ _ENDPOINT_CACHE_LOCK = threading.Lock()
 
 @dataclass(slots=True, frozen=True)
 class _FileRanges:
-    """A shuffle file and the byte ranges to read from it — the fetch unit
-    shared by a reducer's source refs and its per-node fetch groups."""
+    """A shuffle file and the byte ranges to read from it."""
 
     path: str
     ranges: List[Tuple[int, int]]
@@ -416,10 +412,10 @@ def _stream_members_flight(
                 for result in client.do_action(flight.Action("fetch", body)):
                     sink.write(result.body)
             except OSError:
-                # Sink pwrite failure (e.g. disk full): NOT a transport fault, so
-                # don't remap it — let _prefetch_node_into's OSError handler
-                # classify it (ShuffleDiskError). Must not become a retryable
-                # ConnectionError or a full disk would spin forever.
+                # Sink pwrite failure (e.g. disk full): NOT a transport fault.
+                # Don't remap it to a retryable ConnectionError (a full disk
+                # would spin forever); _prefetch_node_into classifies it as
+                # ShuffleDiskError.
                 raise
             except Exception as e:
                 # pyarrow surfaces our server-side token check as ArrowInvalid
