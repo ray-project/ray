@@ -1659,6 +1659,26 @@ class TestMergedTimeseriesCache:
         self._record_replica(state, r1, 7.0, now)
         assert state.get_total_num_requests() == pytest.approx(5.0)
 
+    def test_late_report_from_stopped_replica_is_excluded_in_simple_mode(self):
+        """Aggregate mode filters on the id set and simple mode on the string set, so a
+        stop has to drop the replica from both or the late report inflates one path."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=state._deployment_id)
+        now = time.time()
+
+        state.update_running_replica_ids([r1, r2])
+        self._record_replica(state, r1, 5.0, now)
+        self._record_replica(state, r2, 5.0, now)
+        assert state._calculate_total_requests_simple_mode() == pytest.approx(10.0)
+
+        state.on_replica_stopped(r1)
+        # Racing report re-inserts r1 into _replica_metrics.
+        self._record_replica(state, r1, 7.0, now)
+
+        assert state._calculate_total_requests_simple_mode() == pytest.approx(5.0)
+        assert state._calculate_total_requests_aggregate_mode() == pytest.approx(5.0)
+
     def test_stop_then_unchanged_membership_update_rebuilds(self):
         """on_replica_stopped diverges the running set from `_running_replicas`, so
         the next update has to rebuild even though the list is unchanged."""
