@@ -72,11 +72,6 @@ from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
-# If no actor of an operator has ever initialized successfully, treat this many
-# consecutive initialization failures as systemic (e.g. a misconfigured UDF)
-# and fail the job regardless of ``DataContext.max_actor_init_failures``.
-_SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD = 3
-
 _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
@@ -202,11 +197,10 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
-        # Actor initialization failures tolerated so far (see
-        # ``DataContext.max_actor_init_failures``), and whether any actor of
-        # this operator has ever initialized successfully.
-        self._actor_init_failures = 0
-        self._any_actor_started = False
+        # Consecutive actor initialization failures; resets whenever an actor
+        # of this operator initializes successfully (see
+        # ``DataContext.max_consecutive_actor_init_failures``).
+        self._consecutive_actor_init_failures = 0
 
     @property
     @override
@@ -377,7 +371,7 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-            self._any_actor_started = True
+            self._consecutive_actor_init_failures = 0
 
         self._submit_metadata_task(
             res_ref,
@@ -390,32 +384,28 @@ class ActorPoolMapOperator(MapOperator):
 
         Ray Core doesn't restart actors whose creation task failed (the death
         is a ``USER_ERROR``, so ``max_restarts`` doesn't apply). Instead, we
-        charge the failure against ``DataContext.max_actor_init_failures`` and
-        rely on the actor autoscaler to start a replacement (the pool is now
-        below its target size). Re-raises ``error`` when the budget is
-        exceeded, or when no actor has ever initialized successfully and the
-        failures look systemic.
+        charge the failure against
+        ``DataContext.max_consecutive_actor_init_failures`` and rely on the
+        actor autoscaler to start a replacement (the pool is now below its
+        target size). Re-raises ``error`` when the budget is exceeded. The
+        counter resets whenever an actor initializes successfully, so a
+        systemically broken UDF (which never succeeds) exhausts the budget
+        while sporadic failures in a progressing pipeline don't.
         """
-        self._actor_init_failures += 1
-        budget = self.data_context.max_actor_init_failures
-        budget_exhausted = budget >= 0 and self._actor_init_failures > budget
-        systemic = not self._any_actor_started and self._actor_init_failures >= max(
-            self._actor_pool.initial_size(),
-            _SYSTEMIC_ACTOR_INIT_FAILURE_THRESHOLD,
-        )
-        if budget_exhausted or systemic:
+        self._consecutive_actor_init_failures += 1
+        budget = self.data_context.max_consecutive_actor_init_failures
+        if budget >= 0 and self._consecutive_actor_init_failures > budget:
             logger.error(
                 f"{self.name}: actor initialization failed "
-                f"{self._actor_init_failures} time(s) "
-                f"(max_actor_init_failures={budget}, "
-                f"any_actor_started={self._any_actor_started}); "
+                f"{self._consecutive_actor_init_failures} consecutive time(s) "
+                f"(max_consecutive_actor_init_failures={budget}); "
                 "failing execution."
             )
             raise error
         logger.warning(
             f"{self.name}: an actor failed to initialize and will be replaced "
-            f"({self._actor_init_failures} failure(s) so far; "
-            f"max_actor_init_failures={budget}).",
+            f"({self._consecutive_actor_init_failures} consecutive failure(s) "
+            f"so far; max_consecutive_actor_init_failures={budget}).",
             exc_info=error,
         )
 
