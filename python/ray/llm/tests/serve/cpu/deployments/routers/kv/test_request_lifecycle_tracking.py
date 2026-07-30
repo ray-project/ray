@@ -85,6 +85,18 @@ class MockSelectionService:
     def __init__(self):
         self.calls = []
         self.reservations = []
+        self.selects = []
+
+    async def select(self, request):
+        """The tracker's local scoring fallback for a request it did not
+        route; kept out of ``calls`` so booking assertions stay focused."""
+        self.selects.append(dict(request))
+        return {
+            "worker_id": request["allowed_worker_ids"][0],
+            "dp_rank": 0,
+            "overlap": {"longest_matched": 0},
+            "effective_prefill_tokens": len(request["token_ids"]),
+        }
 
     async def create_reservation(self, request):
         self.reservations.append(dict(request))
@@ -192,13 +204,48 @@ class LocalKVTokenTracker(KVTokenTracker):
         return sum(1 for s in self._requests.values() if s.worker_id == worker_id)
 
 
+class _BroadcastHandle:
+    """Test double for the LLMRouter DeploymentHandle's ``broadcast()``
+    surface, fanning a method call out to each target (a Ray actor handle or a
+    plain object standing in for one ingress replica)."""
+
+    def __init__(self, *targets):
+        self._targets = targets
+
+    def broadcast(self, method_name, *args, **kwargs):
+        targets = self._targets
+
+        async def _call(target):
+            method = getattr(target, method_name)
+            if hasattr(method, "remote"):
+                return await method.remote(*args, **kwargs)
+            return await method(*args, **kwargs)
+
+        class _Response:
+            async def results_async(self, *, timeout_s=None, return_exceptions=False):
+                gather = asyncio.gather(
+                    *[_call(target) for target in targets],
+                    return_exceptions=return_exceptions,
+                )
+                if timeout_s is None:
+                    return list(await gather)
+                try:
+                    return list(await asyncio.wait_for(gather, timeout=timeout_s))
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        "Timed out waiting for broadcast results."
+                    ) from None
+
+        return _Response()
+
+
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
-    def _build(script, target, **engine_kwargs):
+    def _build(script, *targets, **engine_kwargs):
         monkeypatch.setattr(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
             "token_tracking.get_llm_router_handle",
-            lambda: target,
+            lambda: _BroadcastHandle(*targets),
         )
         monkeypatch.setattr(
             serve,
@@ -478,6 +525,95 @@ async def test_actor_failure_isolation(build_token_tracking_engine):
     await drain(engine)  # the failed batches are dropped without raising
 
     assert len(outputs) == 2
+
+
+@pytest.mark.asyncio
+async def test_events_broadcast(build_token_tracking_engine):
+    """Every LLMRouter replica's tracker receives the same events in the same
+    order."""
+    actors = [RecordingKVTokenTracker.remote(block_size=16) for _ in range(2)]
+    engine = build_token_tracking_engine(delta_steps(2), *actors)
+
+    await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    logs = [ray.get(actor.get_event_log.remote()) for actor in actors]
+    assert logs[0] == logs[1]
+    assert [name for name, _ in logs[0]] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failing_replica_isolation(build_token_tracking_engine):
+    """A healthy replica still receives every event when a peer's ingest
+    raises."""
+    healthy = RecordingKVTokenTracker.remote(block_size=16)
+    engine = build_token_tracking_engine(delta_steps(2), RaisingActor.remote(), healthy)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    assert len(outputs) == 2
+    assert [name for name, _ in ray.get(healthy.get_event_log.remote())] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slow_replica_broadcast_timeout(monkeypatch, build_token_tracking_engine):
+    """A slow broadcast target is dropped without stalling delivery forever."""
+
+    class SlowTarget:
+        async def on_lifecycle_events(self, events):
+            await asyncio.sleep(60)
+
+    class HealthyTarget:
+        def __init__(self):
+            self.events = []
+
+        async def on_lifecycle_events(self, events):
+            self.events.extend(events)
+
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+        "token_tracking.LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S",
+        0.01,
+    )
+    healthy = HealthyTarget()
+    engine = build_token_tracking_engine(delta_steps(2), SlowTarget(), healthy)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    assert len(outputs) == 2
+    assert [name for name, _ in healthy.events] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
 
 
 def test_decorator_returns_subclass():
