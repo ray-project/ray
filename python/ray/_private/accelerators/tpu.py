@@ -646,6 +646,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         TPU chips are represented as devices within `/dev/`, either as
         `/dev/accel*` or `/dev/vfio/*`.
 
+        Assumes each TPU-backed IOMMU group contains exactly one TPU device.
+
         Returns:
             The number of TPUs if any were detected, otherwise 0.
         """
