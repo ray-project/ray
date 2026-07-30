@@ -848,9 +848,9 @@ class TaskManager : public TaskManagerInterface {
   /// store (so downstream consumers cannot observe the inconsistent objects)
   /// and before SetTaskStatus(FINISHED) (FailPendingTask RAY_CHECKs
   /// IsPending()). Whether this is a replay is determined internally from the
-  /// task's successful-execution count. The caller must skip this check on
-  /// application-error completions, which already route through the failure
-  /// path.
+  /// task's successful-execution count. Runs for both successful and
+  /// application-error completions — retries must reproduce the same object
+  /// count.
   bool FailStreamingGeneratorReplayIfInconsistent(const TaskID &task_id,
                                                   const rpc::PushTaskReply &reply)
       ABSL_LOCKS_EXCLUDED(mu_);

@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -196,6 +197,12 @@ class TaskManagerTest : public ::testing::Test {
             *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
+              rpc::ErrorType error_type;
+              if (object.IsException(&error_type)) {
+                plasma_put_error_types_[object_id] = error_type;
+              } else {
+                plasma_put_error_types_.erase(object_id);
+              }
               return Status::OK();
             },
             [this](TaskSpecification &spec, uint32_t delay_ms) {
@@ -294,6 +301,9 @@ class TaskManagerTest : public ::testing::Test {
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
+  // Error type recorded when put_in_local_plasma_callback_ receives an
+  // exception RayObject. Cleared for non-exception puts of the same id.
+  std::unordered_map<ObjectID, rpc::ErrorType> plasma_put_error_types_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
@@ -2556,6 +2566,124 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMismatchWithEmptyReturnsFail
                                malformed_reply,
                                caller_address,
                                /*is_application_error=*/false);
+
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(num_retries_, 1);
+}
+
+// Regression: app-error replay must not copy return_objects(0) (intentionally
+// serialized None for streaming generators) onto stream ObjectRefs. That used
+// to recreate lost reconstructable block refs as Python None after plasma
+// loss (`TypeError: Not a block type: None` in Ray Data). Retries must be
+// reproducible via intermediate reports; CompletePendingTask only stores the
+// static return.
+TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayDoesNotFillNone) {
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  for (int64_t i = 0; i < 2; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  // Same object count as the first attempt so count-mismatch does not fire;
+  // only the static return is None (production streaming-generator path).
+  stored_in_plasma.clear();
+  plasma_put_error_types_.clear();
+
+  rpc::PushTaskReply app_error_reply;
+  auto *return_object = app_error_reply.add_return_objects();
+  return_object->set_object_id(spec.ReturnId(0).Binary());
+  return_object->set_data("\xc0");  // msgpack nil
+  for (int64_t i = 0; i < 2; i++) {
+    auto *return_id_proto = app_error_reply.add_streaming_generator_return_ids();
+    return_id_proto->set_object_id(spec.StreamingGeneratorReturnId(i).Binary());
+    return_id_proto->set_is_plasma_object(true);
+  }
+  app_error_reply.set_task_execution_error("simulated application error");
+
+  manager_.CompletePendingTask(spec.TaskId(),
+                               app_error_reply,
+                               caller_address,
+                               /*is_application_error=*/true);
+
+  // Stream refs must not be rewritten from the static None return.
+  for (int64_t i = 0; i < 2; i++) {
+    const auto obj_id = spec.StreamingGeneratorReturnId(i);
+    ASSERT_FALSE(stored_in_plasma.count(obj_id)) << "stream index " << i;
+    ASSERT_FALSE(plasma_put_error_types_.count(obj_id)) << "stream index " << i;
+  }
+}
+
+// App-error replays with a different object count must fail-fast with
+// STREAMING_GENERATOR_REPLAY_INCONSISTENT (same as successful mismatched
+// replays). Previously this check was skipped because an app-error gap-fill
+// path was assumed to handle failure.
+TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayCountMismatchFails) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  for (int64_t i = 0; i < 3; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/3,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  rpc::PushTaskReply app_error_reply;
+  auto *return_object = app_error_reply.add_return_objects();
+  return_object->set_object_id(spec.ReturnId(0).Binary());
+  return_object->set_data("\xc0");
+  // Fewer stream IDs than the first successful attempt.
+  for (int64_t i = 0; i < 2; i++) {
+    auto *return_id_proto = app_error_reply.add_streaming_generator_return_ids();
+    return_id_proto->set_object_id(spec.StreamingGeneratorReturnId(i).Binary());
+    return_id_proto->set_is_plasma_object(true);
+  }
+  app_error_reply.set_task_execution_error("simulated application error");
+
+  manager_.CompletePendingTask(spec.TaskId(),
+                               app_error_reply,
+                               caller_address,
+                               /*is_application_error=*/true);
 
   ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
