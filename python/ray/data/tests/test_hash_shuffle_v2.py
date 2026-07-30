@@ -234,16 +234,16 @@ def test_get_shard_batch_warns_then_raises_on_stall(
 
 
 @pytest.mark.parametrize("ctx_value", [64 * 1024 * 1024, 0])
-def test_map_task_target_input_bytes_from_context(ctx_value, restore_data_context):
+def test_shuffle_input_batch_bytes_from_context(ctx_value, restore_data_context):
     ctx = restore_data_context
-    ctx.hash_shuffle_map_task_target_input_bytes = ctx_value
+    ctx.shuffle_input_batch_bytes = ctx_value
     op = ShuffleMapOp(
         InputDataBuffer(ctx, []),
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
     )
-    assert op._map_task_target_input_bytes == ctx_value
+    assert op._input_batch_bytes == ctx_value
 
 
 def test_shuffle_map_task_uses_operator_name():

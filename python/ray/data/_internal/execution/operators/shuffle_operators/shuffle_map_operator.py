@@ -114,10 +114,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         # -- Pre-map merge ---------------------------------------------------
         # Buffered blocks are coalesced per node into a single map task once
-        # this size is reached; <= 0 disables coalescing (one task per bundle).
-        self._map_task_target_input_bytes: int = (
-            data_context.hash_shuffle_map_task_target_input_bytes
-        )
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[
             str, List[ObjectRef[Block]]
         ] = defaultdict(list)
@@ -162,7 +160,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._map_task_target_input_bytes > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -177,10 +175,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._map_task_target_input_bytes
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
