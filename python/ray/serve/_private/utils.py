@@ -67,13 +67,16 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
     def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
 
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if _has_marker(callable_obj):
@@ -88,7 +91,13 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
             if _has_marker(attr):
                 return True
 
