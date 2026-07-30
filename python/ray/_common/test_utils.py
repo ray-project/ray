@@ -9,7 +9,6 @@ import asyncio
 import inspect
 import logging
 import os
-import signal
 import subprocess
 import sys
 import threading
@@ -42,17 +41,22 @@ DEFAULT_DRIVER_TIMEOUT_SECONDS = 300
 # bounded too or the timeout path hangs exactly like the path it replaces.
 KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS = 10
 
+# Synthetic return code recorded for a process that outlived ``Popen.kill()``.
+# ``signal.SIGKILL`` is POSIX-only and these helpers also run on Windows, so
+# the numeric value is spelled out rather than derived from ``signal``.
+_UNREAPED_PROCESS_RETURNCODE = -9
+
 
 def _detach_process(proc: subprocess.Popen) -> None:
-    """Stop waiting on a process that survived SIGKILL.
+    """Stop waiting on a process that survived ``Popen.kill()``.
 
     ``Popen.__exit__`` and ``Popen.__del__`` both call ``wait()`` with no
     timeout, so a process stuck in uninterruptible sleep would re-introduce the
     unbounded wait the caller just escaped. ``Popen.wait`` short-circuits when
-    ``returncode`` is already set, so record the signal we sent and move on.
+    ``returncode`` is already set, so record a synthetic code and move on.
     """
     if proc.returncode is None:
-        proc.returncode = -signal.SIGKILL
+        proc.returncode = _UNREAPED_PROCESS_RETURNCODE
 
 
 try:
