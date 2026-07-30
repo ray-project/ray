@@ -1698,6 +1698,21 @@ class TestMergedTimeseriesCache:
 
         assert state.get_total_num_requests() == pytest.approx(5.0)
 
+    def test_unchanged_membership_as_tuple_takes_fast_path(self):
+        """`get_running_replica_ids()` memoizes and returns a tuple, which never compares
+        equal to the list stored here, so the fast path has to compare element-wise or the
+        merge cache is invalidated on every tick."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=state._deployment_id)
+
+        state.update_running_replica_ids([r1, r2])
+        version = state._metrics_version
+
+        state.update_running_replica_ids((r1, r2))
+
+        assert state._metrics_version == version
+
     def test_dropping_stale_handle_metrics_lowers_total(self):
         """Dropping a handle's metrics has to invalidate the cached merge."""
         state = self._create_state()
