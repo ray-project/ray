@@ -1496,6 +1496,13 @@ def test_read_lerobot_delta_invalid_raises(
             lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
         )
 
+    with pytest.raises(ValueError, match="not dataset features") as exc_info:
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video,
+            delta_timestamps={"acton": [0.0, 0.1]},
+        )
+    assert "acton" in str(exc_info.value)
+
 
 if __name__ == "__main__":
     import sys
