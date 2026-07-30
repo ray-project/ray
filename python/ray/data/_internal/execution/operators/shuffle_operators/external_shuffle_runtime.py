@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import (
-    TYPE_CHECKING,
+    BinaryIO,
     Dict,
     Iterable,
     List,
@@ -22,6 +22,7 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pyarrow as pa
 
 import ray
@@ -32,9 +33,6 @@ from ray.exceptions import (
     ActorUnavailableError,
     ActorUnschedulableError,
 )
-
-if TYPE_CHECKING:
-    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +186,105 @@ class ShuffleFileServerAnomalyError(RuntimeError):
       works, which is often a network-configuration problem (``NetworkPolicy``,
       firewall, routing).
     """
+
+
+# =============================================================================
+# MAP SIDE (map tasks): buffer per-partition shards, seal them to one file, and
+# build the ShuffleHandle's dense byte index. What this writes is exactly what
+# the SERVER serves and the FETCH side reads.
+# =============================================================================
+def _build_range_index(index, num_partitions):
+    """Dense per-partition (offset, length) index: one row per partition.
+
+    Row ``p`` is ``(offset, length)`` of partition ``p``'s IPC frame; absent or
+    empty partitions stay ``(0, 0)`` (``length == 0`` => the reducer skips them).
+    """
+    ranges = np.zeros((num_partitions, 2), dtype=np.int64)
+    for pid, frame_range in index.items():
+        ranges[pid] = frame_range[0]  # (offset, length); one frame per partition
+    return ranges
+
+
+def _decoded_to_array(decoded, num_partitions):
+    """Dense per-partition decoded-byte counts (was a Dict[pid,int] in every
+    handle — a second O(partitions) bloat). One int64 array indexed by pid."""
+    arr = np.zeros(num_partitions, dtype=np.int64)
+    for pid, nbytes in decoded.items():
+        arr[pid] = nbytes
+    return arr
+
+
+class _PartitionWriter:
+    """Per-partition shard buffer, sealed to disk one IPC frame per partition.
+
+    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s list;
+    ``flush_all()`` concatenates each partition's shards, IPC-encodes them
+    into one whole-frame, writes it to the output file, and records the
+    (offset, length) range in ``index``.
+    """
+
+    __slots__ = (
+        "_out_file",
+        "_map_id",
+        "_compression",
+        "_staging",
+        "_index",
+        "_decoded_bytes_per_partition",
+    )
+
+    def __init__(
+        self,
+        out_file: BinaryIO,
+        map_id: int,
+        compression: Compression,
+    ):
+        self._out_file = out_file
+        self._map_id = map_id
+        # Codec from data_context.hash_shuffle_compression (same field the reduce reads).
+        self._compression = compression
+        self._staging: Dict[int, List[pa.Table]] = {}
+        self._index: Dict[int, List[Tuple[int, int]]] = {}
+        self._decoded_bytes_per_partition: Dict[int, int] = {}
+
+    def _flush(self, pid: int) -> None:
+        shards = self._staging.get(pid)
+        if not shards:
+            return
+        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
+        self._decoded_bytes_per_partition[pid] = tbl.nbytes
+        buf = _encode_shard(
+            tbl, self._compression
+        )  # whole-frame codec (see _encode_shard)
+        # Refuse frames the u32 response-wire encoding can't represent.
+        if buf.size > _MAX_RANGE_BYTES:
+            raise RuntimeError(
+                f"map_{self._map_id}.shf partition {pid}: IPC frame is "
+                f"{buf.size} bytes, exceeding the u32 wire-protocol "
+                f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
+                f"``num_partitions`` or reduce the upstream block size."
+            )
+        off = self._out_file.tell()
+        self._out_file.write(memoryview(buf))
+        self._index.setdefault(pid, []).append((off, buf.size))
+        self._staging[pid] = []
+
+    def add_shard(self, pid: int, shard: pa.Table) -> None:
+        if not shard.num_rows:
+            return
+        self._staging.setdefault(pid, []).append(shard)
+
+    def flush_all(self) -> None:
+        for pid in list(self._staging.keys()):
+            self._flush(pid)
+
+    @property
+    def index(self) -> Dict[int, List[Tuple[int, int]]]:
+        return self._index
+
+    @property
+    def decoded_bytes_per_partition(self) -> Dict[int, int]:
+        return self._decoded_bytes_per_partition
 
 
 # =============================================================================
