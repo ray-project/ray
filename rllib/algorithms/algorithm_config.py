@@ -1316,6 +1316,7 @@ class AlgorithmConfig(_Config):
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
+                        as_learner_connector=True,
                     )
                 )
             # Batch all data.

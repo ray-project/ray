@@ -30,10 +30,7 @@ from ray.data.collate_fn import (
     DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    TensorBatchReturnType,
-    TensorBatchType,
     _PinMemoryCollateFnWrapper,
-    is_tensor_batch_type,
 )
 from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
@@ -44,6 +41,7 @@ if TYPE_CHECKING:
     import torch
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.utils.torch_utils import FinalizeFn
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -514,15 +512,16 @@ class DataIterator(abc.ABC):
                 with ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: [Alpha] A function to customize how data batches are collated
                 before being passed to the model. This is useful for last-mile data
                 formatting such as padding, masking, or packaging tensors into custom
                 data structures. If not provided, `iter_torch_batches` automatically
-                converts batches to `torch.Tensor`s and moves them to the device
-                assigned to the current worker. The input to `collate_fn` may be:
+                converts batches to `torch.Tensor`s and moves them to the target
+                device (see ``device``). The input to `collate_fn` may be:
 
                 1. pyarrow.Table, where you should provide a callable class that
                    subclasses `ArrowBatchCollateFn` (recommended for best performance).
@@ -536,7 +535,7 @@ class DataIterator(abc.ABC):
 
                 The output can be any type. Return a non-pinned `TensorBatchType` to
                 get managed memory pinning (see ``pin_memory``) and transfer to the
-                current worker's device. Any other output type means you must
+                target device (see ``device``). Any other output type means you must
                 handle device transfer manually in your training loop (consider using
                 :meth:`~ray.data.DataIterator.iter_batches` instead).
                 Note: This function is called in a multi-threaded context; avoid using
@@ -558,52 +557,30 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over Torch Tensor batches.
         """
-        from torch import device as torch_device
+        import torch
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
 
-        if collate_fn is not None and (dtypes is not None or device != "auto"):
+        if collate_fn is not None and dtypes is not None:
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device."
-                "You should manually move the output Torch tensors to the"
-                "desired dtype and device outside of collate_fn."
+                "collate_fn cannot be used with dtypes. You should manually "
+                "convert the output Torch tensors to the desired dtype "
+                "inside collate_fn."
             )
 
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-        device = torch_device(device)
-
-        from ray.data.util.torch_utils import (
-            move_tensors_to_device,
-        )
-
-        # The default finalize_fn handles the host to device data transfer.
-        # This is executed in a 1-thread pool separately from collate_fn
-        # to allow independent parallelism of these steps.
-        def default_finalize_fn(
-            batch: TensorBatchType,
-        ) -> Union[TensorBatchReturnType, Any]:
-            """Default finalize function for moving PyTorch tensors to device. If
-            batch is of type `TensorBatchType`, it will be automatically moved to the
-            current worker's device. For other types, you must handle device transfer
-            manually in your training loop.
-
-            Args:
-                batch: Input batch to move to device.
-
-            Returns:
-                Batch with tensors moved to the target device.
-                - If input is TensorBatchType, returns tensors moved to device
-                - Otherwise returns the same type as input without moving tensors
-                to device.
-            """
-            if is_tensor_batch_type(batch):
-                return move_tensors_to_device(batch, device=device)
-            else:
-                return batch
+        device = torch.device(device)
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
+            # "cuda" without an index is thread-relative: it resolves to the
+            # calling thread's *current* CUDA device. finalize_fn runs on a
+            # background fetch thread, so the device on the finalize thread
+            # and consumer thread might be different. Pin the device to a
+            # concrete index here.
+            device = torch.device("cuda", torch.cuda.current_device())
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
@@ -654,8 +631,13 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=default_finalize_fn,
+            _finalize_fn=self._get_finalize_fn(device=device),
         )
+
+    def _get_finalize_fn(self, *, device: "torch.device") -> "FinalizeFn":
+        from ray.data._internal.utils.torch_utils import DefaultFinalizeFn
+
+        return DefaultFinalizeFn(device)
 
     def iter_tf_batches(
         self,
