@@ -66,6 +66,9 @@ def main(args):
     # Get the preprocessing transforms from the pre-trained weights.
     transform = weights.transforms()
 
+    ray.data.DataContext.get_current().isolate_read_workers = True
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
     start_time = time.time()
 
     if data_format == "raw":
