@@ -373,7 +373,7 @@ def _make_flight_server(host: str, base_dir: str, token: str):
     return _ShuffleFlightServer(_grpc_location(host, 0))
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
     byte-ranges of local shuffle files to remote reducers. Survives individual
