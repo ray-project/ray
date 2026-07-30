@@ -447,7 +447,10 @@ def run_string_as_driver(
             logger.error(
                 "Driver did not exit within %ss; killed it. Output so far:\n%s",
                 timeout,
-                decode(output, encode_type=encode),
+                # Decode leniently: a killed driver's output can end mid
+                # multi-byte sequence, and a UnicodeDecodeError here would
+                # mask the TimeoutExpired the caller needs to see.
+                output.decode(encode, errors="replace"),
             )
             raise
         if proc.returncode:
