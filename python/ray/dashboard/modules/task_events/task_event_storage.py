@@ -14,8 +14,11 @@ from typing import Dict, List, Optional, Set, Tuple
 import ray
 from ray._raylet import JobID, TaskID
 from ray.core.generated import gcs_pb2
-from ray.core.generated.common_pb2 import TaskType
-from ray.dashboard.modules.task_events.gc_policy import FinishedTaskActorTaskGcPolicy
+from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo, TaskStatus, TaskType
+from ray.dashboard.modules.task_events.gc_policy import (
+    FinishedTaskActorTaskGcPolicy,
+    is_task_terminated,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +227,46 @@ class TaskEventStorage:
             if attempt in self._primary_index:
                 self._remove_task_attempt(attempt)
 
+    def mark_tasks_failed_on_worker_dead(
+        self, worker_id: bytes, worker_table_data: gcs_pb2.WorkerTableData
+    ) -> None:
+        """Mark all non-terminal task attempts run by a dead worker as failed."""
+        attempts = self._worker_index.get(worker_id)
+        if attempts is None:
+            return
+        error_info = RayErrorInfo(error_type=ErrorType.WORKER_DIED)
+        error_info.error_message = (
+            f"Worker running the task ({worker_id.hex()}) died with exit_type: "
+            f"{worker_table_data.exit_type} with error_message: "
+            f"{worker_table_data.exit_detail}"
+        )
+        failed_ts_ns = worker_table_data.end_time_ms * 10**6
+        for attempt in list(attempts):
+            self._mark_task_attempt_failed_if_needed(attempt, failed_ts_ns, error_info)
+
+    def mark_tasks_failed_on_job_ends(
+        self, job_id: bytes, job_finish_time_ns: int
+    ) -> None:
+        """Mark all non-terminal task attempts of a finished job as failed."""
+        attempts = self._job_index.get(job_id)
+        if attempts is None:
+            return
+        error_info = RayErrorInfo(error_type=ErrorType.WORKER_DIED)
+        error_info.error_message = (
+            f"Job finishes ({job_id.hex()}) as driver exits. "
+            "Marking all non-terminal tasks as failed."
+        )
+        for attempt in list(attempts):
+            self._mark_task_attempt_failed_if_needed(
+                attempt, job_finish_time_ns, error_info
+            )
+
+    def update_job_summary_on_job_done(self, job_id: bytes) -> None:
+        """Clear a finished job's dropped-attempt tracking (no more events will arrive)."""
+        summary = self._job_task_summary.get(job_id)
+        if summary is not None:
+            summary.on_job_ends()
+
     def gc_job_summary(self) -> None:
         for job_id, summary in self._job_task_summary.items():
             summary.gc_old_dropped_task_attempts(job_id)
@@ -341,3 +384,13 @@ class TaskEventStorage:
                 oldest = next(iter(self._tiers[tier]))
                 self._remove_task_attempt(oldest)
                 return
+
+    def _mark_task_attempt_failed_if_needed(
+        self, attempt: TaskAttempt, failed_ts_ns: int, error_info: RayErrorInfo
+    ) -> None:
+        task_event = self._tiers[self._primary_index[attempt]][attempt]
+        # Don't fail a task attempt that already reached a terminal state.
+        if is_task_terminated(task_event):
+            return
+        task_event.state_updates.state_ts_ns[TaskStatus.FAILED] = failed_ts_ns
+        task_event.state_updates.error_info.CopyFrom(error_info)
