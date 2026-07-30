@@ -338,6 +338,11 @@ class ActorProxyWrapper(ProxyWrapper):
                 f"Proxy actor on {self._node_id} is unschedulable or dead ({e}); "
                 "skipping graceful shutdown."
             )
+        except GetTimeoutError:
+            logger.warning(
+                f"Graceful shutdown of proxy actor on {self._node_id} timed out after "
+                f"{PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S}s; force killing."
+            )
         except RayError:
             logger.exception(
                 f"Graceful shutdown of proxy actor on {self._node_id} failed."
@@ -347,6 +352,8 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             ray.kill(self._actor_handle, no_restart=True)
         except RayError:
+            # Catch RayError (including ActorHandleNotFoundError for older-session handles)
+            # so expected GCS restoration edge cases do not crash the controller.
             logger.exception(f"Force kill of proxy actor on {self._node_id} failed.")
 
 
