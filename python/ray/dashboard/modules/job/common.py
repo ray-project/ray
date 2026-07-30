@@ -100,7 +100,6 @@ class JobFailureStage(str, Enum):
     src/ray/protobuf/common.proto.
     """
 
-    SUBMISSION = "SUBMISSION"
     RUNTIME_ENV_SETUP = "RUNTIME_ENV_SETUP"
     SUPERVISOR_START = "SUPERVISOR_START"
     DRIVER_RUN = "DRIVER_RUN"

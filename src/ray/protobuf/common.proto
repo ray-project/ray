@@ -524,8 +524,16 @@ message JobFailureInfo {
   // Where in the job lifecycle the failure happened. Selects which context
   // below is set.
   enum Stage {
+    // UNSPECIFIED is also what a reader sees when the whole failure_info is
+    // absent, because this field has no presence. Check for failure_info itself
+    // before reading a stage from it: "no evidence was reported" and "evidence
+    // arrived with no stage" are different claims and this value cannot tell
+    // them apart.
     UNSPECIFIED = 0;
-    SUBMISSION = 1;
+    // 1 was SUBMISSION. Nothing ever set it -- a job that fails before the
+    // manager takes it does not reach any of these writers at all, so the stage
+    // it would have described is precisely the case that produces no record.
+    // Left unused so restoring it is a pure addition.
     RUNTIME_ENV_SETUP = 2;
     // 3 was WORKER_BOOTSTRAP, and 6 in the oneof below was its context. A worker
     // that started but never registered is recorded in the actor's death cause as
