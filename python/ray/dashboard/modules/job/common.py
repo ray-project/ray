@@ -15,6 +15,7 @@ from ray._private.event.export_event_logger import (
     get_export_event_logger,
 )
 from ray._private.protobuf_compat import message_to_dict
+from ray._private.runtime_env.utils import summary_line
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
@@ -184,7 +185,46 @@ def make_failure_info(
         pruned = {k: v for k, v in context.items() if v is not None}
         if pruned:
             info[context_key] = pruned
-    return info
+    return _cap_error_messages(info)
+
+
+def _cap_error_messages(value: Any) -> Any:
+    """Reduce every ``error_message`` anywhere in ``value`` to one capped line.
+
+    Enforced here rather than at each call site on purpose. The rule this upholds
+    -- that no unbounded text rides the failure_info path -- was originally written
+    per field, on the basis that some of these messages are Ray's own short strings
+    and some are customer-shaped. That does not survive contact with the code:
+    ``driver_run.error_message`` is "failed with exit code N" at one call site and a
+    formatted traceback at another, so a field cannot be classified by origin, and a
+    new call site would quietly reintroduce the problem.
+
+    Capping uniformly costs nothing on the short Ray-generated strings, which are
+    already a single line under the limit, and makes the invariant hold for every
+    writer including ones not written yet.
+
+    Args:
+        value: A failure_info fragment -- dict, list or leaf.
+
+    Returns:
+        The same shape with every ``error_message`` string capped.
+    """
+    if isinstance(value, dict):
+        capped = {}
+        for key, item in value.items():
+            if key == "error_message" and isinstance(item, str):
+                line = summary_line(item)
+                # Drop the key when there was nothing to carry. str(e) is empty
+                # for an exception raised with no message, and a present-but-blank
+                # message reads as a reported fact rather than as an absence.
+                if line is not None:
+                    capped[key] = line
+            else:
+                capped[key] = _cap_error_messages(item)
+        return capped
+    if isinstance(value, list):
+        return [_cap_error_messages(item) for item in value]
+    return value
 
 
 # TODO(aguo): Convert to pydantic model

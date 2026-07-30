@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
+from ray._private.runtime_env.utils import MAX_SUMMARY_LINE_CHARS
 from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
     ErrorType,
@@ -353,6 +354,80 @@ def test_runtime_env_failure_info_json_to_proto():
     assert failure_info.runtime_env.attempts[0].duration_ms == 123
     # An installer that never ran is a different claim from one that exited 0.
     assert not failure_info.runtime_env.HasField("failed_package")
+
+
+def test_error_messages_are_capped_wherever_they_appear():
+    """No unbounded text rides the failure_info path, whoever wrote it.
+
+    This is enforced in make_failure_info rather than at each call site because
+    the rule cannot be applied per field: driver_run.error_message is a short
+    Ray-generated string on the exit-code path and a formatted traceback on the
+    failed-to-start path. A field's content is a property of its writer, so a
+    per-field rule silently lapses the moment a new writer appears.
+    """
+    traceback_text = (
+        "Traceback (most recent call last):\n"
+        '  File "job_supervisor.py", line 1, in _exec_entrypoint\n'
+        "FileNotFoundError: [Errno 2] No such file or directory: 'missing.sh'"
+    )
+
+    info = make_failure_info(
+        JobFailureStage.DRIVER_RUN,
+        context_key="driver_run",
+        context={"error_message": traceback_text, "failed_to_start": True},
+    )
+    # Only the actionable last line survives, and it is one line.
+    assert info["driver_run"]["error_message"] == (
+        "FileNotFoundError: [Errno 2] No such file or directory: 'missing.sh'"
+    )
+
+    # Nested messages are reached too. A supervisor death cause carries its own,
+    # one level down inside the oneof branch it has to be wrapped in.
+    nested = make_failure_info(
+        JobFailureStage.SUPERVISOR_START,
+        context_key="supervisor",
+        context={
+            "error_message": "outer\n" + "o" * 400,
+            "death_cause": {
+                "actor_died_error_context": {"error_message": "inner\n" + "i" * 400}
+            },
+        },
+    )
+    supervisor = nested["supervisor"]
+    assert len(supervisor["error_message"]) == MAX_SUMMARY_LINE_CHARS
+    inner = supervisor["death_cause"]["actor_died_error_context"]["error_message"]
+    assert len(inner) == MAX_SUMMARY_LINE_CHARS
+
+    # And inside a list, which is how runtime env attempts arrive.
+    attempts = make_failure_info(
+        JobFailureStage.RUNTIME_ENV_SETUP,
+        context_key="runtime_env",
+        context={"attempts": [{"attempt": 1, "error_message": "a\n" + "x" * 400}]},
+    )
+    assert (
+        len(attempts["runtime_env"]["attempts"][0]["error_message"])
+        == MAX_SUMMARY_LINE_CHARS
+    )
+
+    # A short Ray-generated string is untouched, so capping uniformly costs
+    # nothing on the messages that were already fine.
+    ray_generated = "Job entrypoint command failed with exit code 1."
+    plain = make_failure_info(
+        JobFailureStage.DRIVER_RUN,
+        context_key="driver_run",
+        context={"error_message": ray_generated},
+    )
+    assert plain["driver_run"]["error_message"] == ray_generated
+
+    # str(e) is "" for an exception raised with no message. The key has to be
+    # absent rather than present-and-blank: a blank message reads as a reported
+    # fact, and null would contradict every other optional field on this record.
+    blank = make_failure_info(
+        JobFailureStage.SUPERVISOR_START,
+        context_key="supervisor",
+        context={"error_message": "", "exception_class": "RuntimeError"},
+    )
+    assert blank["supervisor"] == {"exception_class": "RuntimeError"}
 
 
 def test_supervisor_failure_info_json_to_proto():

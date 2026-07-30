@@ -15,7 +15,6 @@ from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VA
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
 from ray._private.label_utils import validate_label_selector
-from ray._private.runtime_env.utils import summary_line
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -381,11 +380,11 @@ class JobManager:
                             JobFailureStage.SUPERVISOR_START,
                             context_key="supervisor",
                             context={
-                                # One line: an actor that died in its creation
-                                # task renders the job's own traceback here, which
-                                # is customer content. death_cause below carries
-                                # the part that is not.
-                                "error_message": summary_line(str(e)),
+                                # An actor that died in its creation task renders
+                                # the job's own traceback here. make_failure_info
+                                # caps it; death_cause below carries the part of
+                                # the cause that is structured rather than text.
+                                "error_message": str(e),
                                 "exception_class": type(e).__name__,
                                 "death_cause": _supervisor_death_cause(e),
                             },
