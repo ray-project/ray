@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+from typing import Optional
 
 from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
 
@@ -214,39 +215,82 @@ RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
 # rejects explicit query values outside this range; the configured defaults below
 # are clamped to it too, so a misconfigured env var can never exceed the cap.
 # The minimum is a hard floor. The maximum is operator-configurable via
-# RAY_DASHBOARD_PROFILING_MAX_DURATION_S: a synchronous profile blocks the request
-# for its whole duration and py-spy/memray output grows with it, so it is capped
-# rather than left open-ended, but the cap is raised or lowered per cluster.
-# Floored at the minimum so a misconfigured max can never invert the range (which
-# would otherwise reject every duration).
+# RAY_DASHBOARD_PROFILING_MAX_DURATION_S and defaults to 60s, the cap the endpoint
+# has always enforced: a synchronous profile blocks the request for its whole
+# duration and py-spy/memray output grows with it, so it is capped rather than
+# left open-ended, but the cap is raised or lowered per cluster.
 MIN_PROFILING_DURATION_S = 1
-MAX_PROFILING_DURATION_S = max(
-    env_integer("RAY_DASHBOARD_PROFILING_MAX_DURATION_S", 300),
-    MIN_PROFILING_DURATION_S,
-)
+MAX_PROFILING_DURATION_S_ENV_KEY = "RAY_DASHBOARD_PROFILING_MAX_DURATION_S"
 
 
-def _clamp_profiling_duration(seconds: int) -> int:
-    """Clamp a profiling duration (seconds) into the accepted range."""
-    return max(MIN_PROFILING_DURATION_S, min(seconds, MAX_PROFILING_DURATION_S))
+def _profiling_duration_cap() -> int:
+    """Read the operator-configured profiling duration cap (seconds).
+
+    Returns:
+        The configured cap, floored at ``MIN_PROFILING_DURATION_S``. A cap below
+        the minimum would invert the accepted range and reject every duration, so
+        it is floored (with a warning) rather than honored.
+    """
+    configured = env_integer(MAX_PROFILING_DURATION_S_ENV_KEY, 60)
+    if configured < MIN_PROFILING_DURATION_S:
+        logger.warning(
+            "%s=%d is below the minimum profiling duration; using %ds instead.",
+            MAX_PROFILING_DURATION_S_ENV_KEY,
+            configured,
+            MIN_PROFILING_DURATION_S,
+        )
+        return MIN_PROFILING_DURATION_S
+    return configured
+
+
+MAX_PROFILING_DURATION_S = _profiling_duration_cap()
+
+
+def _clamp_profiling_duration(seconds: int, env_key: Optional[str] = None) -> int:
+    """Clamp a profiling duration (seconds) into the accepted range.
+
+    Args:
+        seconds: The configured duration to clamp.
+        env_key: Name of the environment variable ``seconds`` was read from. Used
+            to make the out-of-range warning actionable; omit when the value did
+            not come from the environment.
+
+    Returns:
+        ``seconds`` clamped to
+        ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    """
+    clamped = max(MIN_PROFILING_DURATION_S, min(seconds, MAX_PROFILING_DURATION_S))
+    if clamped != seconds:
+        logger.warning(
+            "%s is outside the accepted profiling duration range [%ds, %ds]; "
+            "clamping to %ds.",
+            f"{env_key}={seconds}" if env_key else f"Profiling duration {seconds}s",
+            MIN_PROFILING_DURATION_S,
+            MAX_PROFILING_DURATION_S,
+            clamped,
+        )
+    return clamped
 
 
 # Duration in seconds for CPU profiling. Clamped to
 # [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
 RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = _clamp_profiling_duration(
-    env_integer("RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5)
+    env_integer("RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5),
+    "RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT",
 )
 # Duration in seconds for memory profiling. Clamped to
 # [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
 RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = _clamp_profiling_duration(
-    env_integer("RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10)
+    env_integer("RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10),
+    "RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT",
 )
 
 # Output format defaults. The valid sets DIFFER by profiler: py-spy (CPU) accepts
 # flamegraph/raw/speedscope while memray (memory) accepts flamegraph/table, so
-# each is validated independently against its own set.
-_VALID_CPU_PROFILING_FORMATS = ("flamegraph", "raw", "speedscope")
-_VALID_MEMORY_PROFILING_FORMATS = ("flamegraph", "table")
+# each is validated independently against its own set. `profile_manager` reads
+# these too, so the accepted formats are defined in exactly one place.
+VALID_CPU_PROFILING_FORMATS = ("flamegraph", "raw", "speedscope")
+VALID_MEMORY_PROFILING_FORMATS = ("flamegraph", "table")
 
 
 def _validated_profiling_format(env_key, valid_formats, fallback="flamegraph"):
@@ -265,10 +309,10 @@ def _validated_profiling_format(env_key, valid_formats, fallback="flamegraph"):
 
 
 RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT = _validated_profiling_format(
-    "RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT", _VALID_CPU_PROFILING_FORMATS
+    "RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT", VALID_CPU_PROFILING_FORMATS
 )
 RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT = _validated_profiling_format(
-    "RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT", _VALID_MEMORY_PROFILING_FORMATS
+    "RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT", VALID_MEMORY_PROFILING_FORMATS
 )
 
 DEFAULT_DASHBOARD_PORT = 8265

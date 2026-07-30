@@ -62,7 +62,7 @@ Each profiling request (stack trace, CPU flame graph, memory profile) accepts se
   - `10`
 * - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
   - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so it's capped rather than open-ended; raise or lower it per cluster. The minimum is always 1s. Explicit `duration` query values above this return HTTP 400.
-  - `300`
+  - `60`
 * - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
   - Output format for CPU profiling. One of `flamegraph`, `raw`, `speedscope`.
   - `flamegraph`

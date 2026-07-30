@@ -52,7 +52,7 @@ export const DEFAULT_PROFILING_DEFAULTS: ProfilingDefaults = {
   tracePythonAllocators: false,
   cpuDuration: 5,
   memoryDuration: 10,
-  maxDuration: 300,
+  maxDuration: 60,
   cpuFormat: "flamegraph",
   memoryFormat: "flamegraph",
   // Assume supported until the backend says otherwise, so an unreachable

@@ -426,11 +426,14 @@ class ReportHead(SubprocessModule):
                 task_id: The ID of the task.
                 attempt_number: The attempt number of the task.
                 node_id: The ID of the node.
-                duration: Optional. Duration in seconds for profiling
-                    (default: 5, max: 60).
-                format: Optional. Output format (default: "flamegraph").
-                native: Optional. Whether to use native profiling
-                    (default: false).
+                duration: Optional. Duration in seconds for profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT and must be within
+                    [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                format: Optional. Output format, one of
+                    VALID_CPU_PROFILING_FORMATS. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT.
+                native: Optional. Whether to use native profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the CPU profile data.
@@ -438,8 +441,8 @@ class ReportHead(SubprocessModule):
         Raises:
             ValueError: If the "task_id" parameter is missing in the request query.
             ValueError: If the "attempt_number" parameter is missing in the request query.
-            ValueError: If the maximum duration allowed is exceeded.
             ValueError: If the worker begins working on another task during the profile retrieval.
+            aiohttp.web.HTTPBadRequest: If "duration" is not an integer or falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
@@ -540,6 +543,11 @@ class ReportHead(SubprocessModule):
             req: A request with the following query parameters:
                 pid: Required. The PID of the worker.
                 ip or node_id: Required. The IP address or hex ID of the node.
+                native: Optional. Whether to include native (C/C++) stack frames.
+                    Defaults to RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+                subprocesses: Optional. Whether to also trace child processes of
+                    the worker. Defaults to
+                    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the traceback
@@ -604,15 +612,20 @@ class ReportHead(SubprocessModule):
             req: A request with the following query parameters:
                 pid: Required. The PID of the worker.
                 ip or node_id: Required. The IP address or hex ID of the node.
-                duration: Optional. Duration in seconds for profiling
-                    (default: 5, max: 60).
-                format: Optional. Output format (default: "flamegraph").
-                native: Optional. Whether to use native profiling
-                    (default: false).
+                duration: Optional. Duration in seconds for profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT and must be within
+                    [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                format: Optional. Output format, one of
+                    VALID_CPU_PROFILING_FORMATS. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT.
+                native: Optional. Whether to use native profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
                 idle: Optional. Whether to include off-CPU / sleeping threads
-                    in the profile (default: false).
+                    in the profile. Defaults to
+                    RAY_DASHBOARD_PROFILING_IDLE_DEFAULT.
                 subprocesses: Optional. Whether to also profile child processes
-                    of the worker (default: false).
+                    of the worker. Defaults to
+                    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the CPU profile data,
@@ -621,7 +634,7 @@ class ReportHead(SubprocessModule):
         Raises:
             ValueError: If pid is not provided.
             ValueError: If ip or node_id is not provided.
-            ValueError: If duration exceeds 60 seconds.
+            aiohttp.web.HTTPBadRequest: If "pid" or "duration" is not an integer, or "duration" falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
         """
         if not RAY_DASHBOARD_ENABLE_PROFILING:
@@ -909,17 +922,31 @@ class ReportHead(SubprocessModule):
                     attempt_number: The attempt number of the task.
                     node_id: The ID of the node.
 
+                Both accept the following optional parameters:
+                    duration: Duration in seconds for profiling. Defaults to
+                        RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT and must be
+                        within [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                    format: Output format, one of VALID_MEMORY_PROFILING_FORMATS.
+                        Defaults to RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT.
+                    native: Whether to include native (C/C++) stack frames.
+                        Defaults to RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+                    leaks: Whether to report memory leaks instead of peak usage.
+                        Defaults to RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT.
+                    trace_python_allocators: Whether to record pymalloc
+                        allocations. Defaults to
+                        RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT.
+
         Returns:
             aiohttp.web.Response: The HTTP response containing the memory profile data.
 
         Raises:
+            aiohttp.web.HTTPBadRequest: If "pid" or "duration" is not an
+                integer, or "duration" falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If no stub
                 found from the given IP address or hex ID value
             aiohttp.web.HTTPInternalServerError: If the
                 "task_id" parameter exists but either "attempt_number"
                 or "node id" is missing in the request query.
-            aiohttp.web.HTTPInternalServerError: If the maximum
-                duration allowed is exceeded.
             aiohttp.web.HTTPInternalServerError: If requesting task
                 profiling for the worker begins working on another task
                 during the profile retrieval.

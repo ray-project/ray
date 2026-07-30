@@ -1728,20 +1728,41 @@ def test_clamp_profiling_duration(seconds, expected):
     assert ray_constants._clamp_profiling_duration(seconds) == expected
 
 
+def test_clamp_profiling_duration_warns_and_names_the_env_var():
+    # A silently clamped value looks like the operator's setting took effect, so
+    # the warning must name the env var that was ignored and the bound applied.
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MAX_PROFILING_DURATION_S + 1, "RAY_TEST_PROFILING_DURATION"
+        )
+    assert mock_warning.call_count == 1
+    rendered = mock_warning.call_args.args[0] % mock_warning.call_args.args[1:]
+    assert "RAY_TEST_PROFILING_DURATION" in rendered
+    assert str(ray_constants.MAX_PROFILING_DURATION_S) in rendered
+
+
+def test_clamp_profiling_duration_silent_when_in_range():
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MIN_PROFILING_DURATION_S, "RAY_TEST_PROFILING_DURATION"
+        )
+    mock_warning.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "env_value, valid_formats, expected",
     [
         # Valid values pass through unchanged.
-        ("flamegraph", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
-        ("speedscope", ray_constants._VALID_CPU_PROFILING_FORMATS, "speedscope"),
-        ("table", ray_constants._VALID_MEMORY_PROFILING_FORMATS, "table"),
+        ("flamegraph", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("speedscope", ray_constants.VALID_CPU_PROFILING_FORMATS, "speedscope"),
+        ("table", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "table"),
         # Invalid values fall back to flamegraph.
-        ("bogus", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("bogus", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
         # The valid sets differ by profiler: `speedscope` is a py-spy (CPU) format
         # and must be rejected for memray (memory) profiling, and vice versa for
         # `table`. This guards against a single shared format default.
-        ("speedscope", ray_constants._VALID_MEMORY_PROFILING_FORMATS, "flamegraph"),
-        ("table", ray_constants._VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("speedscope", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "flamegraph"),
+        ("table", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
     ],
 )
 def test_validated_profiling_format(monkeypatch, env_value, valid_formats, expected):
@@ -1758,7 +1779,7 @@ def test_validated_profiling_format_absent_uses_fallback(monkeypatch):
     monkeypatch.delenv("RAY_TEST_PROFILING_FORMAT", raising=False)
     assert (
         ray_constants._validated_profiling_format(
-            "RAY_TEST_PROFILING_FORMAT", ray_constants._VALID_CPU_PROFILING_FORMATS
+            "RAY_TEST_PROFILING_FORMAT", ray_constants.VALID_CPU_PROFILING_FORMATS
         )
         == "flamegraph"
     )
