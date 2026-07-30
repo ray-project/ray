@@ -1,5 +1,5 @@
 """External-shuffle file-transport runtime: Arrow Flight transport, per-node
-ShuffleManager actor, prefetch layout, error hierarchy. Imported by the
+ShuffleFileServer actor, prefetch layout, error hierarchy. Imported by the
 map/reduce task bodies in ``external_shuffle_tasks``."""
 
 import errno
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# SHARED: shard codec, page-cache hint, ShuffleManager identity/lookup, the
+# SHARED: shard codec, page-cache hint, ShuffleFileServer identity/lookup, the
 # ShuffleHandle type, and the error hierarchy — used by BOTH map and reduce.
 # =============================================================================
 # Each range's payload length is framed as a u32 in the sink, so no single
@@ -117,12 +117,12 @@ def _drop_pagecache(fd: int, offset: int, length: int) -> None:
         pass
 
 
-# ShuffleManager actor identity. Name is deterministic in (shuffle_id, node_id)
-_SHUFFLE_MANAGER_NAMESPACE = "ray_data_shuffle_external"
+# ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id)
+_SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
 
 
-def _manager_name(shuffle_id: str, node_id: str) -> str:
-    return f"shuffle_mgr:{shuffle_id}:{node_id}"
+def _file_server_name(shuffle_id: str, node_id: str) -> str:
+    return f"shuffle_file_server:{shuffle_id}:{node_id}"
 
 
 class ShuffleHandle(TypedDict, total=False):
@@ -164,8 +164,8 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
     return isinstance(exc, OSError) and exc.errno in _DISK_EXHAUSTED_ERRNOS
 
 
-class ShuffleManagerAnomalyError(RuntimeError):
-    """Terminal shuffle-manager failure: a driver-level retry cannot fix it.
+class ShuffleFileServerAnomalyError(RuntimeError):
+    """Terminal shuffle file-server failure: a driver-level retry cannot fix it.
 
     We run with ``max_restarts=-1``, ``lifetime="detached"``,
     ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
@@ -193,7 +193,7 @@ class ShuffleManagerAnomalyError(RuntimeError):
 # shared with the fetch client below.
 # =============================================================================
 # Per-Result body size. Each flight.Result buffer is materialized whole in RAM
-# when sent, so chunking bounds the ShuffleManager actor's memory.
+# when sent, so chunking bounds the ShuffleFileServer actor's memory.
 _FLIGHT_CHUNK = MiB
 
 
@@ -250,7 +250,7 @@ def _make_flight_server(host: str, base_dir: str, token: str):
 
 
 @ray.remote
-class ShuffleManager:
+class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
     byte-ranges of local shuffle files to remote reducers. Survives individual
     map/reduce workers; in a real cluster, one per node (NodeAffinity)."""
@@ -277,9 +277,9 @@ class ShuffleManager:
         try:
             self._server.serve()  # gRPC Flight server; blocks until shutdown
         except BaseException:
-            logger.exception("ShuffleManager server loop crashed; exiting actor")
+            logger.exception("ShuffleFileServer server loop crashed; exiting actor")
         else:
-            logger.error("ShuffleManager server loop returned; exiting actor")
+            logger.error("ShuffleFileServer server loop returned; exiting actor")
         os._exit(1)
 
     def endpoint(self) -> Tuple[str, int]:
@@ -298,13 +298,12 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
 
 
 # =============================================================================
-# FETCH SIDE (reduce tasks): resolve manager endpoints, stream shards from each
+# FETCH SIDE (reduce tasks): resolve file-server endpoints, stream shards from each
 # over a Flight client into the prefetch sink at disjoint offsets, then decode.
 # =============================================================================
-# Process-global cache of ShuffleManager endpoints: {actor_name: (ip, port)}.
-# Stale entries are popped by ``_prefetch_node_into`` on fetch failure; the next
-# ``_resolve()`` call re-queries the actor. The lock guards concurrent access
-# from reducer fetch threads.
+# Process-global endpoint cache, reused across reducers running on the same
+# worker. Popped on fetch failure (re-resolved next call); the lock guards the
+# concurrent fetch threads.
 _ENDPOINT_CACHE: Dict[str, Tuple[str, int]] = {}
 _ENDPOINT_CACHE_LOCK = threading.Lock()
 
@@ -324,10 +323,10 @@ class _FileRanges:
 
 @dataclass(slots=True, frozen=True)
 class _SourceRef:
-    """A ``_FileRanges`` tagged with its ShuffleManager identity.
+    """A ``_FileRanges`` tagged with its ShuffleFileServer identity.
 
     Built once per input handle for a given partition_id at reducer start.
-    The (shuffle_id, node_id) pair is the manager's named-actor identity.
+    The (shuffle_id, node_id) pair is the file server's named-actor identity.
     """
 
     shuffle_id: str
@@ -338,9 +337,9 @@ class _SourceRef:
 
 @dataclass(slots=True)
 class _NodeGroup:
-    """All sources on one ShuffleManager, grouped so we open ONE Flight
-    connection per manager. Sources collapse to the same group when their
-    ``(shuffle_id, node_id)`` (i.e., the manager's named-actor identity) matches.
+    """All sources on one ShuffleFileServer, grouped so we open ONE Flight
+    connection per file server. Sources collapse to the same group when their
+    ``(shuffle_id, node_id)`` (i.e., the file server's named-actor identity) matches.
     """
 
     shuffle_id: str
@@ -422,11 +421,11 @@ def _stream_members_flight(
                 # pyarrow surfaces our server-side token check as ArrowInvalid
                 # (NOT a FlightError), so match on the message, not the type.
                 if "AUTH_FAIL" in str(e):
-                    raise PermissionError(f"ShuffleManager auth failed: {e}") from e
+                    raise PermissionError(f"ShuffleFileServer auth failed: {e}") from e
                 # Any other fetch failure (unavailable / timeout / server error):
                 # retryable transport fault. _prefetch_node_into re-resolves the
                 # endpoint and, if unchanged, escalates to a terminal
-                # ShuffleManagerAnomalyError (no infinite retry).
+                # ShuffleFileServerAnomalyError (no infinite retry).
                 raise ConnectionError(
                     f"flight fetch from {host}:{port} failed: {e}"
                 ) from e
@@ -449,14 +448,14 @@ def _prefetch_node_into(
     client, batched into DoAction requests of ≤ ``max_bytes_per_fetch``.
 
     Actor state drives the recovery policy:
-      * Dead (init fail/ray.kill)     -> ``ShuffleManagerAnomalyError`` (terminal)
-      * Unschedulable (node lost)     -> ``ShuffleManagerAnomalyError`` (terminal)
+      * Dead (init fail/ray.kill)     -> ``ShuffleFileServerAnomalyError`` (terminal)
+      * Unschedulable (node lost)     -> ``ShuffleFileServerAnomalyError`` (terminal)
       * Unavailable (restarting)      -> poll until Ray resolves
       * conn dead, endpoint changed   -> reset sink, reconnect, retry in-place
-      * conn dead, endpoint unchanged -> ``ShuffleManagerAnomalyError`` (network
+      * conn dead, endpoint unchanged -> ``ShuffleFileServerAnomalyError`` (network
                                            config problem, terminal)
     """
-    key = _manager_name(shuffle_id, node_id)
+    key = _file_server_name(shuffle_id, node_id)
 
     def _resolve() -> Tuple[str, int]:
         # Endpoint cache avoids a blocking Ray RPC per fetch. On miss, ask
@@ -466,26 +465,26 @@ def _prefetch_node_into(
         if ep is not None:
             return ep
         try:
-            manager = ray.get_actor(
-                _manager_name(shuffle_id, node_id),
-                namespace=_SHUFFLE_MANAGER_NAMESPACE,
+            server = ray.get_actor(
+                _file_server_name(shuffle_id, node_id),
+                namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
             )
         except ValueError as e:
             # Actor name isn't registered (never created or cleaned up)
-            raise ShuffleManagerAnomalyError(
-                f"ShuffleManager on node {node_id} not found in namespace: {e}"
+            raise ShuffleFileServerAnomalyError(
+                f"ShuffleFileServer on node {node_id} not found in namespace: {e}"
             ) from e
         poll_count = 0
         while True:
             try:
-                ep = ray.get(manager.endpoint.remote())
+                ep = ray.get(server.endpoint.remote())
                 break
             except ActorUnavailableError:
                 poll_count += 1
                 # Surface a warning every ~30s so a stuck fetch is visible.
                 if poll_count % 15 == 0:
                     logger.warning(
-                        f"ShuffleManager on node {node_id} unavailable "
+                        f"ShuffleFileServer on node {node_id} unavailable "
                         f"(~{poll_count * 2}s), still polling..."
                     )
                 time.sleep(2.0)
@@ -494,15 +493,15 @@ def _prefetch_node_into(
                 # surfaces ActorUnavailableError during the restart. So an
                 # ActorDiedError reaching us means init failure or external
                 # ray.kill
-                raise ShuffleManagerAnomalyError(
-                    f"ShuffleManager on node {node_id} is dead: {e}"
+                raise ShuffleFileServerAnomalyError(
+                    f"ShuffleFileServer on node {node_id} is dead: {e}"
                 ) from e
             except ActorUnschedulableError as e:
                 # Pinned node is gone; soft=False can't relocate the actor.
                 # Ray transitions from ActorUnavailableError to this ~10s after
                 # heartbeat loss.
-                raise ShuffleManagerAnomalyError(
-                    f"ShuffleManager on node {node_id} is unschedulable "
+                raise ShuffleFileServerAnomalyError(
+                    f"ShuffleFileServer on node {node_id} is unschedulable "
                     f"(node likely dead): {e}"
                 ) from e
         with _ENDPOINT_CACHE_LOCK:
@@ -520,7 +519,7 @@ def _prefetch_node_into(
             raise
         except (ConnectionError, TimeoutError) as e:
             # If _resolve() returns, the actor is alive; endpoint compare tells us
-            # whether the manager restarted (retry in-place) or the reducer-manager
+            # whether the file server restarted (retry in-place) or the reducer/file-server
             # network path is broken (terminal).
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
@@ -529,16 +528,16 @@ def _prefetch_node_into(
             if fresh == endpoint:
                 # Endpoint unchanged: actor is alive but the connection is blocked.
                 # Most likely a network configuration issue (NetworkPolicy,
-                # firewall, routing); retrying to the same manager won't help.
-                raise ShuffleManagerAnomalyError(
+                # firewall, routing); retrying to the same file server won't help.
+                raise ShuffleFileServerAnomalyError(
                     f"Flight fetch from node {node_id} failed ({e}) but "
-                    f"ShuffleManager at {fresh} is still reachable via Ray. "
+                    f"ShuffleFileServer at {fresh} is still reachable via Ray. "
                     f"Likely a network configuration issue (NetworkPolicy, "
-                    f"firewall, routing) between reducer and manager. "
+                    f"firewall, routing) between reducer and file server. "
                     f"Check the network config."
                 ) from e
             logger.warning(
-                f"Flight fetch from node {node_id} failed ({e}); ShuffleManager "
+                f"Flight fetch from node {node_id} failed ({e}); ShuffleFileServer "
                 f"restarted (endpoint {endpoint} → {fresh}). Retrying in place."
             )
             continue
@@ -655,10 +654,10 @@ def _handles_to_sources(
     return sources, output_schema
 
 
-def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
-    """Collapse sources by manager so each manager gets ONE Flight connection.
+def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
+    """Collapse sources by file server so each file server gets ONE Flight connection.
 
-    Sources on the same manager share a ``(shuffle_id, node_id)`` which is
+    Sources on the same file server share a ``(shuffle_id, node_id)`` which is
     used as the collapse key.
     """
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}

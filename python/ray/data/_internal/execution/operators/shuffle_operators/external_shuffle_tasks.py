@@ -4,7 +4,7 @@
   small handle (path + per-partition offset index + the source node's fetch
   endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
   stays on local disk and never enters Ray's object store.
-- a per-node ``ShuffleManager`` Ray actor runs its OWN socket server that
+- a per-node ``ShuffleFileServer`` Ray actor runs its OWN socket server that
   ``pread``s requested byte-ranges and streams them back. The REDUCE task is a
   client of that server.
   Cross-node this is the real out-of-band transport; single-node it is a
@@ -62,25 +62,25 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _MAX_RANGE_BYTES,
-    _SHUFFLE_MANAGER_NAMESPACE,
+    _SHUFFLE_FILE_SERVER_NAMESPACE,
     _compute_prefetch_layout,
     _drop_pagecache,
     _encode_shard,
-    _group_by_manager,
+    _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
-    _manager_name,
+    _file_server_name,
     _prefetch_node_into,
     _PwriteSink,
     _read_ipc,
     ShuffleDiskError,
     ShuffleHandle,
-    ShuffleManager,
+    ShuffleFileServer,
 )
 
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
-# CAP on fetch connections per reducer: n_threads = min(#managers, this).
+# CAP on fetch connections per reducer: n_threads = min(#file-servers, this).
 _DEFAULT_FETCH_THREADS = 16
 
 
@@ -203,7 +203,7 @@ def _external_shuffle_map_task(
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file on the
     local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
-    byte index + manager endpoint + auth token). Shuffle bytes never enter the
+    byte index + file-server endpoint + auth token). Shuffle bytes never enter the
     Ray object store.
 
     The output file is sealed via atomic ``rename``: writes land in
@@ -217,18 +217,18 @@ def _external_shuffle_map_task(
         num_partitions: Total downstream partitions M.
         out_dir: Directory to write ``map_{i}.shf`` into.
         map_id: This map task's index.
-        shuffle_id: Unique per-shuffle id; part of the manager's actor name.
+        shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         token: Per-shuffle auth token stamped into the handle.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
         fsync_on_close: If True, ``fsync`` before rename for durability.
     """
     node_id = ray.get_runtime_context().get_node_id()
-    # Ensure the manager actor exists (get_if_exists=True → reuse across
+    # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
-    # will look the manager up by name via ``ray.get_actor``.
-    ShuffleManager.options(
-        name=_manager_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_MANAGER_NAMESPACE,
+    # will look the file server up by name via ``ray.get_actor``.
+    ShuffleFileServer.options(
+        name=_file_server_name(shuffle_id, node_id),
+        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
         max_restarts=-1,
@@ -304,7 +304,7 @@ def _external_shuffle_map_task(
         # Dense per-partition range index (see _build_range_index): row ``p`` is
         # ``(offset, length)`` of partition ``p``'s frame.
         "index_ranges": _idx_ranges,
-        # ShuffleManager identity: reducers rebuild the actor name from
+        # ShuffleFileServer identity: reducers rebuild the actor name from
         # (shuffle_id, node_id) and call ``ray.get_actor`` when they need
         # the handle.
         "shuffle_id": shuffle_id,
@@ -339,7 +339,7 @@ def _external_shuffle_reduce_task(
     metadata)`` pairs. Shuffle bytes flow directly from the socket into the
     reducer's user-space accumulator, never entering the Ray object store.
 
-    Fetch + decode are pipelined: one thread per ShuffleManager pwrites
+    Fetch + decode are pipelined: one thread per ShuffleFileServer pwrites
     response frames into this partition's ``reduce_p{partition_id}.bin`` at
     pre-assigned offsets, and this generator mmap-decodes each region as
     its future completes.
@@ -354,7 +354,7 @@ def _external_shuffle_reduce_task(
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
         max_bytes_per_fetch: Per-FETCH-frame payload cap.
-        fetch_threads: Concurrent per-manager fetch threads.
+        fetch_threads: Concurrent per-file-server fetch threads.
         target_max_block_size: Output block size cap. None emits as-is.
         map_transformer: Fused downstream map (typically Write) applied to
             each output block before yielding, or None.
@@ -423,7 +423,7 @@ def _external_shuffle_reduce_task(
     os.makedirs(staging_dir, exist_ok=True)
     prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
 
-    groups = _group_by_manager(sources)
+    groups = _group_by_server(sources)
 
     try:
         # Fetch each source region in parallel, pwrite at pre-assigned offsets
@@ -502,7 +502,7 @@ def _external_shuffle_reduce_task(
             work = list(zip(base_offsets, node_sizes, groups))
             # Randomize submission order per reducer (seeded by partition_id →
             # deterministic/retry-stable) so concurrent fan-in spreads evenly
-            # across managers. Disjoint offsets make reordering safe.
+            # across file servers. Disjoint offsets make reordering safe.
             if work:
                 random.Random(partition_id).shuffle(work)
 

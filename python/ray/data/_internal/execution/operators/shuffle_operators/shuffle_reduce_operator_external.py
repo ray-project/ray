@@ -9,7 +9,7 @@ Ray object built by the map op — plus a ``__partition__<pid>``
 sentinel in its metadata. The reduce task resolves that ref (a list of
 per-mapper handle refs), materializes the individual handle dicts, and
 TCP-fetches its partition's shards from each source node's
-``ShuffleManager``.
+``ShuffleFileServer``.
 """
 
 import functools
@@ -70,7 +70,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     ``_add_input_inner``, one reduce task out. The wrapper carries
     ``shared_handles_ref`` + partition_id sentinel; ``_external_shuffle_reduce_task``
     uses those to fetch its partition's bytes over TCP from each
-    mapper's ``ShuffleManager``.
+    mapper's ``ShuffleFileServer``.
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
@@ -231,15 +231,13 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             task_done_callback=functools.partial(
                 self._handle_reduce_done, partition_id
             ),
-            task_resource_bundle=ExecutionResources.from_resource_dict(
-                reduce_options
-            ),
+            task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
             operator_name=self.name,
         )
 
-        assert partition_id not in self._shuffle_reduce_tasks, (
-            f"partition_id {partition_id} already has an in-flight reducer"
-        )
+        assert (
+            partition_id not in self._shuffle_reduce_tasks
+        ), f"partition_id {partition_id} already has an in-flight reducer"
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
 
@@ -360,7 +358,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
-        # Manager actors + handle refs are owned upstream; nothing to
+        # ShuffleFileServer actors + handle refs are owned upstream; nothing to
         # clean up here.
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:

@@ -5,7 +5,7 @@ Wires the operators directly — bypassing the Ray Data planner — to verify
 the simplest end-to-end story: feed N input blocks, hash-partition into K
 partitions, reduce each with ``_concat_reduce``, then check row count and
 partition count. Catches wiring bugs (RefBundle shape, sentinel metadata,
-callback ordering, ShuffleManager lifecycle) that the planner-driven
+callback ordering, ShuffleFileServer lifecycle) that the planner-driven
 tests in ``test_hash_shuffle_external_repartition.py`` don't isolate.
 """
 

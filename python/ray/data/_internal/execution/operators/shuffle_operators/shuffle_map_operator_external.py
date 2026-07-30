@@ -151,7 +151,7 @@ class ExternalHashShuffleMapOp(
         _prefix = os.path.join(
             tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
         )
-        # Map writes shards to _map_dir (also the ShuffleManager's served base);
+        # Map writes shards to _map_dir (also the ShuffleFileServer's served base);
         # reducers stage prefetch files under _reduce_dir. Both cleaned at teardown.
         self._map_dir: str = f"{_prefix}_map"
         self._reduce_dir: str = f"{_prefix}_reduce"
@@ -469,8 +469,8 @@ class ExternalHashShuffleMapOp(
         """End-of-shuffle cleanup — file cleanup is decoupled from actor
         lifetime, so this method does two independent things:
 
-        1. ``ray.kill(mgr, no_restart=True)`` for every unique
-           ShuffleManager the shuffle produced handles on. Goes through
+        1. ``ray.kill(server, no_restart=True)`` for every unique
+           ShuffleFileServer the shuffle produced handles on. Goes through
            GCS ``DestroyActor`` — an authoritative "no more incarnations
            of this actor" instruction; no ``__ray_terminate__`` /
            graceful-shutdown races, no ``max_restarts`` retries, no
@@ -482,8 +482,9 @@ class ExternalHashShuffleMapOp(
            exits; failures fall back to OS ``tmpwatch``.
         """
         from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
+            _SHUFFLE_FILE_SERVER_NAMESPACE,
             _cleanup_shuffle_dir,
-            _lookup_manager,
+            _file_server_name,
         )
 
         seen: set = set()
@@ -506,8 +507,11 @@ class ExternalHashShuffleMapOp(
             seen_nodes.add(node_id)
 
             try:
-                mgr = _lookup_manager(shuffle_id, node_id)
-                ray.kill(mgr, no_restart=True)
+                server = ray.get_actor(
+                    _file_server_name(shuffle_id, node_id),
+                    namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
+                )
+                ray.kill(server, no_restart=True)
             except Exception:
                 # Actor name never registered / already GC'd — nothing to kill.
                 pass
