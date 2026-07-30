@@ -4,8 +4,11 @@ from unittest.mock import Mock
 
 import pytest
 
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.proxy_state import ActorProxyWrapper, wrap_as_future
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import LoggingConfig
 
 
@@ -262,6 +265,66 @@ async def test_is_drained_check_timeout():
     await asyncio.sleep(0.001)
 
     assert proxy_wrapper.is_drained(timeout_s=0) is False
+
+
+def _make_unschedulable_wrapper(name: str) -> ActorProxyWrapper:
+    """Create an ActorProxyWrapper around a real proxy pinned to a removed node.
+
+    This goes through ActorProxyWrapper's own production creation path
+    (`_get_or_create_proxy_actor`), which starts a real
+    `ray.serve._private.proxy.ProxyActor` hard-pinned to its node via
+    `label_selector` -- exactly how the controller pins proxies. Passing a node
+    id that does not exist reproduces the production condition (a proxy pinned
+    to a removed node), so the `ActorUnschedulableError` path is exercised
+    end-to-end against real Ray/Serve rather than mocked. The proxy never
+    schedules, so `ProxyActor.__init__` never runs; `check_health`/`shutdown`
+    are the real methods `is_shutdown`/`kill` invoke.
+    """
+    # A syntactically valid but nonexistent node id (28-byte hex).
+    nonexistent_node_id = "f" * 56
+    return ActorProxyWrapper(
+        logging_config=LoggingConfig(),
+        http_options=HTTPOptions(),
+        grpc_options=gRPCOptions(),
+        name=name,
+        node_id=nonexistent_node_id,
+        node_ip_address="127.0.0.1",
+    )
+
+
+def test_is_shutdown_true_when_actor_unschedulable(ray_shutdown):
+    """End-to-end regression test for the proxy update loop hang.
+
+    A proxy actor hard-pinned to a removed node becomes permanently
+    unschedulable, and real Ray surfaces this from ``check_health`` as
+    ``ActorUnschedulableError`` (a ``RayError`` that is *not* a
+    ``RayActorError``). Before the fix, that exception propagated out of
+    ``is_shutdown`` -> ``kill`` -> ``ProxyState.shutdown`` and wedged the
+    controller's proxy update loop, leaving ``proxies: {}`` and all ingress
+    returning 503.
+
+    Ray first reports the health check as pending (``GetTimeoutError`` ->
+    ``is_shutdown() is False``), then transitions to ``ActorUnschedulableError``
+    once the scheduler gives up. ``is_shutdown()`` must converge to ``True``
+    without ever raising.
+    """
+    ray.init(num_cpus=2)
+    wrapper = _make_unschedulable_wrapper(name="test_is_shutdown_unschedulable")
+    wait_for_condition(wrapper.is_shutdown, timeout=30)
+
+
+def test_kill_does_not_raise_when_actor_unschedulable(ray_shutdown):
+    """``kill`` calls ``is_shutdown`` first; on an unschedulable proxy it must
+    short-circuit and return instead of propagating the exception.
+
+    This is the exact call chain (``kill`` -> ``is_shutdown``) that hung the
+    controller loop, so ``kill()`` must complete without raising.
+    """
+    ray.init(num_cpus=2)
+    wrapper = _make_unschedulable_wrapper(name="test_kill_unschedulable")
+    # Wait until the actor is actually unschedulable, then kill() is a no-op.
+    wait_for_condition(wrapper.is_shutdown, timeout=30)
+    wrapper.kill()  # must not raise
 
 
 if __name__ == "__main__":

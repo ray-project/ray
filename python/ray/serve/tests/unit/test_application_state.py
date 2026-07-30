@@ -85,6 +85,7 @@ class MockDeploymentStateManager:
         self.deployment_infos: Dict[DeploymentID, DeploymentInfo] = dict()
         self.deployment_statuses: Dict[DeploymentID, DeploymentStatusInfo] = dict()
         self.deleting: Dict[DeploymentID, bool] = dict()
+        self._shutting_down = False
 
         # Recover
         recovered_deployments = self.kv_store.get("fake_deployment_state_checkpoint")
@@ -209,6 +210,9 @@ class MockDeploymentStateManager:
         # Return None by default, tests can override this
         return getattr(self, f"_outbound_deps_{id.name}_{id.app_name}", None)
 
+    def is_shutting_down(self) -> bool:
+        return self._shutting_down
+
 
 @pytest.fixture
 def mocked_application_state_manager() -> (
@@ -233,6 +237,7 @@ def deployment_params(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     return {
         "deployment_name": name,
@@ -243,7 +248,7 @@ def deployment_params(
             autoscaling_config=autoscaling_config,
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
-            lambda x: x
+            lambda x: x, ray_actor_options=ray_actor_options
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
@@ -260,6 +265,7 @@ def deployment_info(
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
     ingress_request_router: bool = False,
+    ray_actor_options: Optional[Dict] = None,
 ):
     params = deployment_params(
         name,
@@ -267,6 +273,7 @@ def deployment_info(
         autoscaling_config,
         num_replicas,
         ingress_request_router,
+        ray_actor_options,
     )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
@@ -332,6 +339,55 @@ class TestGracefulShutdownTimeoutFloor:
     )
     def test_not_floored_when_direct_ingress_disabled(self):
         assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
+
+
+class TestIngressRequestRouterFootprint:
+    """deploy_args_to_deployment_info gives the ingress request router an empty
+    resource footprint so it colocates with the proxy on every node, while
+    keeping non-resource actor options. Other deployments are untouched."""
+
+    def test_router_footprint_cleared(self):
+        info = deployment_info(
+            "d",
+            ingress_request_router=True,
+            ray_actor_options={
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"custom": 1},
+                "runtime_env": {"env_vars": {"A": "1"}},
+            },
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 0
+        assert "num_gpus" not in opts
+        assert "resources" not in opts
+        # Non-resource options survive.
+        assert opts["runtime_env"] == {"env_vars": {"A": "1"}}
+        assert info.replica_config.resource_dict == {"CPU": 0}
+
+    def test_non_router_keeps_resources(self):
+        info = deployment_info(
+            "d",
+            ingress_request_router=False,
+            ray_actor_options={"num_cpus": 2, "num_gpus": 1},
+        )
+        opts = info.replica_config.ray_actor_options
+        assert opts["num_cpus"] == 2
+        assert opts["num_gpus"] == 1
+
+
+def test_ingress_request_router_rejects_autoscaling_config():
+    """autoscaling_config on an ingress request router is rejected, not ignored.
+
+    The router runs one replica per proxy node, so an autoscaling_config would be
+    silently dropped otherwise.
+    """
+    with pytest.raises(RayServeException, match="autoscaling_config"):
+        deployment_info(
+            "d",
+            autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=3),
+            ingress_request_router=True,
+        )
 
 
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
@@ -784,6 +840,31 @@ def test_deploy_and_delete_app(mocked_application_state):
     deployment_state_manager.set_deployment_deleted(d2_id)
     ready_to_be_deleted = app_state.update()
     assert ready_to_be_deleted
+
+
+def test_delete_app_does_not_bypass_full_shutdown(mocked_application_state):
+    """Deleting an app must not delete its deployments
+    directly while a full instance shutdown is in progress.
+    """
+
+    app_state, deployment_state_manager = mocked_application_state
+
+    d1_id = DeploymentID(name="d1", app_name="test_app")
+    d2_id = DeploymentID(name="d2", app_name="test_app")
+    app_state.deploy_app(
+        {"d1": deployment_info("d1"), "d2": deployment_info("d2")},
+        external_scaler_enabled=False,
+    )
+    app_state.update()
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
+
+    deployment_state_manager._shutting_down = True
+    app_state.delete()
+    app_state.update()
+
+    assert not deployment_state_manager.deleting.get(d1_id)
+    assert not deployment_state_manager.deleting.get(d2_id)
 
 
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
@@ -2104,6 +2185,64 @@ class TestOverrideDeploymentInfo:
         actors = updated_info.deployment_config.deployment_actors
         assert actors[0]._serialized_actor_class == serialized_1
         assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
+
+    def test_override_deployment_info_preserves_serialized_actor_on_reapply(self):
+        """Re-applying a config (no build task / no serialized map) must keep the
+        already-serialized actor class.
+
+        On a config re-apply with an unchanged code version (e.g. controller
+        restart, or re-submitting the same config), ``override_deployment_info``
+        runs without ``deployment_to_serialized_deployment_actors``. Since
+        ``_serialized_actor_class`` is a Pydantic PrivateAttr dropped by
+        ``model_dump()``, the bytes must be carried over from the in-memory
+        config; otherwise ``get_actor_class()`` later fails with
+        ``EOFError: Ran out of input`` when the deployment actor is recreated.
+        """
+
+        class _ReapplyActor:
+            pass
+
+        serialized = cloudpickle.dumps(_ReapplyActor)
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="counter",
+                        actor_class="test.module:_ReapplyActor",
+                        _serialized_actor_class=serialized,
+                        init_kwargs={"start": 0},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=2,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=None,
+        )
+        actor_cfg = updated_infos["A"].deployment_config.deployment_actors[0]
+        assert actor_cfg._serialized_actor_class == serialized
+        # Must round-trip without EOFError.
+        assert actor_cfg.get_actor_class().__name__ == "_ReapplyActor"
+        assert updated_infos["A"].deployment_config.num_replicas == 2
 
 
 @patch(

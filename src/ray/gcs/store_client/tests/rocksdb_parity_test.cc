@@ -47,6 +47,12 @@ fs::path UniqueDbPath() {
 
 class RocksDbStoreClientParityTest : public StoreClientTestBase {
  public:
+  RocksDbStoreClientParityTest() {
+    // RocksDB AsyncPut fsyncs the WAL before acking. 5000 sync puts can
+    // exceed the base fixture's 5s wait under ASAN / slow CI disks.
+    wait_pending_timeout_ = std::chrono::seconds(60);
+  }
+
   void InitStoreClient() override {
     db_path_ = UniqueDbPath();
     store_client_ = std::make_shared<RocksDbStoreClient>(*(io_service_pool_->Get()),

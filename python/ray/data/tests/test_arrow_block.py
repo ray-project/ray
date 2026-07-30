@@ -347,5 +347,86 @@ def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     assert roundtripped.to_pydict() == {"x": expected_values}
 
 
+def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
+    # https://github.com/ray-project/ray/issues/64765: opting out restores the
+    # pre-2.56 numpy conversion, so standard Arrow types no longer become
+    # pd.ArrowDtype. This unblocks pandas UDFs that assign multi-dimensional
+    # arrays into columns or rely on numpy-only ops these columns do not support.
+    ctx = DataContext.get_current()
+    table = pa.table({"x": pa.array([1, 2, 3], pa.int64())})
+
+    ctx.enable_arrow_backed_pandas_conversion = True
+    on = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(on.dtypes["x"], pd.ArrowDtype)
+    assert on.dtypes["x"] == pd.ArrowDtype(pa.int64())
+
+    ctx.enable_arrow_backed_pandas_conversion = False
+    off = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(off.dtypes["x"], pd.ArrowDtype)
+    assert off.dtypes["x"] == np.dtype("int64")
+
+
+def test_to_pandas_reconciles_int_and_float_blocks(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765 (symptom B): to_pandas must
+    # not overflow when the same column is int64 in some blocks and double in
+    # others (e.g. a block whose values are all null infers double). The int64
+    # values are preserved exactly, without lossy float widening.
+    big = 1782750729409928627  # > 2**53, not exactly representable as float64
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"ts": pa.array([big], pa.int64())}),
+            pa.table({"ts": pa.array([None], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert df["ts"].dropna().tolist() == [big]
+
+
+def test_to_pandas_does_not_downcast_large_floats(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765: a float column above 2**53
+    # must not be silently downcast to int during int/float block reconciliation.
+    # float64 cannot represent every integer past 2**53, so an "integral" float may
+    # not equal the intended value; such blocks are left float-backed rather than
+    # coerced to an int with false exactness.
+    big_float = float(2**53 + 2)  # integral and exactly representable, but > 2**53
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], pa.int64())}),
+            pa.table({"v": pa.array([big_float], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
+
+
+@pytest.mark.parametrize(
+    "int_type, float_value",
+    [
+        (pa.int32(), 3.0e9),  # integral and < 2**53, but exceeds int32 max
+        (pa.uint32(), -5.0),  # integral, but negative does not fit unsigned
+        (pa.uint8(), 300.0),  # integral, but exceeds uint8 max
+    ],
+)
+def test_to_pandas_does_not_downcast_out_of_range_floats(
+    ray_start_regular_shared, int_type, float_value
+):
+    # https://github.com/ray-project/ray/issues/64765: float blocks are downcast
+    # to the int blocks' type only when values fit that type's range (bit width
+    # and signedness). Out-of-range or wrong-sign integral floats must stay
+    # float-backed rather than overflow, wrap, or become invalid.
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], int_type)}),
+            pa.table({"v": pa.array([float_value], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
+    assert float_value in df["v"].dropna().tolist()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

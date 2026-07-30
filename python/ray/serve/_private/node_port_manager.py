@@ -239,6 +239,11 @@ class NodePortManager:
         return cls._node_managers[node_id]
 
     @classmethod
+    def any_pending_quarantine(cls) -> bool:
+        """True if any node manager still holds a port in quarantine awaiting reclaim."""
+        return any(m.has_pending_quarantine() for m in cls._node_managers.values())
+
+    @classmethod
     def prune(cls, node_id_to_alive_replica_ids: Dict[str, Set[str]]):
         # this doesn't need to be behind a lock because it will already be called from same thread
         for node_id in list(cls._node_managers):

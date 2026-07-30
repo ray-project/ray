@@ -188,6 +188,14 @@ def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
     assert len(result2) == 20
 
 
+def test_zip_emits_deprecation_warning(ray_start_regular_shared):
+    ds1 = ray.data.range(1)
+    ds2 = ray.data.range(1)
+
+    with pytest.warns(DeprecationWarning, match="`Dataset.zip` is deprecated"):
+        ds1.zip(ds2)
+
+
 if __name__ == "__main__":
     import sys
 

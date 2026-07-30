@@ -9,6 +9,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
@@ -24,6 +25,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "12.3.2-cudnn9"
         - "13.0.0-cudnn"
@@ -76,6 +78,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -100,6 +103,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -131,6 +135,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
 
   - label: ":crane: publish: ray-anyscale py{{array.python}} {{array.gpu}}"
     key: anyscalecudabuild
@@ -156,6 +161,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{array.python}} {{array.gpu}}"

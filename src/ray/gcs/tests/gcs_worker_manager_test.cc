@@ -386,3 +386,103 @@ TEST_F(GcsWorkerManagerTest, TestRestoreDeadWorkerIdsQueue) {
   EXPECT_TRUE(contains(remaining, worker_ids[3]));
   EXPECT_TRUE(contains(remaining, worker_ids[4]));
 }
+
+TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
+  // cap = 3. Verifies failures outrank intentional exits in BOTH eviction paths:
+  //   Phase 1 - startup reconstruction (RestoreDeadWorkerIdsQueue)
+  //   Phase 2 - steady-state deaths      (TrimDeadWorkers)
+  RayConfig::instance().initialize(
+      R"(
+{
+"maximum_gcs_dead_worker_cached_count": 3
+}
+)");
+  auto worker_manager = GetWorkerManager();
+
+  auto add_dead_worker = [&](const WorkerID &id, uint64_t end_ms, rpc::WorkerExitType t) {
+    rpc::WorkerTableData d;
+    d.mutable_worker_address()->set_worker_id(id.Binary());
+    d.set_is_alive(false);
+    d.set_end_time_ms(end_ms);
+    d.set_exit_type(t);
+    rpc::AddWorkerInfoRequest req;
+    req.mutable_worker_data()->CopyFrom(d);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(req, &reply, callback);
+    promise.get_future().get();
+  };
+
+  auto report_worker_dead = [&](const WorkerID &id, rpc::WorkerExitType t) {
+    rpc::ReportWorkerFailureRequest req;
+    req.mutable_worker_failure()->mutable_worker_address()->set_worker_id(id.Binary());
+    req.mutable_worker_failure()->set_exit_type(t);
+    rpc::ReportWorkerFailureReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleReportWorkerFailure(req, &reply, callback);
+    promise.get_future().get();
+  };
+
+  auto get_all_worker_ids = [&]() {
+    rpc::GetAllWorkerInfoRequest req;
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(req, &reply, callback);
+    promise.get_future().get();
+    std::vector<std::string> ids;
+    for (const auto &d : reply.worker_table_data()) {
+      ids.push_back(d.worker_address().worker_id());
+    }
+    return ids;
+  };
+
+  auto contains = [](const std::vector<std::string> &ids, const WorkerID &id) {
+    for (const auto &w : ids) {
+      if (w == id.Binary()) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Phase 1: restart / restore. Seed 1 failure + 3 idle-kills (total 4 > cap).
+  WorkerID failure1 = WorkerID::FromRandom();
+  add_dead_worker(failure1, /*end_ms=*/100, rpc::WorkerExitType::USER_ERROR);
+  std::vector<WorkerID> idle;
+  for (int i = 0; i < 3; i++) {
+    idle.push_back(WorkerID::FromRandom());
+    add_dead_worker(
+        idle.back(), /*end_ms=*/(i + 1) * 10, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+  }
+  worker_manager->RestoreDeadWorkerIdsQueue(LoadInitData());
+
+  auto after_restore = get_all_worker_ids();
+  ASSERT_EQ(after_restore.size(), 3);
+  EXPECT_TRUE(contains(after_restore, failure1));
+  EXPECT_FALSE(contains(after_restore, idle[0]));
+  EXPECT_TRUE(contains(after_restore, idle[1]));
+  EXPECT_TRUE(contains(after_restore, idle[2]));
+
+  // Phase 2: keep running. A new failure + a new idle-kill arrive.
+  WorkerID failure2 = WorkerID::FromRandom();
+  report_worker_dead(failure2, rpc::WorkerExitType::USER_ERROR);
+  WorkerID idle3 = WorkerID::FromRandom();
+  report_worker_dead(idle3, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+
+  auto after_deaths = get_all_worker_ids();
+  ASSERT_EQ(after_deaths.size(), 3);
+  EXPECT_TRUE(contains(after_deaths, failure1));
+  EXPECT_TRUE(contains(after_deaths, failure2));
+  EXPECT_TRUE(contains(after_deaths, idle3));
+  EXPECT_FALSE(contains(after_deaths, idle[1]));
+  EXPECT_FALSE(contains(after_deaths, idle[2]));
+}
