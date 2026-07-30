@@ -391,10 +391,8 @@ class ShuffleFileServer:
         ip = ray.util.get_node_ip_address()
         self._server = _make_flight_server(ip, self.base_dir, token)
         self._host, self._port = ip, self._server.port
-        # Unique per actor process. Ray re-runs __init__ on every restart, so a
-        # restart always changes this — unlike (host, port), which an ephemeral
-        # rebind (port 0) can reuse. Reducers compare it to distinguish a genuine
-        # restart (retry) from an unchanged-but-unreachable server (terminal).
+        # Unique per actor process; Ray re-runs __init__ on every restart, so
+        # this changes on restart. Reducers compare it to detect a restart.
         self._incarnation = uuid.uuid4().hex
         t = threading.Thread(target=self._run_server, daemon=True)
         t.start()
