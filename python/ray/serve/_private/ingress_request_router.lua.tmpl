@@ -84,10 +84,6 @@ local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
-local function extract_json_string(json_body, field)
-    return json_body:match('"' .. field .. '"%s*:%s*"([^"]*)"')
-end
-
 local function set_router_response_headers(txn, json_body)
     local headers = json_body:match('"request_headers"%s*:%s*{(.-)}')
     if not headers then

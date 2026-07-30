@@ -211,9 +211,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
-    # Strip client-supplied router-managed headers before Lua restores any
-    # trusted value from /internal/route request_headers.
-    http-request del-header x-kv-token-key if has_ingress_request_router_app
+    # Remove client-supplied values from the router-owned header namespace.
+    # Lua then applies trusted metadata returned by /internal/route.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}

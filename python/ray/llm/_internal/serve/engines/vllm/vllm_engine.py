@@ -474,6 +474,11 @@ class VLLMEngine(LLMEngine):
 
         logger.info("Started vLLM engine.")
 
+    async def shutdown(self) -> None:
+        """Release the prompt-token channel's ZMQ socket and receive task."""
+        if self._token_receiver is not None:
+            await self._token_receiver.close()
+
     def routing_stats(self) -> Dict[str, Any]:
         """Returns KV event and prompt-token endpoints for KV-aware routing."""
         return self._routing_stats

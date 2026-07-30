@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,6 +10,7 @@ from starlette.datastructures import Headers
 
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
@@ -341,6 +343,42 @@ async def test_routes_tokens_to_replica():
         sender.close()
         await selected_receiver.close()
         await unselected_receiver.close()
+
+
+class TestTokenChannelLifetime:
+    def test_gc_closes_sender_sockets(self):
+        """A dropped sender must not leave dangling PUSH sockets."""
+        sender = TokenSender()
+        socket = sender._get_socket(f"tcp://127.0.0.1:{find_free_port()}")
+        assert socket is not None and not socket.closed
+
+        del sender
+        gc.collect()
+        assert socket.closed
+
+    @pytest.mark.asyncio
+    async def test_receiver_close_releases_task_and_socket(self):
+        """A live receive task holds the only reference to its socket."""
+        receiver = TokenReceiver(
+            bind_endpoint=f"tcp://127.0.0.1:{find_free_port()}", store=TokenStore()
+        )
+        assert await receiver.start()
+        task, socket = receiver._task, receiver._socket
+
+        await receiver.close()
+        assert task.done()
+        assert socket.closed
+
+    @pytest.mark.asyncio
+    async def test_del_closes_sender_and_engine(self):
+        """LLMRouter and LLMServer teardown must close the sender and the receiver."""
+        token_sender = MagicMock()
+        await LLMRouter.__del__(SimpleNamespace(_token_sender=token_sender))
+        token_sender.close.assert_called_once()
+
+        engine = AsyncMock()
+        await LLMServer.__del__(SimpleNamespace(engine=engine))
+        engine.shutdown.assert_awaited_once()
 
 
 if __name__ == "__main__":

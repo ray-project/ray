@@ -1,3 +1,4 @@
+from ray.serve._private.constants import SERVE_INGRESS_ROUTER_HEADER_PREFIX
 from ray.serve._private.constants_utils import (
     get_env_float_positive,
     get_env_int_positive,
@@ -10,7 +11,9 @@ REQUEST_TOKEN_IDS_KWARG = "request_token_ids"
 # LLMRouter replica to the selected LLMServer replica. The payload itself is
 # sent over a replica-local ZMQ side channel; HAProxy only forwards the lookup
 # key as a request header.
-KV_TOKEN_KEY_HEADER = "x-kv-token-key"
+KV_TOKEN_KEY_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
+# routing_stats key under which each LLMServer advertises its ZMQ token endpoint
+# to LLMRouter.
 KV_TOKEN_METADATA_KEY = "kv_token_metadata"
 
 # Prompt-token channel resource bounds. Sending is best effort: if a ZMQ

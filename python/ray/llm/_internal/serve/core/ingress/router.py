@@ -100,10 +100,10 @@ class LLMRouter:
 
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str, "request_headers"?: dict}``:
-            pick succeeded. ``request_headers["x-kv-token-key"]`` is present only
-            when prompt token IDs were enqueued to the selected replica's
-            best-effort ZMQ side channel; the engine falls back to tokenization
-            when it is absent or missing at consume time.
+            pick succeeded. ``request_headers["x-serve-router-kv-token-key"]``
+            is present only when prompt token IDs were enqueued to the selected
+            replica's best-effort ZMQ side channel; the engine falls back to
+            tokenization when it is absent or missing at consume time.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.
@@ -229,6 +229,12 @@ class LLMRouter:
     @router_app.get("/health")
     async def health(self):
         return {"status": "ok"}
+
+    def __del__(self) -> None:
+        """Close the token channel ZMQ sockets upon cleanup."""
+        token_sender = getattr(self, "_token_sender", None)
+        if token_sender is not None:
+            token_sender.close()
 
     async def on_lifecycle_events(self, batch):
         """Engine-facing intake for request lifecycle events.

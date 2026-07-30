@@ -431,6 +431,11 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # ``-`` and ``_`` (nginx, AWS API Gateway, ...).
 SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
 
+# Request headers under this prefix are owned by the ingress request router.
+# HAProxy strips client-supplied values before applying the trusted header map
+# returned by /internal/route.
+SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
@@ -969,7 +974,9 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
 )
 
 # Optional flat header map returned by /internal/route. HAProxy applies these
-# as trusted request headers before forwarding to the selected replica.
+# as trusted request headers before forwarding to the selected replica. Headers
+# managed by the router should use SERVE_INGRESS_ROUTER_HEADER_PREFIX so
+# client-supplied values can be stripped before this map is applied.
 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD = "request_headers"
 
 # Emit per-request metrics from the ingress-request-router data path:

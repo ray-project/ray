@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -994,6 +995,11 @@ def test_ingress_request_router_forward_body_gate_renders(
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert (
+            "http-request del-header x-serve-router- -m beg "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert "extract_json_string" not in lua
 
 
 def _create_replica_server(port: int, replica_id_header: str):
@@ -1007,9 +1013,9 @@ def _create_replica_server(port: int, replica_id_header: str):
     @app.post("/{path:path}")
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
-        value = req.headers.get("x-kv-token-key")
-        if value is not None:
-            res.headers["echo-x-kv-token-key"] = value
+        for name, value in req.headers.items():
+            if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
+                res.headers[f"echo-{name}"] = value
         body = await req.body()
         return {"replica": replica_id_header, "echo": body.decode("utf-8")}
 
@@ -1207,11 +1213,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_ingress_request_router_forwards_trusted_token_key(
+async def test_ingress_request_router_forwards_trusted_headers(
     haproxy_api_cleanup, monkeypatch
 ):
-    """Token-channel metadata must come from /internal/route, not the
-    original client request."""
+    """Router metadata is forwarded generically, while client-supplied values
+    under the router-owned prefix are stripped."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -1223,6 +1229,9 @@ async def test_ingress_request_router_forwards_trusted_token_key(
         router_port = find_free_port()
 
         actor_name = "SERVE_REPLICA::app#dep#aaa"
+        token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
+        metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
+        spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
 
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
@@ -1232,7 +1241,8 @@ async def test_ingress_request_router_forwards_trusted_token_key(
             replica_id_to_return=actor_name,
             extra_response={
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
-                    "x-kv-token-key": "trusted-key"
+                    token_header: "trusted-key",
+                    metadata_header: "trusted-metadata",
                 }
             },
         )
@@ -1267,11 +1277,17 @@ async def test_ingress_request_router_forwards_trusted_token_key(
             resp = requests.post(
                 f"http://127.0.0.1:{haproxy_port}/predict",
                 json={"prompt": "hello"},
-                headers={"x-kv-token-key": "spoofed-key"},
+                headers={
+                    token_header: "spoofed-key",
+                    metadata_header: "spoofed-metadata",
+                    spoofed_only_header: "must-be-removed",
+                },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
-            assert resp.headers.get("echo-x-kv-token-key") == "trusted-key"
+            assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
+            assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
+            assert f"echo-{spoofed_only_header}" not in resp.headers
 
         finally:
             _shutdown_fake_servers(

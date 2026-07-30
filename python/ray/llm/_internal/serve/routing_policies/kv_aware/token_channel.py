@@ -110,6 +110,9 @@ class TokenSender:
             _close_socket(socket)
         self._sockets.clear()
 
+    def __del__(self) -> None:
+        self.close()
+
     def _get_socket(self, endpoint: str) -> Optional[zmq.Socket]:
         """Return a connected PUSH socket for ``endpoint``, or None if it is unusable."""
         socket = self._sockets.get(endpoint)
