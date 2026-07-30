@@ -2423,7 +2423,7 @@ def read_avro(
     )
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def read_orc(
     paths: Union[str, List[str]],
     *,
