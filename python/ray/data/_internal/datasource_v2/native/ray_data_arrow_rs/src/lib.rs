@@ -64,9 +64,10 @@ use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
 
 use crate::predicate::{can_match, ColStats, Pred, Value};
-use parquet::basic::Type as PhysicalType;
+use parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
 use parquet::file::metadata::RowGroupMetaData;
 use parquet::file::statistics::Statistics;
+use parquet::schema::types::ColumnDescriptor;
 
 use arrow::array::RecordBatch;
 use arrow::datatypes::SchemaRef;
@@ -149,20 +150,52 @@ fn byte_budget_rows(
 // --------------------------------------------------------------------------- //
 // Row-group statistics pruning (predicate pushdown, part 1)
 // --------------------------------------------------------------------------- //
+/// Whether an INT32/INT64 physical column is a *plain signed integer*, i.e. the
+/// raw statistic value can be compared directly as a signed `i64`. Everything
+/// else stored in an INT32/INT64 physical slot is rejected:
+///   - UINT_8/16/32/64: Parquet orders these by *unsigned* comparison, so a
+///     value ≥ 2^(bits-1) is stored with its high bit set and reads back as a
+///     negative `i64` — min/max can invert (e.g. u32 max reads as -1). Comparing
+///     as signed would prune row groups that actually match.
+///   - DECIMAL: the stat is the *unscaled* integer, which doesn't match the
+///     decimal literal a predicate carries.
+///   - DATE / TIME / TIMESTAMP: the encoded units may not match the predicate
+///     literal's encoding.
+/// For any of these we return no bound → `can_match` keeps the row group.
+fn is_plain_signed_int(descr: &ColumnDescriptor) -> bool {
+    match descr.logical_type_ref() {
+        Some(LogicalType::Integer(int)) => int.is_signed,
+        // Decimal / Date / Time / Timestamp / etc. on an int physical type.
+        Some(_) => false,
+        // Legacy files predate LogicalType; fall back to the converted type.
+        None => matches!(
+            descr.converted_type(),
+            ConvertedType::NONE
+                | ConvertedType::INT_8
+                | ConvertedType::INT_16
+                | ConvertedType::INT_32
+                | ConvertedType::INT_64
+        ),
+    }
+}
+
 /// Map one column chunk's Parquet statistics to `(min, max)` in `Value` terms.
-/// Types we can't order for pruning (Int96, fixed-len byte arrays, non-UTF8
-/// byte arrays) return `None`, which `can_match` treats as "keep".
-fn stat_min_max(stats: &Statistics) -> (Option<Value>, Option<Value>) {
+/// Types we can't soundly order for pruning — Int96, fixed-len byte arrays,
+/// non-UTF8 byte arrays, and INT32/INT64 columns that aren't plain signed
+/// integers (unsigned / decimal / date-time; see [`is_plain_signed_int`]) —
+/// return `None`, which `can_match` treats as "keep". `descr` supplies the
+/// logical type that `Statistics` (keyed by physical type) can't.
+fn stat_min_max(stats: &Statistics, descr: &ColumnDescriptor) -> (Option<Value>, Option<Value>) {
     match stats {
         Statistics::Boolean(v) => (
             v.min_opt().map(|b| Value::Bool(*b)),
             v.max_opt().map(|b| Value::Bool(*b)),
         ),
-        Statistics::Int32(v) => (
+        Statistics::Int32(v) if is_plain_signed_int(descr) => (
             v.min_opt().map(|x| Value::Int(*x as i64)),
             v.max_opt().map(|x| Value::Int(*x as i64)),
         ),
-        Statistics::Int64(v) => (
+        Statistics::Int64(v) if is_plain_signed_int(descr) => (
             v.min_opt().map(|x| Value::Int(*x)),
             v.max_opt().map(|x| Value::Int(*x)),
         ),
@@ -180,7 +213,8 @@ fn stat_min_max(stats: &Statistics) -> (Option<Value>, Option<Value>) {
             v.max_opt()
                 .and_then(|b| b.as_utf8().ok().map(|s| Value::Str(s.to_string()))),
         ),
-        // Int96 (legacy timestamps) and FixedLenByteArray: not ordered here.
+        // Int96, FixedLenByteArray, and non-signed-int INT32/INT64 columns
+        // (guards above fell through): not ordered here → keep.
         _ => (None, None),
     }
 }
@@ -195,7 +229,7 @@ fn row_group_col_stats(rg: &RowGroupMetaData) -> HashMap<String, ColStats> {
     for i in 0..rg.num_columns() {
         let col = rg.column(i);
         if let Some(stats) = col.statistics() {
-            let (min, max) = stat_min_max(stats);
+            let (min, max) = stat_min_max(stats, col.column_descr());
             let null_count = stats.null_count_opt().map(|n| n as i64);
             map.insert(
                 col.column_path().string(),
@@ -1224,4 +1258,81 @@ fn ray_data_arrow_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(select_row_groups, m)?)?;
     m.add_class::<ParquetFileMetadata>()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parquet::schema::types::{ColumnPath, Type};
+    use std::sync::Arc;
+
+    /// Build a leaf `ColumnDescriptor` for one physical/logical/converted type
+    /// combo (the only inputs `is_plain_signed_int` reads).
+    fn descr(
+        physical: PhysicalType,
+        logical: Option<LogicalType>,
+        converted: ConvertedType,
+    ) -> ColumnDescriptor {
+        let ty = Type::primitive_type_builder("c", physical)
+            .with_logical_type(logical)
+            .with_converted_type(converted)
+            .build()
+            .unwrap();
+        ColumnDescriptor::new(Arc::new(ty), 0, 0, ColumnPath::new(vec!["c".to_string()]))
+    }
+
+    #[test]
+    fn plain_signed_ints_are_comparable() {
+        // Plain INT32/INT64 (no logical/converted type).
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT64,
+            None,
+            ConvertedType::NONE
+        )));
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::NONE
+        )));
+        // Explicit signed-integer logical type.
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::integer(32, true)),
+            ConvertedType::NONE
+        )));
+        // Legacy signed converted type.
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::INT_16
+        )));
+    }
+
+    #[test]
+    fn unsigned_and_nonint_logical_types_are_not_comparable() {
+        // Unsigned: a u32 max is stored as the i32 bit pattern -1, so reading
+        // the stat as signed inverts min/max and would wrongly prune. Reject.
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::integer(32, false)),
+            ConvertedType::NONE
+        )));
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT64,
+            Some(LogicalType::integer(64, false)),
+            ConvertedType::NONE
+        )));
+        // Legacy unsigned converted type (logical absent).
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::UINT_32
+        )));
+        // Date is INT32-backed but not a plain integer value — reject.
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::Date),
+            ConvertedType::NONE
+        )));
+    }
 }
