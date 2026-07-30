@@ -136,7 +136,17 @@ class JobTaskSummary:
 
 
 class TaskEventStorage:
-    """Bounded, deduplicated in-memory store of ``TaskEvents`` keyed by task attempt."""
+    """Bounded, deduplicated in-memory store of ``TaskEvents`` keyed by task attempt.
+
+    - ``_tiers``: one insertion-ordered dict per GC priority tier (task attempt ->
+      ``TaskEvents``); the first key is the oldest, so eviction drops the oldest entry in
+      the lowest-priority non-empty tier.
+    - ``_primary_index``: task attempt -> the tier holding it, so an entry is found (and
+      moved between tiers when its priority changes) via
+      ``_tiers[_primary_index[attempt]][attempt]``.
+    - ``_task_index`` / ``_job_index`` / ``_worker_index``: id -> set of task attempts,
+      for lookups by task / job / worker.
+    """
 
     def __init__(
         self,
