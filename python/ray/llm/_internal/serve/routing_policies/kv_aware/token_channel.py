@@ -4,7 +4,7 @@ import dataclasses
 import functools
 import time
 from collections import OrderedDict
-from typing import Any, List, Optional
+from typing import Any, List, Optional, TypeVar
 
 import numpy as np
 import zmq
@@ -36,12 +36,19 @@ def encode_prompt_token_ids(token_ids: List[int]) -> bytes:
     return arr.tobytes()
 
 
-def _close_socket(socket) -> None:
+# zmq.Context is generic in its socket type and zmq.asyncio.Context subclasses
+# Context[zmq.asyncio.Socket], so the returned socket matches the context passed.
+_SocketT = TypeVar("_SocketT", bound=zmq.Socket)
+
+
+def _close_socket(socket: zmq.Socket) -> None:
     socket.close(linger=0)
 
 
-def _new_socket(context, socket_type):
+def _new_socket(context: zmq.Context[_SocketT], socket_type: int) -> _SocketT:
     socket = context.socket(socket_type)
+    # LINGER=0: drop queued payloads on close. ZMQ defaults to -1, which
+    # blocks teardown until every queued message is delivered.
     socket.setsockopt(zmq.LINGER, 0)
     return socket
 
@@ -58,7 +65,7 @@ class TokenSender:
         self._send_queue_limit = send_queue_limit
         self._max_sockets = max_sockets
         self._context = None
-        self._sockets: OrderedDict[str, Any] = OrderedDict()
+        self._sockets: OrderedDict[str, zmq.Socket] = OrderedDict()
 
     def push(self, endpoint: str, key: str, payload: bytes) -> bool:
         """Enqueue a token payload without waiting for delivery.
@@ -67,6 +74,8 @@ class TokenSender:
         should omit the token-key header so the engine tokenizes normally.
         """
         socket = self._get_socket(endpoint)
+        if socket is None:
+            return False
         try:
             socket.send_multipart(
                 [key.encode("ascii"), payload],
@@ -75,9 +84,21 @@ class TokenSender:
             )
         except zmq.Again:
             logger.debug(
-                "Prompt-token ZMQ pipe to %s is not ready or is at HWM; "
-                "falling back to engine tokenization.",
+                "Prompt-token ZMQ pipe to %s is not connected or its send queue "
+                "is full; falling back to engine tokenization.",
                 endpoint,
+            )
+            return False
+        except zmq.ZMQError as e:
+            # A genuine socket failure (terminated context, unusable peer)
+            # rather than backpressure. Drop the socket so the next push redials
+            # instead of reusing a broken one.
+            self._discard_socket(endpoint)
+            logger.warning(
+                "Failed to send prompt tokens over ZMQ to %s; falling back to "
+                "engine tokenization: %s",
+                endpoint,
+                e,
             )
             return False
         return True
@@ -87,7 +108,8 @@ class TokenSender:
             _close_socket(socket)
         self._sockets.clear()
 
-    def _get_socket(self, endpoint: str):
+    def _get_socket(self, endpoint: str) -> Optional[zmq.Socket]:
+        """Return a connected PUSH socket for ``endpoint``, or None if it is unusable."""
         socket = self._sockets.get(endpoint)
         if socket is not None:
             self._sockets.move_to_end(endpoint)
@@ -97,16 +119,37 @@ class TokenSender:
             self._context = zmq.Context.instance()
 
         socket = _new_socket(self._context, zmq.PUSH)
-        socket.setsockopt(zmq.SNDTIMEO, 0)
+        # SNDHWM is the send high-water mark: how many payloads queue per replica
+        # before sends fail. Must be set before connect().
         socket.setsockopt(zmq.SNDHWM, self._send_queue_limit)
+        # Fail the send when the replica is not connected, instead of queueing
+        # a payload it may never receive.
         socket.setsockopt(zmq.IMMEDIATE, 1)
-        socket.connect(endpoint)
+        try:
+            socket.connect(endpoint)
+        except zmq.ZMQError as e:
+            # e.g. a malformed endpoint advertised in a replica's routing stats.
+            # This socket never made it into self._sockets, so release it now
+            # instead of leaving it to GC.
+            _close_socket(socket)
+            logger.warning(
+                "Failed to connect prompt-token ZMQ socket to %s; falling back "
+                "to engine tokenization: %s",
+                endpoint,
+                e,
+            )
+            return None
 
         self._sockets[endpoint] = socket
         while len(self._sockets) > self._max_sockets:
             _, old = self._sockets.popitem(last=False)
             _close_socket(old)
         return socket
+
+    def _discard_socket(self, endpoint: str) -> None:
+        socket = self._sockets.pop(endpoint, None)
+        if socket is not None:
+            _close_socket(socket)
 
 
 @dataclasses.dataclass
@@ -133,7 +176,7 @@ class TokenStore:
         self._lock = asyncio.Lock()
 
     async def put(self, key: str, *, payload: bytes) -> None:
-        if self._max_bytes > 0 and len(payload) > self._max_bytes:
+        if len(payload) > self._max_bytes:
             raise ValueError(
                 "prompt token payload exceeds staging byte cap "
                 f"({len(payload)} > {self._max_bytes})"
@@ -142,9 +185,14 @@ class TokenStore:
         now = time.monotonic()
         async with self._lock:
             self._sweep(now)
+            # Keys are per-request uuid4s, so a duplicate is collision-only. Be defensive:
+            # _total_bytes is a running counter that is never recomputed, so a missed
+            # subtraction here would permanently shrink the effective cap and start evicting
+            # entries that in-flight requests still need.
             old = self._entries.pop(key, None)
             if old is not None:
                 self._total_bytes -= len(old.payload)
+
             entry = _StagedTokens(payload=payload, created_at_s=now)
             self._entries[key] = entry
             self._total_bytes += len(payload)
@@ -160,8 +208,6 @@ class TokenStore:
             return entry
 
     def _sweep(self, now: float) -> None:
-        if self._ttl_s <= 0:
-            return
         while self._entries:
             _, entry = next(iter(self._entries.items()))
             if now - entry.created_at_s <= self._ttl_s:
@@ -170,10 +216,10 @@ class TokenStore:
             self._total_bytes -= len(expired.payload)
 
     def _evict_to_limits(self) -> None:
-        while self._max_entries > 0 and len(self._entries) > self._max_entries:
+        while len(self._entries) > self._max_entries:
             _, evicted = self._entries.popitem(last=False)
             self._total_bytes -= len(evicted.payload)
-        while self._max_bytes > 0 and self._total_bytes > self._max_bytes:
+        while self._entries and self._total_bytes > self._max_bytes:
             _, evicted = self._entries.popitem(last=False)
             self._total_bytes -= len(evicted.payload)
 
@@ -208,6 +254,8 @@ class TokenReceiver:
 
         context = zmq_asyncio.Context.instance()
         socket = _new_socket(context, zmq.PULL)
+        # RCVHWM is the receive high-water mark: how many payloads queue here
+        # before ZMQ makes senders fail instead.
         socket.setsockopt(zmq.RCVHWM, self._receive_queue_limit)
         try:
             socket.bind(self._bind_endpoint)

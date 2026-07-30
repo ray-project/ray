@@ -1,13 +1,15 @@
 import asyncio
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import zmq
 from starlette.datastructures import Headers
 
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
@@ -62,6 +64,74 @@ async def _wait_until_staged(store, keys):
             return
         await asyncio.sleep(0.01)
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
+
+
+def test_bad_endpoint_falls_back():
+    """A malformed endpoint must degrade to engine tokenization, not raise."""
+    sender = TokenSender()
+    try:
+        with patch.object(token_channel, "logger") as mock_logger:
+            for _ in range(5):
+                assert (
+                    sender.push("not-a-valid-endpoint", "k", _payload([1, 2])) is False
+                )
+        # A socket that fails to connect is never cached for reuse.
+        assert not sender._sockets
+        # Every genuine failure is reported, not just the first.
+        assert mock_logger.warning.call_count == 5
+    finally:
+        sender.close()
+
+
+def test_send_error_discards_socket():
+    """A non-EAGAIN ZMQError drops the socket instead of escaping to the caller."""
+    port = find_free_port()
+    endpoint = f"tcp://127.0.0.1:{port}"
+    sender = TokenSender()
+    try:
+        socket = sender._get_socket(endpoint)
+        assert socket is not None
+        # ETERM cannot be provoked without tearing down the shared ZMQ context,
+        # so raise it from the send itself.
+        socket.send_multipart = MagicMock(
+            side_effect=zmq.ZMQError(zmq.ETERM, "context terminated")
+        )
+
+        assert sender.push(endpoint, "k", _payload([1, 2])) is False
+        # Broken socket evicted so the next push redials.
+        assert endpoint not in sender._sockets
+    finally:
+        sender.close()
+
+
+def test_full_queue_keeps_socket():
+    """A full send queue drops the payload; the sender stays usable afterwards."""
+    port = find_free_port()
+    endpoint = f"tcp://127.0.0.1:{port}"
+    sender = TokenSender(send_queue_limit=1)
+    receiver_socket = zmq.Context.instance().socket(zmq.PULL)
+    receiver_socket.setsockopt(zmq.LINGER, 0)
+    receiver_socket.setsockopt(zmq.RCVHWM, 1)
+    receiver_socket.bind(endpoint)
+    try:
+        # Nothing reads from receiver_socket, so the queue fills and push()
+        # reports False via zmq.Again rather than raising.
+        refused = 0
+        with patch.object(token_channel, "logger") as mock_logger:
+            for i in range(500):
+                if not sender.push(endpoint, f"k{i}", _payload([i] * 512)):
+                    refused += 1
+        assert refused > 0
+        # The socket survived the backpressure -- it was never closed.
+        assert endpoint in sender._sockets
+        # Backpressure is routine, so it must stay off the warning path. This
+        # also pins the handler order: zmq.Again subclasses zmq.ZMQError, so
+        # swapping the two except blocks would warn on every refused push.
+        assert mock_logger.warning.call_count == 0
+        assert mock_logger.debug.call_count == refused
+    finally:
+        sender.close()
+        receiver_socket.close(linger=0)
 
 
 @pytest.mark.asyncio
