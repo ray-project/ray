@@ -11,6 +11,11 @@ from ray._private.gcs_pubsub import GcsAioJobSubscriber, GcsAioWorkerDeltaSubscr
 from ray._private.ray_constants import env_bool
 from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
 from ray.dashboard.consts import RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME
+from ray.dashboard.modules.task_events.ray_event_converter import convert_to_task_events
+from ray.dashboard.modules.task_events.task_event_storage import (
+    GC_JOB_SUMMARY_INTERVAL_S,
+    TaskEventStorage,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
@@ -21,22 +26,19 @@ _SUBSCRIBER_POLL_BATCH_SIZE = 100
 
 
 class TaskEventsHead(SubprocessModule):
-    """Dashboard-head sink for task events and their GCS reconciliation signals.
+    """Dashboard-head sink for task events and their reconciliation signals.
 
     Receives task events over HTTP from the per-node aggregator agents (which POST an
-    ``AddEventsRequest`` payload), and subscribes to GCS pubsub for the worker-death and
-    job-finished notifications needed to reconcile task state (the signals
-    ``GcsTaskManager`` consumes in-process today). Everything is held in memory for now.
+    ``AddEventsRequest`` payload) and stores them, and subscribes to GCS pubsub for the
+    worker-death and job-finished notifications needed to reconcile task state. Everything
+    is held in memory.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO(karticam): Replace these in-memory buffers with a task-event store +
-        #   reconciliation logic (mirroring GcsTaskManager) that powers the state API.
-        #   Consuming the worker-death / job-finished notifications below to actually
-        #   fail tasks (MarkTasksFailedOnWorkerDead / MarkTasksFailedOnJobEnds) is a
-        #   follow-up PR.
-        self._events = collections.deque()
+        self._store = TaskEventStorage()
+        # TODO(karticam): consume these worker-death / job-finished notifications to fail
+        #   the affected tasks in the store. Will be done in the next PR.
         self._dead_workers = collections.deque()
         self._finished_jobs = collections.deque()
         self._background_tasks: Set[asyncio.Task] = set()
@@ -48,9 +50,9 @@ class TaskEventsHead(SubprocessModule):
         return env_bool(RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME, False)
 
     @property
-    def num_events_received(self) -> int:
-        """Number of task events currently held in the in-memory buffer (for tests)."""
-        return len(self._events)
+    def num_task_events_stored(self) -> int:
+        """Number of task attempts currently held in the store (for tests)."""
+        return self._store.num_task_events_stored
 
     @property
     def num_dead_workers_received(self) -> int:
@@ -82,12 +84,14 @@ class TaskEventsHead(SubprocessModule):
                 message=f"Failed to deserialize task events request: {e}",
             )
 
-        events_data = add_events_request.events_data
-        self._events.extend(events_data.events)
+        task_events, dropped_task_attempts = convert_to_task_events(add_events_request)
+        self._store.record_data_loss_from_worker(dropped_task_attempts)
+        for task_event in task_events:
+            self._store.add_or_replace_task_event(task_event)
         logger.debug(
-            "Received %d task events (%d total buffered)",
-            len(events_data.events),
-            len(self._events),
+            "Received %d task events (%d attempts stored)",
+            len(task_events),
+            self._store.num_task_events_stored,
         )
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
@@ -129,11 +133,20 @@ class TaskEventsHead(SubprocessModule):
             except Exception:
                 logger.exception("Failed handling job-finished notifications.")
 
+    async def _gc_job_summary_loop(self) -> None:
+        while True:
+            await asyncio.sleep(GC_JOB_SUMMARY_INTERVAL_S)
+            try:
+                self._store.gc_job_summary()
+            except Exception:
+                logger.exception("Failed trimming task-event job summaries.")
+
     async def run(self):
         await super().run()
         for coro in (
             self._subscribe_for_worker_deaths(),
             self._subscribe_for_finished_jobs(),
+            self._gc_job_summary_loop(),
         ):
             task = asyncio.create_task(coro)
             self._background_tasks.add(task)
