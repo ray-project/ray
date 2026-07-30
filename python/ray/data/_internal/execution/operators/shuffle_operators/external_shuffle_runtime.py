@@ -275,9 +275,25 @@ class _PartitionWriter:
             )
         # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
         self._decoded_bytes_per_partition[pid] = tbl.nbytes
-        buf = _encode_shard(  # whole-frame codec (see _encode_shard)
-            tbl, self._compression, self._combine_native_ok
-        )
+        try:
+            buf = _encode_shard(  # whole-frame codec (see _encode_shard)
+                tbl, self._compression, self._combine_native_ok
+            )
+        except Exception as e:
+            # Fail loud (Ray re-runs the map task), but surface which shard and
+            # why — e.g. native combine's ">2 GiB int32 offset overflow" on a
+            # huge non-extension column.
+            logger.error(
+                "map_%s partition %s shard encode failed "
+                "(%d cols, %d rows, native_combine=%s): %s",
+                self._map_id,
+                pid,
+                tbl.num_columns,
+                tbl.num_rows,
+                self._combine_native_ok,
+                e,
+            )
+            raise
         # Refuse frames the u32 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
