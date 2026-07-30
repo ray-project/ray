@@ -49,7 +49,8 @@ class EntityState {
    * @brief Construct a new EntityState.
    *
    * @param max_message_size_bytes Maximum size of a single message.
-   * @param max_buffered_bytes Maximum bytes to buffer. Set to -1 to disable buffering.
+   * @param max_buffered_bytes -1 unlimited; 0 keep only latest (snapshot);
+   *        >0 drop oldest when buffer would exceed this size.
    */
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
@@ -111,7 +112,7 @@ class EntityState {
   // publish messages larger than this.
   const size_t max_message_size_bytes_;
 
-  // Set to -1 to disable buffering.
+  // -1: unlimited; 0: latest only; >0: byte cap.
   const int64_t max_buffered_bytes_;
 
   // Total size of inflight messages.
@@ -280,6 +281,9 @@ class SubscriberState {
    */
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
+  /// Drop mailbox entries whose payloads were cleared by snapshot coalescing.
+  void CompactEmptyMessages();
+
   /**
    * @brief Publish all queued messages if possible.
    *
@@ -297,6 +301,9 @@ class SubscriberState {
    * @return true if no metadata remains (no leaks), false otherwise.
    */
   bool CheckNoLeaks() const;
+
+  /// Testing only.
+  size_t MailboxSize() const { return mailbox_.size(); }
 
   /**
    * @brief Checks if there is an active long polling connection.

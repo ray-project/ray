@@ -14,6 +14,7 @@
 
 #include "ray/pubsub/publisher.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -41,6 +42,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     return false;
   }
 
+  // Cleared snapshot payloads leave empty shared_ptrs in subscriber mailboxes.
+  bool need_mailbox_compact = false;
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -51,6 +54,10 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
+    } else if (max_buffered_bytes_ == 0) {
+      // Snapshot channel: only the latest message is meaningful.
+      *front_msg = rpc::PubMessage();
+      need_mailbox_compact = true;
     } else if (max_buffered_bytes_ > 0 &&
                total_size_ + msg_size > static_cast<size_t>(max_buffered_bytes_)) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
@@ -85,6 +92,9 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   total_size_ += msg_size;
 
   for (auto &[id, subscriber] : subscribers_) {
+    if (need_mailbox_compact) {
+      subscriber->CompactEmptyMessages();
+    }
     subscriber->QueueMessage(msg);
   }
   return true;
@@ -249,8 +259,13 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
         RayConfig::instance().max_grpc_message_size(),
         RayConfig::instance().publisher_entity_buffer_max_bytes());
 
-  case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
   case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
+    // Full snapshots: keep only the latest. Avoids unbounded owner-side growth
+    // when a shared ObjectRef gets frequent plasma add/remove reports.
+    return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
+                                         /*max_buffered_bytes=*/0);
+
+  case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
@@ -300,6 +315,16 @@ void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_m
   RAY_LOG(DEBUG) << "enqueue: " << pub_message->sequence_id();
   mailbox_.push_back(pub_message);
   PublishIfPossible(/*force_noop=*/false);
+}
+
+void SubscriberState::CompactEmptyMessages() {
+  mailbox_.erase(std::remove_if(mailbox_.begin(),
+                                mailbox_.end(),
+                                [](const std::shared_ptr<rpc::PubMessage> &msg) {
+                                  return msg->inner_message_case() ==
+                                         rpc::PubMessage::INNER_MESSAGE_NOT_SET;
+                                }),
+                 mailbox_.end());
 }
 
 void SubscriberState::PublishIfPossible(bool force_noop) {
