@@ -372,50 +372,74 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
         # by ``list_file_infos``; this method only chunks them into manifests.
-        running_paths: List[str] = []
-        running_file_sizes: List[int] = []
-        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
-        manifests_count = 0
-        chunks_count = 0
-
-        for file_info in file_infos:
-            # ``list_file_infos`` already dropped zero/None-size files.
-            assert file_info.size is not None
-            path, file_size = file_info.path, file_info.size
-
-            # Drive the chunker once per file; emit one manifest row per chunk.
-            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
-            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
-            # smaller than the target chunk size).
-            for (
-                chunk_metadata,
-                chunk_size,
-            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
-                running_paths.append(path)
-                running_file_sizes.append(chunk_size)
-                running_chunk_metadatas.append(chunk_metadata)
-                chunks_count += 1
-
-                if len(running_paths) >= self._max_paths_per_output:
-                    manifests_count += 1
-                    yield FileManifest.construct_manifest(
-                        running_paths,
-                        running_file_sizes,
-                        running_chunk_metadatas,
-                    )
-                    running_paths = []
-                    running_file_sizes = []
-                    running_chunk_metadatas = []
-
-        if running_paths:
-            manifests_count += 1
-            yield FileManifest.construct_manifest(
-                running_paths,
-                running_file_sizes,
-                running_chunk_metadatas,
-            )
-
-        logger.debug(
-            f"Listing files: constructed {manifests_count} manifests "
-            f"with {chunks_count} file chunks"
+        yield from build_manifests(
+            file_infos,
+            file_chunker=self._file_chunker,
+            max_paths_per_output=self._max_paths_per_output,
         )
+
+
+def build_manifests(
+    file_infos: Iterable[FileInfo],
+    *,
+    file_chunker: FileChunker,
+    max_paths_per_output: int,
+) -> Iterable[FileManifest]:
+    """Turn a stream of ``FileInfo`` into batched ``FileManifest`` blocks.
+
+    Shared by every :class:`FileIndexer`, regardless of where the file infos
+    come from -- a filesystem walk for :class:`NonSamplingFileIndexer`, or a
+    Delta transaction log for
+    :class:`~ray.data._internal.datasource_v2.listing.delta_file_indexer.DeltaFileIndexer`.
+
+    Callers filter ``file_infos`` first -- zero-size files dropped and pruners
+    applied -- as :meth:`FileIndexer.list_file_infos` does; this helper only
+    chunks and batches.
+    """
+    running_paths: List[str] = []
+    running_file_sizes: List[int] = []
+    running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
+    manifests_count = 0
+    chunks_count = 0
+
+    for file_info in file_infos:
+        # Callers already dropped zero/None-size files.
+        assert file_info.size is not None
+        path, file_size = file_info.path, file_info.size
+
+        # Drive the chunker once per file; emit one manifest row per chunk.
+        # ``chunk_metadata`` is ``None`` for whole-file chunks (default
+        # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
+        # smaller than the target chunk size).
+        for (
+            chunk_metadata,
+            chunk_size,
+        ) in file_chunker.generate_chunk_metadatas(path, file_size):
+            running_paths.append(path)
+            running_file_sizes.append(chunk_size)
+            running_chunk_metadatas.append(chunk_metadata)
+            chunks_count += 1
+
+            if len(running_paths) >= max_paths_per_output:
+                manifests_count += 1
+                yield FileManifest.construct_manifest(
+                    running_paths,
+                    running_file_sizes,
+                    running_chunk_metadatas,
+                )
+                running_paths = []
+                running_file_sizes = []
+                running_chunk_metadatas = []
+
+    if running_paths:
+        manifests_count += 1
+        yield FileManifest.construct_manifest(
+            running_paths,
+            running_file_sizes,
+            running_chunk_metadatas,
+        )
+
+    logger.debug(
+        f"Listing files: constructed {manifests_count} manifests "
+        f"with {chunks_count} file chunks"
+    )
