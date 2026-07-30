@@ -3824,7 +3824,14 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
-    @PublicAPI(api_group=SMJ_API_GROUP)
+    @Deprecated(
+        message=(
+            "`Dataset.zip` is deprecated and will be removed in Ray 2.64. Use `join` "
+            "on a shared key instead. `zip` relies on deterministic ordering for "
+            "correctness, which Ray Data doesn't guarantee by default."
+        ),
+        warning=True,
+    )
     def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 

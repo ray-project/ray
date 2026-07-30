@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type
+from typing import Any, List, Optional, Type
 
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
@@ -20,12 +20,22 @@ from ray.serve.handle import DeploymentHandle
 logger = get_logger(__name__)
 
 
+def _get_prompt_token_ids(prompt: Any) -> List[int]:
+    """The prompt's pre-tokenized token ids."""
+    try:
+        return list(prompt["prompt_token_ids"])
+    except (KeyError, TypeError) as e:
+        raise ValueError(
+            "KV-aware token tracking requires a pre-tokenized prompt "
+            f"(dict with 'prompt_token_ids'); got {type(prompt).__name__}"
+        ) from e
+
+
 class LifecycleEventForwarder:
     """Ordered, non-blocking bridge from the engine to every LLMRouter
     replica's KVTokenTracker, which maintains per-replica token load
-    statistics. Each batch is broadcast to all ingress replicas, whose
-    selection services received the reservation through the ingress-side
-    background broadcast.
+    statistics. Each batch is broadcast to all ingress replicas so their
+    trackers share one booked-load view without any peer-to-peer sync.
 
     ``report`` only enqueues locally, so generation never blocks on delivery.
     A single delivery task per replica drains the queue to the trackers,
@@ -99,14 +109,21 @@ class RequestTokenTracker:
         self,
         forwarder: LifecycleEventForwarder,
         request_id: str,
-        report_decode_progress: bool = False,
+        prompt_token_ids: List[int],
+        expected_output_tokens: Optional[int],
     ):
         self._forwarder = forwarder
         self._request_id = request_id
         self._cumulative = 0
         self._prefill_marked = False
         self._finished = False
-        self._report_decode_progress = report_decode_progress
+        forwarder.report(
+            "on_request_added",
+            request_id,
+            forwarder.worker_id,
+            prompt_token_ids,
+            expected_output_tokens,
+        )
 
     def on_output(self, output: RequestOutput) -> None:
         """Observe one engine ``RequestOutput`` (forwarded to the caller as-is).
@@ -123,10 +140,7 @@ class RequestTokenTracker:
             # The first output token signals prefill completion.
             self._prefill_marked = True
             self._forwarder.report("on_prefill_complete", self._request_id)
-        if self._report_decode_progress:
-            self._forwarder.report(
-                "on_decode_progress", self._request_id, self._cumulative
-            )
+        self._forwarder.report("on_decode_progress", self._request_id, self._cumulative)
 
     def finish(self) -> None:
         """Report completion exactly once."""
@@ -135,15 +149,12 @@ class RequestTokenTracker:
             self._forwarder.report("on_request_completed", self._request_id)
 
 
-def enable_token_tracking(
-    engine_cls: Type[AsyncLLM], report_decode_progress: bool = False
-) -> Type[AsyncLLM]:
+def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
-        _report_decode_progress: bool = report_decode_progress
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
@@ -189,7 +200,12 @@ def enable_token_tracking(
             tracker = RequestTokenTracker(
                 forwarder,
                 lifecycle_request_id,
-                report_decode_progress=self._report_decode_progress,
+                _get_prompt_token_ids(prompt),
+                # The request's own output cap is its expected length; weights
+                # the selection service's decode-block decay.
+                # TODO(jeffreywang): Use an agent-provided expected-OSL hint for
+                # more accurate decode-load estimation.
+                sampling_params.max_tokens,
             )
             try:
                 async for output in stream:
