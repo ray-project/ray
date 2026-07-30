@@ -4,6 +4,8 @@
 
 set -exo pipefail
 
+pip3 install --no-cache-dir fastokens==0.2.0
+
 # TODO (jeffreywang): Move to official wheels once dynamo changes are upstreamed.
 cat > /tmp/ai-dynamo-runtime.txt <<'EOF'
 ai-dynamo-runtime @ https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/dynamo/298f1e0/ai_dynamo_runtime-1.3.0-cp310-abi3-manylinux_2_35_x86_64.whl \

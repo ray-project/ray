@@ -16,13 +16,12 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TRACKING_TTL_S,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    KV_ROUTER_ACTOR_NAME,
-    KVRouterActor,
-    get_worker_id,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    KVTokenTracker,
+    get_worker_id,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
@@ -86,6 +85,18 @@ class MockSelectionService:
     def __init__(self):
         self.calls = []
         self.reservations = []
+        self.selects = []
+
+    async def select(self, request):
+        """The tracker's local scoring fallback for a request it did not
+        route; kept out of ``calls`` so booking assertions stay focused."""
+        self.selects.append(dict(request))
+        return {
+            "worker_id": request["allowed_worker_ids"][0],
+            "dp_rank": 0,
+            "overlap": {"longest_matched": 0},
+            "effective_prefill_tokens": len(request["token_ids"]),
+        }
 
     async def create_reservation(self, request):
         self.reservations.append(dict(request))
@@ -113,8 +124,8 @@ class MockSelectionService:
 
 
 @ray.remote(num_cpus=0)
-class RecordingKVRouterActor(KVRouterActor):
-    """KVRouterActor that records the lifecycle events it receives for tests."""
+class RecordingKVTokenTracker(KVTokenTracker):
+    """KVTokenTracker that records the lifecycle events it receives for tests."""
 
     def __init__(self, block_size):
         self._block_size = block_size
@@ -163,8 +174,8 @@ class RaisingActor:
         raise RuntimeError("actor down")
 
 
-class LocalKVRouterActor(KVRouterActor):
-    """In-process KVRouterActor with the event plane + Serve LongPoll stripped."""
+class LocalKVTokenTracker(KVTokenTracker):
+    """Router-local KVTokenTracker with the event plane + Serve LongPoll stripped."""
 
     def __init__(self, block_size):
         self._block_size = block_size
@@ -193,14 +204,49 @@ class LocalKVRouterActor(KVRouterActor):
         return sum(1 for s in self._requests.values() if s.worker_id == worker_id)
 
 
+class _BroadcastHandle:
+    """Test double for the LLMRouter DeploymentHandle's ``broadcast()``
+    surface, fanning a method call out to each target (a Ray actor handle or a
+    plain object standing in for one ingress replica)."""
+
+    def __init__(self, *targets):
+        self._targets = targets
+
+    def broadcast(self, method_name, *args, **kwargs):
+        targets = self._targets
+
+        async def _call(target):
+            method = getattr(target, method_name)
+            if hasattr(method, "remote"):
+                return await method.remote(*args, **kwargs)
+            return await method(*args, **kwargs)
+
+        class _Response:
+            async def results_async(self, *, timeout_s=None, return_exceptions=False):
+                gather = asyncio.gather(
+                    *[_call(target) for target in targets],
+                    return_exceptions=return_exceptions,
+                )
+                if timeout_s is None:
+                    return list(await gather)
+                try:
+                    return list(await asyncio.wait_for(gather, timeout=timeout_s))
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        "Timed out waiting for broadcast results."
+                    ) from None
+
+        return _Response()
+
+
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
-    def _build(script, actor, **engine_kwargs):
-        def get_deployment_actor(name):
-            assert name == KV_ROUTER_ACTOR_NAME
-            return actor
-
-        monkeypatch.setattr(serve, "get_deployment_actor", get_deployment_actor)
+    def _build(script, *targets, **engine_kwargs):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+            "token_tracking.get_llm_router_handle",
+            lambda: _BroadcastHandle(*targets),
+        )
         monkeypatch.setattr(
             serve,
             "get_replica_context",
@@ -239,7 +285,7 @@ def op_names(calls):
 @pytest.mark.asyncio
 async def test_basic_lifecycle(build_token_tracking_engine):
     """A streamed request reports add -> prefill -> exact decode counts -> done."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(3, prompt_len=10), actor)
 
     prompt = {"prompt_token_ids": list(range(10))}
@@ -267,7 +313,7 @@ async def test_basic_lifecycle(build_token_tracking_engine):
 async def test_lifecycle_uses_serve_request_id(build_token_tracking_engine):
     """Lifecycle events use the same Serve request id used by routing, even if
     vLLM's engine-level id is different."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(1, prompt_len=10), actor)
 
     prompt = {"prompt_token_ids": list(range(10))}
@@ -302,7 +348,7 @@ async def test_lifecycle_uses_serve_request_id(build_token_tracking_engine):
 @pytest.mark.asyncio
 async def test_in_order_reports(build_token_tracking_engine):
     """Back-to-back reports reach the actor in submission order."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(200), actor)
 
     await consume(
@@ -323,7 +369,7 @@ async def test_in_order_reports(build_token_tracking_engine):
 async def test_streaming_accumulates_decode_progress(build_token_tracking_engine):
     """A DELTA (streaming) request sums each step's new tokens into a running
     total reported as decode progress."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     # Steps carry only new tokens: 1, then 2, then 1 -> cumulative 1, 3, 4.
     script = [request_output([n]) for n in (1, 2, 1)]
     engine = build_token_tracking_engine(script, actor)
@@ -343,7 +389,7 @@ async def test_non_streaming_reports_full_output_once(build_token_tracking_engin
     """A FINAL_ONLY (non-streaming) request arrives as one finished chunk, with a
     CompletionOutput per candidate, so progress is reported once at the summed
     token count across candidates."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     # FINAL_ONLY n=3: a single finished chunk carrying every candidate's output.
     script = [request_output([2, 3, 4], finished=True)]
     engine = build_token_tracking_engine(script, actor)
@@ -369,7 +415,7 @@ async def test_non_streaming_reports_full_output_once(build_token_tracking_engin
 async def test_cumulative_skips_tracking(build_token_tracking_engine):
     """CUMULATIVE repeats output-so-far each chunk; tracking is skipped (not
     summed) to avoid over-counting, so no lifecycle events are reported."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(3), actor)
 
     outputs = await consume(
@@ -385,7 +431,7 @@ async def test_cumulative_skips_tracking(build_token_tracking_engine):
 @pytest.mark.asyncio
 async def test_empty_steps_ignored(build_token_tracking_engine):
     """Token-less outputs (e.g. a finish-only chunk) emit no progress hooks."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     script = [
         request_output([1]),
         request_output([0]),  # structural chunk: no new tokens
@@ -411,7 +457,7 @@ async def test_empty_steps_ignored(build_token_tracking_engine):
 @pytest.mark.parametrize("early_drop", [False, True])
 async def test_completed_exactly_once(early_drop, build_token_tracking_engine):
     """Completion fires exactly once on normal end and on early stream close."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(3), actor)
 
     stream = engine.generate(
@@ -429,7 +475,7 @@ async def test_completed_exactly_once(early_drop, build_token_tracking_engine):
 @pytest.mark.asyncio
 async def test_engine_error_still_completes(build_token_tracking_engine):
     """A mid-stream engine error propagates but still frees the request."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine(delta_steps(3), actor, error_after=1)
 
     with pytest.raises(RuntimeError, match="engine failure"):
@@ -447,7 +493,7 @@ async def test_engine_error_still_completes(build_token_tracking_engine):
 @pytest.mark.asyncio
 async def test_zero_token_request(build_token_tracking_engine):
     """An output-less request (e.g. validation abort) is added and freed only."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
+    actor = RecordingKVTokenTracker.remote(block_size=16)
     engine = build_token_tracking_engine([request_output([0], finished=True)], actor)
 
     prompt = {"prompt_token_ids": [1, 2, 3]}
@@ -481,19 +527,113 @@ async def test_actor_failure_isolation(build_token_tracking_engine):
     assert len(outputs) == 2
 
 
+@pytest.mark.asyncio
+async def test_events_broadcast(build_token_tracking_engine):
+    """Every LLMRouter replica's tracker receives the same events in the same
+    order."""
+    actors = [RecordingKVTokenTracker.remote(block_size=16) for _ in range(2)]
+    engine = build_token_tracking_engine(delta_steps(2), *actors)
+
+    await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    logs = [ray.get(actor.get_event_log.remote()) for actor in actors]
+    assert logs[0] == logs[1]
+    assert [name for name, _ in logs[0]] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failing_replica_isolation(build_token_tracking_engine):
+    """A healthy replica still receives every event when a peer's ingest
+    raises."""
+    healthy = RecordingKVTokenTracker.remote(block_size=16)
+    engine = build_token_tracking_engine(delta_steps(2), RaisingActor.remote(), healthy)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    assert len(outputs) == 2
+    assert [name for name, _ in ray.get(healthy.get_event_log.remote())] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slow_replica_broadcast_timeout(monkeypatch, build_token_tracking_engine):
+    """A slow broadcast target is dropped without stalling delivery forever."""
+
+    class SlowTarget:
+        async def on_lifecycle_events(self, events):
+            await asyncio.sleep(60)
+
+    class HealthyTarget:
+        def __init__(self):
+            self.events = []
+
+        async def on_lifecycle_events(self, events):
+            self.events.extend(events)
+
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+        "token_tracking.LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S",
+        0.01,
+    )
+    healthy = HealthyTarget()
+    engine = build_token_tracking_engine(delta_steps(2), SlowTarget(), healthy)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
+        )
+    )
+    await drain(engine)
+
+    assert len(outputs) == 2
+    assert [name for name, _ in healthy.events] == [
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_decode_progress",
+        "on_request_completed",
+    ]
+
+
 def test_decorator_returns_subclass():
     """The decorator returns an isinstance-compatible subclass."""
     assert issubclass(enable_token_tracking(MockAsyncLLM), MockAsyncLLM)
 
 
 @pytest.mark.asyncio
-async def test_passthrough_without_actor(monkeypatch):
-    """Outside a replica (no actor resolvable) the engine is a pure pass-through."""
+async def test_passthrough_without_llm_router(monkeypatch):
+    """Outside a replica (no LLMRouter handle resolvable) the engine is a pure
+    pass-through."""
 
-    def _raise(name):
-        raise RuntimeError("no actor")
+    def _raise():
+        raise RuntimeError("no LLMRouter")
 
-    monkeypatch.setattr(serve, "get_deployment_actor", _raise)
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
+        "token_tracking.get_llm_router_handle",
+        _raise,
+    )
     engine = enable_token_tracking(MockAsyncLLM)(delta_steps(2))
 
     outputs = await consume(
@@ -534,7 +674,7 @@ def test_is_kv_aware(request_router_config, expected):
 @pytest.mark.asyncio
 async def test_block_boundary_crossings():
     """Each ceil((prompt+output)/block_size) increase advances total_blocks."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     await actor.on_request_added("r", 1, list(range(10)))
     assert (await actor.get_request_lifecycle("r"))["total_blocks"] == 1  # ceil(10/16)
 
@@ -553,7 +693,7 @@ async def test_block_boundary_crossings():
 @pytest.mark.asyncio
 async def test_active_load_tracking():
     """Active load is per-worker; completion evicts the request entirely."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     await actor.on_request_added("a", 1, list(range(8)))
     await actor.on_request_added("b", 1, [])
     await actor.on_request_added("c", 2, [])
@@ -590,7 +730,7 @@ async def test_tracking_drains_under_churn():
     """Memory chaos: a long run of interleaved submissions and completions across
     workers grows the in-flight state and drains it back to nothing."""
     rng = random.Random(20240708)
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     workers = [1, 2, 3]
     total = 400
     inflight: set = set()
@@ -639,7 +779,7 @@ async def test_tracking_drains_under_churn():
 async def test_remove_worker_evicts_requests():
     """A departed replica's in-flight request state is purged: its completion
     events can never arrive, so the entries would otherwise leak forever."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     await actor.on_request_added("a", 1, list(range(8)))
     await actor.on_request_added("b", 1, list(range(8)))
     await actor.on_request_added("c", 2, list(range(8)))
@@ -661,7 +801,7 @@ async def test_remove_worker_evicts_requests():
 async def test_stale_request_evicted_after_ttl():
     """Backstop for a lost completion on a live replica: a request tracked past
     the TTL is evicted and its reservation freed, so it cannot accumulate."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     await actor.on_request_added("stale", 1, list(range(8)))
     await actor.on_request_added("fresh_untriggered", 1, list(range(8)))
     # Backdate the stale request's admission beyond the TTL (lost completion).
@@ -681,7 +821,7 @@ async def test_stale_request_evicted_after_ttl():
 async def test_admission_race_frees_reservation():
     """If remove_worker evicts a request while create_reservation is in flight,
     the orphaned reservation is freed rather than leaking in the service."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
 
     # Simulate the LongPoll remove_worker firing during the create_reservation await.
     book_reservation = actor._svc.create_reservation
@@ -701,7 +841,7 @@ async def test_admission_race_frees_reservation():
 @pytest.mark.asyncio
 async def test_tracks_streamed_request_state(build_token_tracking_engine):
     """End-to-end: exact token counts land as actor block state over ``.remote``."""
-    actor = RecordingKVRouterActor.remote(block_size=8)
+    actor = RecordingKVTokenTracker.remote(block_size=8)
     # prompt 12, block_size 8: baseline ceil(12/8)=2; boundaries at cumulative
     # output 5 and 13 -> 9 generated tokens cross only the first.
     engine = build_token_tracking_engine(delta_steps(9, prompt_len=12), actor)
@@ -741,7 +881,7 @@ async def test_tracks_streamed_request_state(build_token_tracking_engine):
 async def test_lifecycle_books_selection_service_load(build_token_tracking_engine):
     """A streamed request books create_reservation -> prefill_complete -> one
     add_output_block per crossed decode block -> free_reservation, in order."""
-    actor = RecordingKVRouterActor.remote(block_size=8)
+    actor = RecordingKVTokenTracker.remote(block_size=8)
     # prompt 12 (2 blocks); cumulative output crosses into block 3 at 5 tokens
     # and block 4 at 13 tokens -> exactly two output blocks over 20 tokens.
     engine = build_token_tracking_engine(delta_steps(20, prompt_len=12), actor)
@@ -769,7 +909,7 @@ async def test_lifecycle_books_selection_service_load(build_token_tracking_engin
 @pytest.mark.asyncio
 async def test_decode_blocks_book_add_output_block():
     """Each crossed decode block books one add_output_block in the service."""
-    actor = LocalKVRouterActor(block_size=16)
+    actor = LocalKVTokenTracker(block_size=16)
     await actor.on_request_added("r", WORKER_ID, list(range(10)))  # 1 prompt block
     await actor.on_decode_progress("r", 6)  # 16 -> still 1 block
     await actor.on_decode_progress("r", 7)  # 17 -> crosses into block 2
@@ -793,7 +933,7 @@ async def test_expected_output_tokens_sets_decay_fraction(
 ):
     """With an output-length estimate each booked decode block decays by the
     remaining fraction; without one the block carries no decay."""
-    actor = LocalKVRouterActor(block_size=8)
+    actor = LocalKVTokenTracker(block_size=8)
     await actor.on_request_added(
         "r", WORKER_ID, list(range(8)), expected_output_tokens=expected_output_tokens
     )
