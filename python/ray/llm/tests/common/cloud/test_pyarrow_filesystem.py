@@ -419,7 +419,7 @@ class TestPyArrowFileSystemAzureSupport:
             account_name="account", credential=mock_cred.return_value
         )
 
-    @patch.dict("os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"})
+    @patch.dict("os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"}, clear=True)
     @patch("adlfs.AzureBlobFileSystem")
     @patch("azure.identity.DefaultAzureCredential")
     @patch("pyarrow.fs.PyFileSystem")
@@ -436,12 +436,39 @@ class TestPyArrowFileSystemAzureSupport:
         assert fs == mock_pyfs_instance
         assert path == "container/path/to/file"
 
-        # The account name comes from AZURE_STORAGE_ACCOUNT_NAME, not the URI
+        # Account name comes from AZURE_STORAGE_ACCOUNT_NAME, not the URI
+        # No key/SAS/connection string set, so DefaultAzureCredential is used
         mock_adlfs.assert_called_once_with(
             account_name="myaccount", credential=mock_cred.return_value
         )
         mock_handler.assert_called_once_with(mock_adlfs_instance)
         mock_pyfs.assert_called_once_with(mock_handler.return_value)
+
+    @patch.dict(
+        "os.environ",
+        {
+            "AZURE_STORAGE_ACCOUNT_NAME": "myaccount",
+            "AZURE_STORAGE_ACCOUNT_KEY": "secret-key",
+        },
+        clear=True,
+    )
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_az_defers_to_credential_env_vars(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test az:// lets adlfs read an account key/SAS/connection string.
+
+        When one of those credential env vars is set (as the RunAI streamer
+        supports), DefaultAzureCredential must not be forced, otherwise it would
+        take precedence over the account key and SAS token in adlfs.
+        """
+        PyArrowFileSystem._create_az_filesystem("az://container/path")
+
+        mock_cred.assert_not_called()
+        mock_adlfs.assert_called_once_with(account_name="myaccount", credential=None)
 
     def test_az_missing_account_env(self):
         """Test az:// raises when AZURE_STORAGE_ACCOUNT_NAME is unset."""

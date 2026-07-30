@@ -220,10 +220,25 @@ class PyArrowFileSystem(BaseCloudFileSystem):
                 f"Invalid az:// URI format - missing container name: {object_uri}"
             )
 
-        # Create the adlfs filesystem
+        # Create the adlfs filesystem. adlfs reads an account key, SAS token, or
+        # connection string from the environment (the same variables the RunAI
+        # streamer honors), so only fall back to DefaultAzureCredential when none
+        # of them are set; an explicit credential would otherwise take precedence
+        # over the account key and SAS token.
+        credential = None
+        if not any(
+            os.getenv(var)
+            for var in (
+                "AZURE_STORAGE_CONNECTION_STRING",
+                "AZURE_STORAGE_ACCOUNT_KEY",
+                "AZURE_STORAGE_SAS_TOKEN",
+            )
+        ):
+            credential = DefaultAzureCredential()
+
         adlfs_fs = adlfs.AzureBlobFileSystem(
             account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential(),
+            credential=credential,
         )
 
         # Wrap with PyArrow's PyFileSystem for compatibility
