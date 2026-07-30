@@ -116,6 +116,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # In-flight row-count fetches, keyed by input index. An input with an
         # entry here is paused until its head's row count resolves.
         self._pending_count_tasks: Dict[int, MetadataOpTask] = {}
+        # The bundle each in-flight row-count fetch is holding, keyed by input
+        # index. Tracked like `_task_sources` so a cancelled fetch still
+        # releases what it held.
+        self._count_task_sources: Dict[int, _SourceBundle] = {}
         # In-flight zip tasks, keyed by task index (also the output ordering key).
         self._data_tasks: Dict[int, DataOpTask] = {}
         # The bundles each in-flight zip task is holding, keyed by task index.
@@ -303,12 +307,20 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # for zipping are released separately, by `clear_internal_input_queue`.
         for task_index in list(self._task_sources):
             self._release_task_holds(task_index)
+        for input_index in list(self._count_task_sources):
+            self._release_count_hold(input_index)
         self._data_tasks.clear()
         self._pending_count_tasks.clear()
 
     def _release_task_holds(self, task_index: int) -> None:
         """Release the holds a zip task kept on the bundles it read."""
         for source in self._task_sources.pop(task_index, ()):
+            self._release_hold(source)
+
+    def _release_count_hold(self, input_index: int) -> None:
+        """Release the hold a row-count fetch kept on the bundle it read."""
+        source = self._count_task_sources.pop(input_index, None)
+        if source is not None:
             self._release_hold(source)
 
     @override
@@ -360,11 +372,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             count_fn = count_fn.options(label_selector=label_selector)
         count_ref = count_fn.remote(head.ref)
 
+        # The task reads the block, so hold its bundle for as long as the task
+        # runs. Without this an early finish could free the block out from under
+        # a count still in flight.
+        head.source.holds += 1
+        self._count_task_sources[input_index] = head.source
+
         def _on_count_ready() -> None:
             self._pending_count_tasks.pop(input_index, None)
             # The executor only fires this once the task has completed, so the
             # object is already available and this is a local fetch.
             head.num_rows = ray.get(count_ref)
+            self._release_count_hold(input_index)
             self._dispatch_ready_zips()
             self._validate_if_settled()
 

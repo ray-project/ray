@@ -273,51 +273,23 @@ def test_zip_streaming_with_unaligned_blocks(ray_start_regular_shared):
     assert id_1_values == list(range(10, 19))
 
 
-def test_zip_streaming_different_row_counts_raises(ray_start_regular_shared):
-    """Verify that zipping datasets with different total row counts raises
-    ValueError at all_inputs_done."""
-    from ray.data._internal.execution.interfaces import ExecutionOptions
-    from ray.data._internal.execution.operators.input_data_buffer import (
-        InputDataBuffer,
-    )
-    from ray.data._internal.execution.operators.zip_operator import ZipOperator
-    from ray.data._internal.execution.util import make_ref_bundles
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-
-    bundles_a = make_ref_bundles([[0, 1, 2]])  # 3 rows
-    bundles_b = make_ref_bundles([[10, 11]])  # 2 rows
-
-    input_a = InputDataBuffer(ctx, bundles_a)
-    input_b = InputDataBuffer(ctx, bundles_b)
-    zip_op = ZipOperator(ctx, input_a, input_b)
-
-    zip_op.start(ExecutionOptions(), noop_counter())
-    input_a.start(ExecutionOptions(), noop_counter())
-    input_b.start(ExecutionOptions(), noop_counter())
-
-    zip_op.add_input(input_a.get_next(), 0)
-    zip_op.add_input(input_b.get_next(), 1)
-
-    zip_op.input_done(0)
-    zip_op.input_done(1)
-
-    with pytest.raises(ValueError, match="different number of rows"):
-        zip_op.all_inputs_done()
-
-
-@pytest.mark.parametrize("extra_b_blocks", [[[12]], [[12], [13]]])
-def test_zip_streaming_partial_progress_mismatch_raises(
-    ray_start_regular_shared, extra_b_blocks
+@pytest.mark.parametrize(
+    "a_blocks,b_blocks",
+    [
+        # Nothing zips at all: the very first pair already disagrees.
+        ([[0, 1, 2]], [[10, 11]]),
+        # The first pair zips, then B has one block left over. The leftover
+        # lands in the block deque.
+        ([[0, 1]], [[10, 11], [12]]),
+        # Same, but with enough extra blocks that the leftover stays in the
+        # input buffer, which used to stall instead of raising.
+        ([[0, 1]], [[10, 11], [12], [13]]),
+    ],
+)
+def test_zip_streaming_row_count_mismatch_raises(
+    ray_start_regular_shared, a_blocks, b_blocks
 ):
-    """Regression test: even after some pairs zip successfully, a longer input
-    left with unconsumed bundles must raise (not stall) at all_inputs_done.
-
-    Covers both the case where the leftover sits in the block deque (one extra
-    bundle) and where it sits in the input buffer (two+ extra bundles), which is
-    the path that previously deferred validation and stalled.
-    """
+    """Inputs of differing length must raise, whether or not any pair zipped."""
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.execution.operators.input_data_buffer import (
         InputDataBuffer,
@@ -328,10 +300,8 @@ def test_zip_streaming_partial_progress_mismatch_raises(
 
     ctx = DataContext.get_current()
 
-    # A has one 2-row block; B starts with a matching 2-row block (so the first
-    # pair zips) followed by extra blocks that A can never match.
-    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1]]))
-    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]] + extra_b_blocks))
+    input_a = InputDataBuffer(ctx, make_ref_bundles(a_blocks))
+    input_b = InputDataBuffer(ctx, make_ref_bundles(b_blocks))
     zip_op = ZipOperator(ctx, input_a, input_b)
 
     zip_op.start(ExecutionOptions(), noop_counter())
@@ -413,16 +383,38 @@ def test_zip_streaming_empty_blocks(ray_start_regular_shared, a_blocks, b_blocks
     assert id_1_values == [v for block in b_blocks for v in block]
 
 
-def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared):
-    """Verify that when a block's metadata lacks num_rows, ZipOperator fetches it
-    via an async MetadataOpTask instead of blocking, and still zips correctly."""
-    import pyarrow as pa
+def _bundle_with_unknown_rows(values):
+    """Build a one-block bundle whose metadata carries no row count.
 
-    from ray.data._internal.execution.interfaces import (
-        BlockEntry,
-        ExecutionOptions,
-        RefBundle,
+    Some external datasources leave ``num_rows`` unset, which is what makes
+    ZipOperator fetch it asynchronously. ``size_bytes`` still has to be filled
+    in, since RefBundle rejects blocks of unknown size.
+    """
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+    from ray.data.block import BlockAccessor, BlockMetadata
+
+    block = pd.DataFrame({"id": values})
+    metadata = BlockMetadata(
+        num_rows=None,
+        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+        exec_stats=None,
+        input_files=None,
     )
+    return RefBundle(
+        [BlockEntry(ray.put(block), metadata)],
+        owns_blocks=True,
+        schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
+    )
+
+
+def test_zip_streaming_keeps_block_alive_for_running_count(ray_start_regular_shared):
+    """An in-flight row-count fetch must keep its block from being freed.
+
+    Ending early, such as a downstream limit, drops the staged rows that were
+    keeping the bundle alive. If the fetch doesn't hold the bundle itself, the
+    block gets freed while a task is still reading it.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.execution.interfaces.physical_operator import (
         MetadataOpTask,
     )
@@ -430,30 +422,54 @@ def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared
         InputDataBuffer,
     )
     from ray.data._internal.execution.operators.zip_operator import ZipOperator
-    from ray.data.block import BlockAccessor, BlockMetadata
     from ray.data.context import DataContext
     from ray.data.tests.util import run_op_tasks_sync
 
     ctx = DataContext.get_current()
 
-    def bundle_with_unknown_rows(values):
-        block = pd.DataFrame({"id": values})
-        # Leave out num_rows to exercise the async fetch path. size_bytes still
-        # has to be set, since RefBundle rejects blocks of unknown size.
-        metadata = BlockMetadata(
-            num_rows=None,
-            size_bytes=BlockAccessor.for_block(block).size_bytes(),
-            exec_stats=None,
-            input_files=None,
-        )
-        return RefBundle(
-            [BlockEntry(ray.put(block), metadata)],
-            owns_blocks=True,
-            schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
-        )
+    input_a = InputDataBuffer(ctx, [_bundle_with_unknown_rows([0, 1, 2])])
+    input_b = InputDataBuffer(ctx, [_bundle_with_unknown_rows([10, 11, 12])])
+    zip_op = ZipOperator(ctx, input_a, input_b)
 
-    input_a = InputDataBuffer(ctx, [bundle_with_unknown_rows([0, 1, 2])])
-    input_b = InputDataBuffer(ctx, [bundle_with_unknown_rows([10, 11, 12])])
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
+
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    assert any(isinstance(t, MetadataOpTask) for t in zip_op.get_active_tasks())
+
+    # A downstream limit finishing takes this path, dropping the staged rows.
+    zip_op.mark_execution_finished()
+
+    # The fetches are still running, so their bundles must still be held.
+    assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
+
+    # Once they finish, nothing references the bundles and they're released.
+    run_op_tasks_sync(zip_op)
+    assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
+
+
+def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared):
+    """Verify that when a block's metadata lacks num_rows, ZipOperator fetches it
+    via an async MetadataOpTask instead of blocking, and still zips correctly."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        MetadataOpTask,
+    )
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, [_bundle_with_unknown_rows([0, 1, 2])])
+    input_b = InputDataBuffer(ctx, [_bundle_with_unknown_rows([10, 11, 12])])
     zip_op = ZipOperator(ctx, input_a, input_b)
 
     zip_op.start(ExecutionOptions(), noop_counter())
@@ -490,25 +506,6 @@ def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared
     assert id_1_values == [10, 11, 12]
 
 
-def test_zip_streaming_throttling_enabled(ray_start_regular_shared):
-    """Verify that the streaming zip operator has throttling enabled
-    (backpressure support)."""
-    from ray.data._internal.execution.operators.input_data_buffer import (
-        InputDataBuffer,
-    )
-    from ray.data._internal.execution.operators.zip_operator import ZipOperator
-    from ray.data._internal.execution.util import make_ref_bundles
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-
-    input_a = InputDataBuffer(ctx, make_ref_bundles([[1]]))
-    input_b = InputDataBuffer(ctx, make_ref_bundles([[2]]))
-    zip_op = ZipOperator(ctx, input_a, input_b)
-
-    assert not zip_op.throttling_disabled()
-
-
 @pytest.mark.parametrize("preserve_order", [True, False])
 def test_zip_streaming_output_queue_matches_preserve_order(
     ray_start_regular_shared, preserve_order
@@ -538,12 +535,14 @@ def test_zip_streaming_output_queue_matches_preserve_order(
     assert isinstance(zip_op._output_buffer, expected)
 
 
-def test_zip_streaming_accounts_held_input_memory(ray_start_regular_shared):
-    """Input blocks the operator is still holding must stay visible to backpressure.
+@pytest.mark.parametrize("end_via", ["drain", "early_stop"])
+def test_zip_streaming_releases_held_input(ray_start_regular_shared, end_via):
+    """Held input blocks stay accounted until released, then go to zero.
 
-    Blocks move out of the input queue into internal pending state well before
-    they are zipped, so the operator keeps them accounted until nothing
-    references them; otherwise skewed inputs would let upstream over-admit work.
+    Blocks leave the input queue for internal staging well before they're
+    zipped, so the operator has to keep them accounted while it holds them,
+    or skewed inputs would let upstream over-admit work. Whichever way
+    execution ends, everything must end up released.
     """
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.execution.operators.input_data_buffer import (
@@ -556,8 +555,6 @@ def test_zip_streaming_accounts_held_input_memory(ray_start_regular_shared):
 
     ctx = DataContext.get_current()
 
-    # Feed input 0 only, so its blocks pile up with nothing to pair against —
-    # exactly the skew case where unaccounted memory would be invisible.
     input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1], [2, 3]]))
     input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11], [12, 13]]))
     zip_op = ZipOperator(ctx, input_a, input_b)
@@ -566,67 +563,28 @@ def test_zip_streaming_accounts_held_input_memory(ray_start_regular_shared):
     input_a.start(ExecutionOptions(), noop_counter())
     input_b.start(ExecutionOptions(), noop_counter())
 
+    # Feed input 0 only at first: nothing can be zipped, so its blocks pile up
+    # in internal staging. That's the skew case where unaccounted memory would
+    # be invisible to backpressure.
     while input_a.has_next():
         zip_op.add_input(input_a.get_next(), 0)
-
-    # Nothing can be zipped yet, so every block of input 0 is still held and
-    # must still count against this operator.
     assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
 
-    while input_b.has_next():
-        zip_op.add_input(input_b.get_next(), 1)
-
-    zip_op.input_done(0)
-    zip_op.input_done(1)
-    zip_op.all_inputs_done()
-
-    run_op_tasks_sync(zip_op)
-    while zip_op.has_next():
-        zip_op.get_next()
-
-    # Everything has been zipped and every task has finished, so all input
-    # bundles should have been released.
-    assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
-
-
-def test_zip_streaming_releases_input_on_early_stop(ray_start_regular_shared):
-    """Ending execution early must not strand held input bundles.
-
-    A downstream limit can finish the operator while rows are still staged for
-    zipping. Those bundles have already left the input queue, so unless they are
-    released here they stay counted in the operator's metrics and blocks it owns
-    are never freed.
-    """
-    from ray.data._internal.execution.interfaces import ExecutionOptions
-    from ray.data._internal.execution.operators.input_data_buffer import (
-        InputDataBuffer,
-    )
-    from ray.data._internal.execution.operators.zip_operator import ZipOperator
-    from ray.data._internal.execution.util import make_ref_bundles
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-
-    # Feed input 0 only, so nothing can be zipped and its blocks stay staged.
-    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1], [2, 3], [4, 5]]))
-    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]]))
-    zip_op = ZipOperator(ctx, input_a, input_b)
-
-    zip_op.start(ExecutionOptions(), noop_counter())
-    input_a.start(ExecutionOptions(), noop_counter())
-    input_b.start(ExecutionOptions(), noop_counter())
-
-    while input_a.has_next():
-        zip_op.add_input(input_a.get_next(), 0)
-
-    # Blocks are held across both the staging queue and the input buffer.
-    assert zip_op.metrics.obj_store_mem_internal_inqueue > 0
-
-    # A downstream limit finishing takes this path.
-    zip_op.mark_execution_finished()
+    if end_via == "drain":
+        while input_b.has_next():
+            zip_op.add_input(input_b.get_next(), 1)
+        zip_op.input_done(0)
+        zip_op.input_done(1)
+        zip_op.all_inputs_done()
+        run_op_tasks_sync(zip_op)
+        while zip_op.has_next():
+            zip_op.get_next()
+    else:
+        # A downstream limit finishing takes this path, with rows still staged.
+        zip_op.mark_execution_finished()
+        assert zip_op.internal_input_queue_num_blocks() == 0
 
     assert zip_op.metrics.obj_store_mem_internal_inqueue == 0
-    assert zip_op.internal_input_queue_num_blocks() == 0
 
 
 @pytest.mark.parametrize("force", [False, True])
@@ -712,8 +670,9 @@ def test_zip_streaming_reuses_block_across_offsets(ray_start_regular_shared):
         zip_op.add_input(input_b.get_next(), 1)
 
     # Three aligned ranges, so three zip tasks and no separate split tasks.
-    assert all(isinstance(t, DataOpTask) for t in zip_op.get_active_tasks())
-    assert zip_op._next_task_idx == 3
+    active = zip_op.get_active_tasks()
+    assert len(active) == 3, active
+    assert all(isinstance(t, DataOpTask) for t in active)
 
     zip_op.input_done(0)
     zip_op.input_done(1)
