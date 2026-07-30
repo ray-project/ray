@@ -4,7 +4,7 @@ import pytest
 
 from ray._raylet import JobID, TaskID
 from ray.core.generated import gcs_pb2
-from ray.core.generated.common_pb2 import TaskAttempt, TaskStatus, TaskType
+from ray.core.generated.common_pb2 import ErrorType, TaskAttempt, TaskStatus, TaskType
 from ray.dashboard.modules.task_events import task_event_storage as tes
 
 _JOB = JobID.from_int(1).binary()
@@ -15,7 +15,7 @@ def _task_id(n: int) -> bytes:
 
 
 def _event(
-    task_id, attempt=0, task_type=None, finished=False, name=""
+    task_id, attempt=0, task_type=None, finished=False, name="", worker=None
 ) -> gcs_pb2.TaskEvents:
     event = gcs_pb2.TaskEvents(task_id=task_id, attempt_number=attempt, job_id=_JOB)
     if task_type is not None:
@@ -23,6 +23,8 @@ def _event(
         event.task_info.name = name
     if finished:
         event.state_updates.state_ts_ns[TaskStatus.FINISHED] = 1
+    if worker is not None:
+        event.state_updates.worker_id = worker
     return event
 
 
@@ -127,6 +129,69 @@ def test_job_summary_gc_trims_over_cap(monkeypatch):
 
     # 10 tracked, cap 4 -> 6 evicted; total-ever count is preserved.
     assert summary.num_task_attempts_dropped == 10
+
+
+_WORKER = b"w" * 28
+
+
+def test_mark_tasks_failed_on_worker_dead():
+    store = tes.TaskEventStorage()
+    store.add_or_replace_task_event(
+        _event(_task_id(1), task_type=TaskType.NORMAL_TASK, worker=_WORKER)
+    )
+
+    store.mark_tasks_failed_on_worker_dead(
+        _WORKER, gcs_pb2.WorkerTableData(exit_detail="boom", end_time_ms=5)
+    )
+
+    state = store.get_task_event((_task_id(1), 0)).state_updates
+    assert state.state_ts_ns[TaskStatus.FAILED] == 5 * 10**6
+    assert state.error_info.error_type == ErrorType.WORKER_DIED
+    assert "boom" in state.error_info.error_message
+
+
+def test_mark_tasks_failed_on_worker_dead_skips_terminated():
+    store = tes.TaskEventStorage()
+    store.add_or_replace_task_event(
+        _event(
+            _task_id(1), task_type=TaskType.NORMAL_TASK, worker=_WORKER, finished=True
+        )
+    )
+
+    store.mark_tasks_failed_on_worker_dead(
+        _WORKER, gcs_pb2.WorkerTableData(end_time_ms=5)
+    )
+
+    state = store.get_task_event((_task_id(1), 0)).state_updates
+    assert TaskStatus.FAILED not in state.state_ts_ns
+
+
+def test_mark_tasks_failed_on_worker_dead_unknown_worker_is_noop():
+    store = tes.TaskEventStorage()
+    # No tasks indexed for this worker; must not raise.
+    store.mark_tasks_failed_on_worker_dead(_WORKER, gcs_pb2.WorkerTableData())
+
+
+def test_mark_tasks_failed_on_job_ends():
+    store = tes.TaskEventStorage()
+    store.add_or_replace_task_event(_event(_task_id(1), task_type=TaskType.NORMAL_TASK))
+
+    store.mark_tasks_failed_on_job_ends(_JOB, 9)
+
+    state = store.get_task_event((_task_id(1), 0)).state_updates
+    assert state.state_ts_ns[TaskStatus.FAILED] == 9
+    assert state.error_info.error_type == ErrorType.WORKER_DIED
+
+
+def test_update_job_summary_on_job_done_clears_drops():
+    store = tes.TaskEventStorage()
+    summary = store._summary(_JOB)
+    summary.record_task_attempt_dropped((_task_id(1), 0))
+    assert summary.should_drop_task_attempt((_task_id(1), 0))
+
+    store.update_job_summary_on_job_done(_JOB)
+
+    assert not summary.should_drop_task_attempt((_task_id(1), 0))
 
 
 if __name__ == "__main__":

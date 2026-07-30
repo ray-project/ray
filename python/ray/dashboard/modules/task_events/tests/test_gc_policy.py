@@ -4,7 +4,10 @@ import pytest
 
 from ray.core.generated import gcs_pb2
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.dashboard.modules.task_events.gc_policy import FinishedTaskActorTaskGcPolicy
+from ray.dashboard.modules.task_events.gc_policy import (
+    FinishedTaskActorTaskGcPolicy,
+    is_task_terminated,
+)
 
 
 def _finished_event() -> gcs_pb2.TaskEvents:
@@ -21,6 +24,18 @@ def _typed_event(task_type) -> gcs_pb2.TaskEvents:
 
 def test_max_priority():
     assert FinishedTaskActorTaskGcPolicy().max_priority == 3
+
+
+def test_is_task_terminated():
+    failed = gcs_pb2.TaskEvents()
+    failed.state_updates.state_ts_ns[TaskStatus.FAILED] = 1
+    running = gcs_pb2.TaskEvents()
+    running.state_updates.state_ts_ns[TaskStatus.RUNNING] = 1
+
+    assert is_task_terminated(_finished_event())
+    assert is_task_terminated(failed)
+    assert not is_task_terminated(running)
+    assert not is_task_terminated(gcs_pb2.TaskEvents())
 
 
 def test_priority_tiers():
