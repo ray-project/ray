@@ -48,7 +48,7 @@ Compression = Optional[
 
 
 # =============================================================================
-# SHARED: shard codec, page-cache hint, ShuffleFileServer identity/lookup, the
+# SHARED: shard codec, ShuffleFileServer identity/lookup, the
 # ShuffleHandle type, and the error hierarchy, which are used by both map and reduce.
 # =============================================================================
 # Each range's payload length is framed as a u32 in the sink, so no single
@@ -112,25 +112,6 @@ def _read_ipc(
     raw = body if codec is None else codec.decompress(body, decompressed_size=n)
     with pa.ipc.open_stream(raw) as r:
         return r.read_all()
-
-
-# Linux-only; macOS lacks POSIX_FADV_DONTNEED. Probed once at import time so
-# the hot path is a constant-time attribute check, not a try/except per range.
-_HAS_FADV_DONTNEED = hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED")
-
-
-def _drop_pagecache(fd: int, offset: int, length: int) -> None:
-    """Hint the kernel to drop ``[offset, offset+length)`` of ``fd`` from the
-    page cache. Effective on clean pages; on dirty pages the hint is recorded
-    and eviction happens on next writeback."""
-    if not _HAS_FADV_DONTNEED or length <= 0:
-        return
-    try:
-        os.posix_fadvise(fd, offset, length, os.POSIX_FADV_DONTNEED)
-    except OSError:
-        # Best-effort: any failure is silently ignored, cause the worst case is the
-        # kernel keeps the pages longer.
-        pass
 
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id)
