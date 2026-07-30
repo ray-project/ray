@@ -29,7 +29,6 @@ from ray.data._internal.stats import Timer
 from ray.data.context import DataContext
 from ray.data.tests.util import run_op_tasks_sync
 
-
 # --- helpers -----------------------------------------------------------------
 
 

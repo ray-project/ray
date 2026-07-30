@@ -35,11 +35,34 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.context import DataContext
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
+)
+from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
+    _MAX_RANGE_BYTES,
+    _SHUFFLE_FILE_SERVER_NAMESPACE,
+    ShuffleDiskError,
+    ShuffleFileServer,
+    ShuffleHandle,
+    _compute_prefetch_layout,
+    _drop_pagecache,
+    _encode_shard,
+    _file_server_name,
+    _group_by_server,
+    _handles_to_sources,
+    _is_disk_exhausted,
+    _prefetch_node_into,
+    _PwriteSink,
+    _read_ipc,
+)
+
+# PartitionFn/ReduceFn contracts are shared with the in-memory variant.
+# External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
+    PartitionFn,
+    ReduceFn,
 )
 from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
@@ -52,32 +75,8 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     TaskExecWorkerStats,
 )
+from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-# PartitionFn/ReduceFn contracts are shared with the in-memory variant.
-# External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
-    PartitionFn,
-    ReduceFn,
-)
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
-    _MAX_RANGE_BYTES,
-    _SHUFFLE_FILE_SERVER_NAMESPACE,
-    _compute_prefetch_layout,
-    _drop_pagecache,
-    _encode_shard,
-    _group_by_server,
-    _handles_to_sources,
-    _is_disk_exhausted,
-    _file_server_name,
-    _prefetch_node_into,
-    _PwriteSink,
-    _read_ipc,
-    ShuffleDiskError,
-    ShuffleHandle,
-    ShuffleFileServer,
-)
-
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 # CAP on fetch connections per reducer: n_threads = min(#file-servers, this).
