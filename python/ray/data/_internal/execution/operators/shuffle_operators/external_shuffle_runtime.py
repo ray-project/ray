@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import (
+    TYPE_CHECKING,
     Dict,
     Iterable,
     List,
@@ -20,14 +21,6 @@ from typing import (
     TypedDict,
     Union,
 )
-
-# pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
-# ``data_context.hash_shuffle_compression``.
-Compression = Optional[
-    Literal[
-        "none", "gzip", "bz2", "brotli", "lz4", "lz4_frame", "lz4_raw", "zstd", "snappy"
-    ]
-]
 
 import pyarrow as pa
 
@@ -40,7 +33,18 @@ from ray.exceptions import (
     ActorUnschedulableError,
 )
 
+if TYPE_CHECKING:
+    import numpy as np
+
 logger = logging.getLogger(__name__)
+
+# pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
+# ``data_context.hash_shuffle_compression``.
+Compression = Optional[
+    Literal[
+        "none", "gzip", "bz2", "brotli", "lz4", "lz4_frame", "lz4_raw", "zstd", "snappy"
+    ]
+]
 
 
 # =============================================================================
