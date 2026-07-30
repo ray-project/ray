@@ -122,14 +122,169 @@ repos:
             python/ray/autoscaler/sdk/sdk.py|
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
-            python/ray/_private/gcs_utils.py|
-            python/ray/serve/handle.py|
-            python/ray/serve/tests/typing_files/check_handle_typing.py
+            python/ray/_private/gcs_utils.py
           )
         additional_dependencies:
           [
             types-PyYAML==6.0.12.2,
           ]
+      # Serve-scoped type checking. Unlike the hook above, this uses
+      # `--follow-imports=silent` so imported types actually resolve (with
+      # `skip`, every cross-module type collapses to `Any` and wrong-type
+      # arguments go undetected). Only files listed here are checked; once a
+      # file is mypy-clean, add it to the list so it can't regress.
+      - id: mypy
+        name: mypy (ray serve)
+        args: ['--follow-imports=silent', '--ignore-missing-imports']
+        additional_dependencies:
+          [
+            types-requests==2.31.0.6,
+          ]
+        files: |
+          (?x)^(
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py|
+            python/ray/serve/_private/__init__.py|
+            python/ray/serve/_private/api.py|
+            python/ray/serve/_private/autoscaling_state.py|
+            python/ray/serve/_private/benchmarks/__init__.py|
+            python/ray/serve/_private/benchmarks/serialization/__init__.py|
+            python/ray/serve/_private/benchmarks/serialization/common.py|
+            python/ray/serve/_private/benchmarks/streaming/__init__.py|
+            python/ray/serve/_private/benchmarks/streaming/_grpc/__init__.py|
+            python/ray/serve/_private/broker.py|
+            python/ray/serve/_private/build_app.py|
+            python/ray/serve/_private/cluster_node_info_cache.py|
+            python/ray/serve/_private/common.py|
+            python/ray/serve/_private/config.py|
+            python/ray/serve/_private/constants.py|
+            python/ray/serve/_private/constants_utils.py|
+            python/ray/serve/_private/controller_avatar.py|
+            python/ray/serve/_private/controller_health_metrics_tracker.py|
+            python/ray/serve/_private/default_impl.py|
+            python/ray/serve/_private/deploy_utils.py|
+            python/ray/serve/_private/deployment_info.py|
+            python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/direct_ingress_grpc_util.py|
+            python/ray/serve/_private/direct_ingress_http_util.py|
+            python/ray/serve/_private/endpoint_state.py|
+            python/ray/serve/_private/event_loop_monitoring.py|
+            python/ray/serve/_private/exceptions.py|
+            python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
+            python/ray/serve/_private/grpc_util.py|
+            python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy_metrics.py|
+            python/ray/serve/_private/haproxy_templates.py|
+            python/ray/serve/_private/http_util.py|
+            python/ray/serve/_private/local_testing_mode.py|
+            python/ray/serve/_private/logging_utils.py|
+            python/ray/serve/_private/long_poll.py|
+            python/ray/serve/_private/metrics_utils.py|
+            python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy_request_response.py|
+            python/ray/serve/_private/proxy_response_generator.py|
+            python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/queue_monitor.py|
+            python/ray/serve/_private/replica_response_generator.py|
+            python/ray/serve/_private/replica_result.py|
+            python/ray/serve/_private/request_ingress_metrics.py|
+            python/ray/serve/_private/request_router/__init__.py|
+            python/ray/serve/_private/request_router/common.py|
+            python/ray/serve/_private/request_router/pow_2_router.py|
+            python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/serialization.py|
+            python/ray/serve/_private/storage/__init__.py|
+            python/ray/serve/_private/storage/kv_store.py|
+            python/ray/serve/_private/storage/kv_store_base.py|
+            python/ray/serve/_private/task_consumer.py|
+            python/ray/serve/_private/thirdparty/__init__.py|
+            python/ray/serve/_private/tracing_utils.py|
+            python/ray/serve/_private/usage.py|
+            python/ray/serve/_private/utils.py|
+            python/ray/serve/_private/version.py
+          )
+
+  # Second type checker over the same Serve allowlist. Pyrefly resolves
+  # modules and narrows differently than mypy, so it catches a disjoint set
+  # of bugs; scope/config (import replacement, search path) lives in
+  # pyrefly.toml. Keep the files list in sync with the "mypy (ray serve)"
+  # hook above.
+  - repo: local
+    hooks:
+      - id: pyrefly-serve
+        name: pyrefly (ray serve)
+        language: python
+        additional_dependencies: [pyrefly==1.1.1]
+        # The repo-root pyrefly.toml belongs to the ray/data CI job
+        # (ci/lint/pyrefly-check.sh); pass the serve-scoped config explicitly
+        # under a name pyrefly does not auto-discover.
+        entry: pyrefly check --config python/ray/serve/pyrefly-serve.toml
+        pass_filenames: true
+        files: |
+          (?x)^(
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py|
+            python/ray/serve/_private/__init__.py|
+            python/ray/serve/_private/api.py|
+            python/ray/serve/_private/autoscaling_state.py|
+            python/ray/serve/_private/benchmarks/__init__.py|
+            python/ray/serve/_private/benchmarks/serialization/__init__.py|
+            python/ray/serve/_private/benchmarks/serialization/common.py|
+            python/ray/serve/_private/benchmarks/streaming/__init__.py|
+            python/ray/serve/_private/benchmarks/streaming/_grpc/__init__.py|
+            python/ray/serve/_private/broker.py|
+            python/ray/serve/_private/build_app.py|
+            python/ray/serve/_private/cluster_node_info_cache.py|
+            python/ray/serve/_private/common.py|
+            python/ray/serve/_private/config.py|
+            python/ray/serve/_private/constants.py|
+            python/ray/serve/_private/constants_utils.py|
+            python/ray/serve/_private/controller_avatar.py|
+            python/ray/serve/_private/controller_health_metrics_tracker.py|
+            python/ray/serve/_private/default_impl.py|
+            python/ray/serve/_private/deploy_utils.py|
+            python/ray/serve/_private/deployment_info.py|
+            python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/direct_ingress_grpc_util.py|
+            python/ray/serve/_private/direct_ingress_http_util.py|
+            python/ray/serve/_private/endpoint_state.py|
+            python/ray/serve/_private/event_loop_monitoring.py|
+            python/ray/serve/_private/exceptions.py|
+            python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
+            python/ray/serve/_private/grpc_util.py|
+            python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy_metrics.py|
+            python/ray/serve/_private/haproxy_templates.py|
+            python/ray/serve/_private/http_util.py|
+            python/ray/serve/_private/local_testing_mode.py|
+            python/ray/serve/_private/logging_utils.py|
+            python/ray/serve/_private/long_poll.py|
+            python/ray/serve/_private/metrics_utils.py|
+            python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy_request_response.py|
+            python/ray/serve/_private/proxy_response_generator.py|
+            python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/queue_monitor.py|
+            python/ray/serve/_private/replica_response_generator.py|
+            python/ray/serve/_private/replica_result.py|
+            python/ray/serve/_private/request_ingress_metrics.py|
+            python/ray/serve/_private/request_router/__init__.py|
+            python/ray/serve/_private/request_router/common.py|
+            python/ray/serve/_private/request_router/pow_2_router.py|
+            python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/serialization.py|
+            python/ray/serve/_private/storage/__init__.py|
+            python/ray/serve/_private/storage/kv_store.py|
+            python/ray/serve/_private/storage/kv_store_base.py|
+            python/ray/serve/_private/task_consumer.py|
+            python/ray/serve/_private/thirdparty/__init__.py|
+            python/ray/serve/_private/tracing_utils.py|
+            python/ray/serve/_private/usage.py|
+            python/ray/serve/_private/utils.py|
+            python/ray/serve/_private/version.py
+          )
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0

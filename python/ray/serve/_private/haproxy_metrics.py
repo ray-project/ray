@@ -12,7 +12,7 @@ import os
 import re
 import socket
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, cast
 
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.haproxy import HAProxyApi
@@ -431,8 +431,10 @@ class HAProxyMetricsCollector:
         actor-readiness time).
         """
         self.start_node_metrics_polling(loop, poll_interval_s)
-        os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
-        return loop.create_task(self.bind_and_attach(metrics_socket_path, loop=loop))
+        os.makedirs(os.path.dirname(cast(str, metrics_socket_path)), exist_ok=True)
+        return loop.create_task(
+            self.bind_and_attach(cast(str, metrics_socket_path), loop=loop)
+        )
 
     async def bind_and_attach(
         self,

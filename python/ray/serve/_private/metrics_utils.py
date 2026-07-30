@@ -6,8 +6,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
 from typing import (
+    Any,
     Awaitable,
     Callable,
+    Coroutine,
     DefaultDict,
     Dict,
     Hashable,
@@ -18,7 +20,7 @@ from typing import (
     Union,
 )
 
-from ray._raylet import (
+from ray._raylet import (  # type: ignore[attr-defined]
     merge_instantaneous_total_cython,
     time_weighted_average_cython,
 )
@@ -46,7 +48,7 @@ class MetricsPusher:
     def __init__(
         self,
         *,
-        async_sleep: Optional[Callable[[int], None]] = None,
+        async_sleep: Optional[Callable[[float], Coroutine[Any, Any, None]]] = None,
     ):
         self._async_sleep = async_sleep or asyncio.sleep
         self._tasks: Dict[str, _MetricsTask] = dict()
@@ -103,7 +105,7 @@ class MetricsPusher:
         self,
         name: str,
         task_func: Union[Callable, Callable[[], Awaitable]],
-        interval_s: int,
+        interval_s: float,
     ) -> None:
         """Register a sync or async task under the provided name, or update it.
 
@@ -403,11 +405,11 @@ def merge_instantaneous_total(
 
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
-) -> DefaultDict[Hashable, TimeSeries]:
+) -> Dict[Hashable, TimeSeries]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
     """
-    merged: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
+    merged: DefaultDict[Hashable, List[TimeSeries]] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:
         for key, ts in ts_dict.items():

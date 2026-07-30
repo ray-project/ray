@@ -353,6 +353,17 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_coordinator_client",
+    size = "small",
+    srcs = ["tests/test_autoscaling_coordinator_client.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
@@ -482,29 +493,11 @@ py_test(
     name = "test_gpu_2",
     size = "medium",
     srcs = ["tests/test_gpu_2.py"],
-    # NOTE: Already covered by test_iter_torch_batches_gpu
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "gpu",
         "team:ml",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
-)
-
-py_test(
-    name = "test_iter_torch_batches_gpu",
-    size = "medium",
-    srcs = ["tests/test_iter_torch_batches_gpu.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "data_integration",
-        "exclusive",
-        "team:ml",
-        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -829,6 +822,23 @@ py_test(
         "exclusive",
         "gpu",
         "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_device_manager_v2",
+    size = "medium",
+    srcs = ["tests/test_torch_device_manager.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    main = "tests/test_torch_device_manager.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
