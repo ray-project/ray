@@ -91,32 +91,65 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 namespace internal {
 
-// Boost.Fiber does not expose the stack_context of the active fiber. Record
-// the stack_context returned by its allocator so code running on a fiber can
-// recover the exact allocation containing its current stack pointer.
+/**
+ * Records the stack allocations handed out to the Boost fibers of one
+ * FiberState, so that code running on a fiber can recover the exact allocation
+ * backing it.
+ *
+ * Boost.Fiber does not expose the `stack_context` of the running fiber, so the
+ * bounds are captured when the stack allocator hands one out and recovered by
+ * looking up an address known to lie on the current stack. The recorded ranges
+ * are distinct allocations of the same size and therefore disjoint, so at most
+ * one of them can contain any given address: a lookup either returns the
+ * caller's own stack or reports that it found nothing.
+ */
 class FiberStackRegistry {
  public:
+  /**
+   * Records the allocation backing a fiber that is about to be created.
+   *
+   * \param stack_context Allocation returned by the underlying stack allocator.
+   */
   void Register(const boost::context::stack_context &stack_context) {
     CheckOwnerThread();
-    const auto base = reinterpret_cast<uintptr_t>(stack_context.sp) - stack_context.size;
-    RAY_CHECK(stack_ranges_.emplace(base, stack_context.size).second);
+    RAY_CHECK(stack_ranges_.emplace(StackBase(stack_context), stack_context.size).second)
+        << "A fiber stack allocation was registered twice.";
   }
 
+  /**
+   * Forgets a recorded allocation. Callers must invoke this before releasing
+   * the memory, otherwise the allocator could hand the same address out again
+   * while the stale range is still recorded.
+   *
+   * \param stack_context Allocation that is about to be released.
+   */
   void Unregister(const boost::context::stack_context &stack_context) {
     CheckOwnerThread();
-    const auto base = reinterpret_cast<uintptr_t>(stack_context.sp) - stack_context.size;
-    RAY_CHECK_EQ(stack_ranges_.erase(base), 1U);
+    RAY_CHECK_EQ(stack_ranges_.erase(StackBase(stack_context)), 1U)
+        << "A fiber stack allocation was released without being registered.";
   }
 
+  /**
+   * Looks up the recorded allocation that contains \p address.
+   *
+   * \param address Address to locate, normally that of a local variable in the
+   *   calling frame.
+   * \param[out] stack_start_addr Lowest address of the containing allocation.
+   *   Left untouched when no allocation contains \p address.
+   * \param[out] stack_size Size of the containing allocation in bytes. Left
+   *   untouched when no allocation contains \p address.
+   * \return True when a recorded allocation contains \p address.
+   */
   bool FindContaining(uintptr_t address,
                       void **stack_start_addr,
                       size_t *stack_size) const {
-    auto it = stack_ranges_.upper_bound(address);
+    std::map<uintptr_t, size_t>::const_iterator it = stack_ranges_.upper_bound(address);
     if (it == stack_ranges_.begin()) {
       return false;
     }
     --it;
-    const auto [base, size] = *it;
+    const uintptr_t base = it->first;
+    const size_t size = it->second;
     if (address >= base + size) {
       return false;
     }
@@ -126,35 +159,58 @@ class FiberStackRegistry {
   }
 
  private:
-  // All allocation, deallocation, and lookup happen on one FiberState runner
-  // thread, so `stack_ranges_` needs no synchronization. Deallocation staying
-  // on the runner thread relies on Boost.Fiber disposing terminated detached
-  // fibers from their own scheduler; CheckOwnerThread turns any future
-  // violation of that assumption into a crash instead of a silent data race.
+  /**
+   * Returns the lowest address of an allocation. Boost reports `sp` as the high
+   * end because fiber stacks grow downwards.
+   */
+  static uintptr_t StackBase(const boost::context::stack_context &stack_context) {
+    return reinterpret_cast<uintptr_t>(stack_context.sp) - stack_context.size;
+  }
+
+  /**
+   * Fails if the registry is ever mutated from more than one thread.
+   *
+   * Registration, unregistration, and lookup all happen on a single FiberState
+   * runner thread, so `stack_ranges_` needs no synchronization. That holds
+   * because Boost.Fiber disposes a terminated detached fiber from the scheduler
+   * that ran it, which is a behavior Boost does not document as a contract.
+   * This check turns a future violation into a crash rather than a silent data
+   * race on `stack_ranges_`.
+   */
   void CheckOwnerThread() {
     if (owner_thread_ == std::thread::id{}) {
       owner_thread_ = std::this_thread::get_id();
       return;
     }
     RAY_CHECK(std::this_thread::get_id() == owner_thread_)
-        << "FiberStackRegistry accessed from a thread other than the fiber "
+        << "FiberStackRegistry was accessed from a thread other than the fiber "
            "runner thread that first used it.";
   }
 
+  /** Live allocations, keyed by their lowest address. */
   std::map<uintptr_t, size_t> stack_ranges_;
-  // Identity of the runner thread, captured on first use.
+  /** Runner thread that owns this registry, captured on first use. */
   std::thread::id owner_thread_;
 };
 
-// Boost copies the stack allocator into each context, so the registry needs
-// shared ownership and must not be embedded directly in the allocator.
+/**
+ * Stack allocator that records each allocation in a FiberStackRegistry before
+ * handing it to Boost.
+ *
+ * The lowercase `allocate` and `deallocate` names satisfy Boost's stack
+ * allocator concept. Boost copies the allocator into every fiber context it
+ * creates, so the registry is held through a `shared_ptr` rather than stored
+ * inline: all copies must record into the same registry, and a copy may outlive
+ * the FiberState that created it.
+ */
 class TrackingFiberStackAllocator {
  public:
   TrackingFiberStackAllocator(size_t size, std::shared_ptr<FiberStackRegistry> registry)
       : allocator_(size), registry_(std::move(registry)) {}
 
+  /** Allocates a fiber stack and records its bounds. */
   boost::context::stack_context allocate() {
-    auto stack_context = allocator_.allocate();
+    boost::context::stack_context stack_context = allocator_.allocate();
     try {
       registry_->Register(stack_context);
     } catch (...) {
@@ -164,6 +220,7 @@ class TrackingFiberStackAllocator {
     return stack_context;
   }
 
+  /** Forgets the recorded bounds, then releases the stack. */
   void deallocate(boost::context::stack_context &stack_context) noexcept {
     registry_->Unregister(stack_context);
     allocator_.deallocate(stack_context);
@@ -174,18 +231,18 @@ class TrackingFiberStackAllocator {
   std::shared_ptr<FiberStackRegistry> registry_;
 };
 
+/**
+ * Registry belonging to the FiberState whose runner thread this is, or nullptr
+ * on every other thread. Set once when a runner thread starts; the thread
+ * always finishes inside FiberState::Join(), before the registry is destroyed.
+ *
+ * The `inline` definition is required for correctness, not brevity: it gives
+ * every translation unit the same variable. A copy per translation unit (which
+ * an anonymous namespace would produce) would leave the lookup compiled into
+ * `_raylet` reading a different pointer than the one FiberState writes, so it
+ * would always see nullptr.
+ */
 inline thread_local FiberStackRegistry *active_fiber_stack_registry = nullptr;
-
-class ScopedActiveFiberStackRegistry {
- public:
-  explicit ScopedActiveFiberStackRegistry(FiberStackRegistry *registry)
-      : previous_(std::exchange(active_fiber_stack_registry, registry)) {}
-
-  ~ScopedActiveFiberStackRegistry() { active_fiber_stack_registry = previous_; }
-
- private:
-  FiberStackRegistry *previous_;
-};
 
 }  // namespace internal
 
@@ -208,8 +265,10 @@ class FiberState {
         allocator_(kStackSize, stack_registry_),
         rate_limiter_(max_concurrency) {
     fiber_runner_thread_ = std::thread([this]() {
-      internal::ScopedActiveFiberStackRegistry active_stack_registry(
-          stack_registry_.get());
+      /* Publish the registry so fibers running on this thread can find their
+       * own stack bounds. Not restored on exit: the pointer lives in this
+       * thread's storage and dies with the thread. */
+      internal::active_fiber_stack_registry = stack_registry_.get();
       while (!channel_.is_closed()) {
         std::function<void()> func;
         auto op_status = channel_.pop(func);
@@ -306,11 +365,26 @@ class FiberState {
     }
   }
 
-  // Returns the full allocation backing the active Boost fiber. This must be
-  // called from a FiberState runner thread while it is executing a fiber.
+  /**
+   * Returns the allocation backing the Boost fiber running on this thread.
+   *
+   * The current stack is identified by the address of a local variable, so the
+   * result does not depend on how deep the caller sits on the fiber stack. The
+   * reported range is the whole allocation, which is a superset of the region
+   * Boost leaves usable: Boost reserves the top of the allocation for its own
+   * control record. The lowest address is exact, which is what matters for
+   * stack-overflow detection, since fiber stacks grow downwards.
+   *
+   * \param[out] stack_start_addr Lowest address of the fiber stack. Left
+   *   untouched when this thread is not running a tracked fiber.
+   * \param[out] stack_size Size of the fiber stack in bytes. Left untouched
+   *   when this thread is not running a tracked fiber.
+   * \return True when called on a FiberState runner thread while it executes a
+   *   fiber, false on any other stack.
+   */
   static bool GetCurrentFiberStackBounds(void **stack_start_addr, size_t *stack_size) {
     char stack_anchor;
-    auto *registry = internal::active_fiber_stack_registry;
+    internal::FiberStackRegistry *registry = internal::active_fiber_stack_registry;
     return registry != nullptr &&
            registry->FindContaining(
                reinterpret_cast<uintptr_t>(&stack_anchor), stack_start_addr, stack_size);
@@ -319,9 +393,12 @@ class FiberState {
  private:
   static constexpr size_t kStackSize = 1024 * 256;
 
+  /** Shared with every allocator copy Boost makes; see the allocator's docs. */
   std::shared_ptr<internal::FiberStackRegistry> stack_registry_;
-  // The fiber stack allocator records every allocation so a running fiber can
-  // obtain its exact stack bounds.
+  /**
+   * The fiber stack allocator. It records each allocation so that a running
+   * fiber can recover its own stack bounds.
+   */
   internal::TrackingFiberStackAllocator allocator_;
   /// The fiber channel used to send task between the submitter thread
   /// (main direct_actor_trasnport thread) and the fiber_runner_thread
