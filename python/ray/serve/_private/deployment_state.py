@@ -59,11 +59,13 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE,
     RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
+    RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -1046,6 +1048,7 @@ class ActorReplicaWrapper:
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
+        target_node_id: Optional[str] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -1058,6 +1061,7 @@ class ActorReplicaWrapper:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
+            target_node_id: If set, pin this replica to this node.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -1188,6 +1192,7 @@ class ActorReplicaWrapper:
             on_scheduled=self.on_scheduled,
             gang_placement_group=self._gang_placement_group,
             gang_pg_index=self._gang_pg_index,
+            target_node_id=target_node_id,
         )
 
     def on_scheduled(
@@ -1804,6 +1809,7 @@ class DeploymentReplica:
     ):
         self._replica_id = replica_id
         self._actor = ActorReplicaWrapper(replica_id, version)
+        self._target_node_id: Optional[str] = None
         self._start_time = None
         self._shutdown_start_time: Optional[float] = None
         self._actor_details = ReplicaDetails(
@@ -1902,6 +1908,11 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def target_node_id(self) -> Optional[str]:
+        """Node this replica is pinned to, or None if unpinned."""
+        return self._target_node_id
+
+    @property
     def actor_http_port(self) -> Optional[int]:
         return self._actor.http_port
 
@@ -1947,6 +1958,7 @@ class DeploymentReplica:
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
+        target_node_id: Optional[str] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1957,16 +1969,19 @@ class DeploymentReplica:
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
+            target_node_id: If set, pin this replica to this node.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
         """
+        self._target_node_id = target_node_id
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
             gang_context=gang_context,
+            target_node_id=target_node_id,
         )
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
@@ -2919,6 +2934,7 @@ class DeploymentState:
         self._rank_manager = DeploymentRankManager(
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
+        self._last_rank_membership_ids: Optional[Set[str]] = None
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -3583,7 +3599,12 @@ class DeploymentState:
             f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
         )
 
-        if deployment_info.deployment_config.autoscaling_config:
+        if deployment_info.ingress_request_router:
+            # Replicas per proxy node, reconciled each control loop by
+            # scale_deployment_replicas. Not autoscaled, so start at 0.
+            self._autoscaling_state_manager.deregister_deployment(self._id)
+            target_num_replicas = 0
+        elif deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
                 self._id, deployment_info, self._target_state.target_num_replicas
             )
@@ -3635,6 +3656,24 @@ class DeploymentState:
         self._deployment_actor_retry_counter = 0
         return True
 
+    def _record_scaling_status_transition(self, old_num: int, new_num: int) -> None:
+        """Transition status to UPSCALING/DOWNSCALING for an automatic scaling event.
+
+        Shared by the autoscaler and the ingress request router reconciliation
+        so node-driven scaling shows up in deployment status the same way
+        request-driven autoscaling does.
+        """
+        if new_num > old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
+                message=f"Upscaling from {old_num} to {new_num} replicas.",
+            )
+        elif new_num < old_num:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
+                message=f"Downscaling from {old_num} to {new_num} replicas.",
+            )
+
     def autoscale(self, decision_num_replicas: int) -> bool:
         """
         Apply the given scaling decision by updating the target replica count.
@@ -3678,24 +3717,17 @@ class DeploymentState:
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
         new_num = self._target_state.target_num_replicas
+        self._record_scaling_status_transition(old_num, new_num)
         if new_num > old_num:
             logger.info(
                 f"Upscaling {self._id} from {old_num} to {new_num} replicas. "
                 f"{curr_stats_str}"
-            )
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
-                message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
             self._autoscaling_state_manager.record_scale_up(self._id)
         elif new_num < old_num:
             logger.info(
                 f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
                 f"{curr_stats_str}"
-            )
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
-                message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
             self._autoscaling_state_manager.record_scale_down(self._id)
 
@@ -3716,6 +3748,64 @@ class DeploymentState:
         self._set_target_state(
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
+
+    def _rescale_to(self, num_replicas: int) -> None:
+        """Set the target replica count without a rolling restart.
+
+        Carries the current code version onto the new target so the
+        DeploymentVersion is unchanged, which makes this a count-only change
+        rather than a code rollout that would restart every replica. Records the
+        UPSCALING/DOWNSCALING status transition.
+        """
+        old_num = self._target_state.target_num_replicas
+        if num_replicas == old_num:
+            return
+        new_info = copy(self._target_state.info)
+        new_info.version = self._target_state.version.code_version
+        self._set_target_state(new_info, num_replicas)
+        self._record_scaling_status_transition(old_num, num_replicas)
+
+    def _reconcile_ingress_request_router(self, proxy_nodes: Set[str]) -> List[str]:
+        """Target per_node replicas on each proxy node for the ingress router.
+
+        Stops replicas on nodes that no longer run a proxy and sets the target
+        count. Returns one node entry per replica still needed so the scale-up
+        path can pin each to its node.
+        """
+        if self._target_state.deleting:
+            return []
+
+        per_node = RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE
+
+        # Count target-version replicas per proxy node, and collect any on nodes
+        # that no longer run a proxy so they can be stopped.
+        replicas_per_node: Dict[str, int] = defaultdict(int)
+        stale = set()
+        for replica in self._replicas.get(
+            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
+        ):
+            if replica.version != self._target_state.version:
+                continue
+            node = replica.target_node_id or replica.actor_node_id
+            if node is None:
+                continue
+            if node in proxy_nodes:
+                replicas_per_node[node] += 1
+            else:
+                stale.add(replica.replica_id)
+        if stale:
+            self.stop_replicas(stale)
+
+        self._rescale_to(per_node * len(proxy_nodes))
+        uncovered = []
+        for node in proxy_nodes:
+            missing = max(0, per_node - replicas_per_node.get(node, 0))
+            uncovered.extend([node] * missing)
+        # A node swap can leave the count unchanged, so force reconcile when
+        # replicas were stopped or nodes still need one.
+        if stale or uncovered:
+            self._in_transition = True
+        return uncovered
 
     def _stop_or_update_outdated_version_replicas(
         self, max_to_stop: float = math.inf
@@ -3934,6 +4024,7 @@ class DeploymentState:
         gang_placement_groups: Optional[
             Dict[DeploymentID, GangReservationResult]
         ] = None,
+        proxy_nodes: Optional[Set[str]] = None,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas.
 
@@ -3941,11 +4032,20 @@ class DeploymentState:
             gang_placement_groups: Reserved gang placement groups.
                 If this deployment uses gang scheduling and PGs were reserved,
                 replicas will be scheduled onto these PGs.
+            proxy_nodes: Nodes that run a proxy. The ingress request router
+                targets a fixed number of replicas per proxy node.
 
         Returns:
             Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
                 The scheduling requests for the new replicas and the downscale request.
         """
+
+        # The ingress request router targets a fixed number of replicas per
+        # proxy node: stop replicas on nodes that no longer run a proxy, set the
+        # target count, and collect the nodes each new replica should pin to.
+        pinned_nodes: Optional[List[str]] = None
+        if self.is_ingress_request_router():
+            pinned_nodes = self._reconcile_ingress_request_router(proxy_nodes or set())
 
         # Fast path: already at target count with all replicas at target
         # version — no scaling or version updates needed.
@@ -3978,7 +4078,9 @@ class DeploymentState:
         elif delta_replicas > 0:
             to_add = delta_replicas
             upscale = self._get_upscale_replicas(
-                to_add=to_add, gang_placement_groups=gang_placement_groups
+                to_add=to_add,
+                gang_placement_groups=gang_placement_groups,
+                target_node_ids=pinned_nodes,
             )
 
         elif delta_replicas < 0:
@@ -4010,6 +4112,7 @@ class DeploymentState:
         gang_placement_groups: Optional[
             Dict[DeploymentID, GangReservationResult]
         ] = None,
+        target_node_ids: Optional[List[str]] = None,
     ) -> List[ReplicaSchedulingRequest]:
         """Add replicas for this deployment, using gang scheduling when configured."""
         upscale = []
@@ -4017,7 +4120,7 @@ class DeploymentState:
             return upscale
 
         if not self._is_gang_deployment:
-            return self._add_upscale_replicas(to_add)
+            return self._add_upscale_replicas(to_add, target_node_ids=target_node_ids)
 
         gang_reservation_result = (
             gang_placement_groups.get(self._id) if gang_placement_groups else None
@@ -4026,20 +4129,32 @@ class DeploymentState:
             self.get_gang_config(), gang_reservation_result
         )
 
-    def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
-        """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
+    def _add_upscale_replicas(
+        self, to_add: int, target_node_ids: Optional[List[str]] = None
+    ) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for deployments that adopt single-replica (non-gang) scheduling.
+
+        target_node_ids, when given, pins new replica i to node i (the ingress
+        request router uses this to co-locate with each proxy).
+        """
         upscale = []
         logger.info(f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}.")
-        for _ in range(to_add):
+        for i in range(to_add):
             replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
             new_deployment_replica = DeploymentReplica(
                 replica_id,
                 self._target_state.version,
             )
+            target_node_id = (
+                target_node_ids[i]
+                if target_node_ids and i < len(target_node_ids)
+                else None
+            )
             scheduling_request = new_deployment_replica.start(
                 self._target_state.info,
                 assign_rank_callback=self._rank_manager.assign_rank,
+                target_node_id=target_node_id,
             )
             upscale.append(scheduling_request)
 
@@ -4858,24 +4973,41 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get()
+        self._maybe_check_rank_consistency()
+
+    def _maybe_check_rank_consistency(self) -> None:
+        """Run the rank-consistency pass only when replica membership changed.
+
+        The pass is O(N) with heavy constants and used to run on every
+        control-loop tick in steady state -- at 10K+ replicas it monopolizes
+        the controller loop. Rank consistency can only be violated by
+        membership changes, so the active replica-id set gates it.
+        """
+        # O(1) guards first -- `get()` below copies the whole replica list, and these
+        # two rule out the busiest ticks (rollouts, migrations) without paying for it.
         if (
-            active_replicas
-            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            self._curr_status_info.status != DeploymentStatus.HEALTHY
             # Skip consistency check if there are STARTING replicas. During node
             # migration, new replicas are created in STARTING state (without ranks)
             # after the status is set to HEALTHY. Running the consistency check
             # with STARTING replicas causes "active keys without ranks" error.
-            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
+            or self._replicas.count(states=[ReplicaState.STARTING]) != 0
         ):
-            replicas_to_reconfigure = (
-                self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                    active_replicas,
-                )
+            return
+        active_replicas = self._replicas.get()
+        if not active_replicas:
+            return
+        active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
+        if active_replica_ids == self._last_rank_membership_ids:
+            return
+        replicas_to_reconfigure = (
+            self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                active_replicas,
             )
-
-            # Reconfigure replicas that had their ranks reassigned
-            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        )
+        # Reconfigure replicas that had their ranks reassigned
+        self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        self._last_rank_membership_ids = active_replica_ids
 
     def _handle_deployment_actor_failed_health_check(
         self,
@@ -5642,6 +5774,11 @@ class DeploymentStateManager:
 
         self._shutting_down = False
 
+        # Dependency ordered shutdown state.
+        self._shutdown_tiers: Optional[List[List[DeploymentID]]] = None
+        self._shutdown_tier_idx: int = 0
+        self._shutdown_tier_started_at: Optional[float] = None
+
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
@@ -5839,16 +5976,114 @@ class DeploymentStateManager:
         Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
 
-        Once shutdown signal is received, it will also prevent any new
-        deployments or replicas from being created.
+        Deployments are torn down in best effort dependency order. Callers are
+        deleted before the callees they depend on to reduce the chances of dead
+        handle errors.
 
-        One can send multiple shutdown signals but won't effectively make any
-        difference compare to calling it once.
+        This method is re-entrant. Deletion tiers are computed once on the
+        first call. Every later call advances through the tiers as earlier
+        tiers drain. Once the shutdown signal is received it also prevents any
+        new deployments or replicas from being created.
         """
         self._shutting_down = True
 
-        for deployment_state in self._deployment_states.values():
-            deployment_state.delete()
+        if self._shutdown_tiers is None:
+            self._shutdown_tiers = self._shutdown_deletion_tiers()
+            self._shutdown_tier_idx = 0
+            self._shutdown_tier_started_at = time.time()
+
+        self._advance_shutdown()
+
+    def _advance_shutdown(self):
+        """
+        Delete the current shutdown tier, advancing as tiers drain.
+
+        Deletes every deployment in the current tier and waits for the tier to
+        be fully gone from _deployment_states before moving to the next one.
+        If a tier does not drain within RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S it is
+        force advanced past.
+        """
+        while self._shutdown_tier_idx < len(self._shutdown_tiers):
+            tier = [
+                deployment_id
+                for deployment_id in self._shutdown_tiers[self._shutdown_tier_idx]
+                if deployment_id in self._deployment_states
+            ]
+            if tier:
+                for deployment_id in tier:
+                    self._deployment_states[deployment_id].delete()
+
+                waited = time.time() - self._shutdown_tier_started_at
+                if waited <= RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S:
+                    # Wait for this tier to drain before deleting the next tier
+                    # of deployments.
+                    return
+
+                logger.warning(
+                    f"Shutdown tier {self._shutdown_tier_idx} did not drain "
+                    f"within {RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S}s, force "
+                    f"advancing past {[str(d) for d in tier]} to avoid hanging "
+                    "shutdown.",
+                    extra={"log_to_stderr": False},
+                )
+
+            # Tier fully drained or force advanced, move to the next one.
+            self._shutdown_tier_idx += 1
+            self._shutdown_tier_started_at = time.time()
+
+    def _shutdown_deletion_tiers(self) -> List[List[DeploymentID]]:
+        """
+        Compute best effort reverse topological deletion tiers.
+
+        Builds a directed graph over currently tracked deployments derived from
+        each deployment's outbound handle usage (best effort). Runs Kahn's
+        algorithm keyed on the number of callers. Nodes with in degree 0 are
+        ingress and roots called by nothing, so they are emitted first and
+        leaf or downstream deployments last. Each Kahn wave becomes one
+        deletion tier.
+
+        Returns:
+            A list of tiers, each a list of DeploymentIDs, in deletion order.
+        """
+        ids = list(self._deployment_states.keys())
+        id_set = set(ids)
+
+        callees: Dict[DeploymentID, Set[DeploymentID]] = {i: set() for i in ids}
+        in_degree: Dict[DeploymentID, int] = {i: 0 for i in ids}
+
+        for caller in ids:
+            outbound = self._deployment_states[caller].get_outbound_deployments()
+            if not outbound:
+                continue
+            for callee in outbound:
+                if callee == caller or callee not in id_set:
+                    continue
+                if callee not in callees[caller]:
+                    callees[caller].add(callee)
+                    in_degree[callee] += 1
+
+        remaining = dict(in_degree)
+        queue = [i for i in ids if remaining[i] == 0]
+        tiers: List[List[DeploymentID]] = []
+        emitted = 0
+
+        while queue:
+            tiers.append(queue)
+            emitted += len(queue)
+            next_queue: List[DeploymentID] = []
+            for caller in queue:
+                for callee in callees[caller]:
+                    remaining[callee] -= 1
+                    if remaining[callee] == 0:
+                        next_queue.append(callee)
+            queue = next_queue
+
+        # Whatever Kahn's algorithm did not emit is part of a dependency cycle,
+        # so tear them down together as a final tier.
+        if emitted < len(ids):
+            tiers.append([i for i in ids if remaining[i] > 0])
+
+        return tiers
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
@@ -5876,6 +6111,10 @@ class DeploymentStateManager:
                 )
             timeouts.append(timeout_s)
         return max(timeouts, default=0.0)
+
+    def is_shutting_down(self) -> bool:
+        """Whether a full instance shutdown is in progress."""
+        return self._shutting_down
 
     def delete_checkpoint(self) -> None:
         """Delete the deployment state checkpoint from KV store."""
@@ -6107,12 +6346,16 @@ class DeploymentStateManager:
                 f"Skipping updating target number of replicas as it did not change for deployment {deployment_id}"
             )
 
-    def update(self) -> bool:
+    def update(self, proxy_nodes: Optional[Set[str]] = None) -> bool:
         """Updates the state of all deployments to match their goal state.
 
-        Returns True if any of the deployments have replicas in the RECOVERING state.
-        """
+        Args:
+            proxy_nodes: Nodes that run a proxy. The ingress request router
+                places one replica on each.
 
+        Returns:
+            True if any of the deployments have replicas in the RECOVERING state.
+        """
         deleted_ids = []
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
@@ -6162,6 +6405,7 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas(
                 gang_placement_groups=gang_placement_groups,
+                proxy_nodes=proxy_nodes,
             )
 
             if upscale:

@@ -27,6 +27,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+    BlockTransformer,
     PartitionFn,
     _shuffle_map_task,
 )
@@ -74,6 +75,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
+        block_transformer: Optional transform applied to each non-empty input
+            block before partitioning (e.g. map-side partial aggregation).
+            May change the block schema.
         pre_map_merge_threshold: Byte threshold per node at which buffered
             blocks are merged into a single map task.  Set to 0 to disable.
         map_runtime_env: Optional runtime_env for map tasks; useful to
@@ -92,6 +96,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
+        block_transformer: Optional[BlockTransformer] = None,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
@@ -105,6 +110,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
@@ -235,6 +241,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
             compression=self.data_context.hash_shuffle_compression,
+            block_transformer=self._block_transformer,
         )
         metadata_ref = map_refs[0]
         partition_refs = list(map_refs[1:])

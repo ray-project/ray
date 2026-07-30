@@ -9,6 +9,7 @@ import pytest
 import ray.serve._private.deployment_state as ds_mod
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
+from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -55,10 +56,12 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
 )
+from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
     MockDeploymentActorWrapper,
+    MockKVStore,
     MockPlacementGroup,
     dead_replicas_context,
     replica_rank_context,
@@ -69,7 +72,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
-from ray.serve.schema import ReplicaRank
+from ray.serve.schema import LoggingConfig, ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
@@ -81,6 +84,7 @@ def deployment_info(
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
     replica_config: Optional[ReplicaConfig] = None,
+    ingress_request_router: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -92,6 +96,7 @@ def deployment_info(
         ),
         replica_config=replica_config or ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
+        ingress_request_router=ingress_request_router,
     )
 
     if version is not None:
@@ -4434,6 +4439,190 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def _pinned_target_node_ids(ds) -> set:
+    return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
+
+
+def test_ingress_request_router_pins_one_replica_per_proxy_node(
+    mock_deployment_state_manager,
+):
+    """The ingress request router pins one replica to each proxy node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # Idempotent: the same proxy-node set adds nothing.
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2)
+
+
+def test_ingress_request_router_tracks_proxy_node_set(mock_deployment_state_manager):
+    """Replicas follow proxy nodes as they join and leave."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # A proxy node joins: a replica is pinned to it.
+    dsm.update(proxy_nodes={n1, n2, n3})
+    assert ds.target_num_replicas == 3
+    assert _pinned_target_node_ids(ds) == {n1, n2, n3}
+
+    # A proxy node leaves: its replica is stopped, the rest stay pinned.
+    dsm.update(proxy_nodes={n1, n3})
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n3}
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+
+
+def test_ingress_request_router_same_size_node_swap(mock_deployment_state_manager):
+    """A same-size membership change swaps the replica to the new node in one tick.
+
+    The replica count stays constant, so a count delta cannot detect the swap;
+    tracking node identity is what stops the old node's replica and pins the new.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2, n3 = (NodeID.from_random().hex() for _ in range(3))
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert _pinned_target_node_ids(ds) == {n1, n2}
+
+    # n2 leaves as n3 joins in the same tick: count stays 2, membership changes.
+    dsm.update(proxy_nodes={n1, n3})
+    assert ds.target_num_replicas == 2
+    assert _pinned_target_node_ids(ds) == {n1, n3}
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+
+
+def test_ingress_request_router_status_reflects_scaling(mock_deployment_state_manager):
+    """A proxy node joining/leaving surfaces UPSCALING/DOWNSCALING, then HEALTHY."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1})
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.target_num_replicas == 2
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    dsm.update(proxy_nodes={n1})
+    assert ds.target_num_replicas == 1
+    assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+
+
+def test_ingress_request_router_scaling_only_affects_router(
+    mock_deployment_state_manager,
+):
+    """A non-router deployment ignores the proxy-node set."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    nodes = {NodeID.from_random().hex() for _ in range(3)}
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=2)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update(proxy_nodes=nodes)
+    assert ds.target_num_replicas == 2
+    check_counts(ds, total=2)
+
+
+def _pinned_node_counts(ds) -> dict:
+    counts = {}
+    for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+        counts[r.target_node_id] = counts.get(r.target_node_id, 0) + 1
+    return counts
+
+
+@patch(
+    "ray.serve._private.deployment_state.RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 2
+)
+def test_ingress_request_router_multiple_replicas_per_node(
+    mock_deployment_state_manager,
+):
+    """RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE pins that many replicas per node."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    assert ds.target_num_replicas == 4
+    check_counts(ds, total=4)
+    assert _pinned_node_counts(ds) == {n1: 2, n2: 2}
+
+
+def test_ingress_request_router_code_version_rollout(mock_deployment_state_manager):
+    """A router code-version change replaces the per-node replica.
+
+    The reconcile ignores outdated replicas when counting per-node coverage, so
+    a node running only an old-version router is uncovered and gets a
+    new-version replica pinned to it while the old one drains.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    n1 = NodeID.from_random().hex()
+
+    info_v1, v1 = deployment_info(version="1", ingress_request_router=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_v1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # Redeploy a new code version.
+    info_v2, v2 = deployment_info(version="2", ingress_request_router=True)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_v2)
+
+    dsm.update(proxy_nodes={n1})
+    # New version starts on n1 while the old drains; count stays one per node.
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+    )
+    assert ds.target_num_replicas == 1
+    assert _pinned_target_node_ids(ds) == {n1}
+
+    # Finish the rollout: old replica stops, new one becomes ready.
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    dsm.update(proxy_nodes={n1})
+    ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.update(proxy_nodes={n1})
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_get_deployment_ids(mock_deployment_state_manager):
@@ -9975,6 +10164,552 @@ def test_dirty_set_gauge_prunes_ids_no_longer_running(
     ds._last_health_check_healthy_replica_ids.add("ghost-reconfiguring-replica")
     dsm.update()
     assert ds._last_health_check_healthy_replica_ids == running_ids
+
+
+def _dep(name: str, app: str = "app") -> DeploymentID:
+    return DeploymentID(name=name, app_name=app)
+
+
+def _deploy_running(dsm, deployment_id, outbound=None):
+    """Deploy a single replica deployment and drive it to RUNNING.
+
+    outbound is the list of DeploymentIDs the replica reports calling. Pass []
+    for a known leaf and None to model a replica that has not reported an
+    outbound set yet.
+    """
+    info, _ = deployment_info(num_replicas=1)
+    assert dsm.deploy(deployment_id, info)
+    ds = dsm._get_deployment_state_for_testing(deployment_id)
+    dsm.update()
+    for r in ds._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    assert ds._replicas.get([ReplicaState.RUNNING])
+    if outbound is not None:
+        for r in ds._replicas.get([ReplicaState.RUNNING]):
+            r._actor._outbound_deployments = list(outbound)
+    return ds
+
+
+def _finish_stopping(dsm):
+    """Simulate every currently stopping replica finishing its teardown."""
+    for ds in list(dsm._deployment_states.values()):
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+
+def _run_shutdown_to_completion(dsm, max_steps=50, wedged=None):
+    """Drive the controller's shutdown loop to completion.
+
+    Each step mirrors one control loop iteration: shutdown() advances the
+    deletion tiers and update() reconciles the teardown. Returns the order in
+    which deployments were first marked deleting, so callers can assert callers
+    drained before callees. Deployments in the wedged set never finish
+    stopping, modeling a stuck replica.
+    """
+    wedged = wedged or set()
+    delete_order = []
+    for _ in range(max_steps):
+        dsm.shutdown()
+        for deployment_id, deployment_state in dsm._deployment_states.items():
+            if deployment_state._target_state.deleting and (
+                deployment_id not in delete_order
+            ):
+                delete_order.append(deployment_id)
+        dsm.update()
+        for deployment_state in list(dsm._deployment_states.values()):
+            if deployment_state._id in wedged:
+                continue
+            for r in deployment_state._replicas.get([ReplicaState.STOPPING]):
+                r._actor.set_done_stopping()
+        dsm.update()
+        if dsm.is_ready_for_shutdown():
+            break
+    return delete_order
+
+
+class TestShutdownDeletionTiers:
+    """Unit tests for DeploymentStateManager._shutdown_deletion_tiers()."""
+
+    def test_linear_chain(self, mock_deployment_state_manager):
+        """A -> B -> C tiers out as [[A], [B], [C]]."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[a], [b], [c]]
+
+    def test_diamond(self, mock_deployment_state_manager):
+        """Ingress -> {m1, m2} -> leaf keeps the leaf in the last tier."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, m1, m2, leaf = _dep("ingress"), _dep("m1"), _dep("m2"), _dep("leaf")
+        _deploy_running(dsm, ingress, outbound=[m1, m2])
+        _deploy_running(dsm, m1, outbound=[leaf])
+        _deploy_running(dsm, m2, outbound=[leaf])
+        _deploy_running(dsm, leaf, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers[0] == [ingress]
+        assert set(tiers[1]) == {m1, m2}
+        assert tiers[2] == [leaf]
+
+    def test_cycle_appended_as_final_tier(self, mock_deployment_state_manager):
+        """A -> B -> C -> A has no safe order, so all three land in one tier."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[a])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert len(tiers) == 1
+        assert set(tiers[0]) == {a, b, c}
+
+    def test_ingress_into_cycle(self, mock_deployment_state_manager):
+        """An ingress feeding a cycle drains before the cyclic remainder."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, a, b = _dep("ingress"), _dep("a"), _dep("b")
+        _deploy_running(dsm, ingress, outbound=[a])
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[a])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers[0] == [ingress]
+        assert set(tiers[1]) == {a, b}
+
+    def test_unknown_outbound_positioned_by_callers(
+        self, mock_deployment_state_manager
+    ):
+        """A node with unknown outbound is still ordered after its caller."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b = _dep("a"), _dep("b")
+        _deploy_running(dsm, a, outbound=[b])
+        # b's replica never reported an outbound set.
+        _deploy_running(dsm, b, outbound=None)
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[a], [b]]
+
+    def test_isolated_unknown_node_in_first_tier(self, mock_deployment_state_manager):
+        """An isolated node with unknown outbound is safe to delete first."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, lone = _dep("a"), _dep("b"), _dep("lone")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[])
+        _deploy_running(dsm, lone, outbound=None)
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert set(tiers[0]) == {a, lone}
+        assert tiers[1] == [b]
+
+    def test_multi_app_independent(self, mock_deployment_state_manager):
+        """Two apps with no cross edges tier out independently."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a1, b1 = _dep("a", app="app1"), _dep("b", app="app1")
+        a2, b2 = _dep("a", app="app2"), _dep("b", app="app2")
+        _deploy_running(dsm, a1, outbound=[b1])
+        _deploy_running(dsm, b1, outbound=[])
+        _deploy_running(dsm, a2, outbound=[b2])
+        _deploy_running(dsm, b2, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert set(tiers[0]) == {a1, a2}
+        assert set(tiers[1]) == {b1, b2}
+
+    def test_cross_app_chain(self, mock_deployment_state_manager):
+        """A caller in app1 orders before its callee in app2."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress1 = _dep("ingress", app="app1")
+        ingress2 = _dep("ingress", app="app2")
+        leaf2 = _dep("leaf", app="app2")
+        _deploy_running(dsm, ingress1, outbound=[ingress2])
+        _deploy_running(dsm, ingress2, outbound=[leaf2])
+        _deploy_running(dsm, leaf2, outbound=[])
+
+        tiers = dsm._shutdown_deletion_tiers()
+        assert tiers == [[ingress1], [ingress2], [leaf2]]
+
+    def test_no_deployments(self, mock_deployment_state_manager):
+        """No deployments produces no tiers."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        assert dsm._shutdown_deletion_tiers() == []
+
+
+class TestDependencyOrderedShutdown:
+    """Tests for the re-entrant, dependency-ordered shutdown state machine."""
+
+    def test_linear_chain_delete_order(self, mock_deployment_state_manager):
+        """A -> B -> C: each callee is deleted only after its caller is gone."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        # First tier only deletes the ingress. Downstream stays untouched.
+        dsm.shutdown()
+        assert dsm._get_deployment_state_for_testing(a)._target_state.deleting
+        assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+        assert not dsm._get_deployment_state_for_testing(c)._target_state.deleting
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [a, b, c]
+
+    def test_diamond_leaf_last(self, mock_deployment_state_manager):
+        """The shared leaf is deleted only after both middle nodes are gone."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress, m1, m2, leaf = _dep("ingress"), _dep("m1"), _dep("m2"), _dep("leaf")
+        _deploy_running(dsm, ingress, outbound=[m1, m2])
+        _deploy_running(dsm, m1, outbound=[leaf])
+        _deploy_running(dsm, m2, outbound=[leaf])
+        _deploy_running(dsm, leaf, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order[0] == ingress
+        assert order[-1] == leaf
+        assert order.index(leaf) > order.index(m1)
+        assert order.index(leaf) > order.index(m2)
+
+    def test_cycle_completes(self, mock_deployment_state_manager):
+        """A dependency cycle still shuts down cleanly without hanging."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[a])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert set(order) == {a, b, c}
+
+    def test_unknown_outbound_completes(self, mock_deployment_state_manager):
+        """Unknown outbound sets do not stall shutdown."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b = _dep("a"), _dep("b")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=None)
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [a, b]
+
+    def test_multi_app_independent(self, mock_deployment_state_manager):
+        """Independent apps tear down without interfering with each other."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a1, b1 = _dep("a", app="app1"), _dep("b", app="app1")
+        a2, b2 = _dep("a", app="app2"), _dep("b", app="app2")
+        _deploy_running(dsm, a1, outbound=[b1])
+        _deploy_running(dsm, b1, outbound=[])
+        _deploy_running(dsm, a2, outbound=[b2])
+        _deploy_running(dsm, b2, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order.index(b1) > order.index(a1)
+        assert order.index(b2) > order.index(a2)
+
+    def test_cross_app_chain_delete_order(self, mock_deployment_state_manager):
+        """App 1 calling App 2 tears the app1 caller down before the app2 callee."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ingress1 = _dep("ingress", app="app1")
+        ingress2 = _dep("ingress", app="app2")
+        leaf2 = _dep("leaf", app="app2")
+        _deploy_running(dsm, ingress1, outbound=[ingress2])
+        _deploy_running(dsm, ingress2, outbound=[leaf2])
+        _deploy_running(dsm, leaf2, outbound=[])
+
+        order = _run_shutdown_to_completion(dsm)
+        assert dsm.is_ready_for_shutdown()
+        assert order == [ingress1, ingress2, leaf2]
+
+    def test_wedged_tier_still_completes(self, mock_deployment_state_manager):
+        """A tier that never drains is force-advanced past after the timeout."""
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        a, b, c = _dep("a"), _dep("b"), _dep("c")
+        _deploy_running(dsm, a, outbound=[b])
+        _deploy_running(dsm, b, outbound=[c])
+        _deploy_running(dsm, c, outbound=[])
+
+        with patch.object(ds_mod, "RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S", 5):
+            # First tier deletes A, but A's replica is wedged and never stops.
+            dsm.shutdown()
+            dsm.update()
+            assert dsm._get_deployment_state_for_testing(a)._target_state.deleting
+            assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # Before the timeout elapses we stay gated on the wedged tier.
+            dsm.shutdown()
+            assert not dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # After the timeout we force-advance and delete the next tier even
+            # though A is still draining.
+            timer.advance(6)
+            dsm.shutdown()
+            assert dsm._get_deployment_state_for_testing(b)._target_state.deleting
+
+            # Once the wedged replica finally stops, shutdown completes.
+            order = _run_shutdown_to_completion(dsm)
+            assert dsm.is_ready_for_shutdown()
+            assert set(order) == {a, b, c}
+
+
+def test_shutdown_tiers_survive_application_reconcile(mock_deployment_state_manager):
+    """Test ApplicationState does not bypass shutdown tiers."""
+    create_dsm, _, _, autoscaling_state_manager = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    app_state = ApplicationState(
+        name="app",
+        deployment_state_manager=dsm,
+        autoscaling_state_manager=autoscaling_state_manager,
+        endpoint_state=EndpointState(MockKVStore(), Mock()),
+        logging_config=LoggingConfig(),
+        external_scaler_enabled=False,
+    )
+    info_a, _ = deployment_info(num_replicas=1)
+    info_b, _ = deployment_info(num_replicas=1)
+    app_state.deploy_app({"a": info_a, "b": info_b}, external_scaler_enabled=False)
+    app_state.update()
+
+    a, b = _dep("a", app="app"), _dep("b", app="app")
+    ds_a = dsm._get_deployment_state_for_testing(a)
+    ds_b = dsm._get_deployment_state_for_testing(b)
+
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    for r in ds_b._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = [b]
+    for r in ds_b._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = []
+
+    # Start a full instance shutdown. Tier 0 (a) starts deleting, b does not.
+    dsm.shutdown()
+    assert ds_a._target_state.deleting
+    assert not ds_b._target_state.deleting
+
+    # Deleting the app wipes its target deployment list. The reconcile pass
+    # this triggers must not use that to delete b out of tier order.
+    app_state.delete()
+    app_state.update()
+    assert not ds_b._target_state.deleting
+
+    # Drain a and advance to tier 1. Only now should b start deleting.
+    dsm.update()
+    for r in ds_a._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    dsm.shutdown()
+    app_state.update()
+    assert ds_b._target_state.deleting
+
+    dsm.update()
+    for r in ds_b._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+
+def test_cross_app_shutdown_survives_application_reconcile(
+    mock_deployment_state_manager,
+):
+    """Cross app tier order holds when each app delete wipes its target list."""
+    create_dsm, _, _, autoscaling_state_manager = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    def _make_app(name):
+        return ApplicationState(
+            name=name,
+            deployment_state_manager=dsm,
+            autoscaling_state_manager=autoscaling_state_manager,
+            endpoint_state=EndpointState(MockKVStore(), Mock()),
+            logging_config=LoggingConfig(),
+            external_scaler_enabled=False,
+        )
+
+    app1 = _make_app("app1")
+    app2 = _make_app("app2")
+    info1, _ = deployment_info(num_replicas=1)
+    info2, _ = deployment_info(num_replicas=1)
+    app1.deploy_app({"ingress": info1}, external_scaler_enabled=False)
+    app2.deploy_app({"backend": info2}, external_scaler_enabled=False)
+    app1.update()
+    app2.update()
+
+    ingress = _dep("ingress", app="app1")
+    backend = _dep("backend", app="app2")
+    ds_ingress = dsm._get_deployment_state_for_testing(ingress)
+    ds_backend = dsm._get_deployment_state_for_testing(backend)
+
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    for r in ds_backend._replicas.get([ReplicaState.STARTING]):
+        r._actor.set_ready()
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = [backend]
+    for r in ds_backend._replicas.get([ReplicaState.RUNNING]):
+        r._actor._outbound_deployments = []
+
+    dsm.shutdown()
+    assert ds_ingress._target_state.deleting
+    assert not ds_backend._target_state.deleting
+
+    app1.delete()
+    app2.delete()
+    app1.update()
+    app2.update()
+    assert not ds_backend._target_state.deleting
+
+    dsm.update()
+    for r in ds_ingress._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    dsm.shutdown()
+    app1.update()
+    app2.update()
+    assert ds_backend._target_state.deleting
+
+    dsm.update()
+    for r in ds_backend._replicas.get([ReplicaState.STOPPING]):
+        r._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+
+def _scale_to(dsm, ds, num_replicas, version="1", ticks=14):
+    """Change membership via the public deploy path and settle back to HEALTHY."""
+    info, _ = deployment_info(num_replicas=num_replicas, version=version)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    for _ in range(ticks):
+        dsm.update()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        if (
+            ds._curr_status_info.status == DeploymentStatus.HEALTHY
+            and ds._replicas.count(states=[ReplicaState.STARTING]) == 0
+        ):
+            dsm.update()
+            return
+    raise AssertionError(
+        "deployment never settled: status=%s running=%d starting=%d"
+        % (
+            ds._curr_status_info.status,
+            ds._replicas.count(states=[ReplicaState.RUNNING]),
+            ds._replicas.count(states=[ReplicaState.STARTING]),
+        )
+    )
+
+
+class CountingRankManager(ds_mod.DeploymentRankManager):
+    """Real rank manager that records how often the consistency pass runs.
+
+    Injected at the same seam the fixture uses for actor wrappers, so the rank logic under
+    test stays real; only the call count is added.
+    """
+
+    instances = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.consistency_calls = 0
+        CountingRankManager.instances.append(self)
+
+    def check_rank_consistency_and_reassign_minimally(self, active_replicas):
+        self.consistency_calls += 1
+        return super().check_rank_consistency_and_reassign_minimally(active_replicas)
+
+
+@pytest.fixture
+def rank_gate_dsm(mock_deployment_state_manager, monkeypatch):
+    """A running deployment whose rank manager counts consistency passes."""
+    CountingRankManager.instances = []
+    monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    info, v1 = deployment_info(num_replicas=3, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()  # STARTING -> RUNNING
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+    # Settle: the deployment reaches HEALTHY a tick or two after the replicas do, and the
+    # gate legitimately runs once for this membership. Tests measure from after that.
+    for _ in range(8):
+        dsm.update()
+    assert ds._curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        ds._rank_manager.consistency_calls >= 1
+    ), "gate never ran for a new membership"
+    return dsm, ds, ds._rank_manager, timer
+
+
+class TestRankConsistencyMembershipGate:
+    """The rank-consistency pass runs only when replica membership changes."""
+
+    def test_skips_while_membership_unchanged(self, rank_gate_dsm):
+        dsm, _, rank_manager, _ = rank_gate_dsm
+        after_startup = rank_manager.consistency_calls
+        for _ in range(5):
+            dsm.update()
+        assert rank_manager.consistency_calls == after_startup
+
+    def test_reruns_when_a_replica_leaves(self, rank_gate_dsm):
+        dsm, ds, rank_manager, timer = rank_gate_dsm
+        before = rank_manager.consistency_calls
+
+        # Membership change through the public path: scale up adds a new replica id.
+        _scale_to(dsm, ds, 4)
+
+        assert rank_manager.consistency_calls > before
+
+    def test_starting_replicas_skip_the_pass(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """A STARTING replica has no rank yet, so running the pass would raise
+        "active keys without ranks"; the guard must skip before that."""
+        CountingRankManager.instances = []
+        monkeypatch.setattr(ds_mod, "DeploymentRankManager", CountingRankManager)
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=2, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()  # replicas are STARTING, never marked ready
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        assert ds._rank_manager.consistency_calls == 0
 
 
 if __name__ == "__main__":
