@@ -29,9 +29,9 @@ from ray.data.expressions import Expr, col, lit
 def _stats_actions() -> pa.Table:
     """Three files with disjoint, ascending ``val`` ranges.
 
-        f1: val in [1, 5]    name in [a, c]
-        f2: val in [6, 10]   name in [d, f]
-        f3: val in [11, 15]  name in [g, i], 2 nulls in val
+    f1: val in [1, 5]    name in [a, c]
+    f2: val in [6, 10]   name in [d, f]
+    f3: val in [11, 15]  name in [g, i], 2 nulls in val
     """
     return pa.table(
         {
@@ -376,7 +376,11 @@ def test_pruning_never_drops_a_matching_file(seed: int):
 
     kind = rng.choice(kinds)
     bound = rng.randint(-20, 20)
-    kept = set(_paths(prune_add_actions(actions, data_predicate=_random_predicate(kind, bound))))
+    kept = set(
+        _paths(
+            prune_add_actions(actions, data_predicate=_random_predicate(kind, bound))
+        )
+    )
 
     for name, rows in files:
         if any(_predicate_matches(kind, v, bound) for v in rows):

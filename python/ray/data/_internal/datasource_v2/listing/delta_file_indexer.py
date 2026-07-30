@@ -60,7 +60,8 @@ class DeltaFileIndexer(FileIndexer):
         file_chunker: Optional[FileChunker] = None,
         max_paths_per_output: int = _DEFAULT_MAX_PATHS_PER_OUTPUT,
     ):
-        """
+        """Build an indexer for one Delta table snapshot.
+
         Args:
             version: Table version to read. ``None`` reads the latest.
             storage_options: Backend credentials/config passed to ``deltalake``.
@@ -80,7 +81,9 @@ class DeltaFileIndexer(FileIndexer):
         self._partition_predicate = partition_predicate
         self._data_predicate = data_predicate
         self._table_schema = table_schema
-        self._file_chunker = file_chunker if file_chunker is not None else WholeFileChunker()
+        self._file_chunker = (
+            file_chunker if file_chunker is not None else WholeFileChunker()
+        )
         self._max_paths_per_output = max_paths_per_output
 
     @property

@@ -29,10 +29,6 @@ from typing import Optional
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    _ColumnReferenceCollector,
-)
 from ray.data.expressions import BinaryExpr, ColumnExpr, Expr, LiteralExpr, Operation
 
 logger = logging.getLogger(__name__)
@@ -117,6 +113,17 @@ def _partition_keep_mask(
     column, a value that won't cast to its declared type, or an expression
     the evaluator rejects.
     """
+    # Imported lazily: the expression evaluator pulls in the logical rules
+    # package, which imports the Delta pruning rule, which reaches back here.
+    # Deferring to call time breaks that cycle at no meaningful cost --
+    # pruning runs once per listing, not per row.
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
+    from ray.data._internal.planner.plan_expression.expression_visitors import (
+        _ColumnReferenceCollector,
+    )
+
     columns = {}
     for name in add_actions.schema.names:
         if not name.startswith(PARTITION_VALUE_PREFIX):

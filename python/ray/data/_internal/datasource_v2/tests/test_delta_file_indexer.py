@@ -24,7 +24,7 @@ deltalake = pytest.importorskip("deltalake")
 def partitioned_table(tmp_path) -> str:
     """A table partitioned by ``region``, with per-file ``val`` ranges.
 
-        region=US: val 1, 2      region=EU: val 100, 200
+    region=US: val 1, 2      region=EU: val 100, 200
     """
     from deltalake import write_deltalake
 
@@ -62,9 +62,7 @@ def unpartitioned_table(tmp_path) -> str:
 
 def _list(indexer: DeltaFileIndexer, path: str) -> List[FileManifest]:
     return list(
-        indexer.list_files(
-            pa.array([path]), filesystem=pyarrow.fs.LocalFileSystem()
-        )
+        indexer.list_files(pa.array([path]), filesystem=pyarrow.fs.LocalFileSystem())
     )
 
 
@@ -256,7 +254,9 @@ def test_with_predicates_does_not_mutate_the_original(partitioned_table):
 
 
 @pytest.mark.parametrize("version", [None, 0])
-def test_with_predicates_preserves_construction_options(tmp_path, version: Optional[int]):
+def test_with_predicates_preserves_construction_options(
+    tmp_path, version: Optional[int]
+):
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "opts")

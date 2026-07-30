@@ -5080,6 +5080,38 @@ def read_unity_catalog(
     raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 
+_DELETION_VECTORS_FEATURE = "deletionVectors"
+
+
+def _raise_if_delta_table_uses_deletion_vectors(dt, path: str) -> None:
+    """Reject tables whose rows are filtered by Deletion Vectors.
+
+    A Delta table with this reader feature records deletes as a side file of
+    row positions instead of rewriting the Parquet data, so the data files
+    still physically contain the deleted rows. Ray reads those files
+    directly and does not apply the vectors, which would silently resurrect
+    deleted rows.
+
+    ``deltalake`` refuses such tables too, so this is not a new restriction
+    -- it just fails before the read instead of somewhere inside it, and
+    covers the path that no longer goes through ``to_pyarrow_dataset``.
+    """
+    try:
+        reader_features = dt.protocol().reader_features or ()
+    except Exception:  # noqa: BLE001 - older deltalake may not expose these
+        return
+
+    if _DELETION_VECTORS_FEATURE in reader_features:
+        raise ValueError(
+            f"The Delta table at {path!r} uses Deletion Vectors, which "
+            f"`ray.data.read_delta` doesn't support. Reading it would return "
+            f"rows the table marks as deleted. Rewrite the table without "
+            f"Deletion Vectors (for example `REORG TABLE ... APPLY (PURGE)` "
+            f"in Spark, or set `delta.enableDeletionVectors = false` and "
+            f"recompact) before reading it with Ray."
+        )
+
+
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
@@ -5238,17 +5270,45 @@ def read_delta(
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
-    try:
-        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
-    except Exception as e:
-        error_msg = str(e)
-        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
-        if "deletionVectors" in error_msg:
-            raise RuntimeError(
-                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
-                f"Error: {error_msg}\n"
-            ) from e
-        raise
+    _raise_if_delta_table_uses_deletion_vectors(dt, path)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        import pyarrow
+
+        from ray.data._internal.datasource_v2.delta_datasource_v2 import (
+            DeltaDatasourceV2,
+        )
+
+        # A Delta table with no data files is a legitimate state, and its
+        # log still defines the schema. The V2 read path treats an empty
+        # file listing as user error -- an empty directory, or filters that
+        # matched nothing -- so answer this from the log rather than send an
+        # empty listing through a pipeline that will reject it.
+        if not dt.file_uris():
+            return from_arrow(pyarrow.schema(dt.schema().to_arrow()).empty_table())
+
+        datasource_v2 = DeltaDatasourceV2(
+            path,
+            version=version,
+            storage_options=storage_options,
+            filesystem=filesystem,
+            columns=columns,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_parquet_args=arrow_parquet_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
         pa_dataset,

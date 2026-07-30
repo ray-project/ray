@@ -7,6 +7,7 @@ from .configure_map_task_memory import (
     ConfigureMapTaskMemoryRule,
     ConfigureMapTaskMemoryUsingOutputSize,
 )
+from .delta_file_pruning_pushdown import PushdownDeltaFilePruning
 from .derive_list_files_pushdown import DeriveListFilesPushdown
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
@@ -32,6 +33,7 @@ __all__ = [
     "PredicatePushdown",
     "ProjectionPushdown",
     "PushdownCountFiles",
+    "PushdownDeltaFilePruning",
     "SetReadParallelismRule",
     "are_remote_args_compatible",
     "compute_additional_split_factor",
