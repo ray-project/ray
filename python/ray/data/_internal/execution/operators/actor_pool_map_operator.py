@@ -197,10 +197,10 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
-        # Consecutive actor initialization failures; resets whenever an actor
+        # Consecutive actor deaths during initialization; resets whenever an actor
         # of this operator initializes successfully (see
-        # ``DataContext.max_consecutive_actor_init_failures``).
-        self._consecutive_actor_init_failures = 0
+        # ``DataContext.max_consecutive_actor_init_deaths``).
+        self._consecutive_actor_init_deaths = 0
 
     @property
     @override
@@ -363,15 +363,16 @@ class ActorPoolMapOperator(MapOperator):
             try:
                 has_actor = self._actor_pool.pending_to_running(res_ref) is not None
             except ray.exceptions.RayError as e:
-                # The actor failed to initialize (the pool has already cleaned
-                # up its internal state before re-raising). Replace it if the
-                # failure budget allows; otherwise re-raise to fail execution.
-                self._on_actor_init_failure(e)
+                # The actor died during initialization (the pool has already
+                # cleaned up its internal state before re-raising). Replace it
+                # if the death budget allows; otherwise re-raise to fail
+                # execution.
+                self._on_actor_init_death(e)
                 return
             if not has_actor:
                 # Actor has already been killed.
                 return
-            self._consecutive_actor_init_failures = 0
+            self._consecutive_actor_init_deaths = 0
 
         self._submit_metadata_task(
             res_ref,
@@ -379,33 +380,33 @@ class ActorPoolMapOperator(MapOperator):
         )
         return actor, res_ref, actor_resource_usage
 
-    def _on_actor_init_failure(self, error: Exception) -> None:
+    def _on_actor_init_death(self, error: Exception) -> None:
         """Handle an actor that died during initialization.
 
         Ray Core doesn't restart actors whose creation task failed (the death
         is a ``USER_ERROR``, so ``max_restarts`` doesn't apply). Instead, we
-        charge the failure against
-        ``DataContext.max_consecutive_actor_init_failures`` and rely on the
+        charge the death against
+        ``DataContext.max_consecutive_actor_init_deaths`` and rely on the
         actor autoscaler to start a replacement (the pool is now below its
         target size). Re-raises ``error`` when the budget is exceeded. The
         counter resets whenever an actor initializes successfully, so a
         systemically broken UDF (which never succeeds) exhausts the budget
-        while sporadic failures in a progressing pipeline don't.
+        while sporadic deaths in a progressing pipeline don't.
         """
-        self._consecutive_actor_init_failures += 1
-        budget = self.data_context.max_consecutive_actor_init_failures
-        if budget >= 0 and self._consecutive_actor_init_failures > budget:
+        self._consecutive_actor_init_deaths += 1
+        budget = self.data_context.max_consecutive_actor_init_deaths
+        if budget >= 0 and self._consecutive_actor_init_deaths > budget:
             logger.error(
-                f"{self.name}: actor initialization failed "
-                f"{self._consecutive_actor_init_failures} consecutive time(s) "
-                f"(max_consecutive_actor_init_failures={budget}); "
+                f"{self.name}: actors died during initialization "
+                f"{self._consecutive_actor_init_deaths} consecutive time(s) "
+                f"(max_consecutive_actor_init_deaths={budget}); "
                 "failing execution."
             )
             raise error
         logger.warning(
-            f"{self.name}: an actor failed to initialize and will be replaced "
-            f"({self._consecutive_actor_init_failures} consecutive failure(s) "
-            f"so far; max_consecutive_actor_init_failures={budget}).",
+            f"{self.name}: an actor died during initialization and will be "
+            f"replaced ({self._consecutive_actor_init_deaths} consecutive "
+            f"death(s) so far; max_consecutive_actor_init_deaths={budget}).",
             exc_info=error,
         )
 

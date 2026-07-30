@@ -1504,17 +1504,17 @@ def test_actor_init_failure_retry(
         (-1, 2, True),
     ],
 )
-def test_actor_init_failure_budget(
+def test_actor_init_death_budget(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     budget,
     num_failures,
     should_succeed,
 ):
-    """Tests that actor initialization failures are tolerated (by replacing
-    the failed actor) up to DataContext.max_consecutive_actor_init_failures,
-    and that the original ActorDiedError propagates once the budget is
-    exceeded.
+    """Tests that actor deaths during initialization are tolerated (by
+    replacing the dead actor) up to
+    DataContext.max_consecutive_actor_init_deaths, and that the original
+    ActorDiedError propagates once the budget is exceeded.
     """
     from ray.exceptions import ActorDiedError
 
@@ -1541,7 +1541,7 @@ def test_actor_init_failure_budget(
             return batch
 
     ctx = ray.data.DataContext.get_current()
-    ctx.max_consecutive_actor_init_failures = budget
+    ctx.max_consecutive_actor_init_deaths = budget
     # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
@@ -1553,10 +1553,10 @@ def test_actor_init_failure_budget(
             ds.take_all()
 
 
-def test_actor_init_failure_budget_with_in_actor_retries(
+def test_actor_init_death_budget_with_in_actor_retries(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """Tests that the pool-level failure budget counts actor incarnations, not
+    """Tests that the pool-level death budget counts actor incarnations, not
     in-actor init retry attempts (actor_init_retry_on_errors runs first).
     """
 
@@ -1587,7 +1587,7 @@ def test_actor_init_failure_budget_with_in_actor_retries(
     ctx = ray.data.DataContext.get_current()
     ctx.actor_init_retry_on_errors = True
     ctx.actor_init_max_retries = 1
-    ctx.max_consecutive_actor_init_failures = 1
+    ctx.max_consecutive_actor_init_deaths = 1
     # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
@@ -1599,17 +1599,17 @@ def test_actor_init_failure_budget_with_in_actor_retries(
     assert len(result) == 10
 
 
-def test_on_actor_init_failure_unit(
+def test_on_actor_init_death_unit(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """Unit test for ActorPoolMapOperator._on_actor_init_failure: raise timing
-    against the consecutive-failure budget, reset-on-success, and re-raise
+    """Unit test for ActorPoolMapOperator._on_actor_init_death: raise timing
+    against the consecutive-death budget, reset-on-success, and re-raise
     identity.
     """
     from ray.exceptions import RayActorError
 
     ctx = ray.data.DataContext.get_current()
-    ctx.max_consecutive_actor_init_failures = 2
+    ctx.max_consecutive_actor_init_deaths = 2
 
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(2)])
@@ -1626,22 +1626,22 @@ def test_on_actor_init_failure_unit(
 
     # Failures within the budget are tolerated; a successful actor start (which
     # zeroes the counter) restores the full budget.
-    op._on_actor_init_failure(error)
-    op._on_actor_init_failure(error)
-    op._consecutive_actor_init_failures = 0  # What _task_done_callback does.
-    op._on_actor_init_failure(error)
-    op._on_actor_init_failure(error)
+    op._on_actor_init_death(error)
+    op._on_actor_init_death(error)
+    op._consecutive_actor_init_deaths = 0  # What _task_done_callback does.
+    op._on_actor_init_death(error)
+    op._on_actor_init_death(error)
     # The third consecutive failure exceeds the budget.
     with pytest.raises(RayActorError) as exc_info:
-        op._on_actor_init_failure(error)
+        op._on_actor_init_death(error)
     # The original error object is re-raised unchanged.
     assert exc_info.value is error
 
     # With an unlimited budget, failures never raise.
-    ctx.max_consecutive_actor_init_failures = -1
-    op._consecutive_actor_init_failures = 0
+    ctx.max_consecutive_actor_init_deaths = -1
+    op._consecutive_actor_init_deaths = 0
     for _ in range(10):
-        op._on_actor_init_failure(error)
+        op._on_actor_init_death(error)
 
 
 def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):

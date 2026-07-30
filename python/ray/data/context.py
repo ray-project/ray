@@ -251,8 +251,8 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
-DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_FAILURES = env_integer(
-    "RAY_DATA_MAX_CONSECUTIVE_ACTOR_INIT_FAILURES", 0
+DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
+    "RAY_DATA_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS", 0
 )
 
 DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
@@ -594,23 +594,29 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
-            Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors.
-        actor_init_max_retries: Maximum number of consecutive retries for actor
-            initialization failures. The counter resets when an actor successfully
-            initializes. Default is 3. Set to -1 for infinite retries.
-        max_consecutive_actor_init_failures: Per-operator number of
-            consecutive actor initialization failures to tolerate by replacing
-            the failed actor (counted after any in-actor
-            ``actor_init_retry_on_errors`` retries are exhausted). The counter
+        actor_init_retry_on_errors: Whether to retry when the UDF constructor
+            raises during actor initialization. The retry happens in-process,
+            inside the same (still-alive) actor; contrast with
+            ``max_consecutive_actor_init_deaths``, which handles actors that
+            die during initialization. Default to `False` to not retry on any
+            errors. Set to `True` to retry all errors.
+        actor_init_max_retries: Maximum number of consecutive in-process UDF
+            constructor retries per actor (see ``actor_init_retry_on_errors``).
+            The counter resets when an actor successfully initializes. Default
+            is 3. Set to -1 for infinite retries.
+        max_consecutive_actor_init_deaths: Per-operator number of consecutive
+            actor deaths during initialization to tolerate by replacing the
+            dead actor with a fresh one (an actor dies when its process
+            crashes, e.g. OOM or segfault, or when any in-actor
+            ``actor_init_retry_on_errors`` retries are exhausted; Ray Core
+            doesn't restart actors whose creation task failed). The counter
             resets whenever an actor of the operator initializes successfully,
-            so sporadic failures in a progressing pipeline are tolerated while
-            a systemically broken UDF exhausts the budget. Default is 0, which
-            fails the job on the first initialization failure. Set to -1 for
-            unlimited. When the budget is exceeded, the last actor error is
-            re-raised. Note: an operator start gated by
-            ``wait_for_min_actors_s`` still fails fast on the first error.
+            so sporadic deaths in a progressing pipeline are tolerated while a
+            systemically broken UDF exhausts the budget. Default is 0, which
+            fails the job on the first death. Set to -1 for unlimited. When
+            the budget is exceeded, the last actor error is re-raised. Note:
+            an operator start gated by ``wait_for_min_actors_s`` still fails
+            fast on the first error.
         retried_map_errors: Controls which user exceptions are retried in map
             tasks. ``False`` (default) disables retries. ``True`` retries any user
             exception. A list of patterns retries only when the exception message
@@ -869,9 +875,7 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
-    max_consecutive_actor_init_failures: int = (
-        DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_FAILURES
-    )
+    max_consecutive_actor_init_deaths: int = DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS
     retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
