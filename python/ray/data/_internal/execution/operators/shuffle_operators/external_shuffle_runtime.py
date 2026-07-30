@@ -9,6 +9,7 @@ import os
 import struct
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import (
     BinaryIO,
@@ -195,9 +196,9 @@ class ShuffleFileServerAnomalyError(RuntimeError):
                                     the mapper on healthy capacity.
     - ``ValueError`` (from ``ray.get_actor``) -> actor name is not registered
                                                 (never created or gc'd).
-    - The Flight fetch failed but the endpoint is unchanged and Ray RPC still
-      works, which is often a network-configuration problem (``NetworkPolicy``,
-      firewall, routing).
+    - The Flight fetch failed but the server's incarnation is unchanged and Ray
+      RPC still works, which is often a network-configuration problem
+      (``NetworkPolicy``, firewall, routing).
     """
 
 
@@ -390,6 +391,11 @@ class ShuffleFileServer:
         ip = ray.util.get_node_ip_address()
         self._server = _make_flight_server(ip, self.base_dir, token)
         self._host, self._port = ip, self._server.port
+        # Unique per actor process. Ray re-runs __init__ on every restart, so a
+        # restart always changes this — unlike (host, port), which an ephemeral
+        # rebind (port 0) can reuse. Reducers compare it to distinguish a genuine
+        # restart (retry) from an unchanged-but-unreachable server (terminal).
+        self._incarnation = uuid.uuid4().hex
         t = threading.Thread(target=self._run_server, daemon=True)
         t.start()
 
@@ -405,8 +411,10 @@ class ShuffleFileServer:
             logger.error("ShuffleFileServer server loop returned; exiting actor")
         os._exit(1)
 
-    def endpoint(self) -> Tuple[str, int]:
-        return (self._host, self._port)
+    def endpoint(self) -> Tuple[str, int, str]:
+        # (host, port) is how reducers connect; the incarnation id is how they
+        # detect a restart even when the rebind reuses the same host and port.
+        return (self._host, self._port, self._incarnation)
 
 
 @ray.remote(num_cpus=0)
@@ -427,7 +435,7 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
 # Process-global endpoint cache, reused across reducers running on the same
 # worker. Popped on fetch failure (re-resolved next call); the lock guards the
 # concurrent fetch threads.
-_ENDPOINT_CACHE: Dict[str, Tuple[str, int]] = {}
+_ENDPOINT_CACHE: Dict[str, Tuple[str, int, str]] = {}
 _ENDPOINT_CACHE_LOCK = threading.Lock()
 
 # --------------------------------------------------------- fetch routing types
@@ -509,7 +517,7 @@ class _PwriteSink:
 
 
 def _stream_members_flight(
-    endpoint: Tuple[str, int],
+    endpoint: Tuple[str, int, str],
     token: str,
     members: List[_FileRanges],
     max_bytes: int,
@@ -524,7 +532,7 @@ def _stream_members_flight(
     network fault)."""
     import pyarrow.flight as flight
 
-    host, port = endpoint
+    host, port, _incarnation = endpoint
     client = flight.connect(_grpc_location(host, port))
     try:
         for batch in _chunk_members_by_bytes(members, max_bytes):
@@ -573,13 +581,13 @@ def _prefetch_node_into(
       * Dead (init fail/ray.kill)     -> ``ShuffleFileServerAnomalyError`` (terminal)
       * Unschedulable (node lost)     -> ``ShuffleFileServerAnomalyError`` (terminal)
       * Unavailable (restarting)      -> poll until Ray resolves
-      * conn dead, endpoint changed   -> reset sink, reconnect, retry in-place
-      * conn dead, endpoint unchanged -> ``ShuffleFileServerAnomalyError`` (network
-                                           config problem, terminal)
+      * conn dead, incarnation changed   -> reset sink, reconnect, retry in-place
+      * conn dead, incarnation unchanged  -> ``ShuffleFileServerAnomalyError``
+                                             (network config problem, terminal)
     """
     key = _file_server_name(shuffle_id, node_id)
 
-    def _resolve() -> Tuple[str, int]:
+    def _resolve() -> Tuple[str, int, str]:
         # Endpoint cache avoids a blocking Ray RPC per fetch. On miss, ask
         # Ray for actor state and route by outcome (see docstring above).
         with _ENDPOINT_CACHE_LOCK:
@@ -640,27 +648,32 @@ def _prefetch_node_into(
         except PermissionError:
             raise
         except (ConnectionError, TimeoutError) as e:
-            # If _resolve() returns, the actor is alive; endpoint compare tells us
-            # whether the file server restarted (retry in-place) or the reducer/file-server
-            # network path is broken (terminal).
+            # If _resolve() returns, the actor is alive; the incarnation id tells
+            # us whether the file server restarted (retry in-place) or the
+            # reducer/file-server network path is broken (terminal). We compare
+            # incarnations, not (host, port): a restart rebinds an ephemeral port
+            # (port 0) that can land on the same number, so an address match is
+            # not proof the server is the same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
             fresh = _resolve()
-            if fresh == endpoint:
-                # Endpoint unchanged: actor is alive but the connection is blocked.
-                # Most likely a network configuration issue (NetworkPolicy,
-                # firewall, routing); retrying to the same file server won't help.
+            if fresh[2] == endpoint[2]:
+                # Same incarnation: the actor process never restarted, yet the
+                # connection is blocked. Most likely a network configuration
+                # issue (NetworkPolicy, firewall, routing); retrying to the same
+                # file server won't help.
                 raise ShuffleFileServerAnomalyError(
                     f"Flight fetch from node {node_id} failed ({e}) but "
-                    f"ShuffleFileServer at {fresh} is still reachable via Ray. "
+                    f"ShuffleFileServer at {fresh[:2]} is still reachable via Ray. "
                     f"Likely a network configuration issue (NetworkPolicy, "
                     f"firewall, routing) between reducer and file server. "
                     f"Check the network config."
                 ) from e
             logger.warning(
                 f"Flight fetch from node {node_id} failed ({e}); ShuffleFileServer "
-                f"restarted (endpoint {endpoint} → {fresh}). Retrying in place."
+                f"restarted (incarnation {endpoint[2]} → {fresh[2]}, "
+                f"endpoint {endpoint[:2]} → {fresh[:2]}). Retrying in place."
             )
             continue
         except OSError as e:
