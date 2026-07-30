@@ -178,7 +178,7 @@ def test_convert_dispatches_and_returns_dropped_attempts():
         )
     )
 
-    task_events, dropped = rec.convert(request)
+    task_events, dropped = rec.convert_to_task_events(request)
 
     assert len(task_events) == 1
     assert task_events[0].task_info.name == "foo"
@@ -194,7 +194,7 @@ def test_convert_raises_on_unsupported_event_type():
     )
 
     with pytest.raises(AssertionError):
-        rec.convert(request)
+        rec.convert_to_task_events(request)
 
 
 if __name__ == "__main__":

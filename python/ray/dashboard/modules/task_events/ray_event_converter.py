@@ -154,7 +154,9 @@ def _convert_task_profile_events(event) -> gcs_pb2.TaskEvents:
     return task_event
 
 
-def convert(request: AddEventsRequest) -> Tuple[List[gcs_pb2.TaskEvents], list]:
+def convert_to_task_events(
+    request: AddEventsRequest,
+) -> Tuple[List[gcs_pb2.TaskEvents], list]:
     """Convert an ``AddEventsRequest`` into ``TaskEvents`` for the store, plus the
     upstream dropped-task-attempt metadata.
     Returns ``(task_events, dropped_task_attempts)``.
