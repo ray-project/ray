@@ -1,6 +1,8 @@
 import os
 import sys
 import types
+from decimal import Decimal
+from fractions import Fraction
 
 import pytest
 
@@ -31,12 +33,16 @@ def clear_mblt_environment(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolate_dev_detection(monkeypatch):
-    """Prevent the real /dev tree from influencing detection."""
+    """Isolate detection from host state: no /dev nodes, no qbruntime SDK."""
     monkeypatch.setattr(
         "ray._private.accelerators.mblt._count_mblt_dev_nodes", lambda: 0
     )
-    # Default: no qbruntime installed. Individual tests can install the mock.
-    monkeypatch.delitem(sys.modules, "qbruntime", raising=False)
+    monkeypatch.setattr("ray._private.accelerators.mblt.glob.glob", lambda *a, **k: [])
+    # A ``None`` entry in ``sys.modules`` forces ``from qbruntime import ...`` to
+    # raise ``ImportError`` even when the real SDK is installed on disk, so the
+    # /dev fallback path is exercised deterministically. Tests that need the SDK
+    # re-inject a mock via ``setitem``, which overrides this sentinel.
+    monkeypatch.setitem(sys.modules, "qbruntime", None)
 
 
 @pytest.mark.usefixtures("clear_mblt_environment")
@@ -149,6 +155,24 @@ class TestMBLTAcceleratorManager:
         assert "whole number" in error
         assert "1.5" in error
 
+    @pytest.mark.parametrize("quantity", [Decimal("1.5"), Fraction(3, 2)])
+    def test_validate_resource_request_quantity_fractional_non_float(self, quantity):
+        # Non-``float`` numeric types (Decimal/Fraction) must also be rejected;
+        # a plain ``isinstance(quantity, float)`` guard would let them through.
+        valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(
+            quantity
+        )
+        assert valid is False
+        assert "whole number" in error
+
+    @pytest.mark.parametrize("quantity", [Decimal("2"), Fraction(4, 2)])
+    def test_validate_resource_request_quantity_whole_non_float(self, quantity):
+        valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(
+            quantity
+        )
+        assert valid is True
+        assert error is None
+
     def test_set_current_process_visible_accelerator_ids(self, monkeypatch):
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
         # qb Runtime reads QBRUNTIME_VISIBLE_DEVICES; Ray sets exactly this one
@@ -158,8 +182,8 @@ class TestMBLTAcceleratorManager:
     def test_set_current_process_visible_accelerator_ids_respects_noset(
         self, monkeypatch
     ):
-        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "0,1"
-        os.environ[NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
+        monkeypatch.setenv(MBLT_RT_VISIBLE_DEVICES_ENV_VAR, "0,1")
+        monkeypatch.setenv(NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR, "1")
 
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["2", "3"])
         # The NOSET flag must leave the env var untouched.

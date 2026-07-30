@@ -1,5 +1,6 @@
 import glob
 import logging
+import math
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -126,7 +127,11 @@ class MBLTAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        if isinstance(quantity, float) and not quantity.is_integer():
+        try:
+            value = float(quantity)
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and math.isfinite(value) and not value.is_integer():
             return (
                 False,
                 f"{MBLTAcceleratorManager.get_resource_name()} resource quantity"
