@@ -1579,10 +1579,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void SubscribeToNodeChanges();
 
   /**
-   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can reclaim
-   * actor-wide streaming-generator backpressure budget when an owner dies.
-   * Only called when this actor enables
-   * ``_actor_generator_backpressure_num_objects``.
+   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can clean up
+   * generator backpressure state when an owner dies. Covers both per-task BP
+   * (unblock ``WaitUntilObjectConsumed``) and actor-wide BP (reclaim shared
+   * budget held by finished tasks). Called from
+   * ``RegisterGeneratorBackpressureState``; idempotent via ``std::call_once``.
    */
   void SubscribeToOwnerWorkerFailures();
 

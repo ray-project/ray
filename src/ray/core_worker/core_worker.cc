@@ -780,9 +780,16 @@ void CoreWorker::SubscribeToOwnerWorkerFailures() {
   std::call_once(subscribe_to_owner_worker_failures_flag_, [this]() {
     // Watch for owner-worker death so finished streaming-generator tasks with
     // unconsumed objects don't leak their actor-wide BP slot.
+    // Capture a weak_ptr: a raw `this` would UAF if the callback outlives
+    // CoreWorker, and a shared_ptr would cycle with gcs_client_ (which owns
+    // the subscription).
+    std::weak_ptr<CoreWorker> weak_self = shared_from_this();
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        [this](const rpc::WorkerDeltaData &worker_failure_data) {
-          HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
+        [weak_self](const rpc::WorkerDeltaData &worker_failure_data) {
+          if (auto self = weak_self.lock()) {
+            self->HandleOwnerDied(
+                WorkerID::FromBinary(worker_failure_data.worker_id()));
+          }
         },
         nullptr);
   });
@@ -2992,10 +2999,6 @@ Status CoreWorker::ExecuteTask(
       // SystemExit propagate through ReserveSlot's wait loop.
       actor_generator_waiter_ = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
           actor_generator_bp, options_.check_signals);
-      // Only actors with actor-wide BP need owner-death sweeps: finished
-      // generator tasks keep their shared budget until the owner drains or
-      // dies. Per-task BP alone does not retain state after the task finishes.
-      SubscribeToOwnerWorkerFailures();
     }
     RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
   } else if (task_spec.IsActorTask()) {
@@ -3384,17 +3387,23 @@ void CoreWorker::RegisterGeneratorBackpressureState(
     std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
     std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
     const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
-  // Only insert if not present. The report path also writes this entry (with
-  // the same values); leaving an existing entry untouched avoids racing with
-  // any in-progress mutation there.
-  auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
-  if (!inserted) {
-    return;
+  {
+    absl::MutexLock lock(&mutex_);
+    // Only insert if not present. The report path also writes this entry (with
+    // the same values); leaving an existing entry untouched avoids racing with
+    // any in-progress mutation there.
+    auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
+    if (inserted) {
+      it->second.waiter = std::move(waiter);
+      it->second.actor_metadata = std::move(actor_metadata);
+      it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    }
   }
-  it->second.waiter = std::move(waiter);
-  it->second.actor_metadata = std::move(actor_metadata);
-  it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  // Any BP registration (per-task or actor-wide) needs owner-death sweeps:
+  // running tasks parked in WaitUntilObjectConsumed / ReserveActorWideSlot
+  // would otherwise hang, and finished actor-wide tasks would leak shared
+  // budget. call_once inside makes this cheap after the first registration.
+  SubscribeToOwnerWorkerFailures();
 }
 
 void CoreWorker::MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id) {
