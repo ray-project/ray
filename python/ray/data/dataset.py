@@ -5342,27 +5342,28 @@ class Dataset:
             storage_options: A dictionary of storage options passed to the
                 ``deltalake`` library for authentication and configuration (e.g.
                 cloud credentials).
-            schema_mode: How an ``APPEND`` handles a column present in the
+            schema_mode: How an ``APPEND`` handles a field present in the
                 data being written but absent from the table's current
-                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                schema, including fields nested in structs, lists, or maps.
+                Has no effect on ``SaveMode.OVERWRITE`` (which always
                 replaces the table's schema wholesale) or when the table
                 doesn't exist yet (there's no existing schema to compare
                 against). One of:
 
-                * ``"merge"`` (default): Add the new column to the table
+                * ``"merge"`` (default): Add the new field to the table
                   before committing the write, like SQL's
-                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  ``ALTER TABLE ... ADD COLUMN``. The new field is always
                   added as nullable, and every row written before this
                   reads back with ``None`` for it.
                 * ``"error"``: Reject the write with a ``ValueError``
                   instead, leaving the table's schema unchanged.
 
-                A column present in *both* the data and the table, but with
+                A field present in *both* the data and the table, but with
                 an incompatible type (for example, writing a string into a
                 column the table has as an integer), always raises a
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
-                a brand-new column is supported; changing an existing
-                column's type is not.
+                a brand-new field is supported; changing an existing
+                field's type is not.
             filesystem: Optional PyArrow filesystem used for worker Parquet
                 writes, instead of one built from ``storage_options`` or ambient
                 credentials. Cannot be combined with ``catalog``.

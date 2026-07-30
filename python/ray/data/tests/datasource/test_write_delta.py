@@ -4,7 +4,8 @@ Covers only what this prototype actually supports: ``SaveMode.APPEND`` and
 ``SaveMode.OVERWRITE`` (no ``ERROR``/``IGNORE``, no dynamic partition
 overwrite), Hive-style partitioning, ``storage_options`` passthrough to the
 driver-side commit calls, and ``schema_mode``-governed schema evolution on
-APPEND (adding new columns only -- never changing an existing column's type).
+APPEND (adding new top-level or nested fields only -- never changing an
+existing field's type).
 
 Master's existing ``test_delta.py`` covers ``ray.data.read_delta`` and is not
 modified here.
@@ -849,8 +850,9 @@ def test_storage_options_passed_to_create_write_transaction(
 
 # ----------------------------------------------------------------------
 # Schema reconciliation on APPEND: schema_mode="merge" (default) evolves
-# the table's schema to add new columns; schema_mode="error" rejects them.
-# A type-incompatible existing column always raises, regardless of mode.
+# the table's schema to add new top-level or nested fields; schema_mode="error"
+# rejects them. A type-incompatible existing field always raises, regardless
+# of mode.
 # ----------------------------------------------------------------------
 
 
@@ -878,6 +880,126 @@ def test_append_multiple_new_columns_evolves_schema(temp_delta_path):
         {"id": 1, "a": None, "b": None},
         {"id": 2, "a": "x", "b": 5},
     ]
+
+
+def test_append_nested_fields_evolves_schema(temp_delta_path):
+    """New fields inside structs, lists of structs, and maps are preserved.
+
+    Regression test: schema unification accepted these additions, but the
+    evolution planner only added new top-level columns. The write therefore
+    committed successfully while Delta kept the old nested schema and silently
+    dropped the new field values on every read.
+    """
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_payload_value_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    base_payload_type = pa.struct(
+        [pa.field("inner", base_payload_value_type, nullable=False)]
+    )
+    base_event_type = pa.struct([pa.field("code", pa.int64(), nullable=False)])
+    base_attribute_type = pa.map_(pa.string(), base_payload_type)
+    base_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", base_payload_type, nullable=False),
+            pa.field("events", pa.list_(base_event_type), nullable=False),
+            pa.field("attributes", base_attribute_type, nullable=False),
+        ]
+    )
+    base = pa.Table.from_arrays(
+        [
+            pa.array([1], type=pa.int64()),
+            pa.array([{"inner": {"x": 10}}], type=base_payload_type),
+            pa.array([[{"code": 100}]], type=pa.list_(base_event_type)),
+            pa.array([[("a", {"inner": {"x": 1000}})]], type=base_attribute_type),
+        ],
+        schema=base_schema,
+    )
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+
+    incoming_payload_value_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    incoming_payload_type = pa.struct(
+        [pa.field("inner", incoming_payload_value_type, nullable=False)]
+    )
+    incoming_event_type = pa.struct(
+        [
+            pa.field("code", pa.int64(), nullable=False),
+            pa.field("label", pa.string(), nullable=False),
+        ]
+    )
+    incoming_attribute_type = pa.map_(pa.string(), incoming_payload_type)
+    incoming_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", incoming_payload_type, nullable=False),
+            pa.field("events", pa.list_(incoming_event_type), nullable=False),
+            pa.field("attributes", incoming_attribute_type, nullable=False),
+        ]
+    )
+    incoming = pa.Table.from_arrays(
+        [
+            pa.array([2], type=pa.int64()),
+            pa.array(
+                [{"inner": {"x": 20, "y": "kept"}}],
+                type=incoming_payload_type,
+            ),
+            pa.array(
+                [[{"code": 200, "label": "kept"}]],
+                type=pa.list_(incoming_event_type),
+            ),
+            pa.array(
+                [[("b", {"inner": {"x": 2000, "y": "kept"}})]],
+                type=incoming_attribute_type,
+            ),
+        ],
+        schema=incoming_schema,
+    )
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path)
+
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    payload_y = table_schema.field("payload").type.field("inner").type.field("y")
+    event_label = table_schema.field("events").type.value_type.field("label")
+    attribute_y = (
+        table_schema.field("attributes").type.item_type.field("inner").type.field("y")
+    )
+    assert payload_y.nullable
+    assert event_label.nullable
+    assert attribute_y.nullable
+
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
+    assert out == [
+        {
+            "id": 1,
+            "payload": {"inner": {"x": 10, "y": None}},
+            "events": [{"code": 100, "label": None}],
+            "attributes": [("a", {"inner": {"x": 1000, "y": None}})],
+        },
+        {
+            "id": 2,
+            "payload": {"inner": {"x": 20, "y": "kept"}},
+            "events": [{"code": 200, "label": "kept"}],
+            "attributes": [("b", {"inner": {"x": 2000, "y": "kept"}})],
+        },
+    ]
+
+
+def test_append_nested_field_rejected_with_schema_mode_error(temp_delta_path):
+    _write_append([{"id": 1, "payload": {"x": 10}}], temp_delta_path)
+
+    with pytest.raises(ValueError, match=r"payload\.y.*not present"):
+        _write_append(
+            [{"id": 2, "payload": {"x": 20, "y": "rejected"}}],
+            temp_delta_path,
+            schema_mode="error",
+        )
+
+    assert _read_all(temp_delta_path) == [{"id": 1, "payload": {"x": 10}}]
 
 
 def test_append_multiple_new_columns_preserves_incoming_column_order(temp_delta_path):
