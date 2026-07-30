@@ -312,6 +312,32 @@ def test_deletion_vectors_are_rejected(
         ray.data.read_delta(path)
 
 
+@pytest.mark.parametrize(
+    "mode,expects_v2",
+    [(None, True), ("none", True), ("name", False), ("id", False)],
+)
+def test_column_mapping_tables_stay_on_the_v1_path(
+    monkeypatch, mode: Optional[str], expects_v2: bool
+):
+    """Column mapping renames columns between the schema and the Parquet.
+
+    The V2 reader opens the data files directly with the logical schema, so
+    it would ask for names the files don't have and return empty columns.
+    Such tables keep going through ``to_pyarrow_dataset``, which either
+    handles the mapping or raises -- either beats silently wrong data.
+    """
+    from ray.data.read_api import _delta_table_uses_column_mapping
+
+    class _FakeMetadata:
+        configuration = {} if mode is None else {"delta.columnMapping.mode": mode}
+
+    class _FakeTable:
+        def metadata(self):
+            return _FakeMetadata()
+
+    assert _delta_table_uses_column_mapping(_FakeTable()) is not expects_v2
+
+
 if __name__ == "__main__":
     import sys
 

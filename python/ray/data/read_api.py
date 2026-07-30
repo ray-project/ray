@@ -5081,6 +5081,25 @@ def read_unity_catalog(
 
 
 _DELETION_VECTORS_FEATURE = "deletionVectors"
+_COLUMN_MAPPING_MODE_KEY = "delta.columnMapping.mode"
+
+
+def _delta_table_uses_column_mapping(dt) -> bool:
+    """Whether the table renames columns between its schema and its Parquet.
+
+    Under column mapping the physical Parquet columns carry generated names
+    and the logical names live only in the log. The V2 read path opens those
+    files directly with the logical schema, so it would find none of the
+    columns it asked for and quietly return empty ones. The V1 path keeps
+    such tables going through ``to_pyarrow_dataset``, which either handles
+    the mapping or raises -- both preferable to silently wrong data.
+    """
+    try:
+        mode = (dt.metadata().configuration or {}).get(_COLUMN_MAPPING_MODE_KEY)
+    except Exception:  # noqa: BLE001 - older deltalake may not expose these
+        return False
+
+    return mode is not None and mode.lower() != "none"
 
 
 def _raise_if_delta_table_uses_deletion_vectors(dt, path: str) -> None:
@@ -5273,7 +5292,7 @@ def read_delta(
     _raise_if_delta_table_uses_deletion_vectors(dt, path)
 
     ctx = DataContext.get_current()
-    if ctx.use_datasource_v2:
+    if ctx.use_datasource_v2 and not _delta_table_uses_column_mapping(dt):
         import pyarrow
 
         from ray.data._internal.datasource_v2.delta_datasource_v2 import (
