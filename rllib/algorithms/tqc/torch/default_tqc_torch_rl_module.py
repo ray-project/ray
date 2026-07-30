@@ -109,12 +109,24 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         )
         output[QF_PREDS] = qf_out  # (batch, n_critics, n_quantiles)
 
-        # Compute Q-values for resampled actions (for actor loss)
+        # Compute Q-values for resampled actions (for the actor loss).
+        # Freeze the critic parameters for this pass (same as SAC): the actor
+        # loss must only produce gradients w.r.t. the policy (through the
+        # actions), not w.r.t. the critics. Without this, the actor loss's
+        # critic gradients leak into the critic optimizer's update and push
+        # the critics to inflate Q-values at the policy's actions.
+        all_qf_params = list(self.qf_encoders.parameters()) + list(
+            self.qf_heads.parameters()
+        )
+        for param in all_qf_params:
+            param.requires_grad = False
         qf_curr = self._qf_forward_all_critics(
             batch[Columns.OBS],
             actions_curr,
             use_target=False,
         )
+        for param in all_qf_params:
+            param.requires_grad = True
         output["qf_curr"] = qf_curr
 
         # For next state Q-values (target computation)
