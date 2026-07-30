@@ -8,7 +8,6 @@ from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
     KV_TOKEN_METADATA_KEY,
@@ -126,7 +125,7 @@ class LLMRouter:
     ):
         self._handle: DeploymentHandle = server
         self._tokenizer = None
-        self._token_sender = token_channel.TokenSender()
+        self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
         # engine-facing on_lifecycle_events method can book load into it.
         self._kv_token_tracker = None
@@ -153,6 +152,13 @@ class LLMRouter:
             )
 
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
+            # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
+            # the non-KV ingress import path.
+            from ray.llm._internal.serve.routing_policies.kv_aware import (
+                token_channel,
+            )
+
+            self._token_sender = token_channel.TokenSender()
         self._handle._init()
 
     @router_app.post("/internal/route")
@@ -244,7 +250,8 @@ class LLMRouter:
         replica_id: str,
         request_token_ids: List[int],
     ) -> Optional[str]:
-        if not token_endpoint:
+        # Only reachable on the KV path, where __init__ built the sender.
+        if not token_endpoint or self._token_sender is None:
             if not self._warned_no_token_endpoint:
                 self._warned_no_token_endpoint = True
                 logger.warning(
@@ -253,6 +260,8 @@ class LLMRouter:
                     replica_id,
                 )
             return None
+
+        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 
         key = uuid.uuid4().hex
         try:

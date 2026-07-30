@@ -18,6 +18,8 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenSender,
     TokenStore,
     encode_prompt_token_ids,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
     inject_prompt_token_ids,
     install_prompt_token_forwarding,
 )

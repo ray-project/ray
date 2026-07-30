@@ -64,6 +64,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
+    install_prompt_token_forwarding,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
 )
@@ -359,7 +362,7 @@ class VLLMEngine(LLMEngine):
             supported_tasks=supported_tasks,
         )
         if self._token_receiver is not None:
-            token_channel.install_prompt_token_forwarding(
+            install_prompt_token_forwarding(
                 app.state,
                 self._prompt_token_store,
             )
@@ -445,7 +448,7 @@ class VLLMEngine(LLMEngine):
             state, "openai_serving_tokenization", None
         )
         if self._token_receiver is not None:
-            token_channel.install_prompt_token_forwarding(
+            install_prompt_token_forwarding(
                 state,
                 self._prompt_token_store,
             )
