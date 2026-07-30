@@ -286,6 +286,7 @@ def test_partition_writer_combine_path():
 
     import numpy as np
     import pyarrow as pa
+
     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
     # (1) non-extension -> native; frame round-trips to the combined table.
