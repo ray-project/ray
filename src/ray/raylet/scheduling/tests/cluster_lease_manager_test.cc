@@ -463,6 +463,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   }
 
   void SetUp() {
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": false})");
     static rpc::GcsNodeAddressAndLiveness node_info;
     ON_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
         .WillByDefault(::testing::Return(true));

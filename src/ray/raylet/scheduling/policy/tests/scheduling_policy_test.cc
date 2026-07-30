@@ -53,6 +53,9 @@ NodeResources CreateNodeResourcesWithLabels(
 
 class SchedulingPolicyTest : public ::testing::Test {
  public:
+  void SetUp() override {
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": false})");
+  }
   scheduling::NodeID local_node = scheduling::NodeID(0);
   scheduling::NodeID remote_node = scheduling::NodeID(1);
   scheduling::NodeID remote_node_2 = scheduling::NodeID(2);

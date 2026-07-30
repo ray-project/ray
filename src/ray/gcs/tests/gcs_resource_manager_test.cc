@@ -32,6 +32,10 @@ using ::testing::_;
 
 class GcsResourceManagerTest : public ::testing::Test {
  public:
+  void SetUp() override {
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": false})");
+  }
+
   GcsResourceManagerTest()
       : cluster_resource_storage_(),
         cluster_resource_manager_(PeriodicalRunner::Create(io_service_),

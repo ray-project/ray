@@ -105,6 +105,7 @@ NodeResources RandomNodeResources() { return NodeResources(RandomNodeResourceSet
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() {
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": false})");
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.

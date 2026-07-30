@@ -51,6 +51,7 @@ enum class GcsPlacementGroupStatus : int32_t {
 class GcsPlacementGroupSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": false})");
     thread_io_service_.reset(new std::thread([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
           io_service_.get_executor());
@@ -1534,8 +1535,8 @@ TEST_F(GcsPlacementGroupSchedulerTest,
 class GcsPlacementGroupCentralizedSchedulerTest : public GcsPlacementGroupSchedulerTest {
  public:
   void SetUp() override {
-    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": true})");
     GcsPlacementGroupSchedulerTest::SetUp();
+    RayConfig::instance().initialize(R"({"centralized_actor_scheduling": true})");
   }
 
   void TearDown() override { GcsPlacementGroupSchedulerTest::TearDown(); }
