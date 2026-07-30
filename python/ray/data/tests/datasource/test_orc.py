@@ -129,7 +129,6 @@ def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tm
 
 
 def test_read_orc_multiple_stripes(ray_start_regular_shared, tmp_path):
-    from pyarrow import orc
 
     path = os.path.join(tmp_path, "multi.orc")
     table = pa.table({"id": list(range(10000))})
