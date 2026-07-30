@@ -45,9 +45,10 @@ def _make_file_server(tmp_path, token="test-token"):
 
 @contextlib.contextmanager
 def _running_flight_server(base_dir, token):
-    """Start a bare Flight server (no Ray) on loopback; yield its (host, port)."""
+    """Start a bare Flight server (no Ray) on loopback; yield its
+    (host, port, incarnation) endpoint (incarnation is a fixed test sentinel)."""
     srv = _make_flight_server("127.0.0.1", str(base_dir), token)
-    endpoint = ("127.0.0.1", srv.port)
+    endpoint = ("127.0.0.1", srv.port, "test-incarnation")
     t = threading.Thread(target=srv.serve, daemon=True)
     t.start()
     try:
@@ -98,11 +99,12 @@ def test_shuffle_file_server_lifecycle(ray_start_regular_shared_2_cpus, tmp_path
     # Creating a file server should (1) mkdir the base_dir on disk, (2) return a
     # well-formed endpoint, and (3) leave the Flight endpoint reachable via TCP.
     sub = tmp_path / "does-not-exist-yet"
-    _actor, (host, port) = _make_file_server(sub)
+    _actor, (host, port, incarnation) = _make_file_server(sub)
 
     assert sub.exists() and sub.is_dir()
     assert isinstance(host, str) and host
     assert isinstance(port, int) and 1024 < port < 65536
+    assert isinstance(incarnation, str) and incarnation
 
     s = socket.create_connection((host, port), timeout=5)
     s.close()
@@ -164,7 +166,7 @@ def test_flight_unreachable_is_connection_error(tmp_path):
         try:
             with pytest.raises(ConnectionError):
                 _stream_members_flight(
-                    ("127.0.0.1", port),
+                    ("127.0.0.1", port, "test-incarnation"),
                     "t",
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
                     max_bytes=1 << 20,
