@@ -60,9 +60,9 @@ async def _wait_until_staged(store, keys):
     remaining = set(keys)
     for _ in range(100):
         for key in list(remaining):
-            entry = await store.pop(key)
+            entry = store.pop(key)
             if entry is not None:
-                await store.put(key, payload=entry.payload)
+                store.put(key, payload=entry.payload)
                 remaining.remove(key)
         if not remaining:
             return
@@ -139,41 +139,37 @@ def test_full_queue_keeps_socket():
 
 
 class TestTokenStore:
-    @pytest.mark.asyncio
-    async def test_evicts_oldest_first(self):
+    def test_evicts_oldest_first(self):
         store = TokenStore(max_entries=2)
         for key in ("a", "b", "c"):
-            await store.put(key, payload=_payload([1]))
+            store.put(key, payload=_payload([1]))
 
-        assert await store.pop("a") is None
-        assert await store.pop("b") is not None
-        assert await store.pop("c") is not None
+        assert store.pop("a") is None
+        assert store.pop("b") is not None
+        assert store.pop("c") is not None
 
-    @pytest.mark.asyncio
-    async def test_bounds_total_bytes(self):
+    def test_bounds_total_bytes(self):
         payload = _payload([1, 2])
         store = TokenStore(max_bytes=2 * len(payload))
         for key in ("a", "b", "c"):
-            await store.put(key, payload=payload)
+            store.put(key, payload=payload)
 
         assert store._total_bytes <= store._max_bytes
-        assert await store.pop("a") is None
+        assert store.pop("a") is None
 
-    @pytest.mark.asyncio
-    async def test_rejects_oversized_payload(self):
+    def test_rejects_oversized_payload(self):
         store = TokenStore(max_bytes=4)
         with pytest.raises(ValueError):
-            await store.put("k", payload=_payload([1, 2]))
+            store.put("k", payload=_payload([1, 2]))
 
-    @pytest.mark.asyncio
-    async def test_order_tracks_write_time(self):
+    def test_order_tracks_write_time(self):
         """_sweep stops at the first unexpired entry, so order must track created_at_s."""
         store = TokenStore()
         for key in ("a", "b", "c"):
-            await store.put(key, payload=_payload([1]))
+            store.put(key, payload=_payload([1]))
         # Re-dates "a", so it has to move behind the older entries.
-        await store.put("a", payload=_payload([2]))
-        await store.pop("b")
+        store.put("a", payload=_payload([2]))
+        store.pop("b")
 
         assert list(store._entries) == ["c", "a"]
         stamps = [entry.created_at_s for entry in store._entries.values()]
@@ -182,30 +178,38 @@ class TestTokenStore:
     @pytest.mark.asyncio
     async def test_expires_entries(self):
         store = TokenStore(ttl_s=0.01)
-        await store.put("k", payload=_payload([1]))
+        store.put("k", payload=_payload([1]))
         await asyncio.sleep(0.05)
 
-        assert await store.pop("k") is None
+        assert store.pop("k") is None
         assert store._total_bytes == 0
 
-    @pytest.mark.asyncio
-    async def test_overwrite_byte_accounting(self):
+    def test_overwrite_byte_accounting(self):
         """_total_bytes is never recomputed, so a miscount permanently shrinks the cap."""
         store = TokenStore()
-        await store.put("k", payload=_payload([1, 2, 3]))
-        await store.put("k", payload=_payload([1]))
+        store.put("k", payload=_payload([1, 2, 3]))
+        store.put("k", payload=_payload([1]))
 
         assert store._total_bytes == len(_payload([1]))
-        assert await store.pop("k") is not None
+        assert store.pop("k") is not None
         assert store._total_bytes == 0
 
 
-@pytest.mark.asyncio
-async def test_missing_key_falls_back():
+def test_missing_key_falls_back():
     store = TokenStore()
     request = SimpleNamespace(kv_transfer_params=None)
 
-    await inject_prompt_token_ids(request, _raw_request("missing"), store)
+    inject_prompt_token_ids(request, _raw_request("missing"), store)
+
+    assert request.kv_transfer_params is None
+
+
+def test_malformed_payload_falls_back():
+    store = TokenStore()
+    store.put("malformed", payload=b"not-uint32")
+    request = SimpleNamespace(kv_transfer_params=None)
+
+    inject_prompt_token_ids(request, _raw_request("malformed"), store)
 
     assert request.kv_transfer_params is None
 
@@ -246,7 +250,7 @@ async def test_keeps_tokens_separate():
             )
 
         for key in token_ids_by_key:
-            assert await store.pop(key) is None
+            assert store.pop(key) is None
     finally:
         sender.close()
         await receiver.close()
@@ -338,11 +342,45 @@ async def test_routes_tokens_to_replica():
         assert selected_serving.seen_prompt_token_ids == [token_ids]
         assert selected_serving.tokenize_calls == 0
         assert unselected_serving.tokenize_calls == 1
-        assert await selected_store.pop(token_key) is None
+        assert selected_store.pop(token_key) is None
     finally:
         sender.close()
         await selected_receiver.close()
         await unselected_receiver.close()
+
+
+class TestTokenReceiverFailures:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [zmq.ContextTerminated(), zmq.ZMQError(zmq.ENOTSOCK)],
+    )
+    async def test_terminal_socket_error_stops_receiver(self, error):
+        receiver = TokenReceiver(bind_endpoint="unused", store=TokenStore())
+        socket = MagicMock(closed=False)
+        socket.recv_multipart = AsyncMock(side_effect=error)
+        receiver._socket = socket
+
+        await receiver._run()
+
+        socket.recv_multipart.assert_awaited_once_with(copy=True)
+
+    @pytest.mark.asyncio
+    async def test_transient_socket_error_backs_off(self):
+        receiver = TokenReceiver(bind_endpoint="unused", store=TokenStore())
+        socket = MagicMock(closed=False)
+        socket.recv_multipart = AsyncMock(
+            side_effect=[zmq.ZMQError(zmq.EFSM), asyncio.CancelledError()]
+        )
+        receiver._socket = socket
+
+        with patch.object(
+            token_channel.asyncio, "sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            with pytest.raises(asyncio.CancelledError):
+                await receiver._run()
+
+        mock_sleep.assert_awaited_once_with(1)
 
 
 class TestTokenChannelLifetime:

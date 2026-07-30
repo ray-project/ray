@@ -19,12 +19,12 @@ KV_TOKEN_METADATA_KEY = "kv_token_metadata"
 # Prompt-token channel resource bounds. Sending is best effort: if a ZMQ
 # pipe is unavailable or backed up, the router omits the token key and the
 # engine falls back to normal tokenization.
-KV_TOKEN_STAGING_TTL_S = get_env_float_positive("RAY_SERVE_KV_TOKEN_STAGING_TTL_S", 60)
+KV_TOKEN_STAGING_TTL_S = get_env_float_positive("RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S", 60)
 KV_TOKEN_STAGING_MAX_ENTRIES = get_env_int_positive(
-    "RAY_SERVE_KV_TOKEN_STAGING_MAX_ENTRIES", 8192
+    "RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES", 8192
 )
 KV_TOKEN_STAGING_MAX_BYTES = get_env_int_positive(
-    "RAY_SERVE_KV_TOKEN_STAGING_MAX_BYTES", 1024**3
+    "RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES", 1024**3
 )
 KV_TOKEN_ZMQ_SEND_QUEUE_LIMIT = 256
 KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT = 1024

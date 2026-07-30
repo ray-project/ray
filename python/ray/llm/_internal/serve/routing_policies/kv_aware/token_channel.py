@@ -177,8 +177,9 @@ class TokenStore:
             ``put`` re-dates an existing key, so entries stay ordered by write
             time and expiry only has to scan the front.
         Expiry: an entry older than ``ttl_s`` is never returned.
-        Concurrency: an ``asyncio.Lock`` serializes mutations, so concurrent
-            coroutines on one event loop are safe. Not thread-safe.
+        Concurrency: the token receiver and engine HTTP handlers are coroutines on
+            the same serve replica event loop. ``put`` and ``pop`` therefore run
+            atomically because they contain no suspension points. Not thread-safe.
         Complexity: ``put`` and ``pop`` are amortized O(1) -- an entry is
             swept or evicted at most once. Space is bounded by ``max_bytes``.
     """
@@ -195,9 +196,8 @@ class TokenStore:
         self._max_bytes = max_bytes
         self._entries: OrderedDict[str, _StagedTokens] = OrderedDict()
         self._total_bytes = 0
-        self._lock = asyncio.Lock()
 
-    async def put(self, key: str, *, payload: bytes) -> None:
+    def put(self, key: str, *, payload: bytes) -> None:
         if len(payload) > self._max_bytes:
             raise ValueError(
                 "prompt token payload exceeds staging byte cap "
@@ -205,29 +205,27 @@ class TokenStore:
             )
 
         now = time.monotonic()
-        async with self._lock:
-            self._sweep(now)
-            # Keys are per-request uuid4s, so a duplicate is collision-only. Be defensive:
-            # _total_bytes is a running counter that is never recomputed, so a missed
-            # subtraction here would permanently shrink the effective cap and start evicting
-            # entries that in-flight requests still need.
-            old = self._entries.pop(key, None)
-            if old is not None:
-                self._total_bytes -= len(old.payload)
+        self._sweep(now)
+        # Keys are per-request uuid4s, so a duplicate is collision-only. Be defensive:
+        # _total_bytes is a running counter that is never recomputed, so a missed
+        # subtraction here would permanently shrink the effective cap and start evicting
+        # entries that in-flight requests still need.
+        old = self._entries.pop(key, None)
+        if old is not None:
+            self._total_bytes -= len(old.payload)
 
-            entry = _StagedTokens(payload=payload, created_at_s=now)
-            self._entries[key] = entry
-            self._total_bytes += len(payload)
-            self._evict_to_limits()
+        entry = _StagedTokens(payload=payload, created_at_s=now)
+        self._entries[key] = entry
+        self._total_bytes += len(payload)
+        self._evict_to_limits()
 
-    async def pop(self, key: str) -> Optional[_StagedTokens]:
+    def pop(self, key: str) -> Optional[_StagedTokens]:
         now = time.monotonic()
-        async with self._lock:
-            self._sweep(now)
-            entry = self._entries.pop(key, None)
-            if entry is not None:
-                self._total_bytes -= len(entry.payload)
-            return entry
+        self._sweep(now)
+        entry = self._entries.pop(key, None)
+        if entry is not None:
+            self._total_bytes -= len(entry.payload)
+        return entry
 
     def _sweep(self, now: float) -> None:
         while self._entries:
@@ -297,17 +295,37 @@ class TokenReceiver:
         return True
 
     async def _run(self) -> None:
-        assert self._socket is not None
+        socket = self._socket
+        assert socket is not None
         while True:
             try:
-                parts = await self._socket.recv_multipart(copy=True)
-                await self._handle_message(parts)
+                parts = await socket.recv_multipart(copy=True)
             except asyncio.CancelledError:
                 raise
+            except zmq.ContextTerminated:
+                logger.info("ZMQ context terminated; stopping prompt-token receiver.")
+                break
+            except zmq.ZMQError as e:
+                if socket.closed or e.errno in (zmq.ETERM, zmq.ENOTSOCK):
+                    logger.info("ZMQ socket closed; stopping prompt-token receiver.")
+                    break
+                logger.exception("Failed to receive prompt-token ZMQ payload.")
+                # Prevent a persistent receive failure from spinning the loop
+                # and consuming CPU while flooding logs.
+                await asyncio.sleep(1)
+                continue
+            except Exception:
+                logger.exception("Failed to receive prompt-token ZMQ payload.")
+                # Unexpected persistent failures need the same retry backoff.
+                await asyncio.sleep(1)
+                continue
+
+            try:
+                self._handle_message(parts)
             except Exception:
                 logger.exception("Failed to stage prompt-token ZMQ payload.")
 
-    async def _handle_message(self, parts: List[bytes]) -> None:
+    def _handle_message(self, parts: List[bytes]) -> None:
         if len(parts) != 2:
             logger.warning(
                 "Dropping prompt-token ZMQ message with %d frame(s); expected 2.",
@@ -315,7 +333,7 @@ class TokenReceiver:
             )
             return
         key_frame, payload = parts
-        await self._store.put(key_frame.decode("ascii"), payload=payload)
+        self._store.put(key_frame.decode("ascii"), payload=payload)
 
     async def close(self) -> None:
         if self._task is not None:

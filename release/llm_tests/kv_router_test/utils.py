@@ -105,28 +105,8 @@ class LLMRouter(_LLMRouter):
         self._event_log = []
         self._errors = []
         self._token_pushes = []
-        self._route_calls = []
-
-    async def _pick_replica(
-        self, handle, routing_payload=None, request_token_ids=None, **kwargs
-    ):
-        """Record what each routing decision saw, so a test can tell a missing
-        push (transport) apart from a skipped one (no tokens to send)."""
-        self._route_calls.append(
-            dict(
-                had_routing_payload=routing_payload is not None,
-                num_token_ids=len(request_token_ids or []),
-            )
-        )
-        return await super()._pick_replica(
-            handle=handle,
-            routing_payload=routing_payload,
-            request_token_ids=request_token_ids,
-            **kwargs,
-        )
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
-        """Record where each prompt-token payload was pushed and whether it landed."""
         key = super()._push_prompt_tokens(
             token_endpoint=token_endpoint,
             replica_id=replica_id,
@@ -135,8 +115,7 @@ class LLMRouter(_LLMRouter):
         self._token_pushes.append(
             dict(
                 endpoint=token_endpoint,
-                replica_id=replica_id,
-                delivered=key is not None,
+                sent=key is not None,
             )
         )
         return key
@@ -167,22 +146,12 @@ class LLMRouter(_LLMRouter):
         return self._errors
 
     def reset_token_pushes(self):
-        """(Test only) Drop recorded pushes so a warmup phase can be excluded."""
         self._token_pushes.clear()
-        self._route_calls.clear()
 
     def get_token_push_report(self):
-        """(Test only) This ingress's node, plus every prompt-token push it tried.
-
-        Returned together so a push is always compared against the node it was
-        sent from, which is what makes a cross-node delivery provable.
-        """
         return dict(
             node_ip=ray.util.get_node_ip_address(),
             pushes=list(self._token_pushes),
-            route_calls=list(self._route_calls),
-            has_tokenizer=self._tokenizer is not None,
-            has_token_sender=self._token_sender is not None,
         )
 
     def get_kv_event_worker_replicas(self):

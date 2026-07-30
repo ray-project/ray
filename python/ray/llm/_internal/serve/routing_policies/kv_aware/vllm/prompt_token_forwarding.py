@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from starlette.requests import Request
 
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
@@ -11,8 +12,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     decode_prompt_token_ids,
 )
 
+logger = get_logger(__name__)
 
-async def inject_prompt_token_ids(
+
+def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
     store: TokenStore,
@@ -23,15 +26,26 @@ async def inject_prompt_token_ids(
     if not token_key:
         return
 
-    entry = await store.pop(token_key)
+    entry = store.pop(token_key)
     if entry is None:
+        return
+
+    try:
+        token_ids = decode_prompt_token_ids(entry.payload)
+    except ValueError as e:
+        logger.warning(
+            "Failed to decode staged prompt tokens for key %s; falling back "
+            "to engine tokenization: %s",
+            token_key,
+            e,
+        )
         return
 
     kv_transfer_params = getattr(request, "kv_transfer_params", None)
     if not isinstance(kv_transfer_params, dict):
         kv_transfer_params = {}
         request.kv_transfer_params = kv_transfer_params
-    kv_transfer_params["prompt_token_ids"] = decode_prompt_token_ids(entry.payload)
+    kv_transfer_params["prompt_token_ids"] = token_ids
 
 
 def _install_prompt_token_forwarding(
@@ -48,7 +62,7 @@ def _install_prompt_token_forwarding(
     @functools.wraps(orig)
     async def wrapped(request: Any, raw_request: Optional[Request] = None, *args, **kw):
         effective_raw_request = kw.get("raw_request", raw_request)
-        await inject_prompt_token_ids(request, effective_raw_request, store)
+        inject_prompt_token_ids(request, effective_raw_request, store)
         if "raw_request" in kw and raw_request is None:
             return await orig(request, *args, **kw)
         return await orig(request, raw_request, *args, **kw)
