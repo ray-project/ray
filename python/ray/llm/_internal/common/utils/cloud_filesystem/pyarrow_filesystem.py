@@ -212,9 +212,9 @@ class PyArrowFileSystem(BaseCloudFileSystem):
                 f"variable to identify the storage account: {object_uri}"
             )
 
-        # Strip the scheme and validate the container name
-        path_without_scheme = object_uri[len("az://") :]
-        container_part = path_without_scheme.split("/")[0]
+        # Parse and validate the az:// URI
+        parsed = urlparse(object_uri)
+        container_part = parsed.netloc
         if not container_part:
             raise ValueError(
                 f"Invalid az:// URI format - missing container name: {object_uri}"
@@ -230,7 +230,7 @@ class PyArrowFileSystem(BaseCloudFileSystem):
         fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
 
         # Return the path without the scheme prefix
-        path = path_without_scheme
+        path = f"{container_part}{parsed.path}"
 
         return fs, path
 
