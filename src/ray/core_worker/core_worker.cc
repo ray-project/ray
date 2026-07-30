@@ -774,16 +774,18 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
+}
 
-  if (options_.worker_type == WorkerType::WORKER) {
+void CoreWorker::SubscribeToOwnerWorkerFailures() {
+  std::call_once(subscribe_to_owner_worker_failures_flag_, [this]() {
     // Watch for owner-worker death so finished streaming-generator tasks with
-    // unconsumed objects don't leak their actor-wide BP slot
+    // unconsumed objects don't leak their actor-wide BP slot.
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         [this](const rpc::WorkerDeltaData &worker_failure_data) {
           HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
         },
         nullptr);
-  }
+  });
 }
 
 void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
@@ -2990,6 +2992,10 @@ Status CoreWorker::ExecuteTask(
       // SystemExit propagate through ReserveSlot's wait loop.
       actor_generator_waiter_ = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
           actor_generator_bp, options_.check_signals);
+      // Only actors with actor-wide BP need owner-death sweeps: finished
+      // generator tasks keep their shared budget until the owner drains or
+      // dies. Per-task BP alone does not retain state after the task finishes.
+      SubscribeToOwnerWorkerFailures();
     }
     RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
   } else if (task_spec.IsActorTask()) {
