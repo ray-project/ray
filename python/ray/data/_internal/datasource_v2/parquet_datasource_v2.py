@@ -9,6 +9,7 @@ Constructed from `read_api.read_parquet` when
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -106,12 +107,15 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # per-file listing hot path.
         if skip_paths:
             # Accept a single path or any iterable of paths, mirroring how
-            # ``paths`` is handled. Normalize to a list first so a bare string
-            # isn't treated as an iterable of characters and non-list iterables
-            # (set, tuple) don't reach ``_resolve_paths_and_filesystem``, which
-            # only accepts str/pathlib.Path/list.
+            # ``paths`` is handled. Wrap a bare str/Path so it isn't iterated
+            # (a str would split into characters and a Path isn't iterable at
+            # all); other iterables (set, tuple) are materialized into a list
+            # since ``_resolve_paths_and_filesystem`` only accepts
+            # str/pathlib.Path/list.
             skip_paths_list = (
-                [skip_paths] if isinstance(skip_paths, str) else list(skip_paths)
+                [skip_paths]
+                if isinstance(skip_paths, (str, Path))
+                else list(skip_paths)
             )
             resolved_skip_paths, _ = _resolve_paths_and_filesystem(
                 skip_paths_list, self._filesystem

@@ -255,6 +255,18 @@ def test_read_parquet_v2_skip_paths_accepts_single_string(tmp_path, restore_ctx)
     assert _rows(ds) == [1, 2]
 
 
+def test_read_parquet_v2_skip_paths_accepts_bare_pathlib_path(tmp_path, restore_ctx):
+    # A bare pathlib.Path must not be treated as an iterable (it isn't one).
+    restore_ctx.use_datasource_v2 = True
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    _write(b, pa.table({"a": [3, 4]}))
+
+    ds = ray.data.read_parquet([str(a), str(b)], skip_paths=b)
+    assert _rows(ds) == [1, 2]
+
+
 def test_read_parquet_v2_skip_paths_drops_missing_without_ignore(tmp_path, restore_ctx):
     # ``skip_paths`` excludes a named path before the existence check, so a
     # missing entry is dropped even without ``ignore_missing_paths``.
