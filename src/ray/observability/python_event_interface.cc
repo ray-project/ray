@@ -14,6 +14,8 @@
 
 #include "ray/observability/python_event_interface.h"
 
+#include <boost/asio/ip/host_name.hpp>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "google/protobuf/descriptor.h"
@@ -24,6 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/observability/metrics.h"
 #include "ray/util/logging.h"
+#include "ray/util/process_utils.h"
 
 namespace ray {
 namespace observability {
@@ -70,6 +73,14 @@ StatusSetOr<rpc::events::RayEvent, StatusT::Invalid> PythonRayEvent::Serialize()
   event.set_session_name(session_name_);
   event.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
+
+  // Set source process metadata.
+  boost::system::error_code ec;
+  std::string hostname = boost::asio::ip::host_name(ec);
+  if (!ec) {
+    event.set_source_hostname(hostname);
+  }
+  event.set_source_pid(GetPID());
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.

@@ -31,6 +31,9 @@ import "src/ray/protobuf/public/events_placement_group_definition_event.proto";
 import "src/ray/protobuf/public/events_placement_group_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_submission_job_definition_event.proto";
 import "src/ray/protobuf/public/events_submission_job_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_autoscaler_config_definition_event.proto";
+import "src/ray/protobuf/public/events_autoscaler_scaling_decision_event.proto";
+import "src/ray/protobuf/public/events_autoscaler_node_provisioning_event.proto";
 import "src/ray/protobuf/public/platform_event.proto";
 
 // This is the base message for all ray events.
@@ -68,6 +71,9 @@ message RayEvent {
     SUBMISSION_JOB_DEFINITION_EVENT = 13;
     SUBMISSION_JOB_LIFECYCLE_EVENT = 14;
     PLATFORM_EVENT = 15;
+    AUTOSCALER_CONFIG_DEFINITION_EVENT = 16;
+    AUTOSCALER_SCALING_DECISION_EVENT = 17;
+    AUTOSCALER_NODE_PROVISIONING_EVENT = 18;
   }
 
   // The severities of events that can be generated.
@@ -122,4 +128,15 @@ message RayEvent {
   SubmissionJobDefinitionEvent submission_job_definition_event = 21;
   SubmissionJobLifecycleEvent submission_job_lifecycle_event = 22;
   PlatformEvent platform_event = 23;
+
+  AutoscalerConfigDefinitionEvent autoscaler_config_definition_event = 24;
+  AutoscalerScalingDecisionEvent autoscaler_scaling_decision_event = 25;
+  AutoscalerNodeProvisioningEvent autoscaler_node_provisioning_event = 26;
+
+  // Hostname of the process that emitted this event.
+  // Currently only populated by events emitted through the Python event path.
+  string source_hostname = 27;
+  // PID of the process that emitted this event.
+  // Currently only populated by events emitted through the Python event path.
+  int32 source_pid = 28;
 }
