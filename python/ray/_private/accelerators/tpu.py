@@ -60,7 +60,7 @@ DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
-# See https://github.com/ray-project/ray/issues/65034.
+# See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
@@ -574,8 +574,7 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     ``/dev/vfio/<iommu_group>``. The directory entry alone does not identify
     the underlying device — for example, NVIDIA BlueField-3's SoC Management
     Interface is bound to ``vfio-pci`` by RShim and surfaces as
-    ``/dev/vfio/96`` even though the device is not a TPU. See
-    https://github.com/ray-project/ray/issues/65034.
+    ``/dev/vfio/96`` even though the device is not a TPU.
 
     To distinguish TPU groups from non-TPU groups we inspect
     ``/sys/kernel/iommu_groups/<group>/devices/*/vendor`` and look for
@@ -593,18 +592,21 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
     try:
         devices = os.listdir(sysfs_root)
-    except OSError:
-        # Any failure to enumerate the group (missing entry, permission
-        # denied, EIO from a wedged sysfs node, ...) fails closed: we cannot
-        # confirm the group is a TPU, so we do not count it. Letting the
-        # exception propagate would break Ray startup on hosts with flaky
-        # sysfs.
+    except OSError as e:
+        logger.debug("Unable to inspect VFIO group %s at %s: %s", group, sysfs_root, e)
         return False
     for device in devices:
+        vendor_path = os.path.join(sysfs_root, device, "vendor")
         try:
-            with open(os.path.join(sysfs_root, device, "vendor")) as f:
+            with open(vendor_path, encoding="ascii") as f:
                 vendor = f.read().strip()
-        except OSError:
+        except (OSError, UnicodeDecodeError) as e:
+            logger.debug(
+                "Unable to read PCI vendor for VFIO group %s at %s: %s",
+                group,
+                vendor_path,
+                e,
+            )
             continue
         if vendor.lower() == TPU_PCI_VENDOR_ID:
             return True
@@ -665,6 +667,10 @@ class TPUAcceleratorManager(AcceleratorManager):
             logger.debug("Failed to detect number of TPUs: %s", e)
             return 0
 
+        # Preserve the existing VFIO fallback accounting: each validated
+        # IOMMU group contributes one TPU resource. Some hardware may expose
+        # multiple VFIO groups per physical chip; callers should configure the
+        # TPU resource count explicitly when group count and chip count differ.
         tpu_count = 0
         for group in numeric_entries:
             if _is_vfio_group_a_tpu(group):
