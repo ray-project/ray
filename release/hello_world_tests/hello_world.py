@@ -8,7 +8,6 @@ def hello_world():
 
 def main():
     print(ray.get(hello_world.remote()))
-    exit(1)
 
 
 if __name__ == "__main__":
