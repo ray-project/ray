@@ -48,7 +48,9 @@ _DEFAULT_MAX_INFLIGHT_BATCHES = env_integer(
 )
 # Fallback bin budget (uncompressed bytes per read task) when
 # ``target_max_block_size`` is unset.
-_DEFAULT_BIN_PACKING_BYTES = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 64 * MiB)
+_DEFAULT_BIN_PACKING_BYTES = env_integer(
+    "RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB
+)
 # Shared (mixed-colour) bins the packer keeps open at once. A wider pool packs
 # tighter; a narrower one seals bins sooner, and since each sealed bin becomes a
 # read task, that's what lets reads start before every footer has landed.
