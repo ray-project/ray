@@ -410,8 +410,7 @@ class ShuffleFileServer:
         os._exit(1)
 
     def endpoint(self) -> Tuple[str, int, str]:
-        # (host, port) is how reducers connect; the incarnation id is how they
-        # detect a restart even when the rebind reuses the same host and port.
+        # (host, port) to connect; incarnation to detect a restart.
         return (self._host, self._port, self._incarnation)
 
 
@@ -646,12 +645,11 @@ def _prefetch_node_into(
         except PermissionError:
             raise
         except (ConnectionError, TimeoutError) as e:
-            # If _resolve() returns, the actor is alive; the incarnation id tells
-            # us whether the file server restarted (retry in-place) or the
-            # reducer/file-server network path is broken (terminal). We compare
-            # incarnations, not (host, port): a restart rebinds an ephemeral port
-            # (port 0) that can land on the same number, so an address match is
-            # not proof the server is the same process.
+            # If _resolve() returns, the actor is alive; a changed incarnation
+            # means it restarted (retry in-place), same incarnation means the
+            # network path is broken (terminal). Compare incarnations, not
+            # (host, port): a restart can rebind the same ephemeral port, so an
+            # address match wouldn't prove it's the same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
