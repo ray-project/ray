@@ -23,6 +23,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _group_by_server,
     _make_flight_server,
     _NodeGroup,
+    _PartitionWriter,
     _PwriteSink,
     _read_ipc,
     _SourceRef,
@@ -276,6 +277,48 @@ def test_encode_read_ipc_roundtrip():
     )
     buf = _encode_shard(t)
     assert _read_ipc(buf).equals(t.combine_chunks())
+
+
+def test_partition_writer_uses_native_combine_when_no_extension():
+    import io
+
+    import pyarrow as pa
+
+    # Plain (non-extension) columns: writer picks the fast native combine and
+    # the written frame round-trips to the combined table.
+    w = _PartitionWriter(io.BytesIO(), map_id=0, compression="zstd")
+    w.add_shard(0, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
+    w.add_shard(0, pa.table({"a": [4, 5], "b": ["p", "q"]}))
+    w.flush_all()
+    assert w._combine_native_ok is True  # no extension cols -> native path
+    off, length = w.index[0][0]
+    blob = w._out_file.getvalue()[off : off + length]
+    expected = pa.concat_tables(
+        [
+            pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+            pa.table({"a": [4, 5], "b": ["p", "q"]}),
+        ]
+    ).combine_chunks()
+    assert _read_ipc(blob).equals(expected)
+
+
+def test_partition_writer_uses_transform_combine_for_extension():
+    import io
+
+    import numpy as np
+    import pyarrow as pa
+
+    from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+    # An extension (tensor) column must route to the extension-safe combine.
+    t = pa.table({"t": ArrowTensorArray.from_numpy(np.arange(12.0).reshape(3, 4))})
+    w = _PartitionWriter(io.BytesIO(), map_id=0, compression="zstd")
+    w.add_shard(0, t)
+    w.add_shard(0, t)
+    w.flush_all()
+    assert w._combine_native_ok is False  # extension col -> transform-safe path
+    off, length = w.index[0][0]
+    assert length > 0  # a frame was written without error
 
 
 # --------------------------------------------------- error class sanity checks
