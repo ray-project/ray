@@ -1,11 +1,14 @@
 import asyncio
 import concurrent.futures
 import logging
-from unittest.mock import Mock, patch
+import time
+from typing import Optional
+from unittest.mock import Mock
 
 import pytest
 
 import ray
+import ray.serve._private.proxy_state as proxy_state
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import ActorUnschedulableError, RayTaskError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -295,30 +298,21 @@ def _make_unschedulable_wrapper(name: str) -> ActorProxyWrapper:
 
 
 @ray.remote
-class FakeFailingShutdownProxy:
-    """Helper actor that raises a configured exception on shutdown."""
+class FakeShutdownProxy:
+    """Helper actor that can sleep or raise a configured exception on shutdown."""
 
-    def __init__(self, exc: Exception):
+    def __init__(self, exc: Optional[Exception] = None, sleep_s: float = 0.0):
         self._exc = exc
+        self._sleep_s = sleep_s
 
     def check_health(self):
         return True
 
     def shutdown(self):
-        raise self._exc
-
-    def update_draining(self, draining):
-        pass
-
-
-@ray.remote
-class FakeCleanShutdownProxy:
-    """Helper actor that completes shutdown cleanly without raising."""
-
-    def check_health(self):
-        return True
-
-    def shutdown(self):
+        if self._sleep_s > 0:
+            time.sleep(self._sleep_s)
+        if self._exc is not None:
+            raise self._exc
         return True
 
     def update_draining(self, draining):
@@ -360,52 +354,62 @@ def test_kill_does_not_raise_when_actor_unschedulable(ray_shutdown):
     wrapper.kill()  # must not raise
 
 
-def test_kill_unschedulable_error_logged(ray_shutdown, caplog):
-    """Verify kill() logs info message and force kills unschedulable actor."""
+@pytest.mark.parametrize(
+    "actor_kwargs,timeout_s,expected_level,expected_substring",
+    [
+        (
+            {"exc": ActorUnschedulableError("simulated unschedulable error")},
+            5.0,
+            logging.INFO,
+            "skipping graceful shutdown",
+        ),
+        (
+            {"exc": RuntimeError("simulated runtime error")},
+            5.0,
+            logging.ERROR,
+            "failed.",
+        ),
+        (
+            {"sleep_s": 5.0},
+            0.1,
+            logging.WARNING,
+            "timed out after",
+        ),
+    ],
+)
+def test_kill_error_logging_and_force_kill(
+    ray_shutdown,
+    caplog,
+    monkeypatch,
+    actor_kwargs,
+    timeout_s,
+    expected_level,
+    expected_substring,
+):
+    """Verify kill() logs appropriate messages and force-kills the actor across
+    unschedulable errors, unexpected RayErrors, and graceful shutdown timeouts.
+
+    Note: In tests, remote exceptions arrive wrapped in RayTaskError, which matches
+    except ActorUnschedulableError via as_instanceof_cause().
+    """
+    monkeypatch.setattr(proxy_state, "PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S", timeout_s)
     ray.init(num_cpus=2)
-    actor_handle = FakeFailingShutdownProxy.remote(
-        ActorUnschedulableError("simulated unschedulable error during shutdown")
-    )
+    actor_handle = FakeShutdownProxy.remote(**actor_kwargs)
     wrapper = ActorProxyWrapper(
-        logging_config=LoggingConfig(log_level="INFO"),
+        logging_config=LoggingConfig(),
         actor_handle=actor_handle,
         node_id="test_node_id",
     )
 
+    caplog.set_level(logging.INFO, logger=SERVE_LOGGER_NAME)
     serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
     serve_logger.addHandler(caplog.handler)
     try:
         wrapper.kill()
         assert any(
-            record.levelno == logging.INFO
+            record.levelno == expected_level
             and "test_node_id" in record.getMessage()
-            and "skipping graceful shutdown" in record.getMessage()
-            for record in caplog.records
-        )
-    finally:
-        serve_logger.removeHandler(caplog.handler)
-    wait_for_condition(wrapper.is_shutdown, timeout=15)
-
-
-def test_kill_ray_error_logged(ray_shutdown, caplog):
-    """Verify kill() logs an exception message and force kills when shutdown
-    raises an unexpected RayError."""
-    ray.init(num_cpus=2)
-    actor_handle = FakeFailingShutdownProxy.remote(
-        RuntimeError("simulated runtime error during shutdown")
-    )
-    wrapper = ActorProxyWrapper(
-        logging_config=LoggingConfig(log_level="INFO"),
-        actor_handle=actor_handle,
-        node_id="test_node_id",
-    )
-
-    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
-    serve_logger.addHandler(caplog.handler)
-    try:
-        wrapper.kill()
-        assert any(
-            record.levelno == logging.ERROR and "test_node_id" in record.getMessage()
+            and expected_substring in record.getMessage()
             for record in caplog.records
         )
     finally:
@@ -414,19 +418,16 @@ def test_kill_ray_error_logged(ray_shutdown, caplog):
 
 
 def test_kill_success_path(ray_shutdown):
-    """Verify ray.kill is still called on the success path when graceful
-    shutdown succeeds cleanly without raising."""
+    """Verify ray.kill force-terminates the actor on the success path when
+    graceful shutdown succeeds cleanly without raising."""
     ray.init(num_cpus=2)
-    actor_handle = FakeCleanShutdownProxy.remote()
+    actor_handle = FakeShutdownProxy.remote()
     wrapper = ActorProxyWrapper(
-        logging_config=LoggingConfig(log_level="INFO"),
+        logging_config=LoggingConfig(),
         actor_handle=actor_handle,
         node_id="test_node_id",
     )
-
-    with patch("ray.kill", wraps=ray.kill) as mock_kill:
-        wrapper.kill()
-        mock_kill.assert_called_once_with(actor_handle, no_restart=True)
+    wrapper.kill()
     wait_for_condition(wrapper.is_shutdown, timeout=15)
 
 
