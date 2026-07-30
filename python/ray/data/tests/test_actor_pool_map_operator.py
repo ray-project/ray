@@ -1493,12 +1493,39 @@ def test_actor_init_failure_retry(
             ).take_all()
 
 
+def _make_flaky_init_mapper(num_init_failures: int):
+    """Returns a map_batches UDF class whose first `num_init_failures`
+    __init__ attempts raise, counted across all actor incarnations and
+    in-actor retries (via a counter actor)."""
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FlakyInitMapper:
+        def __init__(self):
+            if ray.get(init_counter.increment.remote()) <= num_init_failures:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    return FlakyInitMapper
+
+
 @pytest.mark.parametrize(
     "budget,num_failures,should_succeed",
     [
-        # Budget covers both failures: replaced actors, job succeeds.
+        # Budget covers both deaths: replaced actors, job succeeds.
         (2, 2, True),
-        # Budget exceeded on the second failure: job fails.
+        # Budget exceeded on the second death: job fails.
         (1, 2, False),
         # Unlimited budget: job succeeds.
         (-1, 2, True),
@@ -1518,34 +1545,15 @@ def test_actor_init_death_budget(
     """
     from ray.exceptions import ActorDiedError
 
-    @ray.remote(num_cpus=0)
-    class Counter:
-        def __init__(self):
-            self._count = 0
-
-        def increment(self):
-            self._count += 1
-            return self._count
-
-    init_counter = Counter.remote()
-
-    class FlakyInitMapper:
-        def __init__(self):
-            # With actor_init_retry_on_errors disabled (default), each
-            # increment corresponds to one actor incarnation.
-            count = ray.get(init_counter.increment.remote())
-            if count <= num_failures:
-                raise ValueError("init_failed")
-
-        def __call__(self, batch):
-            return batch
-
     ctx = ray.data.DataContext.get_current()
     ctx.max_consecutive_actor_init_deaths = budget
     # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
-    ds = ray.data.range(10).map_batches(FlakyInitMapper, batch_size=1, concurrency=1)
+    # With actor_init_retry_on_errors disabled (default), each init attempt
+    # corresponds to one actor incarnation.
+    mapper = _make_flaky_init_mapper(num_failures)
+    ds = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
     if should_succeed:
         assert len(ds.take_all()) == 10
     else:
@@ -1559,31 +1567,6 @@ def test_actor_init_death_budget_with_in_actor_retries(
     """Tests that the pool-level death budget counts actor incarnations, not
     in-actor init retry attempts (actor_init_retry_on_errors runs first).
     """
-
-    @ray.remote(num_cpus=0)
-    class Counter:
-        def __init__(self):
-            self._count = 0
-
-        def increment(self):
-            self._count += 1
-            return self._count
-
-    init_counter = Counter.remote()
-
-    class FlakyInitMapper:
-        def __init__(self):
-            # Fail the first 3 init attempts. With actor_init_max_retries=1
-            # (2 attempts per incarnation): incarnation 1 fails twice and dies
-            # (1 budget charge); incarnation 2 fails once, then succeeds on
-            # its in-actor retry (no charge).
-            count = ray.get(init_counter.increment.remote())
-            if count <= 3:
-                raise ValueError("init_failed")
-
-        def __call__(self, batch):
-            return batch
-
     ctx = ray.data.DataContext.get_current()
     ctx.actor_init_retry_on_errors = True
     ctx.actor_init_max_retries = 1
@@ -1591,12 +1574,13 @@ def test_actor_init_death_budget_with_in_actor_retries(
     # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
-    result = (
-        ray.data.range(10)
-        .map_batches(FlakyInitMapper, batch_size=1, concurrency=1)
-        .take_all()
-    )
-    assert len(result) == 10
+    # Fail the first 3 init attempts. With actor_init_max_retries=1 (2
+    # attempts per incarnation): incarnation 1 fails twice and dies (1 budget
+    # charge); incarnation 2 fails once, then succeeds on its in-actor retry
+    # (no charge).
+    mapper = _make_flaky_init_mapper(3)
+    result = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
+    assert len(result.take_all()) == 10
 
 
 def test_on_actor_init_death_unit(
