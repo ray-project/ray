@@ -780,15 +780,15 @@ void CoreWorker::SubscribeToOwnerWorkerFailures() {
   std::call_once(subscribe_to_owner_worker_failures_flag_, [this]() {
     // Watch for owner-worker death so finished streaming-generator tasks with
     // unconsumed objects don't leak their actor-wide BP slot.
-    // Capture a weak_ptr: a raw `this` would UAF if the callback outlives
-    // CoreWorker, and a shared_ptr would cycle with gcs_client_ (which owns
-    // the subscription).
-    std::weak_ptr<CoreWorker> weak_self = shared_from_this();
+    // Prefer weak_from_this over shared_from_this: we only need a weak
+    // capture (a strong one would cycle with gcs_client_), and
+    // shared_from_this can throw bad_weak_ptr.
+    std::weak_ptr<CoreWorker> weak_self = weak_from_this();
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         [weak_self](const rpc::WorkerDeltaData &worker_failure_data) {
-          if (auto self = weak_self.lock()) {
-            self->HandleOwnerDied(
-                WorkerID::FromBinary(worker_failure_data.worker_id()));
+          std::shared_ptr<CoreWorker> self = weak_self.lock();
+          if (self != nullptr) {
+            self->HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
           }
         },
         nullptr);
