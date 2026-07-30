@@ -981,7 +981,9 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         knob must not silently degrade a benchmark or production read).
         """
 
-        def resolve(key: str, default: Optional[int], minimum: int) -> Optional[int]:
+        def resolve_optional(
+            key: str, default: Optional[int], minimum: int
+        ) -> Optional[int]:
             value = self._arrow_rs_tuning.get(key)
             if value is None:
                 return default
@@ -995,12 +997,21 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 )
             return value
 
+        def resolve(key: str, default: int, minimum: int) -> int:
+            # A non-None default guarantees a concrete int (the value is either
+            # that default or a validated int), so this never returns None.
+            resolved = resolve_optional(key, default, minimum)
+            assert resolved is not None
+            return resolved
+
         return _ArrowRsTuning(
             decode_budget_bytes=resolve(
                 "arrow_rs_decode_budget_bytes", _ARROW_RS_DECODE_BUDGET_BYTES, 1
             ),
             k=resolve("arrow_rs_k", _ARROW_RS_K, 1),
-            split_threshold_bytes=resolve("arrow_rs_split_threshold_bytes", None, 0),
+            split_threshold_bytes=resolve_optional(
+                "arrow_rs_split_threshold_bytes", None, 0
+            ),
             fetch_window_mb=resolve(
                 "arrow_rs_fetch_window_mb", _ARROW_RS_FETCH_WINDOW_MB, 0
             ),
@@ -1467,11 +1478,11 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             table = _apply_column_alignment(table, alignment)
             # Same opt-in gate as the pyarrow path: unpickling an
             # ArrowPythonObjectType column executes arbitrary code, so serving
-            # one requires the explicit env opt-in. Before the row filter — the
-            # check is schema-based, and pyarrow's scanner raises even for
-            # batches the filter would empty out.
-            if not self._allow_pickle_object_columns:
-                raise_on_pickle_object_columns(table)
+            # one requires the explicit env opt-in. raise_on_pickle_object_columns
+            # itself no-ops when RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1. Before
+            # the row filter — the check is schema-based, and pyarrow's scanner
+            # raises even for batches the filter would empty out.
+            raise_on_pickle_object_columns(table)
             if filter_expr is not None:
                 table = table.filter(filter_expr)
                 if table.num_rows == 0:
