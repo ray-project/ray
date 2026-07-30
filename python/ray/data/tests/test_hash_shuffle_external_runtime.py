@@ -1,6 +1,6 @@
 """Unit / integration tests for the external-shuffle runtime primitives.
 
-Covers the Arrow Flight fetch transport, ``ShuffleManager`` actor lifecycle,
+Covers the Arrow Flight fetch transport, ``ShuffleFileServer`` actor lifecycle,
 the shard codec, prefetch layout, and error classification.
 """
 
@@ -14,13 +14,13 @@ import pytest
 
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
     ShuffleDiskError,
-    ShuffleManager,
-    ShuffleManagerAnomalyError,
+    ShuffleFileServer,
+    ShuffleFileServerAnomalyError,
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
     _encode_shard,
     _FileRanges,
-    _group_by_manager,
+    _group_by_server,
     _make_flight_server,
     _NodeGroup,
     _PwriteSink,
@@ -33,11 +33,11 @@ from ray.tests.conftest import *  # noqa: F401, F403
 
 
 # ---------------------------------------------------------------------- helpers
-def _make_manager(tmp_path, token="test-token"):
-    """Create a ShuffleManager actor rooted at tmp_path, return (actor, endpoint)."""
+def _make_file_server(tmp_path, token="test-token"):
+    """Create a ShuffleFileServer actor rooted at tmp_path, return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleManager.remote(str(tmp_path), token)
+    actor = ShuffleFileServer.remote(str(tmp_path), token)
     endpoint = ray.get(actor.endpoint.remote())
     return actor, endpoint
 
@@ -92,12 +92,12 @@ def test_pwrite_sink_reset(tmp_path):
         os.close(fd)
 
 
-# ----------------------------------------------- ShuffleManager actor lifecycle
-def test_shuffle_manager_lifecycle(ray_start_regular_shared_2_cpus, tmp_path):
-    # Creating a manager should (1) mkdir the base_dir on disk, (2) return a
+# ----------------------------------------------- ShuffleFileServer actor lifecycle
+def test_shuffle_file_server_lifecycle(ray_start_regular_shared_2_cpus, tmp_path):
+    # Creating a file server should (1) mkdir the base_dir on disk, (2) return a
     # well-formed endpoint, and (3) leave the Flight endpoint reachable via TCP.
     sub = tmp_path / "does-not-exist-yet"
-    _actor, (host, port) = _make_manager(sub)
+    _actor, (host, port) = _make_file_server(sub)
 
     assert sub.exists() and sub.is_dir()
     assert isinstance(host, str) and host
@@ -220,13 +220,13 @@ def test_chunk_members_by_bytes():
     assert list(_chunk_members_by_bytes([], max_bytes=100)) == []
 
 
-def test_group_by_manager():
+def test_group_by_server():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
     s0 = _SourceRef("sh", "n1", "tok", _FileRanges("a", [(0, 4)]))
     s1 = _SourceRef("sh", "n2", "tok", _FileRanges("b", [(0, 8)]))
     s2 = _SourceRef("sh", "n1", "tok", _FileRanges("c", [(0, 2)]))
 
-    groups = _group_by_manager([s0, s1, s2])
+    groups = _group_by_server([s0, s1, s2])
     by_node = {g.node_id: g for g in groups}
     assert set(by_node) == {"n1", "n2"}
 
@@ -281,11 +281,11 @@ def test_encode_read_ipc_roundtrip():
 # --------------------------------------------------- error class sanity checks
 def test_shuffle_disk_error_is_runtime_error_subclass():
     assert issubclass(ShuffleDiskError, RuntimeError)
-    assert not issubclass(ShuffleDiskError, ShuffleManagerAnomalyError)
+    assert not issubclass(ShuffleDiskError, ShuffleFileServerAnomalyError)
 
 
-def test_shuffle_manager_anomaly_error_is_runtime_error_subclass():
-    assert issubclass(ShuffleManagerAnomalyError, RuntimeError)
+def test_shuffle_file_server_anomaly_error_is_runtime_error_subclass():
+    assert issubclass(ShuffleFileServerAnomalyError, RuntimeError)
 
 
 if __name__ == "__main__":
