@@ -216,6 +216,10 @@ class DeploymentAutoscalingState:
         # feeds policy inputs, so flag the divergence for the equality fast path.
         if replica_id in self._running_replica_id_set:
             self._running_replica_id_set.remove(replica_id)
+            # Simple mode filters on the string set, so drop it there too: otherwise a
+            # late report re-inserts itself into _replica_metrics and only that path
+            # counts it.
+            self._cached_running_replica_strs.discard(replica_id.to_full_id_str())
             self._membership_dirty = True
         if self._running_requests_by_replica.pop(replica_id, None) is not None:
             self._metrics_version += 1
@@ -244,26 +248,19 @@ class DeploymentAutoscalingState:
         """Update cached set of running replica IDs for this deployment."""
         # Called every control loop tick; membership is usually unchanged, so skip the
         # set/dict rebuilds and keep the merge cache valid. Identity is the common case
-        # (the caller memoizes); the element-wise compare covers a caller that does not,
-        # and a preceding stop forces the rebuild via the flag.
+        # (the caller memoizes); the value compare covers a caller that does not, and a
+        # preceding stop forces the rebuild via the flag. Comparing tuples rather than
+        # zipping keeps the walk in C, where it short-circuits on element identity.
         if not self._membership_dirty and (
             running_replicas is self._running_replicas
-            or (
-                len(running_replicas) == len(self._running_replicas)
-                and all(
-                    a == b for a, b in zip(running_replicas, self._running_replicas)
-                )
-            )
+            or tuple(running_replicas) == self._running_replicas
         ):
             return
         self._membership_dirty = False
-        # A tuple is aliased so the identity check above can hit; a list caller may keep
-        # mutating what it passed, so that has to be copied.
-        self._running_replicas = (
-            running_replicas
-            if isinstance(running_replicas, tuple)
-            else list(running_replicas)
-        )
+        # Stored as a tuple: tuple() hands back a tuple unchanged, so a caller that
+        # memoizes keeps hitting the identity check above, while a list caller gets a
+        # copy that its own mutations cannot reach.
+        self._running_replicas = tuple(running_replicas)
         self._running_replica_id_set = set(running_replicas)
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
@@ -906,8 +903,9 @@ class DeploymentAutoscalingState:
                 continue
 
             for metric_name, timeseries in replica_metric_report.metrics.items():
-                # Extract values from TimeStampedValue list
-                raw_metrics[metric_name][replica_id] = timeseries
+                # Copy: the merge cache reads these lists, so a policy mutating what it
+                # is handed here would corrupt the cached total invisibly.
+                raw_metrics[metric_name][replica_id] = list(timeseries)
 
         return dict(raw_metrics)
 
