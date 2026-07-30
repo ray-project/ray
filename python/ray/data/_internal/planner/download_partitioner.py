@@ -49,9 +49,11 @@ class _ExactDownloadPartitioner:
         metadata_chunk_size: int = URI_METADATA_CHUNK_SIZE,
     ):
         self._uri_column_names = uri_column_names
-        self._target_nbytes = (
+        self._target_nbytes: Optional[int] = (
             max(1, target_nbytes) if target_nbytes is not None else None
         )
+        # Only meaningful alongside a target size; both are None together.
+        self._min_partition_nbytes: Optional[int] = None
         if self._target_nbytes is not None:
             if target_min_nbytes is not None:
                 self._min_partition_nbytes = min(
@@ -59,8 +61,6 @@ class _ExactDownloadPartitioner:
                 )
             else:
                 self._min_partition_nbytes = max(1, self._target_nbytes // 2)
-        else:
-            self._min_partition_nbytes = None
         self._file_size_provider = file_size_provider
         self._annotate_sizes = annotate_sizes
         self._fetch_metadata_without_target = fetch_metadata_without_target
@@ -84,6 +84,7 @@ class _ExactDownloadPartitioner:
         # sizes to annotate. ``row_partitioner is None`` flags that mode below.
         row_partitioner: Optional[WeightedRoundRobinPartitioner[int]] = None
         if self._target_nbytes is not None:
+            assert self._min_partition_nbytes is not None
             row_partitioner = WeightedRoundRobinPartitioner[int](
                 min_bucket_size=self._min_partition_nbytes,
                 max_bucket_size=self._target_nbytes,
