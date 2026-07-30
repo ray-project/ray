@@ -49,11 +49,21 @@ class _ExactDownloadPartitioner:
         metadata_chunk_size: int = URI_METADATA_CHUNK_SIZE,
     ):
         self._uri_column_names = uri_column_names
-        self._target_nbytes = target_nbytes
+        self._target_nbytes = (
+            max(1, target_nbytes) if target_nbytes is not None else None
+        )
+        if self._target_nbytes is not None:
+            if target_min_nbytes is not None:
+                self._min_partition_nbytes = min(
+                    self._target_nbytes, max(1, target_min_nbytes)
+                )
+            else:
+                self._min_partition_nbytes = max(1, self._target_nbytes // 2)
+        else:
+            self._min_partition_nbytes = None
         self._file_size_provider = file_size_provider
         self._annotate_sizes = annotate_sizes
         self._fetch_metadata_without_target = fetch_metadata_without_target
-        self._target_min_nbytes = target_min_nbytes
         self._num_buckets = max(1, num_buckets)
         self._metadata_chunk_size = max(1, metadata_chunk_size)
 
@@ -74,10 +84,9 @@ class _ExactDownloadPartitioner:
         # sizes to annotate. ``row_partitioner is None`` flags that mode below.
         row_partitioner: Optional[WeightedRoundRobinPartitioner[int]] = None
         if self._target_nbytes is not None:
-            target_nbytes = max(1, self._target_nbytes)
             row_partitioner = WeightedRoundRobinPartitioner[int](
-                min_bucket_size=self._min_partition_nbytes(target_nbytes),
-                max_bucket_size=target_nbytes,
+                min_bucket_size=self._min_partition_nbytes,
+                max_bucket_size=self._target_nbytes,
                 num_buckets=self._num_buckets,
                 emit_before_overflow=True,
             )
@@ -107,15 +116,25 @@ class _ExactDownloadPartitioner:
 
             row_nbytes_list = row_nbytes.tolist()
             for chunk_row in range(chunk_end - chunk_start):
+                # A row total of 0 means every URI column had an unknown size
+                # (provider returned ``None``/negative, or dropped the URI so
+                # ``_normalize_sizes`` zero-padded it) or the files are empty.
+                # Pass ``None`` rather than 0 so the partitioner spreads those
+                # rows across buckets instead of treating them as weightless.
                 row_partitioner.add_item(
                     chunk_start + chunk_row,
                     row_nbytes_list[chunk_row] or None,
                 )
-                yield from self._drain_row_partitions(
-                    block,
-                    row_partitioner,
-                    sizes_by_column,
-                )
+
+            # Drain once per chunk rather than per row: the chunk is the
+            # metadata-fetch unit, so this still overlaps downloading with the
+            # next chunk's metadata fetch, and buckets filled mid-chunk just
+            # wait in the partitioner's output queue.
+            yield from self._drain_row_partitions(
+                block,
+                row_partitioner,
+                sizes_by_column,
+            )
 
         if row_partitioner is None:
             yield self._annotate_partition(
@@ -133,11 +152,6 @@ class _ExactDownloadPartitioner:
             row_partitioner,
             sizes_by_column,
         )
-
-    def _min_partition_nbytes(self, target_nbytes: int) -> int:
-        if self._target_min_nbytes is not None:
-            return min(target_nbytes, max(1, self._target_min_nbytes))
-        return max(1, target_nbytes // 2)
 
     def _drain_row_partitions(
         self,

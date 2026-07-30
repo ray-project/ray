@@ -124,7 +124,6 @@ def plan_download_op(
             data_context,
             name=f"SplitDownloadURIs({uri_column_names_str})",
             compute_strategy=TaskPoolStrategy(),
-            supports_fusion=False,
         )
 
         partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
