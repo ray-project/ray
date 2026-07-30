@@ -557,7 +557,177 @@ _nixl_panels = [
 ]
 
 # ===================================================================
-# Row 7: Token Distribution (collapsed)
+# Row 7: Native CPU KV Offload (collapsed)
+# ===================================================================
+_kv_offload_panels = [
+    Panel(
+        id=52,
+        title="KV Offload: Store Throughput",
+        description="GPU-to-CPU KV data/s.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=(
+                    "("
+                    + _rate_with_join("ray_vllm_kv_offload_store_bytes_total")
+                    + ") / 1024 / 1024 / 1024"
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(0, 103, 8, 8),
+    ),
+    Panel(
+        id=53,
+        title="KV Offload: Reload Throughput",
+        description="CPU-to-GPU KV data/s.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=(
+                    "("
+                    + _rate_with_join("ray_vllm_kv_offload_load_bytes_total")
+                    + ") / 1024 / 1024 / 1024"
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(8, 103, 8, 8),
+    ),
+    Panel(
+        id=54,
+        title="KV Offload: Store and Reload Operations/s",
+        description="KV store and reload operations/s.",
+        unit="ops",
+        targets=[
+            Target(
+                expr=_rate_with_join("ray_vllm_kv_offload_store_size_count"),
+                legend="store — " + _DEP_REPLICA,
+            ),
+            Target(
+                expr=_rate_with_join("ray_vllm_kv_offload_load_size_count"),
+                legend="reload — " + _DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(16, 103, 8, 8),
+    ),
+    Panel(
+        id=55,
+        title="KV Offload: Store Bandwidth",
+        description="GPU-to-CPU KV transfer bandwidth.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=_ratio_with_join_and_guard(
+                    "ray_vllm_kv_offload_store_bytes_total",
+                    "ray_vllm_kv_offload_store_time_total",
+                    scale="/ 1024 / 1024 / 1024",
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(0, 111, 8, 8),
+    ),
+    Panel(
+        id=56,
+        title="KV Offload: Reload Bandwidth",
+        description="CPU-to-GPU KV transfer bandwidth.",
+        unit="GBs",
+        targets=[
+            Target(
+                expr=_ratio_with_join_and_guard(
+                    "ray_vllm_kv_offload_load_bytes_total",
+                    "ray_vllm_kv_offload_load_time_total",
+                    scale="/ 1024 / 1024 / 1024",
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(8, 111, 8, 8),
+    ),
+    Panel(
+        id=57,
+        title="KV Offload: CPU Transfer Pressure",
+        description="Pinned CPU KV capacity, not resident cache size.",
+        unit="percentunit",
+        targets=[
+            Target(
+                expr=_gauge_with_join("ray_vllm_kv_offload_cpu_cache_usage_perc"),
+                legend="total — " + _DEP_REPLICA,
+            ),
+            Target(
+                expr=_gauge_with_join("ray_vllm_kv_offload_cpu_cache_write_usage_perc"),
+                legend="stores — " + _DEP_REPLICA,
+            ),
+            Target(
+                expr=_gauge_with_join("ray_vllm_kv_offload_cpu_cache_read_usage_perc"),
+                legend="reloads — " + _DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(16, 111, 8, 8),
+    ),
+    Panel(
+        id=58,
+        title="KV Offload: External Prefix Hit Rate",
+        description="Connector prefix-cache hit rate.",
+        unit="percent",
+        targets=[
+            Target(
+                expr=(
+                    "100 * "
+                    + _ratio_with_join_and_guard(
+                        "ray_vllm_external_prefix_cache_hits_total",
+                        "ray_vllm_external_prefix_cache_queries_total",
+                    )
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(0, 119, 12, 8),
+    ),
+    Panel(
+        id=59,
+        title="KV Offload: Lookup Delay -- P90",
+        description="P90 offloaded-prefix lookup latency.",
+        unit="s",
+        targets=[
+            Target(
+                expr=_percentile_with_join(
+                    "ray_vllm_kv_offload_lookup_sync_delay_seconds", 0.9
+                ),
+                legend=_DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(12, 119, 12, 8),
+    ),
+]
+
+# ===================================================================
+# Row 8: Token Distribution (collapsed)
 # ===================================================================
 _WORKERID_FILTER = 'WorkerId=~"$workerid", {global_filters}'
 
@@ -785,6 +955,12 @@ _ALL_ROWS = [
     Row(title="Request Length", id=504, panels=_request_length_panels),
     Row(title="Scheduler", id=505, panels=_scheduler_panels),
     Row(title="NIXL", id=506, panels=_nixl_panels),
+    Row(
+        title="KV Cache Offload / Reload",
+        id=508,
+        panels=_kv_offload_panels,
+        collapsed=True,
+    ),
     Row(
         title="Token Distribution",
         id=507,
