@@ -161,7 +161,24 @@ class _StagedTokens:
 
 
 class TokenStore:
-    """Replica-local staging area for binary prompt token vectors."""
+    """LLMServer replica-local staging area for prompt tokens sent from LLMRouter.
+
+    Keys are single-use: the engine ``pop``s each payload once, and anything not
+    claimed is dropped by one of the bounds below.
+
+    Invariants:
+        Bounded: after every ``put``, at most ``max_entries`` entries and
+            ``max_bytes`` total payload bytes. A payload over ``max_bytes`` is
+            rejected rather than evicting everything to fit it.
+        Eviction: oldest write first, for both TTL expiry and bound overflow.
+            ``put`` re-dates an existing key, so entries stay ordered by write
+            time and expiry only has to scan the front.
+        Expiry: an entry older than ``ttl_s`` is never returned.
+        Concurrency: an ``asyncio.Lock`` serializes mutations, so concurrent
+            coroutines on one event loop are safe. Not thread-safe.
+        Complexity: ``put`` and ``pop`` are amortized O(1) -- an entry is
+            swept or evicted at most once. Space is bounded by ``max_bytes``.
+    """
 
     def __init__(
         self,

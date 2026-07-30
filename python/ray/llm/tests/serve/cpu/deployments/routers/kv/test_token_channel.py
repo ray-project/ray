@@ -136,6 +136,68 @@ def test_full_queue_keeps_socket():
         receiver_socket.close(linger=0)
 
 
+class TestTokenStore:
+    @pytest.mark.asyncio
+    async def test_evicts_oldest_first(self):
+        store = TokenStore(max_entries=2)
+        for key in ("a", "b", "c"):
+            await store.put(key, payload=_payload([1]))
+
+        assert await store.pop("a") is None
+        assert await store.pop("b") is not None
+        assert await store.pop("c") is not None
+
+    @pytest.mark.asyncio
+    async def test_bounds_total_bytes(self):
+        payload = _payload([1, 2])
+        store = TokenStore(max_bytes=2 * len(payload))
+        for key in ("a", "b", "c"):
+            await store.put(key, payload=payload)
+
+        assert store._total_bytes <= store._max_bytes
+        assert await store.pop("a") is None
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_payload(self):
+        store = TokenStore(max_bytes=4)
+        with pytest.raises(ValueError):
+            await store.put("k", payload=_payload([1, 2]))
+
+    @pytest.mark.asyncio
+    async def test_order_tracks_write_time(self):
+        """_sweep stops at the first unexpired entry, so order must track created_at_s."""
+        store = TokenStore()
+        for key in ("a", "b", "c"):
+            await store.put(key, payload=_payload([1]))
+        # Re-dates "a", so it has to move behind the older entries.
+        await store.put("a", payload=_payload([2]))
+        await store.pop("b")
+
+        assert list(store._entries) == ["c", "a"]
+        stamps = [entry.created_at_s for entry in store._entries.values()]
+        assert stamps == sorted(stamps)
+
+    @pytest.mark.asyncio
+    async def test_expires_entries(self):
+        store = TokenStore(ttl_s=0.01)
+        await store.put("k", payload=_payload([1]))
+        await asyncio.sleep(0.05)
+
+        assert await store.pop("k") is None
+        assert store._total_bytes == 0
+
+    @pytest.mark.asyncio
+    async def test_overwrite_byte_accounting(self):
+        """_total_bytes is never recomputed, so a miscount permanently shrinks the cap."""
+        store = TokenStore()
+        await store.put("k", payload=_payload([1, 2, 3]))
+        await store.put("k", payload=_payload([1]))
+
+        assert store._total_bytes == len(_payload([1]))
+        assert await store.pop("k") is not None
+        assert store._total_bytes == 0
+
+
 @pytest.mark.asyncio
 async def test_missing_key_falls_back():
     store = TokenStore()
