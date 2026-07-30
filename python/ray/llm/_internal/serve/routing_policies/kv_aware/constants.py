@@ -19,3 +19,7 @@ DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
 # replica whose completion event was lost (e.g. a batch dropped on a
 # transient actor outage) would otherwise leave its entry tracked forever.
 REQUEST_TRACKING_TTL_S = 3600
+
+# Bound best-effort lifecycle broadcast delivery so one slow ingress replica
+# cannot stall an engine replica's whole lifecycle-event queue indefinitely.
+LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3

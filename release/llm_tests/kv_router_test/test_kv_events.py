@@ -1,7 +1,5 @@
 import asyncio
 import sys
-from typing import Dict, List
-from unittest import mock
 
 import pytest
 import requests
@@ -11,17 +9,11 @@ from transformers import AutoTokenizer
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    _MODEL_NAME,
-    _TENANT_ID,
-    KV_ROUTER_ACTOR_NAME,
-    KVRouterActor,
-)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
-from utils import _TestKVAwareRouter, discover_deployment_actor
+from utils import _TestKVAwareRouter, patch_ingress
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -52,47 +44,6 @@ MESSAGES = [
 FLUSH_MESSAGES = [
     {"role": "user", "content": _SHARED_PREFIX + " beside the tall fence."}
 ]
-
-
-class _TestKVRouterActor(KVRouterActor):
-    """KVRouterActor augmented with test-only introspection."""
-
-    async def get_candidate_worker_ids(self) -> List[int]:
-        """(Test only) The workers currently tracked from running replicas.
-
-        Async so it runs on the actor's event loop, serialized with
-        ``_on_deployment_targets`` which mutates the same map on that loop.
-        """
-        return sorted(self._replica_id_by_worker)
-
-    def get_kv_event_worker_replicas(self) -> Dict[int, str]:
-        """(Test only) The registered Dynamo worker id -> replica full id mapping."""
-        return dict(self._replica_id_by_worker)
-
-    def get_registered_worker_ids(self) -> List[int]:
-        """(Test only) Worker ids the selection service can currently schedule."""
-        if self._svc is None:
-            return []
-        workers = self._svc.list_workers(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
-        return sorted(
-            w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
-        )
-
-    async def get_kv_overlap_blocks(self, token_ids: List[int]) -> Dict[int, int]:
-        """(Test only) Per-worker device-tier KV overlap blocks for a token sequence.
-
-        Returns the number of leading blocks of ``token_ids`` each worker has cached.
-        """
-        if self._svc is None:
-            return {}
-        scores = await self._svc.overlap_scores(
-            {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
-                "token_ids": list(token_ids),
-            }
-        )
-        return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
 
 
 def post_chat(endpoint, messages=MESSAGES, max_tokens=MAX_TOKENS):
@@ -164,11 +115,9 @@ class TestKvEvents:
                 ),
                 # This test validates the KV-events plane (engine events ->
                 # selection service indexer), not routing: requests are sent
-                # directly to each replica's endpoint. KVAwareRouter's own routing
-                # is unimplemented, so this subclass borrows RoundRobinRouter's
-                # selection purely so replica discovery can enumerate both.
-                # TODO (jeffreywang): use KVAwareRouter directly once it
-                # implements routing.
+                # directly to each replica's endpoint, so this subclass borrows
+                # RoundRobinRouter's selection purely so replica discovery can
+                # enumerate both replicas.
                 request_router_config=RequestRouterConfig(
                     request_router_class=_TestKVAwareRouter
                 ),
@@ -189,12 +138,9 @@ class TestKvEvents:
             ),
             log_engine_metrics=False,
         )
-        # The builder auto-attaches the KVRouterActor; patch in the test
-        # subclass so the deployment-scoped actor exposes test introspection.
-        with mock.patch(
-            "ray.llm._internal.serve.routing_policies.kv_aware.utils.KVRouterActor",
-            _TestKVRouterActor,
-        ):
+        # Swap the ingress for the introspection LLMRouter so the embedded
+        # tracker's state is reachable over the deployment handle.
+        with patch_ingress():
             app = build_openai_app({"llm_configs": [llm_config]})
             handle = serve.run(app, name=APP_NAME)
         yield handle
@@ -224,32 +170,29 @@ class TestKvEvents:
         its connect-out listener, a per-worker prefix-cache reset is observed as
         reduced overlap, and scoring routes the prompt to the higher-overlap
         worker."""
-        actor = discover_deployment_actor(
-            APP_NAME, deployed_handle.deployment_name, KV_ROUTER_ACTOR_NAME
-        )
-        assert actor is not None, "KV router actor was not discoverable"
+        router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
 
         replica_endpoints = await self._discover_replicas(deployed_handle)
 
         # Each replica advertises its KV-events endpoint via record_routing_stats;
         # the controller propagates it on the LongPoll replica snapshot and the
-        # actor registers the worker with the selection service. Wait for every
+        # tracker registers the worker with the selection service. Wait for every
         # replica to be registered (the controller polls routing stats on an
         # interval, so this is not synchronous with replica startup).
         async def all_replicas_registered():
-            replica_by_worker = await actor.get_kv_event_worker_replicas.remote()
+            replica_by_worker = await router.get_kv_event_worker_replicas.remote()
             return sorted(replica_by_worker.values()) == sorted(replica_endpoints)
 
         await async_wait_for_condition(all_replicas_registered, timeout=90)
 
-        replica_by_worker = await actor.get_kv_event_worker_replicas.remote()
+        replica_by_worker = await router.get_kv_event_worker_replicas.remote()
         endpoints = {
             worker_id: replica_endpoints[replica_id]
             for worker_id, replica_id in replica_by_worker.items()
         }
         worker_ids = sorted(endpoints)
-        assert await actor.get_candidate_worker_ids.remote() == worker_ids
-        assert await actor.get_registered_worker_ids.remote() == worker_ids
+        assert await router.get_candidate_worker_ids.remote() == worker_ids
+        assert await router.get_registered_worker_ids.remote() == worker_ids
 
         # The same prompt on each replica caches the same content.
         usages = {}
@@ -263,7 +206,7 @@ class TestKvEvents:
         # The engines' KV events reached the indexer: full prompt overlap is
         # scored on both workers.
         async def both_workers_fully_overlap():
-            overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
+            overlaps = await router.get_kv_overlap_blocks.remote(prompt_token_ids)
             return all(overlaps.get(w) == prompt_blocks for w in worker_ids)
 
         await async_wait_for_condition(both_workers_fully_overlap, timeout=60)
@@ -296,15 +239,15 @@ class TestKvEvents:
         shared_blocks = diverge // BLOCK_SIZE
 
         async def reset_worker_cleared():
-            overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
+            overlaps = await router.get_kv_overlap_blocks.remote(prompt_token_ids)
             return overlaps.get(reset_worker, 0) == shared_blocks
 
         await async_wait_for_condition(reset_worker_cleared, timeout=60)
-        overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
+        overlaps = await router.get_kv_overlap_blocks.remote(prompt_token_ids)
         assert overlaps.get(untouched_worker) == prompt_blocks
 
         # Scoring routes the prompt to the worker holding more cached overlap.
-        selection = await actor.select_worker.remote(
+        selection = await router.select_worker.remote(
             "score-req", prompt_token_ids, worker_ids
         )
         assert selection["worker_id"] == untouched_worker
@@ -314,21 +257,18 @@ class TestKvEvents:
     async def test_chat_tokens_match_prefill(self, deployed_handle):
         """Ensure chat template is applied: a chat request scores the same overlap as
         the prompt rendered with the model's chat template and tokenized as raw text."""
-        actor = discover_deployment_actor(
-            APP_NAME, deployed_handle.deployment_name, KV_ROUTER_ACTOR_NAME
-        )
-        assert actor is not None
+        router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         replica_endpoints = await self._discover_replicas(deployed_handle)
 
         async def all_registered():
-            registered = await actor.get_kv_event_worker_replicas.remote()
+            registered = await router.get_kv_event_worker_replicas.remote()
             return sorted(registered.values()) == sorted(replica_endpoints)
 
         await async_wait_for_condition(all_registered, timeout=90)
 
         # Ground truth: render the chat template client-side and tokenize as text.
         worker_id, replica_id = next(
-            iter((await actor.get_kv_event_worker_replicas.remote()).items())
+            iter((await router.get_kv_event_worker_replicas.remote()).items())
         )
         endpoint = replica_endpoints[replica_id]
         manual_prompt = AutoTokenizer.from_pretrained(MODEL_SOURCE).apply_chat_template(
@@ -343,7 +283,7 @@ class TestKvEvents:
         post_chat(endpoint)
 
         async def manual_fully_overlaps():
-            overlaps = await actor.get_kv_overlap_blocks.remote(manual_token_ids)
+            overlaps = await router.get_kv_overlap_blocks.remote(manual_token_ids)
             return overlaps.get(worker_id) == prompt_blocks
 
         await async_wait_for_condition(manual_fully_overlaps, timeout=60)
@@ -351,7 +291,7 @@ class TestKvEvents:
         # The chat /tokenize tokens hit the same cached blocks -> same score,
         # proving /tokenize applied the chat template.
         chat_token_ids = tokenize_prompt(endpoint, MESSAGES)
-        chat_overlaps = await actor.get_kv_overlap_blocks.remote(chat_token_ids)
+        chat_overlaps = await router.get_kv_overlap_blocks.remote(chat_token_ids)
         assert chat_overlaps.get(worker_id) == prompt_blocks
         assert chat_token_ids == manual_token_ids
 
@@ -363,7 +303,7 @@ class TestKvScoring:
 
     @pytest.fixture(scope="class")
     def kv_aware_handle(self):
-        """Deploy with KVAwareRouter; the build auto-attaches the KVRouterActor
+        """Deploy with KVAwareRouter; the ingress builds the KVTokenTracker
         and enables engine KV events."""
         if not ray.is_initialized():
             ray.init(address="auto")
