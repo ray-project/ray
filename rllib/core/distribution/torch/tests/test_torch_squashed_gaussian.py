@@ -17,8 +17,6 @@ class TestTorchSquashedGaussian(unittest.TestCase):
         dist = TorchSquashedGaussian.from_logits(torch.cat([loc, log_std], dim=-1))
 
         _, logp = dist.rsample_and_logp()
-        print(logp)
-        print(_)
 
         self.assertTrue(torch.isfinite(logp).all())
         self.assertGreater(logp.mean().item(), 0.0)
