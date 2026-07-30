@@ -68,15 +68,28 @@ def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
     return pa.Codec(compression)
 
 
+# Chunk combine before IPC. Before combining, a partition's shard holds one chunk
+# per input block this map processed — e.g. 8 blocks => every column is a
+# ChunkedArray of 8 row-group pieces (say ~1 MiB total for the shard). Arrow is
+# columnar, so the shard is a [num_columns x 8 chunks] grid, NOT "8 columns".
+# ``combine_chunks`` fuses each column's 8 chunks into ONE contiguous array — rows,
+# their order, and the columns are all unchanged (pure defragmentation) — so the
+# IPC stream carries one record batch per column instead of 8: cheaper decode and
+# zero-copy reads at the reducer.
+#
+# Native ``Table.combine_chunks`` does the whole grid in one C++ call.
+# ``transform_pyarrow.combine_chunks`` instead loops per column (extension-type
+# check + int32-offset overflow ``nbytes`` guard + table rebuild) — 5-12x slower
+# on many small shards, and its protections (extension types, >2 GiB int32-offset
+# columns) never apply to a ~1 MiB non-extension shard. So ``_PartitionWriter``
+# passes ``combine_native`` once it confirms the schema has no extension columns.
 def _encode_shard(
     table: pa.Table, compression: Compression = "zstd", combine_native: bool = False
 ) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression). ``compression`` comes from
-    ``data_context.hash_shuffle_compression``. ``combine_native`` uses PyArrow's
-    native whole-table combine (one C++ call, ~10x faster) when the caller has
-    confirmed there are no extension columns; else the extension-safe
-    ``transform_pyarrow`` path (which is ~5-12x slower on many small shards)."""
+    ``data_context.hash_shuffle_compression``. ``combine_native`` picks native vs
+    the extension-safe ``transform_pyarrow`` combine (see the note above)."""
     if table.num_columns > 0:
         table = (
             table.combine_chunks()
