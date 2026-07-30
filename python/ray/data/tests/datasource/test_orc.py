@@ -86,7 +86,7 @@ def test_read_orc_override_num_blocks(ray_start_regular_shared, tmp_path):
 
 
 def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
-    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
     os.makedirs(os.path.join(tmp_path, "year=2024"))
     _write_orc(
@@ -94,7 +94,9 @@ def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
         pa.table({"data": [0, 1]}),
     )
 
-    ds = ray.data.read_orc(str(tmp_path), partitioning=Partitioning("hive"))
+    ds = ray.data.read_orc(
+        str(tmp_path), partitioning=Partitioning(PartitionStyle.HIVE)
+    )
 
     rows = ds.take_all()
     assert sorted(row["data"] for row in rows) == [0, 1]
@@ -104,6 +106,7 @@ def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
 def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tmp_path):
     from ray.data.datasource.partitioning import (
         Partitioning,
+        PartitionStyle,
         PathPartitionFilter,
     )
 
@@ -115,11 +118,12 @@ def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tm
         )
 
     partition_filter = PathPartitionFilter.of(
-        filter_fn=lambda partitions: partitions["year"] == "2024", style="hive"
+        filter_fn=lambda partitions: partitions["year"] == "2024",
+        style=PartitionStyle.HIVE,
     )
     ds = ray.data.read_orc(
         str(tmp_path),
-        partitioning=Partitioning("hive"),
+        partitioning=Partitioning(PartitionStyle.HIVE),
         partition_filter=partition_filter,
     )
 
@@ -139,6 +143,23 @@ def test_read_orc_multiple_stripes(ray_start_regular_shared, tmp_path):
 
     assert ds.count() == 10000
     assert sorted(row["id"] for row in ds.take_all()) == list(range(10000))
+
+
+def test_read_orc_empty_file(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "empty.orc")
+    table = pa.table(
+        {
+            "id": pa.array([], type=pa.int64()),
+            "name": pa.array([], type=pa.string()),
+        }
+    )
+    with pa.OSFile(path, "wb") as sink:
+        orc.write_table(table, sink)
+
+    ds = ray.data.read_orc(path)
+
+    assert ds.count() == 0
+    assert ds.take_all() == []
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow
+    import pyarrow.fs
 
 
 class ORCDatasource(FileBasedDatasource):
