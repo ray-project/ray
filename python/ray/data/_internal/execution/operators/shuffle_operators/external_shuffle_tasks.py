@@ -23,15 +23,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     Any,
-    Dict,
     Generator,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
-import numpy as np
 import pyarrow as pa
 
 import ray
@@ -41,18 +38,19 @@ from ray._raylet import (
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
-    _MAX_RANGE_BYTES,
     _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
     ShuffleFileServer,
     ShuffleHandle,
+    _build_range_index,
     _compute_prefetch_layout,
+    _decoded_to_array,
     _drop_pagecache,
-    _encode_shard,
     _file_server_name,
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
+    _PartitionWriter,
     _prefetch_node_into,
     _PwriteSink,
     _read_ipc,
@@ -81,111 +79,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 # CAP on fetch connections per reducer: n_threads = min(#file-servers, this).
 _DEFAULT_FETCH_THREADS = 16
-
-
-def _build_range_index(index, num_partitions):
-    """Dense per-partition (offset, length) index: one row per partition.
-
-    Row ``p`` is ``(offset, length)`` of partition ``p``'s IPC frame; absent or
-    empty partitions stay ``(0, 0)`` (``length == 0`` => the reducer skips them).
-    Each partition is written exactly once per map (whole-frame: one frame per
-    partition), so ``partition_id`` is the row index directly — no CSR pointer
-    needed.
-
-    Self-describing (position == partition) and a single ``[P, 2]`` int64 array,
-    so no per-range Python objects: the O(maps × partitions) reducer-held OOM a
-    ``Dict[pid, List[(off,len)]]`` caused stays gone.
-    """
-    ranges = np.zeros((num_partitions, 2), dtype=np.int64)
-    for pid, frame_range in index.items():
-        ranges[pid] = frame_range[0]  # (offset, length); one frame per partition
-    return ranges
-
-
-def _decoded_to_array(decoded, num_partitions):
-    """Dense per-partition decoded-byte counts (was a Dict[pid,int] in every
-    handle — a second O(partitions) bloat). One int64 array indexed by pid."""
-    arr = np.zeros(num_partitions, dtype=np.int64)
-    for pid, nbytes in decoded.items():
-        arr[pid] = nbytes
-    return arr
-
-
-class _PartitionWriter:
-    """Per-partition shard buffer, sealed to disk one IPC frame per partition.
-
-    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s list;
-    ``flush_all()`` concatenates each partition's shards, IPC-encodes them
-    into one whole-frame, writes it to the output file, and records the
-    (offset, length) range in ``index``.
-
-    Staging is unbounded: a map holds all its partition shards in memory
-    until ``flush_all``, so peak ≈ the map's decoded input. Ray Data already
-    size-bounds map input blocks, so no in-task spill is needed.
-    """
-
-    __slots__ = (
-        "_f",
-        "_map_id",
-        "_compression",
-        "_staging",
-        "_index",
-        "_decoded_bytes_per_partition",
-    )
-
-    def __init__(
-        self,
-        f,
-        map_id: int,
-        compression: Optional[str],
-    ):
-        self._f = f
-        self._map_id = map_id
-        # Codec from data_context.hash_shuffle_compression (same field the reduce reads).
-        self._compression = compression
-        self._staging: Dict[int, List[pa.Table]] = {}
-        self._index: Dict[int, List[Tuple[int, int]]] = {}
-        self._decoded_bytes_per_partition: Dict[int, int] = {}
-
-    def _flush(self, pid: int) -> None:
-        shards = self._staging.get(pid)
-        if not shards:
-            return
-        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
-        # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
-        self._decoded_bytes_per_partition[pid] = tbl.nbytes
-        buf = _encode_shard(
-            tbl, self._compression
-        )  # whole-frame codec (see _encode_shard)
-        # Refuse frames the u32 response-wire encoding can't represent.
-        if buf.size > _MAX_RANGE_BYTES:
-            raise RuntimeError(
-                f"map_{self._map_id}.shf partition {pid}: IPC frame is "
-                f"{buf.size} bytes, exceeding the u32 wire-protocol "
-                f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
-                f"``num_partitions`` or reduce the upstream block size."
-            )
-        off = self._f.tell()
-        self._f.write(memoryview(buf))
-        self._index.setdefault(pid, []).append((off, buf.size))
-        self._staging[pid] = []
-
-    def add_shard(self, pid: int, shard: pa.Table) -> None:
-        if not shard.num_rows:
-            return
-        self._staging.setdefault(pid, []).append(shard)
-
-    def flush_all(self) -> None:
-        for pid in list(self._staging.keys()):
-            self._flush(pid)
-
-    @property
-    def index(self) -> Dict[int, List[Tuple[int, int]]]:
-        return self._index
-
-    @property
-    def decoded_bytes_per_partition(self) -> Dict[int, int]:
-        return self._decoded_bytes_per_partition
 
 
 @ray.remote
@@ -243,8 +136,8 @@ def _external_shuffle_map_task(
 
     final_size_on_close = -1
     try:
-        with open(tmp_path, "wb") as f:
-            writer = _PartitionWriter(f, map_id, compression)
+        with open(tmp_path, "wb") as out_file:
+            writer = _PartitionWriter(out_file, map_id, compression)
             for blk in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
@@ -265,13 +158,13 @@ def _external_shuffle_map_task(
             # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
             # size matches the index. Mismatch = logic bug or silent short
             # write; refuse to publish (the except below unlinks tmp).
-            f.flush()
-            final_size_on_close = f.tell()
+            out_file.flush()
+            final_size_on_close = out_file.tell()
             if fsync_on_close:
-                os.fsync(f.fileno())
+                os.fsync(out_file.fileno())
                 # Drop the just-written pages so we don't hold GBs of
                 # warm cache per mapper.
-                _drop_pagecache(f.fileno(), 0, final_size_on_close)
+                _drop_pagecache(out_file.fileno(), 0, final_size_on_close)
             if writer.index:
                 expected_size = max(
                     off + length
