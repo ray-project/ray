@@ -447,11 +447,6 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
         )
-        if self._token_receiver is not None:
-            install_prompt_token_forwarding(
-                state,
-                self._prompt_token_store,
-            )
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
