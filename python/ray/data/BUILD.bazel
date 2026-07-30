@@ -1030,7 +1030,7 @@ py_test(
 
 py_test(
     name = "test_predicate_pushdown",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
