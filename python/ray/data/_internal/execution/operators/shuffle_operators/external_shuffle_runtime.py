@@ -82,6 +82,7 @@ def _encode_shard(
             try:
                 table = table.combine_chunks()
             except Exception:
+                # a >2 GiB string column overflows native combine's int32 offsets
                 table = transform_pyarrow.combine_chunks(table)
         else:
             table = transform_pyarrow.combine_chunks(table)
