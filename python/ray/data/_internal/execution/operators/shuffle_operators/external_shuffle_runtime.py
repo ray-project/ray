@@ -28,6 +28,7 @@ import pyarrow as pa
 import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
+from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.exceptions import (
     ActorDiedError,
     ActorUnavailableError,
@@ -67,12 +68,21 @@ def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
     return pa.Codec(compression)
 
 
-def _encode_shard(table: pa.Table, compression: Compression = "zstd") -> pa.Buffer:
+def _encode_shard(
+    table: pa.Table, compression: Compression = "zstd", combine_native: bool = False
+) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression). ``compression`` comes from
-    ``data_context.hash_shuffle_compression``."""
+    ``data_context.hash_shuffle_compression``. ``combine_native`` uses PyArrow's
+    native whole-table combine (one C++ call, ~10x faster) when the caller has
+    confirmed there are no extension columns; else the extension-safe
+    ``transform_pyarrow`` path (which is ~5-12x slower on many small shards)."""
     if table.num_columns > 0:
-        table = transform_pyarrow.combine_chunks(table)
+        table = (
+            table.combine_chunks()
+            if combine_native
+            else transform_pyarrow.combine_chunks(table)
+        )
     sink = pa.BufferOutputStream()
     with pa.ipc.new_stream(sink, table.schema) as w:  # uncompressed inner IPC
         for batch in table.to_batches():
@@ -230,6 +240,7 @@ class _PartitionWriter:
         "_staging",
         "_index",
         "_decoded_bytes_per_partition",
+        "_combine_native_ok",
     )
 
     def __init__(
@@ -245,17 +256,28 @@ class _PartitionWriter:
         self._staging: Dict[int, List[pa.Table]] = {}
         self._index: Dict[int, List[Tuple[int, int]]] = {}
         self._decoded_bytes_per_partition: Dict[int, int] = {}
+        # Whether native combine_chunks is safe (no extension columns). Computed
+        # once on the first flush; every shard of this map shares one schema.
+        self._combine_native_ok: Optional[bool] = None
 
     def _flush(self, pid: int) -> None:
         shards = self._staging.get(pid)
         if not shards:
             return
         tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        if self._combine_native_ok is None:
+            # Once per map: concat above guarantees a uniform schema, so native
+            # combine is safe iff no column is an extension type. Avoids the
+            # per-shard extension-safe combine (which re-scans + does per-column
+            # dispatch + nbytes on every shard).
+            self._combine_native_ok = not any(
+                _is_pa_extension_type(f.type) for f in tbl.schema
+            )
         # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
         self._decoded_bytes_per_partition[pid] = tbl.nbytes
-        buf = _encode_shard(
-            tbl, self._compression
-        )  # whole-frame codec (see _encode_shard)
+        buf = _encode_shard(  # whole-frame codec (see _encode_shard)
+            tbl, self._compression, self._combine_native_ok
+        )
         # Refuse frames the u32 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
