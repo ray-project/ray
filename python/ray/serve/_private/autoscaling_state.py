@@ -242,17 +242,27 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: Sequence[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         # Called every control loop tick; membership is usually unchanged, so skip the
-        # set/dict rebuilds and keep the merge cache valid. Compared element-wise because
-        # the caller memoizes a tuple; a preceding stop forces the rebuild via the flag.
+        # set/dict rebuilds and keep the merge cache valid. Identity is the common case
+        # (the caller memoizes); the element-wise compare covers a caller that does not,
+        # and a preceding stop forces the rebuild via the flag.
         if not self._membership_dirty and (
-            len(running_replicas) == len(self._running_replicas)
-            and all(a == b for a, b in zip(running_replicas, self._running_replicas))
+            running_replicas is self._running_replicas
+            or (
+                len(running_replicas) == len(self._running_replicas)
+                and all(
+                    a == b for a, b in zip(running_replicas, self._running_replicas)
+                )
+            )
         ):
             return
         self._membership_dirty = False
-        # Copy: this list is handed to user policies via `AutoscalingContext`, and the
-        # fast path above compares against it.
-        self._running_replicas = list(running_replicas)
+        # A tuple is aliased so the identity check above can hit; a list caller may keep
+        # mutating what it passed, so that has to be copied.
+        self._running_replicas = (
+            running_replicas
+            if isinstance(running_replicas, tuple)
+            else list(running_replicas)
+        )
         self._running_replica_id_set = set(running_replicas)
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas

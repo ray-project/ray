@@ -1713,6 +1713,30 @@ class TestMergedTimeseriesCache:
 
         assert state._metrics_version == version
 
+    def test_repeated_memoized_tuple_is_aliased(self):
+        """The caller memoizes and hands back the same tuple while membership is
+        unchanged; aliasing it keeps the check O(1) instead of walking every replica."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        memo = (r1,)
+
+        state.update_running_replica_ids(memo)
+        version = state._metrics_version
+        state.update_running_replica_ids(memo)
+
+        assert state._metrics_version == version
+        assert state._running_replicas is memo
+
+    def test_caller_list_is_copied_not_aliased(self):
+        """A list caller may keep mutating what it passed, so it must not be aliased."""
+        state = self._create_state()
+        r1 = ReplicaID(unique_id="r1", deployment_id=state._deployment_id)
+        passed = [r1]
+
+        state.update_running_replica_ids(passed)
+
+        assert state._running_replicas is not passed
+
     def test_dropping_stale_handle_metrics_lowers_total(self):
         """Dropping a handle's metrics has to invalidate the cached merge."""
         state = self._create_state()
