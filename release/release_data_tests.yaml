@@ -1134,6 +1134,7 @@
         # three row groups exceed it, so bins take two and sit 24% empty, giving
         # 24.5k read tasks (measured 24,432).
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+        - RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD=0.6
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:

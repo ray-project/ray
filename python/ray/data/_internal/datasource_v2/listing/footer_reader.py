@@ -247,4 +247,4 @@ class FooterReader:
 # The Ray actor class. Built via the functional ``ray.remote(...)`` form (rather
 # than the ``@ray.remote`` decorator) so ``FooterReader`` stays a plain class and
 # actor handles can be typed ``ActorProxy[FooterReader]``.
-FooterReaderActor = ray.remote(num_cpus=0)(FooterReader)
+FooterReaderActor = ray.remote(FooterReader)
