@@ -227,10 +227,15 @@ def ray_deps_setup():
         sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
         strip_prefix = "xz-5.2.7",
         urls = [
-            # Use the SourceForge redirector, which picks a live mirror,
-            # instead of pinning specific mirrors that can go offline.
-            "https://downloads.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            # Fetch from tukaani.org (the xz project's canonical host) first.
+            # The SourceForge redirector (kept below as a fallback) 302s to
+            # per-mirror hosts (*.dl.sourceforge.net) that intermittently time
+            # out or stop resolving in DNS; bazel does not fall through to the
+            # next URL when the redirector's chosen mirror fails, so it must not
+            # be listed first (#64906 added the redirector but left cold-cache
+            # builds failing because tukaani.org was never actually tried).
             "https://tukaani.org/xz/xz-5.2.7.tar.gz",
+            "https://downloads.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
         ],
         build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
     )
