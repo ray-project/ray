@@ -35,6 +35,21 @@ class SystemException(Exception):
 
 
 @DeveloperAPI
+class ExecutionTimeoutError(TimeoutError, SystemException):
+    """Represents an Exception raised when a Ray Data execution has made no
+    progress for `DataContext.execution_no_progress_timeout_s` seconds while
+    the consumer was waiting on the pipeline.
+
+    The cause is often outside Ray Data: a UDF blocked on an external call, a
+    cluster that can no longer schedule tasks after preemption, or a UDF that
+    is simply slower than the timeout. It can also indicate a deadlock in Ray
+    Data or Ray Core. Raise the timeout, or set it to a negative value to
+    disable it, via `DataContext.execution_no_progress_timeout_s`."""
+
+    pass
+
+
+@DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
     """Decorator which runs the function, and if there is an exception raised,
     drops the stack trace before re-raising the exception. The original exception,
@@ -60,6 +75,9 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 raise e
 
             is_user_code_exception = isinstance(e, UserCodeException)
+            is_actionable_exception = is_user_code_exception or isinstance(
+                e, ExecutionTimeoutError
+            )
             if is_user_code_exception:
                 # Exception has occurred in user code.
                 if not log_internal_stack_trace and log_once(
@@ -72,7 +90,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         f"Data log file at `{get_log_directory()}`, set "
                         "`DataContext.log_internal_stack_trace` to True."
                     )
-            else:
+            elif not is_actionable_exception:
                 # Exception has occurred in internal Ray Data / Ray Core code.
                 logger.error(
                     "Exception occurred in Ray Data or Ray Core internal code. "
@@ -81,7 +99,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            if is_user_code_exception:
+            if is_actionable_exception:
                 # The driver-side propagation frames add nothing for a user-code
                 # error — the real failure is the worker traceback in ``str(e)``.
                 # Keep them off stdout always (``hide=True`` filters the console
@@ -97,7 +115,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 # System exception (likely a Ray bug): surface the full trace on
                 # stdout (and the log file) so the user can report it.
                 logger.exception("Full stack trace:", exc_info=True)
-            if is_user_code_exception:
+            if is_actionable_exception:
                 raise e.with_traceback(None)
             else:
                 raise e.with_traceback(None) from SystemException()

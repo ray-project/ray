@@ -50,6 +50,7 @@ from ray.data._internal.metadata_exporter import (
     Topology as TopologyMetadata,
     sanitize_for_struct,
 )
+from ray.data._internal.no_progress_guard import NoProgressGuard
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
@@ -245,6 +246,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # guard's idle-detection state accumulates across scheduling iterations.
         self._output_backpressure_guard = OutputBackpressureGuard(
             self._topology, self._resource_manager
+        )
+        self._no_progress_guard = NoProgressGuard(
+            self._topology, self._data_context.execution_no_progress_timeout_s
         )
 
         # Setup progress manager
@@ -584,7 +588,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        should_continue = not all(op.has_completed() for op in topology)
+        if should_continue:
+            self._no_progress_guard.check(self._consumer_idling())
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
