@@ -298,16 +298,12 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except GetTimeoutError:
-            # The actor is alive and its health check is pending/running.
-            pass
-        except Exception:
-            # Any other exception (e.g. RayActorError for dead actors,
-            # ActorUnschedulableError for unschedulable actors, or base Exception /
-            # ActorHandleNotFoundError for actors from an older session or different
-            # cluster during RayService GCS restoration) means the actor is ready
-            # for shutdown.
+        except (RayActorError, ActorUnschedulableError):
+            # The actor is dead or permanently unschedulable (e.g. hard-pinned
+            # to a node that no longer exists), so it's ready for shutdown.
             return True
+        except GetTimeoutError:
+            pass
 
         # The actor is still alive, so it's not ready for shutdown.
         return False
@@ -336,13 +332,12 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             shutdown_ref = self._actor_handle.shutdown.remote()
             ray.get(shutdown_ref, timeout=PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-        except (ActorHandleNotFoundError, ActorUnschedulableError, RayActorError) as e:
-            # The actor is dead, was never scheduled because its target node died
-            # while creation was pending, or belongs to an older session. Skip graceful
-            # shutdown.
+        except (ActorUnschedulableError, RayActorError) as e:
+            # The actor is dead or was never scheduled because its target node died
+            # while creation was pending. Skip graceful shutdown.
             logger.info(
-                f"Proxy actor on {self._node_id} is unschedulable, dead, or from an "
-                f"older session ({e}); skipping graceful shutdown."
+                f"Proxy actor on {self._node_id} is unschedulable or dead ({e}); "
+                "skipping graceful shutdown."
             )
         except GetTimeoutError:
             logger.warning(
@@ -357,12 +352,16 @@ class ActorProxyWrapper(ProxyWrapper):
         # Force kill regardless of whether graceful shutdown succeeded.
         try:
             ray.kill(self._actor_handle, no_restart=True)
-        except RayError as e:
-            # Catch RayError (including ActorHandleNotFoundError for older-session handles)
-            # so expected GCS restoration edge cases do not crash the controller.
+        except ActorHandleNotFoundError:
             logger.info(
+                f"Proxy actor on {self._node_id} belongs to an older session; already gone."
+            )
+        except RayError as e:
+            # Catch RayError so unexpected force-kill errors do not crash the controller.
+            logger.warning(
                 f"Force kill of proxy actor on {self._node_id} failed ({e}); "
-                "actor may already be dead or belong to an older session."
+                "actor may already be dead.",
+                exc_info=True,
             )
 
 
