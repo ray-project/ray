@@ -1210,7 +1210,9 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             self._target_col_name, str
         ):
             return None
-        return distinct_spec("distinct", lambda merged, c: merged[c[0]])
+        return distinct_spec(
+            "distinct", lambda merged, component_cols: merged[component_cols[0]]
+        )
 
     def _compute_unique(self, block: Block) -> BlockColumn:
         column = block[self._target_col_name]
@@ -1328,7 +1330,10 @@ class CountDistinct(Unique):
         ):
             return None
         return distinct_spec(
-            "count_distinct", lambda merged, c: pc.cast(merged[c[0]], pa.int64())
+            "count_distinct",
+            lambda merged, component_cols: pc.cast(
+                merged[component_cols[0]], pa.int64()
+            ),
         )
 
 

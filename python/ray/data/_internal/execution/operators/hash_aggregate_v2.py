@@ -16,20 +16,34 @@ if TYPE_CHECKING:
 def _agg_specs(
     aggregation_fns: Tuple["AggregateFn", ...],
 ) -> Optional[List[ArrowAggSpec]]:
-    """Per-agg Arrow vectorization specs -- each aggregation declares its own via
+    """Per-agg Arrow vectorization specs, each aggregation declares its own via
     ``AggregateFn._arrow_agg_spec``.  Returns None (caller falls back to the
-    Python engine) if any aggregation isn't vectorizable, or if the query mixes
-    reduction (two-phase) and collection (single-phase) aggs, which execute
-    differently."""
+    Python engine) if there are no aggregations or any one isn't vectorizable."""
+    if not aggregation_fns:
+        return None
     specs: List[ArrowAggSpec] = []
     for agg in aggregation_fns:
         spec = agg._arrow_agg_spec()
         if spec is None:
             return None
         specs.append(spec)
-    if len({s.single_phase for s in specs}) > 1:
-        return None
     return specs
+
+
+def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
+    """Query-shape gate shared by the map and reduce builders, the two must
+    decide identically (the reduce's expected input format depends on what the
+    map shipped)."""
+    has_collection = any(spec.collection for spec in specs)
+    if has_collection and not all(spec.collection for spec in specs):
+        # Mixed reduction + collection shapes need different map outputs
+        # (bounded partials vs raw rows); Python handles both in one pass.
+        return False
+    if not keys:
+        # Keyless (global) = one group: per-group vectorization buys nothing
+        # (the Python path's intra-group aggregation is already vectorized).
+        return False
+    return True
 
 
 def _make_aggregating_transformer(
@@ -61,14 +75,13 @@ def _make_vectorized_aggregating_transformer(
         return None
 
     keys = list(key_columns)
-    single_phase = specs[0].single_phase
-    if single_phase and not keys:
-        # Global collection agg: the distinct hash kernels need group keys, so we fallback to python
+    if not _is_vectorizable(keys, specs):
         return None
+    has_collection = any(spec.collection for spec in specs)
 
-    if single_phase:
-        # The map only validates + prunes to keys + source columns; the reduce
-        # does the single grouped distinct/count_distinct pass over raw rows.
+    if has_collection:
+        # All-collection query: the map prunes to keys + source columns;
+        # the reduce aggregates the raw rows directly.
         keep = list(
             dict.fromkeys(
                 keys
@@ -106,7 +119,7 @@ def _make_vectorized_aggregating_transformer(
             if spec.prep is not None:
                 block = spec.prep(i, col, block)
             names.extend(f"__agg{i}_{c}" for c in spec.components)
-            agg_specs += spec.map_specs(i, col, opts)
+            agg_specs += spec.raw_agg_specs(i, col, opts)
 
         out = block.group_by(keys, use_threads=False).aggregate(agg_specs)
         return out.rename_columns(keys + names)
@@ -123,13 +136,14 @@ def _make_vectorized_aggregating_reduce_fn(
         return None
 
     keys = list(key_columns)
-    single_phase = specs[0].single_phase
-    if single_phase and not keys:
+    if not _is_vectorizable(keys, specs):
         return None
+    has_collection = any(spec.collection for spec in specs)
     _fallback_map = _fallback_aggregating_transformer(key_columns, aggregation_fns)
     _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
-    # Source columns of collection aggs (only used to detect nested inputs).
-    src_cols = [a.get_target_column() for a in aggregation_fns] if single_phase else []
+    src_cols = (
+        [a.get_target_column() for a in aggregation_fns] if has_collection else []
+    )
 
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
@@ -137,36 +151,38 @@ def _make_vectorized_aggregating_reduce_fn(
         shards = tables_by_input[0]
         tables = [t for t in shards if t.num_rows > 0]
         if not tables:
-            # Empty global aggregation: delegate to the fallback for the same
-            # identity row (Count->0, Sum->null, ...) it would emit.
-            if shards and not keys:
-                yield from _fallback_reduce(partition_id, [[_fallback_map(shards[0])]])
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
 
         # The distinct/count_distinct kernels have no impl for a nested source
         # column (the map shipped raw rows); delegate the partition to Python.
-        if single_phase and any(
+        if has_collection and any(
             c is not None and pa.types.is_nested(combined.schema.field(c).type)
             for c in src_cols
         ):
             yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
             return
 
-        # Reduction: merge each agg's partial components (the map's output).
-        # Collection: aggregate the raw source column in one grouped pass.
-        merge_specs: List[tuple] = []
+        # Collection query: aggregate the raw rows via raw_agg_specs (a
+        # group's rows are all co-located here, so this yields the final
+        # value).  Reduction: merge the map's partials via merge_specs.
+        agg_specs: List[tuple] = []
         names: List[str] = []
         comps: List[Tuple[str, ...]] = []
         for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
             opts = arrow_agg_options(agg._ignore_nulls)
             out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
-            input_cols = (agg.get_target_column(),) if single_phase else out_cols
             comps.append(out_cols)
             names += out_cols
-            merge_specs += spec.merge_specs(input_cols, opts)
+            if has_collection:
+                col = agg.get_target_column()
+                if spec.prep is not None:
+                    combined = spec.prep(i, col, combined)
+                agg_specs += spec.raw_agg_specs(i, col, opts)
+            else:
+                agg_specs += spec.merge_specs(out_cols, opts)
 
-        merged = combined.group_by(keys, use_threads=False).aggregate(merge_specs)
+        merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
         merged = merged.rename_columns(keys + names)
 
         # Finalize into output columns.  Duplicate output names are munged to
@@ -203,7 +219,6 @@ def _fallback_aggregating_transformer(
         for agg_fn in aggregation_fns:
             agg_fn._validate(block_schema)
 
-        # Project down to only the key + aggregation-input columns.
         pruned_block = SortAggregateTaskSpec._prune_unused_columns(
             block, sort_key, aggregation_fns
         )
