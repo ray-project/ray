@@ -76,7 +76,11 @@ cdef class GcsClientOptions:
             port = int(port_str)
             self.inner.reset(
                 new CGcsClientOptions(
-                    ip, port, c_cluster_id, allow_cluster_id_nil, allow_cluster_id_nil))
+                    ip,
+                    port,
+                    c_cluster_id,
+                    allow_cluster_id_nil,
+                    fetch_cluster_id_if_nil))
         except Exception:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self

@@ -1177,6 +1177,7 @@ class Node:
             backup_count=self.backup_count,
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
+            cluster_id_hex=self.cluster_id.hex(),
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -1434,6 +1435,7 @@ class Node:
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
             autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
+            cluster_id_hex=self.cluster_id.hex(),
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
