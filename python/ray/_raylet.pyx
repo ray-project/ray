@@ -433,10 +433,12 @@ def wait_for_persisted_port(
 
 cdef extern from "ray/core_worker/task_execution/fiber_stack_protection.h" \
         namespace "ray::core":
-    # Re-points CPython's C-stack-overflow detection at the Boost fiber stack
-    # the calling thread is running on. Requires the GIL and never raises. See
-    # the header for why async actors need this on CPython 3.14+.
-    void ReanchorStackProtectionToCurrentFiberStack()
+    # Re-point CPython's C-stack-overflow detection at the Boost fiber stack the
+    # calling thread is running on. Both require the GIL and never raise. See the
+    # header for why async actors need this on CPython 3.14+, and for why the
+    # two variants differ in how they treat not being on a fiber.
+    void ReanchorStackProtectionForAsyncActorTask()
+    void ReanchorStackProtectionAfterFiberYield()
 
 
 cdef increase_recursion_limit():
@@ -2577,7 +2579,7 @@ cdef CRayStatus task_execution_handler(
         if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                 and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync()):
-            ReanchorStackProtectionToCurrentFiberStack()
+            ReanchorStackProtectionForAsyncActorTask()
 
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -4921,7 +4923,7 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         # YieldCurrentFiber may resume a different task's fiber first. Restore
         # this fiber's exact bounds before Python code continues on it.
-        ReanchorStackProtectionToCurrentFiberStack()
+        ReanchorStackProtectionAfterFiberYield()
         try:
             result = future.result()
         except concurrent.futures.CancelledError:

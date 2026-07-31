@@ -154,6 +154,19 @@ TEST_F(FiberStackProtectionTest, InstallsDistinctBoundsForSuccessiveFibers) {
   EXPECT_NE(g_stub.stack_start_addr, nullptr);
 }
 
+TEST_F(FiberStackProtectionTest, EntryPointsAreNoOpsWithoutTheCPythonApi) {
+#if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
+  GTEST_SKIP() << "This build may export PyUnstable_ThreadState_SetStackProtection.";
+#else
+  // Pre-3.14 and Windows: both entry points must do nothing at all, so they are
+  // safe even here, off-fiber and with no interpreter running.
+  ReanchorStackProtectionForAsyncActorTask();
+  ReanchorStackProtectionAfterFiberYield();
+  EXPECT_FALSE(internal::TryReanchorStackProtection().has_value());
+  EXPECT_EQ(g_stub.calls, 0);
+#endif
+}
+
 }  // namespace
 }  // namespace core
 }  // namespace ray

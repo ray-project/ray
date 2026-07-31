@@ -20,6 +20,7 @@
 #include <Python.h>
 
 #include <cstddef>
+#include <optional>
 
 #include "ray/core_worker/task_execution/fiber.h"
 
@@ -36,7 +37,7 @@ namespace core {
 /** Signature of CPython's `PyUnstable_ThreadState_SetStackProtection`. */
 using SetStackProtectionFn = int (*)(PyThreadState *, void *, size_t);
 
-/** Result of a single attempt to re-anchor stack protection. */
+/** @brief Result of a single attempt to re-anchor stack protection. */
 enum class ReanchorOutcome {
   /** The caller is not on a tracked fiber stack, so nothing was changed. */
   kNotOnFiberStack,
@@ -47,31 +48,27 @@ enum class ReanchorOutcome {
 };
 
 /**
- * Installs the current fiber's stack bounds through \p set_stack_protection.
+ * @brief Installs the current fiber's stack bounds through
+ * @p set_stack_protection.
  *
- * Split out from ReanchorStackProtectionToCurrentFiberStack so it can be tested:
+ * Split out from the entry points below so it can be tested:
  * it touches no interpreter state beyond the arguments it is handed, so a test
  * can pass a stub and a dummy thread state and assert on the bounds that would
  * reach CPython. It is also compiled on every Python version, unlike the caller.
  *
- * \param set_stack_protection CPython entry point. Must not be nullptr;
+ * @param set_stack_protection CPython entry point. Must not be nullptr;
  *   resolving the symbol is the caller's responsibility.
- * \param thread_state Thread state to update; passed through untouched.
- * \return Which branch was taken; see ReanchorOutcome.
+ * @param thread_state Thread state to update; passed through untouched.
+ * @return Which branch was taken; see ReanchorOutcome.
  */
 inline ReanchorOutcome ApplyCurrentFiberStackProtection(
     SetStackProtectionFn set_stack_protection, PyThreadState *thread_state) {
   void *stack_start_addr = nullptr;
   size_t stack_size = 0;
   if (!FiberState::GetCurrentFiberStackBounds(&stack_start_addr, &stack_size)) {
-    // Both call sites are meant to run on a tracked fiber stack, so reaching
-    // here means the caller drifted off the fiber or onto an untracked one.
-    // Leaving the bounds alone is safe, but the leak this guards against comes
-    // back, so make that visible rather than silent.
-    RAY_LOG_EVERY_N(WARNING, 1000)
-        << "Async actor task is not running on a tracked fiber stack; leaving "
-           "CPython stack protection unchanged. On Python 3.14+ this "
-           "reintroduces a per-task memory leak in async actors.";
+    // Deliberately silent: whether being off-fiber is a problem depends on the
+    // caller. It is expected after a yield on the regular task-execution thread
+    // and a bug at async-actor task entry, so the callers below decide.
     return ReanchorOutcome::kNotOnFiberStack;
   }
 
@@ -81,9 +78,10 @@ inline ReanchorOutcome ApplyCurrentFiberStackProtection(
   return ReanchorOutcome::kApplied;
 }
 
+namespace internal {
+
 /**
- * Points CPython's C-stack-overflow detection at the Boost fiber stack that the
- * calling thread is currently running on.
+ * @brief Re-anchors this thread's Python stack protection to its active fiber.
  *
  * CPython 3.14 replaced its recursion counter with a comparison of the live
  * stack pointer against the bounds recorded for the thread. Async-actor tasks
@@ -92,35 +90,73 @@ inline ReanchorOutcome ApplyCurrentFiberStackProtection(
  * GC-object deallocation to a list that Ray never drains, leaking the whole
  * object graph of each task.
  *
- * Call this at async-actor task entry and again after `YieldCurrentFiber`
- * returns: concurrent fibers share one thread state, so a resumed fiber may find
- * the bounds pointing at whichever fiber ran in the meantime.
+ * Requires the GIL. Never raises; any error CPython reports is cleared here.
  *
- * Requires the GIL. Never raises: a failure to install the bounds is reported
- * through the log, because the only consequence is that the leak returns.
- *
- * This is a no-op before CPython 3.14, on Windows, and on CPython 3.14.0/3.14.1,
- * where `PyUnstable_ThreadState_SetStackProtection` does not exist yet. The
- * symbol is resolved with `dlsym` rather than linked, so one build works across
- * all 3.14 patch releases.
+ * @return The outcome, or an empty optional when re-anchoring does not apply at
+ *   all: before CPython 3.14, on Windows, and on CPython 3.14.0/3.14.1, which
+ *   lack `PyUnstable_ThreadState_SetStackProtection`. The symbol is resolved
+ *   with `dlsym` rather than linked, so one build covers every 3.14 release.
  */
-inline void ReanchorStackProtectionToCurrentFiberStack() {
+inline std::optional<ReanchorOutcome> TryReanchorStackProtection() {
 #if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
   static SetStackProtectionFn set_stack_protection =
       reinterpret_cast<SetStackProtectionFn>(
           dlsym(RTLD_DEFAULT, "PyUnstable_ThreadState_SetStackProtection"));
   if (set_stack_protection == nullptr) {
     // CPython 3.14.0 and 3.14.1 do not export the API yet.
-    return;
+    return std::nullopt;
   }
 
-  if (ApplyCurrentFiberStackProtection(set_stack_protection, PyThreadState_Get()) ==
-      ReanchorOutcome::kRejected) {
+  const ReanchorOutcome outcome =
+      ApplyCurrentFiberStackProtection(set_stack_protection, PyThreadState_Get());
+  if (outcome == ReanchorOutcome::kRejected) {
     // Only happens for sizes below _PyOS_MIN_STACK_SIZE, which Ray's fiber
     // stacks are comfortably above. Clear it regardless so nothing escapes.
     PyErr_Clear();
   }
+  return outcome;
+#else
+  return std::nullopt;
 #endif
+}
+
+}  // namespace internal
+
+/**
+ * @brief Re-anchors stack protection at async-actor task entry, where the
+ * caller is required to be running on a fiber.
+ *
+ * Every actor task on an async actor is dispatched through FiberState, so
+ * failing to find a fiber stack here means the bounds were left pointing
+ * somewhere else and the per-task leak is back. That is worth reporting.
+ *
+ * Requires the GIL. Do not use for actor creation tasks, which run on the
+ * regular task-execution thread; see ReanchorStackProtectionAfterFiberYield.
+ */
+inline void ReanchorStackProtectionForAsyncActorTask() {
+  if (internal::TryReanchorStackProtection() == ReanchorOutcome::kNotOnFiberStack) {
+    RAY_LOG_EVERY_N(WARNING, 1000)
+        << "Async actor task is not running on a tracked fiber stack; leaving "
+           "CPython stack protection unchanged. On Python 3.14+ this "
+           "reintroduces a per-task memory leak in async actors.";
+  }
+}
+
+/**
+ * @brief Re-anchors stack protection after a fiber yield, restoring this
+ * fiber's bounds before Python code resumes on it.
+ *
+ * Concurrent fibers share one thread state, so a resumed fiber may find the
+ * bounds pointing at whichever fiber ran while it was parked.
+ *
+ * Being off-fiber is legitimate here and is a silent no-op: an async actor's
+ * creation task yields on the regular task-execution thread before any
+ * FiberState exists, and CPython's own bounds are already correct there.
+ *
+ * Requires the GIL.
+ */
+inline void ReanchorStackProtectionAfterFiberYield() {
+  internal::TryReanchorStackProtection();
 }
 
 }  // namespace core
