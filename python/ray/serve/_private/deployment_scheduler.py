@@ -1287,7 +1287,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             ordered_running_replicas_of_target_deployment[replica_node_id].append(
                 replica_id
             )
-            node_newest_replica_rank.setdefault(replica_node_id, rank)
+            if replica_node_id not in node_newest_replica_rank:
+                node_newest_replica_rank[replica_node_id] = rank
+
+        num_ordered_replicas = len(ordered_running_replicas)
 
         # Prioritize based on following priority:
         # 1. Prioritize replicas not on the head node because we can't relinquish the head node.
@@ -1308,7 +1311,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 int(is_head_node),
                 int(match_labels),
                 len(all_replicas),
-                node_newest_replica_rank.get(node_id, len(ordered_running_replicas)),
+                node_newest_replica_rank.get(node_id, num_ordered_replicas),
             )
 
         for node_id, _ in sorted(
