@@ -191,10 +191,9 @@ def _get_vllm_engine_config(
             from vllm.platforms import current_platform
 
             current_platform.device_type = device_type
-
-        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-            **engine_config.get_initialization_kwargs()
-        )
+        
+        init_kwargs = _convert_config_dicts(engine_config.get_initialization_kwargs())
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**init_kwargs)
         vllm_engine_config = async_engine_args.create_engine_config(
             usage_context=UsageContext.OPENAI_API_SERVER
         )
