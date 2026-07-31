@@ -118,11 +118,13 @@ class Node:
             ray_params.resource_isolation_config
         )
         self.all_processes: dict = {}
-        # Process types that were SIGKILLed but could not be reaped within
-        # KILLED_PROCESS_REAP_TIMEOUT_SECONDS. They stay in `all_processes` so
-        # liveness checks still report them, but they are not killed again:
-        # retrying only pays the timeout a second time.
-        self._unreaped_process_types: set = set()
+        # Processes that were SIGKILLed but could not be reaped within
+        # KILLED_PROCESS_REAP_TIMEOUT_SECONDS, keyed by process type. They are
+        # removed from `all_processes` like any other killed process, so
+        # restarts and `remaining_processes_alive` behave exactly as before,
+        # but `live_processes` still reports them while they are running so
+        # teardown assertions can see a process that outlived its kill.
+        self._unreaped_processes: dict = {}
         self.removal_lock = threading.Lock()
 
         self.ray_init_cluster = ray_init_cluster
@@ -1834,16 +1836,10 @@ class Node:
         """See `_kill_process_type`."""
         if process_type not in self.all_processes:
             return
-        if process_type in self._unreaped_process_types:
-            # Already SIGKILLed and left unreaped. Killing it again would only
-            # pay KILLED_PROCESS_REAP_TIMEOUT_SECONDS a second time, and
-            # `kill_all_processes` reaches raylet and GCS twice by design.
-            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
         wait_timeout_seconds = 1
-        unreaped_process_infos = []
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1919,18 +1915,18 @@ class Node:
                             "uninterruptible syscall, such as a blocking disk "
                             "write. Continuing shutdown without it."
                         )
-                        # Keep it in `all_processes` so `live_processes` and
-                        # `any_processes_alive` still report it. Dropping it
-                        # here would let teardown assertions such as
-                        # `Cluster.remove_node`'s pass while the process is
-                        # still running.
-                        unreaped_process_infos.append(process_info)
+                        # Track it separately from `all_processes` so
+                        # `live_processes` still reports it while it runs.
+                        # Leaving it in `all_processes` instead would block a
+                        # later restart of this process type and would make
+                        # `remaining_processes_alive` report a failure once the
+                        # process finally died, even though it was killed on
+                        # purpose.
+                        self._unreaped_processes.setdefault(process_type, []).append(
+                            process_info
+                        )
 
-        if unreaped_process_infos:
-            self.all_processes[process_type] = unreaped_process_infos
-            self._unreaped_process_types.add(process_type)
-        else:
-            del self.all_processes[process_type]
+        del self.all_processes[process_type]
 
     def kill_redis(self, check_alive: bool = True):
         """Kill the Redis servers.
@@ -2081,6 +2077,13 @@ class Node:
         """
         result = []
         for process_type, process_infos in self.all_processes.items():
+            for process_info in process_infos:
+                if process_info.process.poll() is None:
+                    result.append((process_type, process_info.process))
+        # Processes that outlived their SIGKILL are no longer in
+        # `all_processes`, but they are still running and callers checking
+        # liveness need to see them.
+        for process_type, process_infos in self._unreaped_processes.items():
             for process_info in process_infos:
                 if process_info.process.poll() is None:
                     result.append((process_type, process_info.process))
