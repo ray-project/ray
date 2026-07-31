@@ -95,6 +95,9 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
 void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
                                         rpc::GetClusterIdReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // Registered with inline dispatch: runs on gRPC polling threads, possibly
+  // concurrently, so it must stay a lock-free read of the immutable
+  // `cluster_id_` and must not touch any mutex-guarded node state.
   reply->set_cluster_id(cluster_id_.Binary());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

@@ -106,5 +106,34 @@ class TestGrpcService : public GrpcService {
   TestServiceHandler &service_handler_;
 };
 
+/// Same as TestGrpcService, but Ping is registered with INLINE dispatch: the
+/// handler runs on the gRPC polling thread and never touches the service's
+/// io_context.
+class TestGrpcServiceInlineDispatch : public GrpcService {
+ public:
+  explicit TestGrpcServiceInlineDispatch(instrumented_io_context &handler_io_service_,
+                                         TestServiceHandler &handler)
+      : GrpcService(handler_io_service_), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) override {
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH_INLINE_DISPATCH(
+        TestService, Ping, /*max_active_rpcs=*/1, ClusterIdAuthType::NO_AUTH);
+  }
+
+ private:
+  /// The grpc async service object.
+  TestService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  TestServiceHandler &service_handler_;
+};
+
 }  // namespace rpc
 }  // namespace ray

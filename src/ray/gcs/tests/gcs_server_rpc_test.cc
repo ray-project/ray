@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/asio/asio_chaos.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
@@ -602,6 +603,29 @@ TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
   release.set_value();
   EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
                                   std::chrono::seconds(30)));
+}
+
+TEST_F(GcsServerTest, GetClusterIdNotDelayedByNodeInfoIoContextBacklog) {
+  // Injecting a 10s asio delay on the GetClusterId handler simulates a
+  // node_manager io_context backlogged behind RegisterNode / GetAllNodeInfo
+  // storms (the delay rides the io_service post of HandleRequestImpl).
+  // GetClusterId is registered with inline dispatch and replies on the gRPC
+  // polling thread, so the delay must not apply and a 2s deadline suffices.
+  // Pre-fix, this call fails with DEADLINE_EXCEEDED.
+  RayConfig::instance().testing_asio_delay_us() =
+      "NodeInfoGcsService.grpc_server.GetClusterId=10000000:10000000";
+  ray::asio::testing::Init();
+
+  rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  auto status =
+      client_->SyncGetClusterId(std::move(request), &reply, /*timeout_ms=*/2000);
+
+  RayConfig::instance().testing_asio_delay_us() = "";
+  ray::asio::testing::Init();
+
+  ASSERT_TRUE(status.ok()) << status;
+  ASSERT_FALSE(ClusterID::FromBinary(reply.cluster_id()).IsNil());
 }
 
 }  // namespace ray

@@ -47,6 +47,19 @@ enum class ClusterIdAuthType {
   EMPTY_AUTH,  // Accept only empty cluster ID.
 };
 
+// How a ServerCall's handler is dispatched after auth has run on the gRPC
+// polling thread.
+enum class ServerCallDispatchPolicy {
+  // Post the handler onto the service's io_context (default).
+  kPosted = 0,
+  // Run the handler inline on the gRPC polling thread so it cannot queue
+  // behind unrelated work on the service's io_context. Only for trivial,
+  // non-blocking, thread-safe handlers: anything slow here stalls request
+  // polling for the whole server (see #59448, which reverted #55904 for
+  // exactly that reason).
+  kInline = 1,
+};
+
 /// Get the thread pool for the gRPC server.
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
@@ -166,11 +179,15 @@ using HandleRequestFunctionWithGrpcPeer = void (ServiceHandler::*)(
 /// \tparam Reply Type of the reply message.
 /// \tparam PassGrpcPeer If true, passes `context_.peer()` to the handler as an extra
 /// argument (see HandleRequestFunctionWithGrpcPeer).
+/// \tparam DispatchPolicy Whether the handler is posted to the service's io_context
+/// (default) or runs inline on the gRPC polling thread (see
+/// ServerCallDispatchPolicy).
 template <class ServiceHandler,
           class Request,
           class Reply,
           ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH,
-          bool PassGrpcPeer = false>
+          bool PassGrpcPeer = false,
+          ServerCallDispatchPolicy DispatchPolicy = ServerCallDispatchPolicy::kPosted>
 class ServerCallImpl : public ServerCall {
   using HandleFn = std::conditional_t<
       PassGrpcPeer,
@@ -264,7 +281,17 @@ class ServerCallImpl : public ServerCall {
     if (record_metrics_) {
       server_metrics_.req_handling.Record(1.0, {{"Method", call_name_}});
     }
-    if (!io_service_.stopped()) {
+    if constexpr (DispatchPolicy == ServerCallDispatchPolicy::kInline) {
+      static_assert(!std::is_base_of_v<DelayedServiceHandler, ServiceHandler>,
+                    "Inline dispatch would block a gRPC polling thread until the "
+                    "service handler finishes initializing; use kPosted instead.");
+      // Run the handler inline on the gRPC polling thread, skipping the
+      // io_context so this call cannot queue behind unrelated work. The
+      // handler must be non-blocking, O(1), and thread-safe (it may run
+      // concurrently on every polling thread). RAY_testing_asio_delay_us does
+      // not apply to inline methods: there is no post to delay.
+      HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
+    } else if (!io_service_.stopped()) {
       io_service_.post(
           [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
             HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
@@ -474,7 +501,13 @@ class ServerCallImpl : public ServerCall {
 
   GrpcServerMetrics &server_metrics_;
 
-  template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5, bool T6>
+  template <class T1,
+            class T2,
+            class T3,
+            class T4,
+            ClusterIdAuthType T5,
+            bool T6,
+            ServerCallDispatchPolicy T7>
   friend class ServerCallFactoryImpl;
 };
 
@@ -503,7 +536,8 @@ template <class GrpcService,
           class Request,
           class Reply,
           ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH,
-          bool PassGrpcPeer = false>
+          bool PassGrpcPeer = false,
+          ServerCallDispatchPolicy DispatchPolicy = ServerCallDispatchPolicy::kPosted>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
   using HandleFn = std::conditional_t<
@@ -557,17 +591,20 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call =
-        new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth, PassGrpcPeer>(
-            *this,
-            service_handler_,
-            handle_request_function_,
-            io_service_,
-            call_name_,
-            cluster_id_,
-            auth_token_,
-            record_metrics_,
-            server_metrics_);
+    auto call = new ServerCallImpl<ServiceHandler,
+                                   Request,
+                                   Reply,
+                                   EnableAuth,
+                                   PassGrpcPeer,
+                                   DispatchPolicy>(*this,
+                                                   service_handler_,
+                                                   handle_request_function_,
+                                                   io_service_,
+                                                   call_name_,
+                                                   cluster_id_,
+                                                   auth_token_,
+                                                   record_metrics_,
+                                                   server_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
