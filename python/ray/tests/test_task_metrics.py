@@ -253,6 +253,7 @@ ray.get(w)
         timeout=30,
         retry_interval_ms=500,
     )
+    timeseries.flush()
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
         ("a", "RUNNING"): 1.0,
@@ -309,6 +310,7 @@ ray.get(w)
         timeout=30,
         retry_interval_ms=500,
     )
+    timeseries.flush()
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
         ("a", "RUNNING"): 1.0,
