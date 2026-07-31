@@ -6,6 +6,23 @@ from ray.data.exceptions import ExecutionTimeoutError
 
 
 class NoProgressGuard:
+    """Fails an execution that stops making progress.
+
+    Progress is the sum of ``num_outputs_taken`` across the topology, which
+    ticks whenever data moves anywhere in the pipeline.
+
+    It also freezes when the consumer is the bottleneck, since a slow
+    loop between iterations backpressures every operator upstream. Failing
+    those executions would be worse than the hang this guards against, so the
+    stall clock advances only while the consumer is idling.
+
+    Args:
+        topology: The topology being executed, read for progress counters.
+        timeout_s: Seconds without progress before failing. Non-positive
+            disables the guard.
+        clock: Monotonic time source, injectable for testing.
+    """
+
     def __init__(
         self,
         topology: Topology,
@@ -19,10 +36,19 @@ class NoProgressGuard:
 
         self._last_progress_time = clock()
         self._last_outputs_taken = self._total_outputs_taken()
-        return
+
+    @property
+    def enabled(self) -> bool:
+        return self._timeout_s > 0
 
     def check(self, consumer_idling: bool) -> None:
-        if self._timeout_s < 0:
+        """Record progress since the last call, and fail if there was none.
+
+        Args:
+            consumer_idling: Whether the executor's output queue is empty. When
+                False the caller is the bottleneck, so the stall clock resets.
+        """
+        if not self.enabled:
             return
 
         current_time = self._clock()
@@ -30,13 +56,16 @@ class NoProgressGuard:
 
         new_progress = current_outputs_taken > self._last_outputs_taken
         time_elapsed = current_time - self._last_progress_time
+        # Both conditions must reset the clock. Resetting only on progress
+        # would let elapsed time accumulate while a slow consumer holds the
+        # pipeline back, then fail the moment it catches up.
         if new_progress or not consumer_idling:
             self._last_progress_time = current_time
             self._last_outputs_taken = current_outputs_taken
             return
 
-        if time_elapsed > self._timeout_s:
-            raise ExecutionTimeoutError(self._error_message)
+        if time_elapsed >= self._timeout_s:
+            raise ExecutionTimeoutError(self._error_message(time_elapsed))
 
     def _total_outputs_taken(self) -> int:
         return sum(op.metrics.num_outputs_taken for op in self._topology)

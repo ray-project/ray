@@ -1742,6 +1742,20 @@ py_test(
 )
 
 py_test(
+    name = "test_no_progress_guard",
+    size = "medium",
+    srcs = ["tests/test_no_progress_guard.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_ref_bundle",
     size = "small",
     srcs = ["tests/test_ref_bundle.py"],
