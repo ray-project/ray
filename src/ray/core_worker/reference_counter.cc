@@ -843,11 +843,6 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
-  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-    callback(it->first);
-  }
-  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
-
   // Only the owner is allowed to broadcast a free for an object. Borrowers
   // also reach this code path when their local refs drop to zero, but they
   // must not tell the cluster to evict an object that is still owned
@@ -862,6 +857,10 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     }
   }
 
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+    callback(it->first);
+  }
+  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
