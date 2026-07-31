@@ -579,8 +579,9 @@ class DataContext:
         use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
             the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
             driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True; set
-            ``RAY_DATA_USE_DATASOURCE_V2=0`` to fall back to the V1 read path.
+            ``ParquetScanner`` / ``ParquetFileReader``). Temporarily set to True;
+            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
+            V2).
             Only ``read_parquet()`` consults this flag — every other read API
             reads through V1 regardless of its value.
         parquet_chunker_target_chunk_size: Target chunk size in bytes used by
