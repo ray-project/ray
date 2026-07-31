@@ -1,3 +1,6 @@
+# choose_replica kwarg carrying the prompt token IDs to KV-aware routers.
+REQUEST_TOKEN_IDS_KWARG = "request_token_ids"
+
 # experimental_configs key overriding the per-node base port.
 KV_EVENTS_PORT_BASE_KEY = "KV_EVENTS_PORT_BASE"
 DEFAULT_KV_EVENTS_PORT_BASE = 5557
@@ -16,3 +19,7 @@ DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
 # replica whose completion event was lost (e.g. a batch dropped on a
 # transient actor outage) would otherwise leave its entry tracked forever.
 REQUEST_TRACKING_TTL_S = 3600
+
+# Bound best-effort lifecycle broadcast delivery so one slow ingress replica
+# cannot stall an engine replica's whole lifecycle-event queue indefinitely.
+LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3
