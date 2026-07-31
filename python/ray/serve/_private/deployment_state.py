@@ -2934,6 +2934,7 @@ class DeploymentState:
         self._rank_manager = DeploymentRankManager(
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
+        self._last_rank_membership_ids: Optional[Set[str]] = None
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -4972,24 +4973,41 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get()
+        self._maybe_check_rank_consistency()
+
+    def _maybe_check_rank_consistency(self) -> None:
+        """Run the rank-consistency pass only when replica membership changed.
+
+        The pass is O(N) with heavy constants and used to run on every
+        control-loop tick in steady state -- at 10K+ replicas it monopolizes
+        the controller loop. Rank consistency can only be violated by
+        membership changes, so the active replica-id set gates it.
+        """
+        # O(1) guards first -- `get()` below copies the whole replica list, and these
+        # two rule out the busiest ticks (rollouts, migrations) without paying for it.
         if (
-            active_replicas
-            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            self._curr_status_info.status != DeploymentStatus.HEALTHY
             # Skip consistency check if there are STARTING replicas. During node
             # migration, new replicas are created in STARTING state (without ranks)
             # after the status is set to HEALTHY. Running the consistency check
             # with STARTING replicas causes "active keys without ranks" error.
-            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
+            or self._replicas.count(states=[ReplicaState.STARTING]) != 0
         ):
-            replicas_to_reconfigure = (
-                self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                    active_replicas,
-                )
+            return
+        active_replicas = self._replicas.get()
+        if not active_replicas:
+            return
+        active_replica_ids = {r.replica_id.unique_id for r in active_replicas}
+        if active_replica_ids == self._last_rank_membership_ids:
+            return
+        replicas_to_reconfigure = (
+            self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                active_replicas,
             )
-
-            # Reconfigure replicas that had their ranks reassigned
-            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        )
+        # Reconfigure replicas that had their ranks reassigned
+        self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+        self._last_rank_membership_ids = active_replica_ids
 
     def _handle_deployment_actor_failed_health_check(
         self,
