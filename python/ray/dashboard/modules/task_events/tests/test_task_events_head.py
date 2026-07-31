@@ -13,7 +13,7 @@ from ray._common.ray_constants import (
 from ray._common.test_utils import async_wait_for_condition
 from ray._raylet import JobID
 from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
-from ray.core.generated.common_pb2 import TaskType
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_task_definition_event_pb2 import TaskDefinitionEvent
 from ray.dashboard.modules.task_events.task_events_head import TaskEventsHead
@@ -130,33 +130,80 @@ def test_deserialize_request_roundtrip():
     assert len(request.events_data.events) == 1
 
 
-def test_handle_worker_delta_buffers():
-    head = _make_head()
-    assert head.num_dead_workers_received == 0
+_HEAD = "ray.dashboard.modules.task_events.task_events_head"
+_WORKER = b"worker_1"
 
-    head._handle_worker_delta(
-        gcs_pb2.WorkerDeltaData(worker_id=b"worker_1", node_id=b"node_1")
+
+def _add_stored_task(head, task_id, worker=None, job=_JOB):
+    event = gcs_pb2.TaskEvents(task_id=task_id, attempt_number=0, job_id=job)
+    event.task_info.type = TaskType.NORMAL_TASK
+    if worker is not None:
+        event.state_updates.worker_id = worker
+    head._store.add_or_replace_task_event(event)
+
+
+def _is_failed(head, task_id) -> bool:
+    task_event = head._store.get_task_event((task_id, 0))
+    return (
+        task_event is not None
+        and TaskStatus.FAILED in task_event.state_updates.state_ts_ns
     )
 
-    assert head.num_dead_workers_received == 1
 
-
-def test_handle_job_update_buffers_finished_job():
+@pytest.mark.asyncio
+async def test_handle_worker_delta_fails_tasks(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     head = _make_head()
+    _add_stored_task(head, _task_id(1), worker=_WORKER)
 
-    head._handle_job_update(
-        gcs_pb2.JobTableData(job_id=b"job_1", is_dead=True, end_time=123)
-    )
+    async def fake_get(worker_id):
+        assert worker_id == _WORKER
+        return gcs_pb2.WorkerTableData(exit_detail="boom", end_time_ms=5)
 
-    assert head.num_finished_jobs_received == 1
+    monkeypatch.setattr(head, "_get_worker_info", fake_get)
+
+    head._handle_worker_delta(gcs_pb2.WorkerDeltaData(worker_id=_WORKER))
+
+    await async_wait_for_condition(lambda: _is_failed(head, _task_id(1)))
 
 
-def test_handle_job_update_ignores_running_job():
+@pytest.mark.asyncio
+async def test_handle_worker_delta_missing_worker_info_is_noop(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     head = _make_head()
+    _add_stored_task(head, _task_id(1), worker=_WORKER)
 
-    head._handle_job_update(gcs_pb2.JobTableData(job_id=b"job_1", is_dead=False))
+    async def fake_get(worker_id):
+        return None
 
-    assert head.num_finished_jobs_received == 0
+    monkeypatch.setattr(head, "_get_worker_info", fake_get)
+
+    head._handle_worker_delta(gcs_pb2.WorkerDeltaData(worker_id=_WORKER))
+    await asyncio.sleep(0.05)
+
+    assert not _is_failed(head, _task_id(1))
+
+
+@pytest.mark.asyncio
+async def test_handle_job_update_finished_fails_tasks(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_JOB_DONE_DELAY_S", 0.0)
+    head = _make_head()
+    _add_stored_task(head, _task_id(1))
+
+    head._handle_job_update(gcs_pb2.JobTableData(job_id=_JOB, is_dead=True, end_time=5))
+
+    await async_wait_for_condition(lambda: _is_failed(head, _task_id(1)))
+
+
+@pytest.mark.asyncio
+async def test_handle_job_update_ignores_running_job():
+    head = _make_head()
+    _add_stored_task(head, _task_id(1))
+
+    head._handle_job_update(gcs_pb2.JobTableData(job_id=_JOB, is_dead=False))
+    await asyncio.sleep(0.05)
+
+    assert not _is_failed(head, _task_id(1))
 
 
 class _FakeSubscriber:
@@ -210,42 +257,56 @@ async def test_gc_job_summary_loop_trims_over_cap(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_worker_death_subscription_loop_buffers(monkeypatch):
+async def test_worker_death_subscription_loop_reconciles(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     head = _make_head()
-    worker_delta = gcs_pb2.WorkerDeltaData(worker_id=b"worker_1", node_id=b"node_1")
-    fake = _FakeSubscriber([(b"key", worker_delta)])
+    _add_stored_task(head, _task_id(1), worker=_WORKER)
+
+    async def fake_get(worker_id):
+        return gcs_pb2.WorkerTableData(exit_detail="boom", end_time_ms=5)
+
+    monkeypatch.setattr(head, "_get_worker_info", fake_get)
+
+    fake = _FakeSubscriber([(b"key", gcs_pb2.WorkerDeltaData(worker_id=_WORKER))])
     monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_events_head."
-        "GcsAioWorkerDeltaSubscriber",
-        lambda address=None: fake,
+        f"{_HEAD}.GcsAioWorkerDeltaSubscriber", lambda address=None: fake
     )
 
     task = asyncio.create_task(head._subscribe_for_worker_deaths())
     try:
-        await async_wait_for_condition(lambda: head.num_dead_workers_received == 1)
+        await async_wait_for_condition(lambda: _is_failed(head, _task_id(1)))
     finally:
         await _cancel(task)
 
 
 @pytest.mark.asyncio
-async def test_job_subscription_loop_buffers_only_finished(monkeypatch):
+async def test_job_subscription_loop_reconciles_only_finished(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_JOB_DONE_DELAY_S", 0.0)
     head = _make_head()
-    running = gcs_pb2.JobTableData(job_id=b"job_1", is_dead=False)
-    finished = gcs_pb2.JobTableData(job_id=b"job_2", is_dead=True)
-    fake = _FakeSubscriber([(b"k1", running), (b"k2", finished)])
-    monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_events_head.GcsAioJobSubscriber",
-        lambda address=None: fake,
+    running_job = JobID.from_int(1).binary()
+    finished_job = JobID.from_int(2).binary()
+    _add_stored_task(head, _task_id(1), job=running_job)
+    _add_stored_task(head, _task_id(2), job=finished_job)
+
+    fake = _FakeSubscriber(
+        [
+            (b"k1", gcs_pb2.JobTableData(job_id=running_job, is_dead=False)),
+            (
+                b"k2",
+                gcs_pb2.JobTableData(job_id=finished_job, is_dead=True, end_time=5),
+            ),
+        ]
     )
+    monkeypatch.setattr(f"{_HEAD}.GcsAioJobSubscriber", lambda address=None: fake)
 
     task = asyncio.create_task(head._subscribe_for_finished_jobs())
     try:
-        await async_wait_for_condition(lambda: head.num_finished_jobs_received == 1)
+        await async_wait_for_condition(lambda: _is_failed(head, _task_id(2)))
     finally:
         await _cancel(task)
 
-    # The running job was filtered out; only the finished one was buffered.
-    assert head.num_finished_jobs_received == 1
+    # The running job was ignored; its task is not failed.
+    assert not _is_failed(head, _task_id(1))
 
 
 if __name__ == "__main__":
