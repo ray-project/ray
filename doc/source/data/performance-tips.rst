@@ -346,6 +346,37 @@ You can configure execution options with the global DataContext. The options are
         object_store_memory=10e9,
     )
 
+Failing executions that stop making progress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An execution can stall indefinitely: a UDF blocked on an external call, a lost
+task, or a cluster that can no longer schedule work after preemption. To keep
+these from holding resources forever, Ray Data fails an execution that goes 30
+minutes without any operator producing or consuming an output, raising
+``ExecutionTimeoutError`` with the names of the stalled operators.
+
+Time spent waiting on a slow consumer doesn't count against this, so a Dataset
+iterated by a slow training loop is never failed no matter how long each step
+takes.
+
+If a UDF is legitimately slower than the timeout, raise it or turn it off:
+
+.. code-block::
+
+    # For an existing Dataset.
+    ds.context.execution_no_progress_timeout_s = 3600
+
+    # For every Dataset created afterward.
+    ray.data.DataContext.get_current().execution_no_progress_timeout_s = 3600
+
+    # Disable entirely.
+    ds.context.execution_no_progress_timeout_s = -1
+
+Each Dataset seals its ``DataContext`` when it's created, so setting the global
+context only affects Datasets created after the change. You can also set
+``RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S`` before the process starts, which is
+the only option when you can't modify the code that creates the Dataset.
+
 Reproducibility
 ---------------
 
