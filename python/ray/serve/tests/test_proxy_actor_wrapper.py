@@ -431,6 +431,35 @@ def test_kill_success_path(ray_shutdown):
     wait_for_condition(wrapper.is_shutdown, timeout=15)
 
 
+def test_kill_older_session_actor_handle(ray_shutdown, caplog):
+    """Verify that calling kill() on an actor handle from a previous Ray session
+    succeeds without raising an exception or logging ERROR-level stack traces."""
+    ray.init(num_cpus=2)
+    actor_handle = FakeShutdownProxy.remote()
+    wrapper = ActorProxyWrapper(
+        logging_config=LoggingConfig(),
+        actor_handle=actor_handle,
+        node_id="test_node_id",
+    )
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    caplog.set_level(logging.INFO, logger=SERVE_LOGGER_NAME)
+    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
+    serve_logger.addHandler(caplog.handler)
+    try:
+        wrapper.kill()
+        error_records = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.ERROR and "test_node_id" in r.getMessage()
+        ]
+        assert len(error_records) == 0
+    finally:
+        serve_logger.removeHandler(caplog.handler)
+
+
 if __name__ == "__main__":
     import sys
 

@@ -297,9 +297,10 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except (RayActorError, ActorUnschedulableError):
-            # The actor is dead or permanently unschedulable (e.g. hard-pinned
-            # to a node that no longer exists), so it's ready for shutdown.
+        except (RayActorError, ActorUnschedulableError, RayError, Exception):
+            # The actor is dead, permanently unschedulable (e.g. hard-pinned
+            # to a node that no longer exists), or from an older session (e.g.
+            # during RayService GCS restoration), so it's ready for shutdown.
             return True
         except GetTimeoutError:
             pass
@@ -351,10 +352,13 @@ class ActorProxyWrapper(ProxyWrapper):
         # Force kill regardless of whether graceful shutdown succeeded.
         try:
             ray.kill(self._actor_handle, no_restart=True)
-        except RayError:
+        except RayError as e:
             # Catch RayError (including ActorHandleNotFoundError for older-session handles)
             # so expected GCS restoration edge cases do not crash the controller.
-            logger.exception(f"Force kill of proxy actor on {self._node_id} failed.")
+            logger.info(
+                f"Force kill of proxy actor on {self._node_id} failed ({e}); "
+                "actor may already be dead or belong to an older session."
+            )
 
 
 class ProxyState:
