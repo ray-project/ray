@@ -19,12 +19,6 @@ class NoProgressGuard:
 
         self._last_progress_time = clock()
         self._last_outputs_taken = self._total_outputs_taken()
-
-        self._error_message = (
-            f"Execution has made no progress for {self._timeout_s} seconds. "
-            "This is likely due to a deadlock or other bug in Ray Data or Ray Core."
-            "In case of slow consumers, consider increasing the timeout via `DataContext.execution_no_progress_timeout_s`."
-        )
         return
 
     def check(self, consumer_idling: bool) -> None:
@@ -46,3 +40,31 @@ class NoProgressGuard:
 
     def _total_outputs_taken(self) -> int:
         return sum(op.metrics.num_outputs_taken for op in self._topology)
+
+    def _error_message(self, elapsed_s: float) -> str:
+        lines = [
+            f"Dataset execution made no progress for {elapsed_s:.0f}s "
+            f"(timeout: {self._timeout_s:.0f}s). No operator produced or "
+            f"consumed an output in that window."
+        ]
+
+        stalled = [op for op in self._topology if not op.has_completed()]
+        if stalled:
+            lines.append("Operators still running:")
+            for op in stalled:
+                metrics = op.metrics
+                lines.append(
+                    f"  - {op.name}: {op.num_active_tasks()} active task(s), "
+                    f"{metrics.num_tasks_finished} finished, "
+                    f"{metrics.num_outputs_taken} outputs taken"
+                )
+
+        lines.append(
+            "If your UDF is legitimately this slow, raise the timeout for this "
+            "Dataset with `ds.context.execution_no_progress_timeout_s = <seconds>`, "
+            "or set it to -1 to disable. To change the default, set "
+            "`DataContext.get_current().execution_no_progress_timeout_s` before "
+            "creating a Dataset, or set "
+            "RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S before starting the process."
+        )
+        return "\n".join(lines)

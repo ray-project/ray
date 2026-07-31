@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -50,7 +51,6 @@ from ray.data._internal.metadata_exporter import (
     Topology as TopologyMetadata,
     sanitize_for_struct,
 )
-from ray.data._internal.no_progress_guard import NoProgressGuard
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
