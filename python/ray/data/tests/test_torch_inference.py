@@ -160,7 +160,7 @@ def test_default_get_device():
     if torch.cuda.is_available():
         assert actor.get_device() == torch.device("cuda")
     else:
-        with pytest.raises(AssertionError):
+        with pytest.raises(RuntimeError, match="CUDA is not available"):
             actor.get_device()
 
 
