@@ -362,8 +362,8 @@ class NodeResources {
   /// Get the set of resource IDs that have explicit available entries.
   std::set<scheduling::ResourceID> GetAvailableResourceIds() const;
 
-  /// Subtract resources from available, clamping each entry to 0.
-  void SubtractAvailable(const ResourceSet &resource_set);
+  /// Subtract resources from available, dropping any entry that goes negative.
+  void SubtractAvailableAndRemoveNegative(const ResourceSet &resource_set);
 
   /// Set a single resource's available to an explicit scalar value.
   void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
@@ -373,9 +373,6 @@ class NodeResources {
 
   /// Return available resources as a name->value map.
   absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
-
-  /// Returns true if the resource has an explicit available entry.
-  bool HasAvailableResource(scheduling::ResourceID resource_id) const;
 
   /// Read-only access to the entire available resource set.
   const NodeResourceSet &GetAvailable() const;

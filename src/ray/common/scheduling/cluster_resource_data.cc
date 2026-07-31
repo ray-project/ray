@@ -175,7 +175,7 @@ std::set<scheduling::ResourceID> NodeResources::GetAvailableResourceIds() const 
   return available.ExplicitResourceIds();
 }
 
-void NodeResources::SubtractAvailable(const ResourceSet &resource_set) {
+void NodeResources::SubtractAvailableAndRemoveNegative(const ResourceSet &resource_set) {
   available -= resource_set;
   available.RemoveNegative();
 }
@@ -191,10 +191,6 @@ void NodeResources::SetAvailable(NodeResourceSet resource_set) {
 
 absl::flat_hash_map<std::string, double> NodeResources::GetAvailableResourceMap() const {
   return available.GetResourceMap();
-}
-
-bool NodeResources::HasAvailableResource(scheduling::ResourceID resource_id) const {
-  return available.Has(resource_id);
 }
 
 const NodeResourceSet &NodeResources::GetAvailable() const { return available; }
