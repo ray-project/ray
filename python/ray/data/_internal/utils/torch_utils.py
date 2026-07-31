@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Union
+from collections.abc import Mapping
+from typing import Any, Optional, Union
 
 import torch
 
@@ -47,3 +48,31 @@ class DefaultFinalizeFn(FinalizeFn):
                 non_blocking=DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
             )
         return FinalizedData(data=batch)
+
+
+def _iter_tensors(batch: TensorBatchType):
+    """Yield every tensor in a TensorBatchType, recursively."""
+    if isinstance(batch, torch.Tensor):
+        yield batch
+    elif isinstance(batch, Mapping):
+        for value in batch.values():
+            yield from _iter_tensors(value)
+    elif isinstance(batch, (list, tuple)):
+        for value in batch:
+            yield from _iter_tensors(value)
+
+
+def find_tensor_off_device(
+    batch: TensorBatchType, device: torch.device
+) -> Optional[torch.Tensor]:
+    """Return the first tensor in ``batch`` not on ``device``, else None.
+
+    A ``device`` without an index (e.g. plain ``cuda``) matches any index of
+    that device type.
+    """
+    for tensor in _iter_tensors(batch):
+        if tensor.device.type != device.type or (
+            device.index is not None and tensor.device.index != device.index
+        ):
+            return tensor
+    return None

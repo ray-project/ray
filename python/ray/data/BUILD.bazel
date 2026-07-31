@@ -1215,6 +1215,20 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_inference",
+    size = "small",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_dynamic_block_split",
     size = "large",
     srcs = ["tests/test_dynamic_block_split.py"],
