@@ -1566,6 +1566,20 @@ def test_actor_init_death_budget_with_in_actor_retries(
 ):
     """Tests that the pool-level death budget counts dead actor processes,
     not in-actor init retry attempts (actor_init_retry_on_errors runs first).
+
+    actor_init_max_retries=1 gives each actor process 2 init attempts, so the
+    first 3 init failures play out as:
+
+    T1: actor process 1 fails once and retries in-process.
+    T2: actor process 1 fails again, exhausts its retry, and dies.
+    T3: the death is charged to the pool budget
+        (max_consecutive_actor_init_deaths=1, so this one is tolerated) and
+        actor process 2 is started as a replacement.
+    T4: actor process 2 fails once and retries in-process.
+    T5: actor process 2 succeeds.
+
+    The budget is never exceeded because only one actor process died, even
+    though init failed 3 times overall.
     """
     ctx = ray.data.DataContext.get_current()
     ctx.actor_init_retry_on_errors = True
@@ -1574,10 +1588,7 @@ def test_actor_init_death_budget_with_in_actor_retries(
     # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
-    # Fail the first 3 init attempts. With actor_init_max_retries=1 (2
-    # attempts per actor process): process 1 fails twice and dies (1 budget
-    # charge); its replacement, process 2, fails once, then succeeds on its
-    # in-actor retry (no charge).
+    # Fail the first 3 init attempts; see the timeline above.
     mapper = _make_flaky_init_mapper(3)
     result = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
     assert len(result.take_all()) == 10
