@@ -318,7 +318,6 @@ python/ray/data/tests/test_progress_manager.py
 python/ray/data/tests/test_projection_fusion.py
 python/ray/data/tests/test_push_based_shuffle.py
 python/ray/data/tests/test_random_e2e.py
-python/ray/data/tests/test_ranker.py
 python/ray/data/tests/test_ref_bundle.py
 python/ray/data/tests/test_reservation_based_resource_allocator.py
 python/ray/data/tests/test_resource_manager.py
@@ -352,6 +351,7 @@ python/ray/data/tests/unit/test_expression_visitor.py
 python/ray/data/tests/unit/test_fifo_bundle_queue.py
 python/ray/data/tests/unit/test_object_extension.py
 python/ray/data/tests/unit/test_path_util.py
+python/ray/data/tests/unit/test_ranker.py
 python/ray/data/tests/unit/test_reordering_bundle_queue.py
 python/ray/data/tests/unit/test_resource_manager.py
 python/ray/data/tests/unit/test_throughput_solver.py
