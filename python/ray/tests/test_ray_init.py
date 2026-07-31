@@ -96,6 +96,7 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
     """Run a blocked ray start command and check that ray.init() connects to it."""
     blocked_start_cmd = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--num-cpus", "1999"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )

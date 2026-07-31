@@ -297,9 +297,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return None
             return pd.ArrowDtype(t)
 
+        # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
+        # pre-2.56 numpy conversion (standard Arrow types -> numpy dtypes). See
+        # https://github.com/ray-project/ray/issues/64765.
         df = self._table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
-            types_mapper=_types_mapper,
+            types_mapper=(
+                _types_mapper if ctx.enable_arrow_backed_pandas_conversion else None
+            ),
         )
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
