@@ -5167,6 +5167,26 @@ def _delta_partition_field_types(dt) -> Dict[str, type]:
     return field_types
 
 
+def _delta_output_columns(columns: Optional[List[str]], include_paths: bool):
+    """Columns a ``read_delta`` result should end up with, in order.
+
+    ``path`` is synthesized rather than read, so it survives an explicit
+    ``columns`` projection instead of being filtered out by it. Both the
+    empty-table shortcut and a real read narrow to this same list, which is
+    what keeps their schemas identical under the same options.
+    """
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        INCLUDE_PATHS_COLUMN_NAME,
+    )
+
+    if columns is None:
+        return None
+    output = list(columns)
+    if include_paths and INCLUDE_PATHS_COLUMN_NAME not in output:
+        output.append(INCLUDE_PATHS_COLUMN_NAME)
+    return output
+
+
 def _empty_delta_dataset(dt, columns: Optional[List[str]], include_paths: bool):
     """Build a zero-row dataset with the schema the log declares.
 
@@ -5186,6 +5206,7 @@ def _empty_delta_dataset(dt, columns: Optional[List[str]], include_paths: bool):
         schema = schema.append(
             pyarrow.field(INCLUDE_PATHS_COLUMN_NAME, pyarrow.string())
         )
+    columns = _delta_output_columns(columns, include_paths)
     if columns is not None:
         missing = [c for c in columns if schema.get_field_index(c) == -1]
         if missing:

@@ -413,6 +413,45 @@ def test_empty_table_honors_read_options(
     assert ds.count() == 0
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"columns": ["a"]},
+        {"include_paths": True},
+        {"columns": ["a"], "include_paths": True},
+    ],
+    ids=["plain", "columns", "include-paths", "columns+include-paths"],
+)
+def test_empty_and_populated_tables_agree_on_schema(
+    tmp_path, kwargs, restore_data_context
+):
+    """The two are built by completely different code paths.
+
+    An empty table is answered from the log while a populated one goes
+    through the read pipeline, so every combination of options has to be
+    checked -- ``columns`` together with ``include_paths`` diverged because
+    the projection dropped the synthesized ``path`` on one path but not the
+    other. A mismatch here fails any union of the two.
+    """
+    from deltalake import write_deltalake
+
+    empty = os.path.join(tmp_path, "empty")
+    write_deltalake(
+        empty,
+        pa.table(
+            {"a": pa.array([], type=pa.int64()), "b": pa.array([], type=pa.string())}
+        ),
+    )
+    populated = os.path.join(tmp_path, "populated")
+    write_deltalake(populated, pa.table({"a": [1, 2], "b": ["x", "y"]}))
+
+    assert (
+        _read(empty, v2=True, **kwargs).schema().names
+        == _read(populated, v2=True, **kwargs).schema().names
+    )
+
+
 def test_empty_table_rejects_unknown_columns(tmp_path, restore_data_context):
     from deltalake import write_deltalake
 
