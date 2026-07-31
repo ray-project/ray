@@ -42,7 +42,9 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     return false;
   }
 
-  const bool is_snapshot_channel = max_buffered_bytes_ == 0;
+  // WorkerObjectLocationsPubMessage is an idempotent full snapshot: keep only
+  // the latest in-flight message per key_id.
+  const bool is_object_locations_message = msg->has_worker_object_locations_message();
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -53,10 +55,9 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
-    } else if (is_snapshot_channel) {
-      // Only the latest snapshot is meaningful. Subscribers drop the prior
-      // in-flight message for this key via QueueSnapshotMessage; nothing to
-      // clear in-place here.
+    } else if (is_object_locations_message) {
+      // Subscribers replace the prior in-flight locations message for this key
+      // via QueueObjectLocationsMessage. Drop it from entity buffer accounting.
     } else if (max_buffered_bytes_ > 0 &&
                total_size_ + msg_size > static_cast<size_t>(max_buffered_bytes_)) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
@@ -81,7 +82,7 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     }
 
     // The first message in the queue has been published to all subscribers, or
-    // it has been dropped due to memory cap / snapshot coalesce. Subtract it
+    // it has been dropped due to memory cap / locations coalesce. Subtract it
     // from memory accounting.
     total_size_ -= front_msg_size;
     pending_messages_.pop();
@@ -91,8 +92,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   total_size_ += msg_size;
 
   for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
-    if (is_snapshot_channel) {
-      entry.second->QueueSnapshotMessage(msg);
+    if (is_object_locations_message) {
+      entry.second->QueueObjectLocationsMessage(msg);
     } else {
       entry.second->QueueMessage(msg);
     }
@@ -259,13 +260,8 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
         RayConfig::instance().max_grpc_message_size(),
         RayConfig::instance().publisher_entity_buffer_max_bytes());
 
-  case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
-    // Full snapshots: keep only the latest. Avoids unbounded owner-side growth
-    // when a shared ObjectRef gets frequent plasma add/remove reports.
-    return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
-                                         /*max_buffered_bytes=*/0);
-
   case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
+  case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
@@ -293,16 +289,20 @@ void SubscriberState::ConnectToSubscriber(
     max_processed_sequence_id = 0;
   }
 
-  // Clean up messages that have already been processed.
+  // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
     const std::shared_ptr<rpc::PubMessage> &front = mailbox_.front();
-    absl::flat_hash_map<std::pair<int, std::string>,
-                        std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
-        idx = snapshot_index_.find(
-            std::make_pair(static_cast<int>(front->channel_type()), front->key_id()));
-    if (idx != snapshot_index_.end() && idx->second == mailbox_.begin()) {
-      snapshot_index_.erase(idx);
+    // Only erase the index entry when the ACKed message is still the
+    // in-flight WorkerObjectLocationsPubMessage for that key_id.
+    if (front->has_worker_object_locations_message()) {
+      absl::flat_hash_map<std::string,
+                          std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
+          idx = object_locations_message_index_.find(front->key_id());
+      if (idx != object_locations_message_index_.end() &&
+          idx->second == mailbox_.begin()) {
+        object_locations_message_index_.erase(idx);
+      }
     }
     mailbox_.pop_front();
   }
@@ -325,20 +325,19 @@ void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_m
   PublishIfPossible(/*force_noop=*/false);
 }
 
-void SubscriberState::QueueSnapshotMessage(
+void SubscriberState::QueueObjectLocationsMessage(
     const std::shared_ptr<rpc::PubMessage> &pub_message) {
-  RAY_LOG(DEBUG) << "enqueue snapshot: " << pub_message->sequence_id();
-  std::pair<int, std::string> key = std::make_pair(
-      static_cast<int>(pub_message->channel_type()), pub_message->key_id());
-  absl::flat_hash_map<std::pair<int, std::string>,
+  RAY_LOG(DEBUG) << "enqueue object locations: " << pub_message->sequence_id();
+  const std::string &key_id = pub_message->key_id();
+  absl::flat_hash_map<std::string,
                       std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
-      idx = snapshot_index_.find(key);
-  if (idx != snapshot_index_.end()) {
+      idx = object_locations_message_index_.find(key_id);
+  if (idx != object_locations_message_index_.end()) {
     mailbox_.erase(idx->second);
-    snapshot_index_.erase(idx);
+    object_locations_message_index_.erase(idx);
   }
   mailbox_.push_back(pub_message);
-  snapshot_index_.emplace(std::move(key), std::prev(mailbox_.end()));
+  object_locations_message_index_.emplace(key_id, std::prev(mailbox_.end()));
   PublishIfPossible(/*force_noop=*/false);
 }
 
@@ -388,7 +387,8 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
 }
 
 bool SubscriberState::CheckNoLeaks() const {
-  return mailbox_.empty() && snapshot_index_.empty();
+  // If all message in the mailbox has been replied, consider there is no leak.
+  return mailbox_.empty() && object_locations_message_index_.empty();
 }
 
 bool SubscriberState::ConnectionExists() const {

@@ -49,8 +49,9 @@ class EntityState {
    * @brief Construct a new EntityState.
    *
    * @param max_message_size_bytes Maximum size of a single message.
-   * @param max_buffered_bytes -1 unlimited; 0 keep only latest (snapshot);
-   *        >0 drop oldest when buffer would exceed this size.
+   * @param max_buffered_bytes -1 unlimited; >0 drop oldest when buffer would
+   *        exceed this size. WorkerObjectLocationsPubMessage coalescing is
+   *        keyed by message type, not by this value.
    */
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
@@ -112,7 +113,7 @@ class EntityState {
   // publish messages larger than this.
   const size_t max_message_size_bytes_;
 
-  // -1: unlimited; 0: latest only; >0: byte cap.
+  // Set to -1 to disable buffering.
   const int64_t max_buffered_bytes_;
 
   // Total size of inflight messages.
@@ -282,13 +283,14 @@ class SubscriberState {
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /**
-   * @brief Queue a snapshot message, replacing any prior in-flight message
-   *        for the same (channel, key_id). Appends at the end so global
-   *        sequence_id order is preserved (gaps ok, out-of-order not).
+   * @brief Queue a WorkerObjectLocationsPubMessage, replacing any prior
+   *        in-flight locations message for the same key_id. Appends at
+   *        the end so global sequence_id order is preserved (gaps ok,
+   *        out-of-order not).
    *
-   * @param pub_message The snapshot message to queue.
+   * @param pub_message The WorkerObjectLocationsPubMessage to queue.
    */
-  void QueueSnapshotMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
+  void QueueObjectLocationsMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /**
    * @brief Publish all queued messages if possible.
@@ -308,7 +310,11 @@ class SubscriberState {
    */
   bool CheckNoLeaks() const;
 
-  /// Testing only.
+  /**
+   * @brief Returns the number of messages currently queued for this subscriber.
+   *
+   * @return The mailbox size.
+   */
   size_t MailboxSize() const { return mailbox_.size(); }
 
   /**
@@ -339,11 +345,11 @@ class SubscriberState {
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish, in sequence_id order.
   std::list<std::shared_ptr<rpc::PubMessage>> mailbox_;
-  /// For snapshot channels: (channel_type, key_id) -> current mailbox node.
-  /// Lets us replace the prior snapshot for a key without tombstones/scanning.
-  absl::flat_hash_map<std::pair<int, std::string>,
-                      std::list<std::shared_ptr<rpc::PubMessage>>::iterator>
-      snapshot_index_;
+  /// In-flight WorkerObjectLocationsPubMessage: key_id -> mailbox node.
+  /// Lets us replace the prior locations message for a key without
+  /// tombstones/scanning.
+  absl::flat_hash_map<std::string, std::list<std::shared_ptr<rpc::PubMessage>>::iterator>
+      object_locations_message_index_;
   /// Clock used to read the current time.
   ClockInterface &clock_;
   /// The time in which the connection is considered as timed out.

@@ -1384,6 +1384,61 @@ TEST_F(PublisherTest, TestObjectLocationsSnapshotReplaceSurvivesAckOfOlderSeq) {
   EXPECT_EQ(subscriber->MailboxSize(), 0);
 }
 
+TEST_F(PublisherTest, TestObjectLocationsFailureMessageNotCoalesced) {
+  SubscriptionIndex subscription_index(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  ObjectID oid = ObjectID::FromRandom();
+  SubscriberState *subscriber = CreateSubscriber();
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+
+  auto publish_location = [this, &subscription_index, &oid](int object_size) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_worker_object_locations_message()->set_object_size(object_size);
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+  auto publish_failure = [this, &subscription_index, &oid]() {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_failure_message();
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+
+  // Many location updates collapse to one; failure must still be appended.
+  for (int i = 0; i < 50; i++) {
+    publish_location(/*object_size=*/i + 1);
+  }
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+  const int64_t failure_seq = publish_failure();
+  EXPECT_EQ(subscriber->MailboxSize(), 2);
+
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply->pub_messages().size(), 2);
+  EXPECT_TRUE(reply->pub_messages(0).has_worker_object_locations_message());
+  EXPECT_EQ(reply->pub_messages(0).worker_object_locations_message().object_size(), 50);
+  EXPECT_TRUE(reply->pub_messages(1).has_failure_message());
+  EXPECT_EQ(reply->pub_messages(1).sequence_id(), failure_seq);
+
+  // A later location snapshot must not drop an earlier in-flight failure.
+  const int64_t seq_after_failure = publish_location(/*object_size=*/99);
+  EXPECT_EQ(subscriber->MailboxSize(), 2);
+  reply = FlushSubscriber(subscriber, /*max_processed_sequence_id=*/failure_seq);
+  ASSERT_EQ(reply->pub_messages().size(), 1);
+  EXPECT_TRUE(reply->pub_messages(0).has_worker_object_locations_message());
+  EXPECT_EQ(reply->pub_messages(0).sequence_id(), seq_after_failure);
+  EXPECT_EQ(reply->pub_messages(0).worker_object_locations_message().object_size(), 99);
+
+  FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_after_failure);
+  EXPECT_TRUE(subscriber->CheckNoLeaks());
+}
+
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
