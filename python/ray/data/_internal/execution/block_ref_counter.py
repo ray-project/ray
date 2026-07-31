@@ -30,11 +30,6 @@ class BlockRefCounter:
         self._registered_ids: set[bytes] = set()
         # (producer_id -> total live bytes); maintained incrementally for O(1) reads.
         self._bytes_by_producer: Dict[str, int] = defaultdict(int)
-        # Cumulative counters for debugging divergence.
-        self._total_produced_bytes: Dict[str, int] = defaultdict(int)
-        self._total_freed_bytes: Dict[str, int] = defaultdict(int)
-        self._total_produced_blocks: Dict[str, int] = defaultdict(int)
-        self._total_freed_blocks: Dict[str, int] = defaultdict(int)
         self._lock = threading.Lock()
 
     def on_block_produced(
@@ -57,8 +52,6 @@ class BlockRefCounter:
                 return
             self._registered_ids.add(id_binary)
             self._bytes_by_producer[producer_id] += size_bytes
-            self._total_produced_bytes[producer_id] += size_bytes
-            self._total_produced_blocks[producer_id] += 1
 
         def _on_object_freed(id_bytes: bytes) -> None:
             with self._lock:
@@ -67,8 +60,6 @@ class BlockRefCounter:
                     return
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
-                self._total_freed_bytes[producer_id] += size_bytes
-                self._total_freed_blocks[producer_id] += 1
 
         # TODO(srayhome): This raises ValueError for blocks not owned by this
         # worker (e.g., materialized dataset passed to streaming_split). We may
@@ -82,17 +73,6 @@ class BlockRefCounter:
         """Total bytes of live blocks attributed to producer_id."""
         with self._lock:
             return self._bytes_by_producer.get(producer_id, 0)
-
-    def get_debug_stats(self, producer_id: str) -> Dict[str, int]:
-        """Return cumulative block production/freed stats for debugging."""
-        with self._lock:
-            return {
-                "live_bytes": self._bytes_by_producer.get(producer_id, 0),
-                "produced_bytes": self._total_produced_bytes.get(producer_id, 0),
-                "freed_bytes": self._total_freed_bytes.get(producer_id, 0),
-                "produced_blocks": self._total_produced_blocks.get(producer_id, 0),
-                "freed_blocks": self._total_freed_blocks.get(producer_id, 0),
-            }
 
     def clear(self) -> None:
         """Reset all accounting, e.g. on executor shutdown.
