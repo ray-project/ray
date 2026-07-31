@@ -4754,10 +4754,12 @@ class Dataset:
         self,
         path: str,
         *,
+        catalog: Optional["Catalog"] = None,
         mode: "SaveMode" = SaveMode.APPEND,
         partition_by: Optional[List[str]] = None,
         storage_options: Optional[Dict[str, str]] = None,
         schema_mode: str = "merge",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -4809,7 +4811,13 @@ class Dataset:
 
         Args:
             path: URI of the Delta table (e.g. ``/tmp/my_table`` or
-                ``s3://bucket/my_table``).
+                ``s3://bucket/my_table``). If ``catalog`` is set, this is instead
+                the table identifier the catalog resolves (e.g.
+                ``"main.schema.table"``).
+            catalog: Optional catalog (e.g. a Unity Catalog connector) that
+                resolves ``path`` to its physical location and vends
+                credentials for it. See :class:`~ray.data.catalog.Catalog`.
+                Cannot be combined with ``filesystem``.
             mode: Write mode using the :class:`~ray.data.SaveMode` enum. Options:
 
                 * ``SaveMode.APPEND`` (default): Add new data to the table.
@@ -4840,6 +4848,9 @@ class Dataset:
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
                 a brand-new column is supported; changing an existing
                 column's type is not.
+            filesystem: Optional PyArrow filesystem used for worker Parquet
+                writes, instead of one built from ``storage_options`` or ambient
+                credentials. Cannot be combined with ``catalog``.
             name: Optional table name recorded in the Delta metadata when a new
                 table is created.
             description: Optional table description recorded in the Delta metadata
@@ -4850,12 +4861,45 @@ class Dataset:
                 change the total number of tasks run. By default, concurrency is
                 dynamically decided based on the available resources.
         """
+        # Only meaningful with a catalog: it's the identifier the catalog
+        # resolves, captured before ``path`` is rewritten to the physical
+        # location below, so a later refresh can re-resolve the same table.
+        table_identifier = path if catalog is not None else None
+        # Preserved before any catalog merge below, so a later credential
+        # refresh can re-merge fresh catalog values with these (which should
+        # always win) instead of with a since-stale merged dict.
+        user_storage_options = storage_options
+        if catalog is not None:
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            if filesystem is not None:
+                raise ValueError(
+                    "`filesystem` cannot be specified with `catalog`. The "
+                    "`catalog` will resolve the `filesystem` with appropriate "
+                    "credentials automatically."
+                )
+            resolved = catalog.resolve(
+                path, reader=ReaderFormat.DELTA, mode=CatalogAccessMode.WRITE
+            )
+            path = resolved.path
+            if resolved.storage_options:
+                storage_options = {
+                    **resolved.storage_options,
+                    **(user_storage_options or {}),
+                }
+            if resolved.filesystem is not None:
+                filesystem = resolved.filesystem
+
         datasink = DeltaDatasink(
             path=path,
             mode=mode,
             partition_by=partition_by,
             storage_options=storage_options,
             schema_mode=schema_mode,
+            user_storage_options=user_storage_options,
+            filesystem=filesystem,
+            catalog=catalog,
+            table_identifier=table_identifier,
             name=name,
             description=description,
         )
