@@ -89,7 +89,12 @@ DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 # ``use_datasource_v2`` is also set. Requires the native ``ray_data_arrow_rs``
 # module to be installed. Defaults to False.
 DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
-    "RAY_DATA_USE_ARROW_RS_PARQUET_READER", False
+    # TESTING COMMIT ONLY — default flipped to True so every read_parquet in the
+    # release suite exercises the Rust reader. Revert this commit before opening
+    # the PR: the shipping default MUST stay False (opt-in). Paired with
+    # release/ray_release/byod/byod_arrow_rs_parquet.sh (installs the crate).
+    "RAY_DATA_USE_ARROW_RS_PARQUET_READER",
+    True,
 )
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
