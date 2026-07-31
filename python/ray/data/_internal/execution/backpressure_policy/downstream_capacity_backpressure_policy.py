@@ -163,16 +163,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         return False
 
-    def _get_output_to_downstream_input_ratio(self, op: "PhysicalOperator") -> float:
-        """Get the ratio of buffered output bytes to downstream input bytes.
-
-        Uses get_mem_op_outputs (BlockRefCounter-based, excludes
-        pending_task_outputs) with include_ineligible_downstream=True to
-        capture blocks created by ineligible downstream operators.
-        Subtracting 1 isolates the buffered output portion:
-          output_bytes / downstream_input_bytes
-          = (buffered + downstream_input) / downstream_input - 1
-        """
+    def _get_backpressure_ratio(self, op: "PhysicalOperator") -> float:
+        """Ratio of buffered output bytes to downstream capacity."""
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             # No downstream capacity to backpressure against, so no backpressure.
@@ -194,7 +186,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
-        output_ratio = self._get_output_to_downstream_input_ratio(op)
+        backpressure_ratio = self._get_backpressure_ratio(op)
 
         if (
             utilized_budget_fraction is not None
@@ -203,8 +195,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            # Apply backpressure if output ratio exceeds the threshold.
-            result = output_ratio > self._backpressure_capacity_ratio
+            # Apply backpressure if backpressure ratio exceeds the threshold.
+            result = backpressure_ratio > self._backpressure_capacity_ratio
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
@@ -214,7 +206,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             )
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"({output_ratio=}, {output_size_bytes=}, "
+                f"({backpressure_ratio=}, {output_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result
