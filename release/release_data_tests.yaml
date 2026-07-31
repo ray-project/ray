@@ -459,68 +459,68 @@
       run_env: []
     adjustments:
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: inner
           batch: ""
           run_env: ""
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: inner
           batch: "_hash_shuffle_v2_128mb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: inner
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: left_outer
           batch: ""
           run_env: ""
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: left_outer
           batch: "_hash_shuffle_v2_128mb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: left_outer
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: right_outer
           batch: ""
           run_env: ""
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: right_outer
           batch: "_hash_shuffle_v2_128mb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: right_outer
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: full_outer
           batch: ""
           run_env: ""
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: full_outer
           batch: "_hash_shuffle_v2_128mb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
       - with:
-          dataset: sf100
+          dataset: sf1000
           join_type: full_outer
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
 
   run:
-    timeout: 3600
+    timeout: 10800
     script: >
       {{run_env}}
       python join_benchmark.py
@@ -529,7 +529,7 @@
       --left_join_keys column00
       --right_join_keys column0
       --join_type {{join_type}}
-      --num_partitions 50
+      --num_partitions 500
 
 ###############
 # Wide Schema tests
