@@ -529,7 +529,7 @@ def convert_tensors_to_numpy(batch: TensorBatchType) -> Any:
     ``TorchInference.finalize`` error path).
     """
     if _is_tensor(batch):
-        return batch.detach().numpy()
+        return batch.detach().cpu().numpy()
     elif isinstance(batch, Mapping):
         return {k: convert_tensors_to_numpy(v) for k, v in batch.items()}
     elif isinstance(batch, (list, tuple)):

@@ -118,7 +118,11 @@ class TorchInference:
         """
         import torch
 
-        assert torch.cuda.is_available()
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA is not available on this system. The default TorchInference "
+                "flow is GPU-only and requires a CUDA-capable device."
+            )
         return torch.device("cuda")
 
     def collate(
