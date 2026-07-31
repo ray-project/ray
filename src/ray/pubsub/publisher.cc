@@ -14,7 +14,7 @@
 
 #include "ray/pubsub/publisher.h"
 
-#include <algorithm>
+#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -42,8 +42,7 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     return false;
   }
 
-  // Cleared snapshot payloads leave empty shared_ptrs in subscriber mailboxes.
-  bool need_mailbox_compact = false;
+  const bool is_snapshot_channel = max_buffered_bytes_ == 0;
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -54,10 +53,10 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
-    } else if (max_buffered_bytes_ == 0) {
-      // Snapshot channel: only the latest message is meaningful.
-      *front_msg = rpc::PubMessage();
-      need_mailbox_compact = true;
+    } else if (is_snapshot_channel) {
+      // Only the latest snapshot is meaningful. Subscribers drop the prior
+      // in-flight message for this key via QueueSnapshotMessage; nothing to
+      // clear in-place here.
     } else if (max_buffered_bytes_ > 0 &&
                total_size_ + msg_size > static_cast<size_t>(max_buffered_bytes_)) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
@@ -82,8 +81,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     }
 
     // The first message in the queue has been published to all subscribers, or
-    // it has been dropped due to memory cap. Subtract it from memory
-    // accounting.
+    // it has been dropped due to memory cap / snapshot coalesce. Subtract it
+    // from memory accounting.
     total_size_ -= front_msg_size;
     pending_messages_.pop();
   }
@@ -91,11 +90,12 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   pending_messages_.emplace(msg, msg_size);
   total_size_ += msg_size;
 
-  for (auto &[id, subscriber] : subscribers_) {
-    if (need_mailbox_compact) {
-      subscriber->CompactEmptyMessages();
+  for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
+    if (is_snapshot_channel) {
+      entry.second->QueueSnapshotMessage(msg);
+    } else {
+      entry.second->QueueMessage(msg);
     }
-    subscriber->QueueMessage(msg);
   }
   return true;
 }
@@ -293,9 +293,17 @@ void SubscriberState::ConnectToSubscriber(
     max_processed_sequence_id = 0;
   }
 
-  // clean up messages that have already been processed.
+  // Clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
+    const std::shared_ptr<rpc::PubMessage> &front = mailbox_.front();
+    absl::flat_hash_map<std::pair<int, std::string>,
+                        std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
+        idx = snapshot_index_.find(
+            std::make_pair(static_cast<int>(front->channel_type()), front->key_id()));
+    if (idx != snapshot_index_.end() && idx->second == mailbox_.begin()) {
+      snapshot_index_.erase(idx);
+    }
     mailbox_.pop_front();
   }
 
@@ -317,14 +325,21 @@ void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_m
   PublishIfPossible(/*force_noop=*/false);
 }
 
-void SubscriberState::CompactEmptyMessages() {
-  mailbox_.erase(std::remove_if(mailbox_.begin(),
-                                mailbox_.end(),
-                                [](const std::shared_ptr<rpc::PubMessage> &msg) {
-                                  return msg->inner_message_case() ==
-                                         rpc::PubMessage::INNER_MESSAGE_NOT_SET;
-                                }),
-                 mailbox_.end());
+void SubscriberState::QueueSnapshotMessage(
+    const std::shared_ptr<rpc::PubMessage> &pub_message) {
+  RAY_LOG(DEBUG) << "enqueue snapshot: " << pub_message->sequence_id();
+  std::pair<int, std::string> key = std::make_pair(
+      static_cast<int>(pub_message->channel_type()), pub_message->key_id());
+  absl::flat_hash_map<std::pair<int, std::string>,
+                      std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
+      idx = snapshot_index_.find(key);
+  if (idx != snapshot_index_.end()) {
+    mailbox_.erase(idx->second);
+    snapshot_index_.erase(idx);
+  }
+  mailbox_.push_back(pub_message);
+  snapshot_index_.emplace(std::move(key), std::prev(mailbox_.end()));
+  PublishIfPossible(/*force_noop=*/false);
 }
 
 void SubscriberState::PublishIfPossible(bool force_noop) {
@@ -373,8 +388,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
 }
 
 bool SubscriberState::CheckNoLeaks() const {
-  // If all message in the mailbox has been replied, consider there is no leak.
-  return mailbox_.empty();
+  return mailbox_.empty() && snapshot_index_.empty();
 }
 
 bool SubscriberState::ConnectionExists() const {

@@ -16,8 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <deque>
 #include <functional>
+#include <list>
 #include <memory>
 #include <queue>
 #include <string>
@@ -281,8 +281,14 @@ class SubscriberState {
    */
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
-  /// Drop mailbox entries whose payloads were cleared by snapshot coalescing.
-  void CompactEmptyMessages();
+  /**
+   * @brief Queue a snapshot message, replacing any prior in-flight message
+   *        for the same (channel, key_id). Appends at the end so global
+   *        sequence_id order is preserved (gaps ok, out-of-order not).
+   *
+   * @param pub_message The snapshot message to queue.
+   */
+  void QueueSnapshotMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /**
    * @brief Publish all queued messages if possible.
@@ -331,8 +337,13 @@ class SubscriberState {
   const UniqueID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
-  /// Queued messages to publish.
-  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  /// Queued messages to publish, in sequence_id order.
+  std::list<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  /// For snapshot channels: (channel_type, key_id) -> current mailbox node.
+  /// Lets us replace the prior snapshot for a key without tombstones/scanning.
+  absl::flat_hash_map<std::pair<int, std::string>,
+                      std::list<std::shared_ptr<rpc::PubMessage>>::iterator>
+      snapshot_index_;
   /// Clock used to read the current time.
   ClockInterface &clock_;
   /// The time in which the connection is considered as timed out.

@@ -1337,6 +1337,53 @@ TEST_F(PublisherTest, TestObjectLocationsChannelKeepsOnlyLatestSnapshot) {
   EXPECT_EQ(reply->pub_messages(1).worker_object_locations_message().object_size(), 42);
 }
 
+TEST_F(PublisherTest, TestObjectLocationsSnapshotReplaceSurvivesAckOfOlderSeq) {
+  SubscriptionIndex subscription_index(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  ObjectID oid = ObjectID::FromRandom();
+  SubscriberState *subscriber = CreateSubscriber();
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+
+  auto publish = [this, &subscription_index, &oid](int object_size) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_worker_object_locations_message()->set_object_size(object_size);
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+
+  const int64_t seq_v1 = publish(/*object_size=*/1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // Deliver v1. The copy is sent, but the mailbox keeps it until ACK.
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply_v1 = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply_v1->pub_messages().size(), 1);
+  EXPECT_EQ(reply_v1->pub_messages(0).sequence_id(), seq_v1);
+  EXPECT_EQ(reply_v1->pub_messages(0).worker_object_locations_message().object_size(), 1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // Replace with a newer snapshot before the subscriber ACKs v1.
+  const int64_t seq_v2 = publish(/*object_size=*/2);
+  EXPECT_GT(seq_v2, seq_v1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // ACK only through v1. v2 has a higher sequence_id, so it must remain and be
+  // delivered on this poll.
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply_v2 =
+      FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_v1);
+  ASSERT_EQ(reply_v2->pub_messages().size(), 1);
+  EXPECT_EQ(reply_v2->pub_messages(0).sequence_id(), seq_v2);
+  EXPECT_EQ(reply_v2->pub_messages(0).worker_object_locations_message().object_size(), 2);
+  EXPECT_FALSE(subscriber->CheckNoLeaks());
+
+  // ACK v2; mailbox and snapshot index should both be empty.
+  FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_v2);
+  EXPECT_TRUE(subscriber->CheckNoLeaks());
+  EXPECT_EQ(subscriber->MailboxSize(), 0);
+}
+
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
