@@ -4,11 +4,11 @@
   small handle (path + per-partition offset index + the source node's fetch
   endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
   stays on local disk and never enters Ray's object store.
-- a per-node ``ShuffleFileServer`` Ray actor runs its OWN socket server that
-  ``pread``s requested byte-ranges and streams them back. The REDUCE task is a
-  client of that server.
+- a per-node ``ShuffleFileServer`` Ray actor runs its OWN Arrow Flight server
+  that ``pread``s requested byte-ranges and streams them back. The REDUCE task
+  is a client of that server.
   Cross-node this is the real out-of-band transport; single-node it is a
-  loopback socket (still the real code path, not a direct ``open``).
+  loopback Flight connection (still the real code path, not a direct ``open``).
 
 Uses the standard ``PartitionFn`` / ``ReduceFn`` contracts, so group-by /
 sort / aggregate / join factories compose unchanged.
@@ -45,7 +45,6 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _build_range_index,
     _compute_prefetch_layout,
     _decoded_to_array,
-    _drop_pagecache,
     _file_server_name,
     _group_by_server,
     _handles_to_sources,
@@ -162,9 +161,6 @@ def _external_shuffle_map_task(
             final_size_on_close = out_file.tell()
             if fsync_on_close:
                 os.fsync(out_file.fileno())
-                # Drop the just-written pages so we don't hold GBs of
-                # warm cache per mapper.
-                _drop_pagecache(out_file.fileno(), 0, final_size_on_close)
             if writer.index:
                 expected_size = max(
                     off + length
@@ -226,10 +222,11 @@ def _external_shuffle_reduce_task(
     map_task_context: Optional["TaskContext"] = None,
     data_context: Optional["DataContext"] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Reduce stage: fetch this partition's shards from every mapper via TCP,
-    run ``reduce_fn`` on the accumulated tables, and yield ``(block, pickled
-    metadata)`` pairs. Shuffle bytes flow directly from the socket into the
-    reducer's user-space accumulator, never entering the Ray object store.
+    """Reduce stage: fetch this partition's shards from every mapper over Arrow
+    Flight, run ``reduce_fn`` on the accumulated tables, and yield ``(block,
+    pickled metadata)`` pairs. Shuffle bytes flow directly from the Flight
+    stream into the reducer's user-space accumulator, never entering the Ray
+    object store.
 
     Fetch + decode are pipelined: one thread per ShuffleFileServer pwrites
     response frames into this partition's ``reduce_p{partition_id}.bin`` at
@@ -353,9 +350,7 @@ def _external_shuffle_reduce_task(
                         yield from _emit(output_buffer.next())
 
         # O_RDWR: same fd serves ``os.pwrite`` from fetch threads AND
-        # ``os.pread`` from decode. Sticking with plain file I/O (no
-        # ``pa.memory_map``) keeps the per-region ``fdatasync +
-        # posix_fadvise DONTNEED`` below straightforward.
+        # ``os.pread`` from decode. Plain file I/O (no ``pa.memory_map``).
         fd = os.open(prefetch_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o644)
         try:
             if total_size > 0:
@@ -399,8 +394,7 @@ def _external_shuffle_reduce_task(
                 random.Random(partition_id).shuffle(work)
 
             def _decode_region(base: int, size: int):
-                """Decode + coalesce a region's shards into one chunk, then drop
-                its pages (already fsync'd on the fetch thread)."""
+                """Decode + coalesce a region's shards into one chunk."""
                 nonlocal accum_bytes
                 pos = base
                 end = base + size
@@ -422,7 +416,6 @@ def _external_shuffle_reduce_task(
                     )
                 else:
                     accum_tables.extend(region_tables)
-                _drop_pagecache(fd, base, size)
 
             with ThreadPoolExecutor(max_workers=n_threads) as ex:
                 futs = [ex.submit(_fetch_one, w) for w in work]

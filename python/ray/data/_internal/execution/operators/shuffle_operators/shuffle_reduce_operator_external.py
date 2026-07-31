@@ -8,7 +8,7 @@ Each wrapper carries a single ObjectRef — the shared handle-list
 Ray object built by the map op — plus a ``__partition__<pid>``
 sentinel in its metadata. The reduce task resolves that ref (a list of
 per-mapper handle refs), materializes the individual handle dicts, and
-TCP-fetches its partition's shards from each source node's
+fetches its partition's shards over Arrow Flight from each source node's
 ``ShuffleFileServer``.
 """
 
@@ -69,7 +69,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle in via
     ``_add_input_inner``, one reduce task out. The wrapper carries
     ``shared_handles_ref`` + partition_id sentinel; ``_external_shuffle_reduce_task``
-    uses those to fetch its partition's bytes over TCP from each
+    uses those to fetch its partition's bytes over Arrow Flight from each
     mapper's ``ShuffleFileServer``.
     """
 

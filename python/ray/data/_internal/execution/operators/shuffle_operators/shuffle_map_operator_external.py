@@ -247,13 +247,11 @@ class ExternalHashShuffleMapOp(
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
-        # The task body wants Optional[str] (None or a pyarrow codec name);
-        # data_context
-        # stores the raw string ("none" | "lz4" | "zstd"). Translate here.
-        raw_compression = (self.data_context.hash_shuffle_compression or "none").lower()
-        compression: Optional[str] = (
-            None if raw_compression == "none" else raw_compression
-        )
+        # Pass the raw hash_shuffle_compression through (same as the in-memory
+        # ShuffleMapOp). Normalization — casing and the "none" sentinel — lives
+        # in _codec_for, which both the map (encode) and reduce (decode) sides
+        # go through, so they can't disagree on the codec.
+        compression: Optional[str] = self.data_context.hash_shuffle_compression
 
         handle_ref = _external_shuffle_map_task.options(**ray_options).remote(
             *block_refs,

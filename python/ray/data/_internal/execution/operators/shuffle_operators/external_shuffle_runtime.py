@@ -48,7 +48,7 @@ Compression = Optional[
 
 
 # =============================================================================
-# SHARED: shard codec, page-cache hint, ShuffleFileServer identity/lookup, the
+# SHARED: shard codec, ShuffleFileServer identity/lookup, the
 # ShuffleHandle type, and the error hierarchy, which are used by both map and reduce.
 # =============================================================================
 # Each range's payload length is framed as a u32 in the sink, so no single
@@ -63,8 +63,12 @@ _WF_HEADER = struct.Struct("<Q")
 
 
 def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
-    """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
-    if not compression or compression == "none":
+    """Codec name -> pa.Codec; None/"none" (any case) -> None (pyarrow has no
+    "none" codec). pa.Codec is itself case-insensitive for real codec names, so
+    routing both the map (encode) and reduce (decode) sides through here makes
+    them agree on the codec no matter how ``hash_shuffle_compression`` is cased.
+    """
+    if not compression or compression.lower() == "none":
         return None
     return pa.Codec(compression)
 
@@ -112,25 +116,6 @@ def _read_ipc(
     raw = body if codec is None else codec.decompress(body, decompressed_size=n)
     with pa.ipc.open_stream(raw) as r:
         return r.read_all()
-
-
-# Linux-only; macOS lacks POSIX_FADV_DONTNEED. Probed once at import time so
-# the hot path is a constant-time attribute check, not a try/except per range.
-_HAS_FADV_DONTNEED = hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED")
-
-
-def _drop_pagecache(fd: int, offset: int, length: int) -> None:
-    """Hint the kernel to drop ``[offset, offset+length)`` of ``fd`` from the
-    page cache. Effective on clean pages; on dirty pages the hint is recorded
-    and eviction happens on next writeback."""
-    if not _HAS_FADV_DONTNEED or length <= 0:
-        return
-    try:
-        os.posix_fadvise(fd, offset, length, os.POSIX_FADV_DONTNEED)
-    except OSError:
-        # Best-effort: any failure is silently ignored, cause the worst case is the
-        # kernel keeps the pages longer.
-        pass
 
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id)
@@ -635,6 +620,7 @@ def _prefetch_node_into(
             _ENDPOINT_CACHE[key] = ep
         return ep
 
+    same_incarnation_retried = False
     while True:
         try:
             endpoint = _resolve()
@@ -645,33 +631,37 @@ def _prefetch_node_into(
         except PermissionError:
             raise
         except (ConnectionError, TimeoutError) as e:
-            # If _resolve() returns, the actor is alive; a changed incarnation
-            # means it restarted (retry in-place), same incarnation means the
-            # network path is broken (terminal). Compare incarnations, not
-            # (host, port): a restart can rebind the same ephemeral port, so an
-            # address match wouldn't prove it's the same process.
+            # A changed incarnation means the server restarted (retry in-place);
+            # same incarnation means the process stayed up but the fetch failed.
+            # Compare incarnations, not (host, port): a restart can rebind the
+            # same ephemeral port, so an address match wouldn't prove it's the
+            # same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
             fresh = _resolve()
-            if fresh[2] == endpoint[2]:
-                # Same incarnation: the actor process never restarted, yet the
-                # connection is blocked. Most likely a network configuration
-                # issue (NetworkPolicy, firewall, routing); retrying to the same
-                # file server won't help.
-                raise ShuffleFileServerAnomalyError(
-                    f"Flight fetch from node {node_id} failed ({e}) but "
-                    f"ShuffleFileServer at {fresh[:2]} is still reachable via Ray. "
-                    f"Likely a network configuration issue (NetworkPolicy, "
-                    f"firewall, routing) between reducer and file server. "
-                    f"Check the network config."
-                ) from e
-            logger.warning(
-                f"Flight fetch from node {node_id} failed ({e}); ShuffleFileServer "
-                f"restarted (incarnation {endpoint[2]} → {fresh[2]}, "
-                f"endpoint {endpoint[:2]} → {fresh[:2]}). Retrying in place."
-            )
-            continue
+
+            if fresh[2] != endpoint[2]:
+                same_incarnation_retried = False
+                logger.warning(f"node {node_id}: file server restarted, retrying")
+                continue
+
+            # Same incarnation: retry once to tell a persistent block from a
+            # transient blip that _resolve already polled through; only if it
+            # fails again is it a genuine network-config problem.
+            if not same_incarnation_retried:
+                same_incarnation_retried = True
+                logger.warning(
+                    f"node {node_id}: Flight fetch failed, retrying once ({e})"
+                )
+                time.sleep(0.5)
+                continue
+
+            raise ShuffleFileServerAnomalyError(
+                f"node {node_id}: Flight fetch still failing but file server "
+                f"reachable via Ray — likely a network block on the Flight port "
+                f"(NetworkPolicy/firewall/routing)."
+            ) from e
         except OSError as e:
             if _is_disk_exhausted(e):
                 raise ShuffleDiskError(
