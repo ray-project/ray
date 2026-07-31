@@ -11,7 +11,6 @@ ZE_AFFINITY_MASK_ENV_VAR = "ZE_AFFINITY_MASK"
 NOSET_ZE_AFFINITY_MASK_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"
 
 ONEAPI_DEVICE_SELECTOR_ENV_VAR = "ONEAPI_DEVICE_SELECTOR"
-NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR"
 ONEAPI_DEVICE_BACKEND_TYPE = "level_zero"
 ONEAPI_DEVICE_TYPE = "gpu"
 
@@ -102,14 +101,14 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_xpu_devices: List[str],
     ) -> None:
-        ids_bare = ",".join([str(i) for i in visible_xpu_devices])
-        # ONEAPI_DEVICE_SELECTOR applies after ZE_AFFINITY_MASK has already re-indexed
-        # devices, so it must use sequential 0,1,2... not the original physical IDs.
-        ids_reindexed = ",".join([str(i) for i in range(len(visible_xpu_devices))])
-        ids_prefixed = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ids_reindexed
+        if env_bool(NOSET_ZE_AFFINITY_MASK_ENV_VAR, False):
+            return
 
-        if not env_bool(NOSET_ZE_AFFINITY_MASK_ENV_VAR, False):
-            os.environ[ZE_AFFINITY_MASK_ENV_VAR] = ids_bare
-
-        if not env_bool(NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR, False):
-            os.environ[ONEAPI_DEVICE_SELECTOR_ENV_VAR] = ids_prefixed
+        # ZE_AFFINITY_MASK masks devices at the Level Zero driver, below oneAPI/SYCL
+        # and torch-xpu, so it fully restricts visibility on its own. It uses bare
+        # IDs ("0,1,2") like CUDA_VISIBLE_DEVICES. Ray only sets this one env var:
+        # writing ONEAPI_DEVICE_SELECTOR too would collide with frameworks (e.g.
+        # SGLang) that manage it themselves, and would need a separate save/restore.
+        os.environ[ZE_AFFINITY_MASK_ENV_VAR] = ",".join(
+            [str(i) for i in visible_xpu_devices]
+        )

@@ -19,7 +19,6 @@ def clean_accelerator_env():
         "ZE_AFFINITY_MASK",
         "ONEAPI_DEVICE_SELECTOR",
         "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK",
-        "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR",
     )
     saved = {k: os.environ.get(k) for k in keys}
     yield
@@ -132,41 +131,74 @@ def test_get_current_process_visible_accelerator_ids(clean_accelerator_env):
 
 
 @pytest.mark.parametrize(
-    "physical_ids, expected_ze, expected_oneapi",
+    "physical_ids, expected_ze",
     [
-        # GPU0 only — physical and re-indexed are the same.
-        (["0"], "0", "level_zero:0"),
-        # GPU0 + GPU1 — physical and re-indexed are the same.
-        (["0", "1"], "0,1", "level_zero:0,1"),
-        # GPU1 only — ZE carries physical id 1, but ONEAPI must use re-indexed 0.
-        # Without re-indexing: ZE=1 + ONEAPI=level_zero:1 -> 0 devices visible.
-        (["1"], "1", "level_zero:0"),
-        # Non-contiguous physical ids — ONEAPI always sequential from 0.
-        (["1", "3"], "1,3", "level_zero:0,1"),
+        # No devices visible — ZE_AFFINITY_MASK is set to "" (parsed back as []).
+        ([], ""),
+        # GPU0 only.
+        (["0"], "0"),
+        # GPU0 + GPU1.
+        (["0", "1"], "0,1"),
+        # GPU1 only — physical id is carried as-is (bare, like CUDA_VISIBLE_DEVICES).
+        (["1"], "1"),
+        # Non-contiguous physical ids.
+        (["1", "3"], "1,3"),
     ],
 )
 def test_set_current_process_visible_accelerator_ids(
-    clean_accelerator_env, physical_ids, expected_ze, expected_oneapi
+    clean_accelerator_env, physical_ids, expected_ze
 ):
+    # Ray only sets ZE_AFFINITY_MASK (bare physical ids). It does not write
+    # ONEAPI_DEVICE_SELECTOR, leaving that var free for frameworks like SGLang.
     Accelerator.set_current_process_visible_accelerator_ids(physical_ids)
     assert os.environ["ZE_AFFINITY_MASK"] == expected_ze
-    assert os.environ["ONEAPI_DEVICE_SELECTOR"] == expected_oneapi
+    assert "ONEAPI_DEVICE_SELECTOR" not in os.environ
+
+
+def test_set_current_process_visible_accelerator_ids_roundtrip(clean_accelerator_env):
+    # What the setter writes must read back as the original physical ids, so a
+    # reused worker sees exactly the devices Ray assigned.
+    os.environ.pop("ONEAPI_DEVICE_SELECTOR", None)
+    Accelerator.set_current_process_visible_accelerator_ids(["1", "3"])
+    assert Accelerator.get_current_process_visible_accelerator_ids() == ["1", "3"]
 
 
 def test_set_visible_accelerator_ids_noset_ze(clean_accelerator_env):
-    # RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK suppresses only ZE_AFFINITY_MASK.
+    # RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK suppresses the only var Ray sets, so
+    # neither ZE_AFFINITY_MASK nor ONEAPI_DEVICE_SELECTOR is touched.
+    os.environ.pop("ONEAPI_DEVICE_SELECTOR", None)
     os.environ["RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"] = "1"
-    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
+    Accelerator.set_current_process_visible_accelerator_ids(["1", "3"])
     assert "ZE_AFFINITY_MASK" not in os.environ
-    assert os.environ["ONEAPI_DEVICE_SELECTOR"] == "level_zero:0,1"
-
-
-def test_set_visible_accelerator_ids_noset_oneapi(clean_accelerator_env):
-    # RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR suppresses only ONEAPI_DEVICE_SELECTOR.
-    os.environ["RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR"] = "1"
-    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
     assert "ONEAPI_DEVICE_SELECTOR" not in os.environ
+
+
+def test_set_visible_accelerator_ids_leaves_oneapi_untouched(clean_accelerator_env):
+    # A pre-existing ONEAPI_DEVICE_SELECTOR (e.g. set by the user or a framework)
+    # must survive: Ray sets only ZE_AFFINITY_MASK and never overwrites ONEAPI.
+    os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:2"
+    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
     assert os.environ["ZE_AFFINITY_MASK"] == "0,1"
+    assert os.environ["ONEAPI_DEVICE_SELECTOR"] == "level_zero:2"
+
+
+def test_visible_accelerator_env_var_restored(clean_accelerator_env):
+    # The only var Ray sets is the primary one from get_visible_accelerator_ids_env_var,
+    # so Ray's existing save/restore path fully cleans it up on reused workers.
+    assert Accelerator.get_visible_accelerator_ids_env_var() == "ZE_AFFINITY_MASK"
+    os.environ.pop("ZE_AFFINITY_MASK", None)
+
+    env_var = Accelerator.get_visible_accelerator_ids_env_var()
+    saved = os.environ.get(env_var)  # None
+    Accelerator.set_current_process_visible_accelerator_ids(["1", "3"])
+    assert os.environ["ZE_AFFINITY_MASK"] == "1,3"
+
+    # Restore, mirroring reset_visible_accelerator_env_vars.
+    if saved is None:
+        os.environ.pop(env_var, None)
+    else:
+        os.environ[env_var] = saved
+    assert "ZE_AFFINITY_MASK" not in os.environ
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             to limit the Intel GPUs that are visible to Ray.
             For example, ``ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
-            ``ONEAPI_DEVICE_SELECTOR`` is still accepted for backward compatibility.
+            ``ONEAPI_DEVICE_SELECTOR`` is still read as a fallback for backward compatibility.
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
