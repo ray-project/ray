@@ -133,11 +133,11 @@ class LLMRouter:
             )
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
-                tokenizer,
+            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+                Tokenizer,
             )
 
-            self._tokenizer = await asyncio.to_thread(tokenizer.Tokenizer, llm_config)
+            self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
         self._handle._init()
 
     @router_app.post("/internal/route")
@@ -160,15 +160,15 @@ class LLMRouter:
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm import (
-                tokenizer,
+            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+                TokenizeError,
             )
 
             try:
                 request_token_ids = await self._tokenizer.tokenize(
                     vars(routing_payload)
                 )
-            except tokenizer.TokenizeError as e:
+            except TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
@@ -200,9 +200,9 @@ class LLMRouter:
     async def on_lifecycle_events(self, batch):
         """Engine-facing intake for request lifecycle events.
 
-        Engine replicas RPC this LLMRouter handle method to book request
-        load; it applies the batch to the KVTokenTracker on this ingress
-        replica's event loop.
+        Engine replicas broadcast each batch to every LLMRouter replica to
+        book request load; this applies it to the KVTokenTracker on this
+        ingress replica's event loop.
         """
         return await self._kv_token_tracker.on_lifecycle_events(batch)
 

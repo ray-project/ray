@@ -98,7 +98,10 @@ class KVTokenTracker:
     4. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
        and prefill/decode load.
     5. Books each request's lifecycle into the service's active-load tracker, so
-       in-flight load feeds back into scoring for subsequent requests.
+       in-flight load feeds back into scoring for subsequent requests. The
+       engine broadcasts lifecycle events to every ingress replica, so all
+       trackers converge on the same booked-load view regardless of which
+       replica routed a given request.
     """
 
     def __init__(
@@ -368,6 +371,7 @@ class KVTokenTracker:
         """
         if self._svc is None or self._block_size is None:
             return
+
         for hook_name, args in events:
             if hook_name not in LIFECYCLE_HOOKS:
                 logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
@@ -388,9 +392,12 @@ class KVTokenTracker:
         token_ids: List[int],
         expected_output_tokens: Optional[int] = None,
     ) -> None:
-        """Admit a routed request into ``worker_id``'s active load, booking it
-        into the selection service which computes the worker's KV overlap from
-        ``token_ids``, so the recorded prefill excludes the cached prefix."""
+        """Admit a routed request into ``worker_id``'s active load, booking its
+        prefill and decode load into the selection service.
+
+        The engine broadcasts this event to every ingress replica, so it must
+        book correctly both on the replica that routed the request (which has
+        the ``select()`` result stashed) and on replicas that did not."""
         await self._evict_stale_requests()
         prompt_tokens = len(token_ids)
         self._requests[request_id] = RequestLifecycle(
@@ -403,6 +410,19 @@ class KVTokenTracker:
         effective_prefill_tokens = self._effective_prefill_tokens_by_request.pop(
             request_id, None
         )
+        if effective_prefill_tokens is None:
+            # This replica did not route the request, so score the routed
+            # worker against its own KV index; the service otherwise books
+            # zero prefill load.
+            selection = await self._svc.select(
+                {
+                    "model_name": _MODEL_NAME,
+                    "tenant_id": _TENANT_ID,
+                    "token_ids": token_ids,
+                    "allowed_worker_ids": [worker_id],
+                }
+            )
+            effective_prefill_tokens = selection["effective_prefill_tokens"]
 
         await self._svc.create_reservation(
             {

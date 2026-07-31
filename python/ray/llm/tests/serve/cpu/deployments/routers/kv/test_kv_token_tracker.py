@@ -84,6 +84,20 @@ def test_router_degrades_without_tracker():
     assert router._kv_token_tracker is None
 
 
+def _worker_load(tracker: KVTokenTracker, worker_id: int, field: str) -> int:
+    """A booked-load field for ``worker_id`` in the tracker's selection service."""
+    for model in tracker._svc.loads():
+        for load in model["loads"]:
+            if load["worker_id"] == worker_id:
+                return load[field]
+    return 0
+
+
+def _active_requests(tracker: KVTokenTracker, worker_id: int) -> int:
+    """Active requests the tracker's selection service books on ``worker_id``."""
+    return _worker_load(tracker, worker_id, "active_requests")
+
+
 @pytest.mark.asyncio
 async def test_lifecycle_booking_end_to_end():
     """End-to-end router-local path on the real Dynamo selection service: select a
@@ -120,11 +134,74 @@ async def test_lifecycle_booking_end_to_end():
             [("on_request_added", ("req-e2e", worker_id, [1, 2, 3, 4], 20))]
         )
         assert "req-e2e" in tracker._requests
+        # Assert the booking landed in the selection service, not just the
+        # local view: on_lifecycle_events swallows hook errors by design.
+        assert _active_requests(tracker, worker_id) == 1
         await router.on_lifecycle_events([("on_request_completed", ("req-e2e",))])
         assert "req-e2e" not in tracker._requests
+        assert _active_requests(tracker, worker_id) == 0
     finally:
         if tracker._svc is not None:
             await tracker._svc.delete_worker(worker_id)
+
+
+@pytest.mark.asyncio
+async def test_peer_tracker_books_same_load():
+    """A tracker that did not route a request books the same load from the broadcast
+    admission event as the one that did, and a completion frees it on both."""
+    pytest.importorskip("dynamo.llm")
+
+    class _NoLongPollTracker(KVTokenTracker):
+        # Real SelectionService, but no Serve LongPoll (no controller in a unit test).
+        def _start_replica_tracking(self):
+            pass
+
+    routing = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    trackers = (routing, peer)
+    worker_id = get_worker_id("engine-replica-0")
+    token_ids = list(range(64))
+    try:
+        # Both ingress replicas track the same LLMServer deployment, so the
+        # same engine worker is registered on both.
+        for tracker in trackers:
+            tracker._register_block_size(16, "engine-replica-0")
+            await tracker._upsert_worker(
+                worker_id,
+                "engine-replica-0",
+                {
+                    "endpoint": "tcp://127.0.0.1:59998",
+                    "block_size": 16,
+                    "max_num_batched_tokens": 8192,
+                    "dp_rank": 0,
+                },
+            )
+
+        # Only the routing tracker scores the request; the engine's admission
+        # event is broadcast to both.
+        selection = await routing.select_worker("req-bcast", token_ids, [worker_id])
+        assert selection["worker_id"] == worker_id
+
+        added = [("on_request_added", ("req-bcast", worker_id, token_ids, 32))]
+        for tracker in trackers:
+            await tracker.on_lifecycle_events(added)
+        for tracker in trackers:
+            assert _active_requests(tracker, worker_id) == 1
+        # The peer's locally scored prefill load matches the routing replica's.
+        assert _worker_load(peer, worker_id, "potential_prefill_tokens") == (
+            _worker_load(routing, worker_id, "potential_prefill_tokens")
+        )
+        assert _worker_load(peer, worker_id, "potential_prefill_tokens") > 0
+
+        completed = [("on_request_completed", ("req-bcast",))]
+        for tracker in trackers:
+            await tracker.on_lifecycle_events(completed)
+        for tracker in trackers:
+            assert _active_requests(tracker, worker_id) == 0
+    finally:
+        for tracker in trackers:
+            if tracker._svc is not None:
+                await tracker._svc.delete_worker(worker_id)
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------
