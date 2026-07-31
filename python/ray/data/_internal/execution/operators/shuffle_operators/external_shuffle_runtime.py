@@ -63,8 +63,12 @@ _WF_HEADER = struct.Struct("<Q")
 
 
 def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
-    """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
-    if not compression or compression == "none":
+    """Codec name -> pa.Codec; None/"none" (any case) -> None (pyarrow has no
+    "none" codec). pa.Codec is itself case-insensitive for real codec names, so
+    routing both the map (encode) and reduce (decode) sides through here makes
+    them agree on the codec no matter how ``hash_shuffle_compression`` is cased.
+    """
+    if not compression or compression.lower() == "none":
         return None
     return pa.Codec(compression)
 

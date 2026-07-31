@@ -281,6 +281,23 @@ def test_encode_read_ipc_roundtrip():
     assert _read_ipc(buf).equals(t.combine_chunks())
 
 
+def test_encode_read_ipc_compression_casing_symmetric():
+    # The map may encode and the reduce decode from the same
+    # hash_shuffle_compression field but with non-canonical casing (e.g. "ZSTD"
+    # / "NONE" from RAY_DATA_HASH_SHUFFLE_COMPRESSION). Both sides route through
+    # _codec_for, so the codec must resolve identically regardless of case.
+    import pyarrow as pa
+
+    t = pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    expected = t.combine_chunks()
+    # Real codec: encode one casing, decode the other.
+    assert _read_ipc(_encode_shard(t, "ZSTD"), "zstd").equals(expected)
+    assert _read_ipc(_encode_shard(t, "zstd"), "ZSTD").equals(expected)
+    # The "none" sentinel (not a real pa.Codec) must mean uncompressed either way.
+    assert _read_ipc(_encode_shard(t, "NONE"), "none").equals(expected)
+    assert _read_ipc(_encode_shard(t, "none"), "NONE").equals(expected)
+
+
 def test_partition_writer_combine_path():
     # Writer decides combine path once per map from the schema: native (fast) for
     # plain columns, extension-safe (transform) when any column is an extension.
