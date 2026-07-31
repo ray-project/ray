@@ -79,7 +79,10 @@ ray_cc_test(
     name = "rocksdb_smoke_test",
     size = "small",
     srcs = ["rocksdb_smoke_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "@com_github_facebook_rocksdb//:rocksdb",
@@ -93,7 +96,10 @@ ray_cc_test(
     name = "rocksdb_store_client_test",
     size = "small",
     srcs = ["rocksdb_store_client_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
@@ -107,7 +113,10 @@ ray_cc_test(
     name = "rocksdb_parity_test",
     size = "medium",
     srcs = ["rocksdb_parity_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":store_client_test_lib",
@@ -120,7 +129,10 @@ ray_cc_test(
     name = "rocksdb_concurrency_test",
     size = "medium",
     srcs = ["rocksdb_concurrency_test.cc"],
-    tags = ["team:core"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//src/ray/asio:instrumented_io_context",

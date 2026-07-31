@@ -303,6 +303,23 @@ def test_split_resolvable_flags_private_documented_name():
     assert non_public == []
 
 
+def test_split_resolvable_exempts_override_hook():
+    # A documented, underscore-named method tagged as an override hook is a
+    # public extension point, so it is not flagged non-public. A sibling
+    # underscore method with no marker still is -- the exemption must not weaken
+    # detection of genuinely private symbols.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [
+            _doc_api(f"{_MOCK}.MockClass._mock_forward"),
+            _doc_api(f"{_MOCK}.MockClass._mock_private"),
+        ],
+        set(),
+    )
+
+    assert unresolved == []
+    assert non_public == [f"{_MOCK}.MockClass._mock_private"]
+
+
 def test_find_duplicate_doc_apis():
     # mock_w00t appears twice, MockClass once. Names canonicalize first, so the
     # duplicate is reported under the canonical name.

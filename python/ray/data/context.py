@@ -38,6 +38,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
 
 
@@ -81,7 +82,7 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
-DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", False)
+DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
@@ -112,8 +113,6 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
-
-DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -152,8 +151,10 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
-DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
-    "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
+    "RAY_DATA_LOG_INTERNAL_STACK_TRACE",
+    # Back-compat: fall back to the old env var name if the new one is unset.
+    env_bool("RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False),
 )
 
 DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
@@ -227,6 +228,15 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "UNAVAILABLE",
     "DEADLINE_EXCEEDED",
 )
+
+DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS = env_integer("RAY_DATA_DELTA_COMMIT_MAX_ATTEMPTS", 5)
+DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_DELTA_COMMIT_RETRY_MAX_BACKOFF_S", 16
+)
+# Reuses the same transient-error substring set already proven for Iceberg's
+# catalog operations -- both are HTTP/RPC calls to a metadata service, so the
+# same class of transient failures (rate limiting, connection resets) applies.
+DEFAULT_DELTA_COMMIT_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
 
 DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
 DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
@@ -377,6 +387,36 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+
+
+@DeveloperAPI
+@dataclass
+class DeltaConfig:
+    """Configuration for the ``write_delta`` prototype's commit/retry behavior.
+
+    Args:
+        commit_max_attempts: Maximum number of retry attempts for the driver's
+            Delta commit operations (existence check, create table, write
+            transaction). Defaults to 5.
+        commit_retry_max_backoff_s: Maximum backoff time in seconds between
+            commit retry attempts. Uses exponential backoff with jitter.
+            Defaults to 16.
+        commit_retried_errors: A list of substrings of error messages that
+            should trigger a retry of a commit operation, in addition to
+            authentication errors (which are always retried when
+            ``credential_refresh_enabled`` is set).
+        credential_refresh_enabled: Whether an authentication error (expired
+            or invalid cloud/catalog credentials) triggers a credential
+            refresh before the next retry attempt, on both the driver and
+            workers. Defaults to ``True``.
+    """
+
+    commit_max_attempts: int = DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS
+    commit_retry_max_backoff_s: int = DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S
+    commit_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_DELTA_COMMIT_RETRIED_ERRORS)
+    )
+    credential_refresh_enabled: bool = True
 
 
 @DeveloperAPI
@@ -545,12 +585,10 @@ class DataContext:
             driver-side first-file sampling for schema inference,
             ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
             remains the production path while V2 bakes.
-        parquet_chunker_target_chunk_size: Target on-disk bytes per chunk used
-            by ``ParquetFileChunker``. The chunker reads each file's footer at
-            listing time and bundles consecutive row groups until their on-disk
-            size reaches this target (always at least one row group per chunk),
-            so normal-sized row groups map roughly 1:1 to chunks. When ``None``,
-            falls back to ``target_min_block_size``.
+        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
+            ``ParquetFileChunker`` when splitting large Parquet files into
+            multiple read tasks. When ``None``, the chunker's built-in default
+            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -635,9 +673,11 @@ class DataContext:
             corrupted data samples) or IO errors. Data in the failed blocks are dropped.
             This option can be useful to prevent a long-running job from failing due to
             a small number of bad blocks.
-        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
-            Core code stack frames when logging to stdout. The full stack trace is
-            always written to the Ray Data log file.
+        log_internal_stack_trace: Whether to write the full Ray Data/Ray Core
+            internal code stack frames to the Ray Data log file when logging a
+            user-code error. These internal frames are always omitted from
+            stdout; by default they're also omitted from the log file. Set this
+            to True to include them in the log file. Off by default.
         raise_original_map_exception: Whether to raise the original exception
             encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
@@ -663,6 +703,9 @@ class DataContext:
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
+        delta_config: Configuration for the ``write_delta`` prototype's
+            commit/retry behavior, including credential-refresh-on-auth-error.
+            See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         hash_shuffle_compression: Codec used to compress hash-shuffle
@@ -804,10 +847,6 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # Whether to use the task-based hash-shuffle v2 path for join. When
-    # False, fall back to the legacy actor-based `JoinOperator`.
-    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
-
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -839,9 +878,8 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target on-disk bytes per chunk for ``ParquetFileChunker`` (bundles
-    # consecutive row groups up to this size, >= 1 row group). When ``None``,
-    # falls back to ``target_min_block_size``.
+    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
+    # chunker uses its built-in default (currently 1 GiB).
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
@@ -881,9 +919,7 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
-    log_internal_stack_trace_to_stdout: bool = (
-        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
-    )
+    log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
@@ -901,6 +937,7 @@ class DataContext:
     )
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
+    delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
@@ -1054,6 +1091,17 @@ class DataContext:
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
 
+        elif name == "log_internal_stack_trace_to_stdout":
+            warnings.warn(
+                "`log_internal_stack_trace_to_stdout` is deprecated and will be "
+                "removed in January 2027. Configure `log_internal_stack_trace` "
+                "instead. Note the behavior has also changed: internal Ray Data / "
+                "Ray Core stack frames are now always omitted from stdout, and "
+                "`log_internal_stack_trace` instead controls whether they are "
+                "written to the Ray Data log file.",
+                DeprecationWarning,
+            )
+            self.log_internal_stack_trace = value
         elif name == "join_operator_actor_num_cpus_override" and value is not None:
             warnings.warn(
                 "`join_operator_actor_num_cpus_override` is deprecated and ignored, "

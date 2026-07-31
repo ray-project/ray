@@ -11,6 +11,12 @@ _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
 # example ~module.api_name will render only api_name
 _SPHINX_AUTODOC_SHORTNAME = "~"
 
+# Attribute set by RLlib's @OverrideToImplementCustomLogic decorators to tag a
+# method as a template-method override hook. Its presence marks an intentional
+# public extension point, so an underscore-named object carrying it is exempt
+# from the private-name rule.
+_OVERRIDE_HOOK_MARKER = "__is_overridden__"
+
 
 class AnnotationType(Enum):
     PUBLIC_API = "PublicAPI"
@@ -216,6 +222,25 @@ class API:
 
         return name_has_underscore or is_internal
 
+    @staticmethod
+    def _is_override_hook(obj: object) -> bool:
+        """
+        A leading underscore carries two meanings in Python. PEP 8 uses it for
+        "non-public"; but with no ``protected`` keyword the same underscore also
+        marks a template-method override hook -- a public, non-overridable
+        wrapper delegates to a protected, user-overridable method (for example
+        ``RLModule.forward_train`` delegating to the documented, subclassable
+        ``_forward_train``). An override hook is a declared public extension
+        point, not a private leak, so its underscore should not read as private.
+
+        The ``@OverrideToImplementCustomLogic`` decorators tag such methods by
+        setting ``__is_overridden__``; the *presence* of the attribute is the
+        intent signal (its boolean value tracks a separate runtime concern).
+        Read the attribute generically so the shared check needs no per-team
+        import.
+        """
+        return hasattr(obj, _OVERRIDE_HOOK_MARKER)
+
     def is_public(self) -> bool:
         """
         Check if this API is public. Public APIs are those that are annotated as public
@@ -310,7 +335,13 @@ class API:
                 annotation_type=annotation_type,
                 code_type=api.code_type,
             )
-            if resolved_api.is_deprecated() or resolved_api._is_private_name():
+            # Override hooks are public extension points despite their leading
+            # underscore, so the private-name rule does not apply to them; a
+            # deprecated annotation still does.
+            is_private = resolved_api._is_private_name() and not API._is_override_hook(
+                obj
+            )
+            if resolved_api.is_deprecated() or is_private:
                 non_public.append(canonical_name)
 
         return unresolved, non_public
