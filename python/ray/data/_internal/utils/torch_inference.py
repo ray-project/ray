@@ -222,7 +222,9 @@ def make_torch_inference_callable(user_cls: "CallableClass") -> "CallableClass":
             )
             validate_collated_batch(collated, user_cls)
 
-            moved = move_tensors_to_device(collated, self._ti_device)
+            moved = move_tensors_to_device(
+                collated, self._ti_device, non_blocking=False
+            )
 
             out, output_other = split_batch_and_other(
                 self._ti_user.process_on_device(input_batch, moved, collated_other)
