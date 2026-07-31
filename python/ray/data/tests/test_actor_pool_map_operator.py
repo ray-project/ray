@@ -1495,8 +1495,8 @@ def test_actor_init_failure_retry(
 
 def _make_flaky_init_mapper(num_init_failures: int):
     """Returns a map_batches UDF class whose first `num_init_failures`
-    __init__ attempts raise, counted across all actor incarnations and
-    in-actor retries (via a counter actor)."""
+    __init__ attempts raise, counted across all actor processes (including
+    replacements) and in-actor retries (via a counter actor)."""
 
     @ray.remote(num_cpus=0)
     class Counter:
@@ -1551,7 +1551,7 @@ def test_actor_init_death_budget(
     ctx.wait_for_min_actors_s = 0
 
     # With actor_init_retry_on_errors disabled (default), each init attempt
-    # corresponds to one actor incarnation.
+    # corresponds to one actor process.
     mapper = _make_flaky_init_mapper(num_failures)
     ds = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
     if should_succeed:
@@ -1564,8 +1564,8 @@ def test_actor_init_death_budget(
 def test_actor_init_death_budget_with_in_actor_retries(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """Tests that the pool-level death budget counts actor incarnations, not
-    in-actor init retry attempts (actor_init_retry_on_errors runs first).
+    """Tests that the pool-level death budget counts dead actor processes,
+    not in-actor init retry attempts (actor_init_retry_on_errors runs first).
     """
     ctx = ray.data.DataContext.get_current()
     ctx.actor_init_retry_on_errors = True
@@ -1575,9 +1575,9 @@ def test_actor_init_death_budget_with_in_actor_retries(
     ctx.wait_for_min_actors_s = 0
 
     # Fail the first 3 init attempts. With actor_init_max_retries=1 (2
-    # attempts per incarnation): incarnation 1 fails twice and dies (1 budget
-    # charge); incarnation 2 fails once, then succeeds on its in-actor retry
-    # (no charge).
+    # attempts per actor process): process 1 fails twice and dies (1 budget
+    # charge); its replacement, process 2, fails once, then succeeds on its
+    # in-actor retry (no charge).
     mapper = _make_flaky_init_mapper(3)
     result = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
     assert len(result.take_all()) == 10
