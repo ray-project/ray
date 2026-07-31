@@ -616,6 +616,7 @@ def _prefetch_node_into(
             _ENDPOINT_CACHE[key] = ep
         return ep
 
+    same_incarnation_retried = False
     while True:
         try:
             endpoint = _resolve()
@@ -626,33 +627,37 @@ def _prefetch_node_into(
         except PermissionError:
             raise
         except (ConnectionError, TimeoutError) as e:
-            # If _resolve() returns, the actor is alive; a changed incarnation
-            # means it restarted (retry in-place), same incarnation means the
-            # network path is broken (terminal). Compare incarnations, not
-            # (host, port): a restart can rebind the same ephemeral port, so an
-            # address match wouldn't prove it's the same process.
+            # A changed incarnation means the server restarted (retry in-place);
+            # same incarnation means the process stayed up but the fetch failed.
+            # Compare incarnations, not (host, port): a restart can rebind the
+            # same ephemeral port, so an address match wouldn't prove it's the
+            # same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
             fresh = _resolve()
-            if fresh[2] == endpoint[2]:
-                # Same incarnation: the actor process never restarted, yet the
-                # connection is blocked. Most likely a network configuration
-                # issue (NetworkPolicy, firewall, routing); retrying to the same
-                # file server won't help.
-                raise ShuffleFileServerAnomalyError(
-                    f"Flight fetch from node {node_id} failed ({e}) but "
-                    f"ShuffleFileServer at {fresh[:2]} is still reachable via Ray. "
-                    f"Likely a network configuration issue (NetworkPolicy, "
-                    f"firewall, routing) between reducer and file server. "
-                    f"Check the network config."
-                ) from e
-            logger.warning(
-                f"Flight fetch from node {node_id} failed ({e}); ShuffleFileServer "
-                f"restarted (incarnation {endpoint[2]} → {fresh[2]}, "
-                f"endpoint {endpoint[:2]} → {fresh[:2]}). Retrying in place."
-            )
-            continue
+
+            if fresh[2] != endpoint[2]:
+                same_incarnation_retried = False
+                logger.warning(f"node {node_id}: file server restarted, retrying")
+                continue
+
+            # Same incarnation: retry once to tell a persistent block from a
+            # transient blip that _resolve already polled through; only if it
+            # fails again is it a genuine network-config problem.
+            if not same_incarnation_retried:
+                same_incarnation_retried = True
+                logger.warning(
+                    f"node {node_id}: Flight fetch failed, retrying once ({e})"
+                )
+                time.sleep(0.5)
+                continue
+
+            raise ShuffleFileServerAnomalyError(
+                f"node {node_id}: Flight fetch still failing but file server "
+                f"reachable via Ray — likely a network block on the Flight port "
+                f"(NetworkPolicy/firewall/routing)."
+            ) from e
         except OSError as e:
             if _is_disk_exhausted(e):
                 raise ShuffleDiskError(
