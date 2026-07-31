@@ -205,23 +205,25 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._mock_get_utilized_budget_fraction.return_value = fraction
         return fraction
 
-    def _set_output_ratio(self, op, op_state, rm, output_size, downstream_input):
-        """Helper to set output-to-downstream-input ratio via mocks.
+    def _set_queue_ratio(self, op, op_state, rm, output_size, downstream_capacity):
+        """Helper to set queue ratio via mocks.
 
         Matches _get_output_to_downstream_input_ratio logic:
         - output_size = get_mem_op_outputs(op, include_ineligible_downstream=True)
-        - downstream_input = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
-        - ratio = (output_size / downstream_input) - 1
+        - downstream_capacity = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
+        - ratio = (output_size / downstream_capacity) - 1
         """
         rm.get_mem_op_outputs.return_value = output_size
 
         if op.output_dependencies:
             downstream_op = op.output_dependencies[0]
-            downstream_op.metrics.obj_store_mem_pending_task_inputs = downstream_input
+            downstream_op.metrics.obj_store_mem_pending_task_inputs = (
+                downstream_capacity
+            )
 
-        if downstream_input == 0:
+        if downstream_capacity == 0:
             return 0
-        return (output_size / downstream_input) - 1
+        return (output_size / downstream_capacity) - 1
 
     def test_backpressure_disabled_when_ratio_is_none(self):
         """Test that backpressure is disabled when ratio is None."""
@@ -278,10 +280,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        output_ratio = self._set_output_ratio(
-            op, op_state, rm, output_size=1100, downstream_input=100
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, output_size=1100, downstream_capacity=100
         )
-        assert output_ratio > 2.0
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -310,10 +312,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        output_ratio = self._set_output_ratio(
-            op, op_state, rm, output_size=1100, downstream_input=100
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, output_size=1100, downstream_capacity=100
         )
-        assert output_ratio > 2.0
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -375,10 +377,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Output ratio > 2.0: (1200 / 200) - 1 = 5
-        output_ratio = self._set_output_ratio(
-            op, op_state, rm, output_size=1200, downstream_input=200
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert output_ratio > 2.0
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -401,10 +403,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Output ratio > 2.0: (1200 / 200) - 1 = 5
-        output_ratio = self._set_output_ratio(
-            op, op_state, rm, output_size=1200, downstream_input=200
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert output_ratio > 2.0
+        assert queue_ratio > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -427,10 +429,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.4
 
         # Output ratio < 2.0: (1500 / 1000) - 1 = 0.5
-        output_ratio = self._set_output_ratio(
-            op, op_state, rm, output_size=1500, downstream_input=1000
+        queue_ratio = self._set_queue_ratio(
+            op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
-        assert output_ratio < 2.0
+        assert queue_ratio < 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -513,7 +515,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Output ratio > 2.0: (1200 / 200) - 1 = 5
-        self._set_output_ratio(op, op_state, rm, output_size=1200, downstream_input=200)
+        self._set_queue_ratio(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
+        )
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -536,7 +540,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Output ratio > 2.0: (1200 / 200) - 1 = 5
-        self._set_output_ratio(op, op_state, rm, output_size=1200, downstream_input=200)
+        self._set_queue_ratio(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
+        )
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -559,8 +565,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
         # Output ratio < 2.0: (1500 / 1000) - 1 = 0.5
-        self._set_output_ratio(
-            op, op_state, rm, output_size=1500, downstream_input=1000
+        self._set_queue_ratio(
+            op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
 
         policy = self._create_policy(
@@ -605,14 +611,14 @@ class TestDownstreamCapacityBackpressurePolicy:
 
         # Fast producer scenario: large output, low downstream input
         # Output ratio = (2200 / 200) - 1 = 10 (well above 2.0 threshold)
-        output_ratio = self._set_output_ratio(
+        queue_ratio = self._set_queue_ratio(
             producer_op,
             producer_state,
             rm,
             output_size=2200,  # Large output (producer outputting fast)
-            downstream_input=200,  # Low input (slow consumer)
+            downstream_capacity=200,  # Low input (slow consumer)
         )
-        assert output_ratio > 2.0  # Verify ratio exceeds backpressure threshold
+        assert queue_ratio > 2.0  # Verify ratio exceeds backpressure threshold
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm

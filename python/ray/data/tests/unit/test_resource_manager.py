@@ -3,6 +3,7 @@ import warnings
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -22,8 +23,17 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_resource_manager import StubBlockRefCounter
 from ray.util.annotations import RayDeprecationWarning
+
+
+class StubBlockRefCounter(BlockRefCounter):
+    """Test double for BlockRefCounter with directly settable per-operator usage."""
+
+    def __init__(self):
+        super().__init__(add_object_out_of_scope_callback=lambda *_: True)
+
+    def set_usage(self, producer_id: str, size_bytes: int) -> None:
+        self._bytes_by_producer[producer_id] = size_bytes
 
 
 def test_execution_options_deprecated_defaults_initialized_without_warning():
