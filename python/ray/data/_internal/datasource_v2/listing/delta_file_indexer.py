@@ -54,6 +54,7 @@ class DeltaFileIndexer(FileIndexer):
     def __init__(
         self,
         *,
+        table_uri: Optional[str] = None,
         version: Optional[int] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         partition_predicate: Optional[Expr] = None,
@@ -65,6 +66,12 @@ class DeltaFileIndexer(FileIndexer):
         """Build an indexer for one Delta table snapshot.
 
         Args:
+            table_uri: Table location as the user gave it, scheme included.
+                ``deltalake`` resolves its own storage backend from the URI,
+                while the paths this indexer emits must be filesystem-native
+                (PyArrow rejects a scheme-prefixed path). When ``None``, the
+                listed path is used for both, which is only equivalent for
+                local paths.
             version: Table version to read. ``None`` reads the latest.
             storage_options: Backend credentials/config passed to ``deltalake``.
             partition_predicate: Predicate over partition columns only.
@@ -78,6 +85,7 @@ class DeltaFileIndexer(FileIndexer):
                 otherwise get one read task per file.
             max_paths_per_output: Maximum files per emitted manifest block.
         """
+        self._table_uri = table_uri
         self._version = version
         self._storage_options = storage_options
         self._partition_predicate = partition_predicate
@@ -106,6 +114,7 @@ class DeltaFileIndexer(FileIndexer):
         predicates in place would prune against a stale plan.
         """
         return DeltaFileIndexer(
+            table_uri=self._table_uri,
             version=self._version,
             storage_options=self._storage_options,
             partition_predicate=partition_predicate,
@@ -140,9 +149,9 @@ class DeltaFileIndexer(FileIndexer):
         import pyarrow as pa
         from deltalake import DeltaTable
 
-        for table_uri in paths.to_pylist():
+        for resolved_path in paths.to_pylist():
             table = DeltaTable(
-                table_uri,
+                self._table_uri if self._table_uri is not None else resolved_path,
                 version=self._version,
                 storage_options=self._storage_options,
             )
@@ -160,14 +169,14 @@ class DeltaFileIndexer(FileIndexer):
                     "Delta log pruning kept %d of %d files in %r",
                     add_actions.num_rows,
                     total,
-                    table_uri,
+                    resolved_path,
                 )
 
             relative_paths = add_actions.column("path").to_pylist()
             sizes = add_actions.column("size_bytes").to_pylist()
             for relative_path, size in zip(relative_paths, sizes):
                 yield FileInfo(
-                    path=_resolve_file_uri(table_uri, relative_path), size=size
+                    path=_resolve_file_uri(resolved_path, relative_path), size=size
                 )
 
 

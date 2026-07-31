@@ -19,13 +19,14 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     InMemorySizeEstimator,
     ParquetInMemorySizeEstimator,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
+from ray.data._internal.datasource_v2.scanners.delta_scanner import DeltaScanner
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     HIVE_DEFAULT_PARTITION,
     Partitioning,
     PartitionStyle,
 )
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -64,7 +65,17 @@ class DeltaDatasourceV2(DataSourceV2[FileManifest]):
         file_chunker: Optional[FileChunker] = None,
     ):
         super().__init__(name="DeltaV2", category=DatasourceCategory.DATA_LAKE)
-        self._path = path
+        # ``deltalake`` resolves its storage backend from the URI, so the log
+        # is always opened with the path exactly as given. The paths handed to
+        # the reader must be filesystem-native instead -- PyArrow rejects a
+        # scheme-prefixed path outright -- so resolve those separately.
+        self._table_uri = path
+        resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+            [path], filesystem
+        )
+        assert len(resolved_paths) == 1, resolved_paths
+        self._path = resolved_paths[0]
+        filesystem = resolved_filesystem
         self._version = version
         self._storage_options = storage_options
         self._filesystem = filesystem
@@ -110,7 +121,9 @@ class DeltaDatasourceV2(DataSourceV2[FileManifest]):
 
         if self._table is None:
             self._table = DeltaTable(
-                self._path, version=self._version, storage_options=self._storage_options
+                self._table_uri,
+                version=self._version,
+                storage_options=self._storage_options,
             )
         return self._table
 
@@ -121,6 +134,7 @@ class DeltaDatasourceV2(DataSourceV2[FileManifest]):
 
     def _get_file_indexer(self) -> DeltaFileIndexer:
         return DeltaFileIndexer(
+            table_uri=self._table_uri,
             version=self._version,
             storage_options=self._storage_options,
             file_chunker=self._file_chunker,
@@ -187,7 +201,7 @@ class DeltaDatasourceV2(DataSourceV2[FileManifest]):
         schema: pa.Schema,
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
-    ) -> ParquetScanner:
+    ) -> DeltaScanner:
         partitioning = options.get("partitioning")
         if partitioning is None:
             partitioning = self._partitioning()
@@ -205,7 +219,7 @@ class DeltaDatasourceV2(DataSourceV2[FileManifest]):
         if self._include_paths and INCLUDE_PATHS_COLUMN_NAME not in columns:
             columns = [*columns, INCLUDE_PATHS_COLUMN_NAME]
 
-        return ParquetScanner(
+        return DeltaScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,
             partitioning=partitioning,

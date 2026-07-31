@@ -132,6 +132,20 @@ class SupportsPartitionPruning(ABC):
         """
         ...
 
+    @property
+    def enforces_partition_predicate(self) -> bool:
+        """Whether :meth:`prune_partitions` guarantees the predicate is applied.
+
+        Scanners that evaluate partition predicates by parsing file paths
+        return ``True``: every row they emit has already been checked.
+
+        A scanner returns ``False`` to accept the predicate as a *pruning
+        hint only* -- it may use it to skip work, but does not promise that
+        every surviving row satisfies it. The optimizer then keeps a
+        ``Filter`` above the read, so correctness never rests on the hint.
+        """
+        return True
+
     @abstractmethod
     def prune_partitions(self, predicate: "Expr") -> "Scanner":
         """Prune partitions based on a predicate.

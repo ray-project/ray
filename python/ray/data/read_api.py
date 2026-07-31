@@ -5098,16 +5098,19 @@ def _delta_table_supports_datasource_v2(dt, arrow_parquet_args: dict) -> bool:
       the logical names live only in the log, so opening the files directly
       with the logical schema finds none of the requested columns and hands
       back empty ones.
-    - **A partition column's type can't be carried through path parsing.**
-      Partition values are reconstructed from directory names, and
-      ``Partitioning.field_types`` can only express ``int``/``float``/``str``/
-      ``bool``. For a ``date`` or ``decimal`` partition column the scanner
-      cannot evaluate a partition predicate itself, which would leave file
-      pruning as the only thing enforcing it.
     - **PyArrow read options were passed.** V1 forwards ``**arrow_parquet_args``
       to ``iter_batches``; V2 has nowhere to put them, so honoring them means
       staying on V1 rather than silently dropping them.
+    - **The table has a column called ``path``.** That name is how the V2
+      reader labels the synthesized file path, so the real column would be
+      shadowed rather than returned.
     """
+    import pyarrow as pa
+
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        INCLUDE_PATHS_COLUMN_NAME,
+    )
+
     try:
         if arrow_parquet_args:
             return False
@@ -5116,7 +5119,8 @@ def _delta_table_supports_datasource_v2(dt, arrow_parquet_args: dict) -> bool:
         if mode is not None and mode.lower() != "none":
             return False
 
-        return _delta_partition_field_types(dt) is not None
+        schema = pa.schema(dt.schema().to_arrow())
+        return schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1
     except Exception:  # noqa: BLE001 - an unreadable table belongs on V1
         logger.debug(
             "Falling back to the V1 Delta read path; could not determine V2 "
@@ -5126,18 +5130,16 @@ def _delta_table_supports_datasource_v2(dt, arrow_parquet_args: dict) -> bool:
         return False
 
 
-def _delta_partition_field_types(dt) -> Optional[Dict[str, type]]:
-    """Map each partition column to the Python type path parsing must yield.
+def _delta_partition_field_types(dt) -> Dict[str, type]:
+    """Map each partition column to the Python type path parsing should yield.
 
     Partition values only exist as directory names, so they arrive as strings
-    unless ``Partitioning.field_types`` says otherwise. Supplying these is
-    what lets the scanner enforce a partition predicate on its own -- without
-    them, ``col("year") == lit(2024)`` compares the string ``"2024"`` against
-    an ``int64`` literal, which raises inside PyArrow and is conservatively
-    treated as "keep the file".
-
-    Returns ``None`` if any partition column has a type this mapping can't
-    express, meaning the table shouldn't take the V2 path at all.
+    unless ``Partitioning.field_types`` says otherwise, and an untyped
+    ``"2024"`` compared against an ``int64`` literal raises inside PyArrow.
+    That only costs pruning -- the predicate is enforced by a ``Filter``
+    above the read, not by path parsing (see :class:`DeltaScanner`) -- so
+    types this mapping can't express are simply left out rather than
+    disqualifying the table.
     """
     import pyarrow as pa
 
@@ -5150,7 +5152,7 @@ def _delta_partition_field_types(dt) -> Optional[Dict[str, type]]:
     for name in partition_columns:
         index = schema.get_field_index(name)
         if index < 0:
-            return None
+            continue
         arrow_type = schema.field(index).type
         if pa.types.is_boolean(arrow_type):
             field_types[name] = bool
@@ -5160,10 +5162,8 @@ def _delta_partition_field_types(dt) -> Optional[Dict[str, type]]:
             field_types[name] = float
         elif pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type):
             field_types[name] = str
-        else:
-            # date / timestamp / decimal / binary: not expressible, so the
-            # scanner could not enforce a predicate over this column.
-            return None
+        # date / timestamp / decimal / binary aren't expressible here; left
+        # unmapped, they stay strings and simply prune less.
     return field_types
 
 

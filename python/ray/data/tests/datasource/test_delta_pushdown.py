@@ -451,37 +451,72 @@ def int_partitioned_table(tmp_path) -> str:
     return path
 
 
-def test_scanner_enforces_typed_partition_predicates_on_its_own(
-    int_partitioned_table, restore_data_context
-):
-    """The claim that pruning is optional has to hold for typed partitions.
+def test_delta_scanner_declines_to_enforce_partition_predicates():
+    """Path parsing is a lossy view of what the log records.
 
-    Partition values come back from the path as strings unless the
-    partitioning carries ``field_types``. Comparing ``"2023"`` to ``lit(2023)``
-    raises inside PyArrow, and the scanner conservatively keeps the file --
-    which would leave log-level pruning as the only thing enforcing the
-    predicate, contradicting the design.
-
-    This drives the scanner's own path evaluation directly, with no log
-    pruning involved.
+    ``PathPartitionParser.evaluate_predicate_on_partition`` swallows any
+    evaluation error and keeps the file, which is only sound while something
+    else applies the predicate. Declining enforcement is what makes the
+    optimizer keep that ``Filter``.
     """
-    from deltalake import DeltaTable
+    from ray.data._internal.datasource_v2.scanners.delta_scanner import DeltaScanner
+    from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 
-    from ray.data._internal.datasource_v2.delta_datasource_v2 import DeltaDatasourceV2
-    from ray.data.datasource.partitioning import PathPartitionParser
+    schema = pa.schema([pa.field("p", pa.string())])
+    assert DeltaScanner(schema=schema).enforces_partition_predicate is False
+    assert ParquetScanner(schema=schema).enforces_partition_predicate is True
 
-    partitioning = DeltaDatasourceV2(int_partitioned_table)._partitioning()
-    parser = PathPartitionParser(partitioning)
-    predicate = col("year") == lit(2024)
 
-    kept = {
-        uri: parser.evaluate_predicate_on_partition(uri, predicate)
-        for uri in DeltaTable(int_partitioned_table).file_uris()
-    }
-    assert any(kept.values()), "the matching partition must be kept"
-    assert not all(kept.values()), (
-        "the scanner kept every partition, so it is not enforcing the "
-        "predicate and correctness would depend on the pruning rule firing"
+def test_partition_predicate_stays_in_a_filter(partitioned_table, restore_data_context):
+    """The optimized plan must still contain a Filter for the predicate."""
+    from ray.data._internal.logical.operators.map_operator import Filter
+
+    ds = _read(partitioned_table, v2=True, predicate=col("region") == lit("US"))
+    optimized = LogicalOptimizer().optimize(ds._logical_plan)
+
+    def has_filter(op):
+        return isinstance(op, Filter) or any(
+            has_filter(d) for d in op.input_dependencies
+        )
+
+    assert has_filter(optimized.dag)
+    # ...and pruning still happened, so correctness didn't cost the optimization.
+    assert _files_listed(ds, partitioned_table) == 1
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("p") == lit("a"),
+        col("p") != lit("a"),
+        col("p").is_in(["a"]),
+        col("p").is_in(["a"]) | (col("p") == lit("b")),
+        col("p").is_null(),
+        col("p").is_not_null(),
+    ],
+    ids=["eq", "ne", "in", "in-or-eq", "is-null", "is-not-null"],
+)
+def test_partition_predicates_over_a_null_partition_match_v1(
+    tmp_path, predicate: Expr, restore_data_context
+):
+    """A NULL partition is a directory name, and several kernels reject it.
+
+    ``pc.is_in`` over the null-typed single-row table the path parser builds
+    raises, which the scanner turns into "keep the file". These are the cases
+    that returned extra rows while the predicate had only one enforcement
+    point.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "null_part")
+    write_deltalake(
+        path,
+        pa.table({"p": pa.array(["a", "b", None], type=pa.string()), "val": [1, 2, 3]}),
+        partition_by=["p"],
+    )
+
+    assert _sorted_rows(_read(path, v2=True, predicate=predicate)) == _sorted_rows(
+        _read(path, v2=False, predicate=predicate)
     )
 
 
@@ -528,23 +563,21 @@ def test_pruning_rule_declares_its_ordering_dependency():
 
 
 @pytest.mark.parametrize(
-    "partition_type,supported",
+    "partition_type,expected",
     [
-        (pa.int64(), True),
-        (pa.string(), True),
-        (pa.bool_(), True),
-        (pa.date32(), False),
+        (pa.int64(), int),
+        (pa.float64(), float),
+        (pa.string(), str),
+        (pa.bool_(), bool),
+        # Not expressible as a `Partitioning` field type. Left unmapped, so
+        # the value stays a string and prunes less -- it does not affect the
+        # answer, which a retained `Filter` is responsible for.
+        (pa.date32(), None),
     ],
 )
-def test_v2_eligibility_by_partition_type(
-    tmp_path, partition_type: pa.DataType, supported: bool
+def test_partition_field_types_from_the_log(
+    partition_type: pa.DataType, expected: Optional[type]
 ):
-    """Partition types that path parsing can't coerce belong on V1.
-
-    ``Partitioning.field_types`` can only express int/float/str/bool. For
-    anything else the scanner cannot evaluate a partition predicate, so the
-    V2 path would depend on the pruning rule for correctness.
-    """
     from ray.data.read_api import _delta_partition_field_types
 
     class _FakeMetadata:
@@ -564,7 +597,7 @@ def test_v2_eligibility_by_partition_type(
         def schema(self):
             return _FakeSchema()
 
-    assert (_delta_partition_field_types(_FakeTable()) is not None) is supported
+    assert _delta_partition_field_types(_FakeTable()).get("p") is expected
 
 
 @pytest.mark.parametrize(
@@ -583,11 +616,52 @@ def test_column_mapping_tables_stay_on_the_v1_path(mode: Optional[str], eligible
         partition_columns = []
         configuration = {} if mode is None else {"delta.columnMapping.mode": mode}
 
+    class _FakeSchema:
+        @staticmethod
+        def to_arrow():
+            return pa.schema([pa.field("val", pa.int64())])
+
     class _FakeTable:
         def metadata(self):
             return _FakeMetadata()
 
+        def schema(self):
+            return _FakeSchema()
+
     assert _delta_table_supports_datasource_v2(_FakeTable(), {}) is eligible
+
+
+@pytest.mark.parametrize("scheme", ["", "file://"])
+def test_uri_addressed_tables_read_correctly(tmp_path, scheme, restore_data_context):
+    """``deltalake`` wants the scheme; PyArrow rejects it.
+
+    The log is opened with the URI as given, while the paths handed to the
+    reader are filesystem-native. ``read_delta``'s documented examples are
+    ``s3://`` and ``az://`` URIs, so this is the common case, not an edge one.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "uri_table")
+    write_deltalake(path, pa.table({"v": [1, 2, 3]}))
+
+    assert _sorted_rows(_read(scheme + path, v2=True)) == _sorted_rows(
+        _read(scheme + path, v2=False)
+    )
+
+
+def test_table_with_a_path_column_stays_on_v1(tmp_path, restore_data_context):
+    """``path`` is how the reader labels the synthesized file path.
+
+    A real column of that name would be shadowed rather than returned.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "path_column")
+    write_deltalake(path, pa.table({"path": ["x", "y"], "v": [1, 2]}))
+
+    v2 = _read(path, v2=True)
+    assert v2.schema().names == ["path", "v"]
+    assert _sorted_rows(v2) == _sorted_rows(_read(path, v2=False))
 
 
 def test_v2_eligibility_fails_closed():
