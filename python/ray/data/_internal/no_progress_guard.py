@@ -36,12 +36,12 @@ class NoProgressGuard:
 
         new_progress = current_outputs_taken > self._last_outputs_taken
         time_elapsed = current_time - self._last_progress_time
-        if new_progress:
+        if new_progress or not consumer_idling:
             self._last_progress_time = current_time
             self._last_outputs_taken = current_outputs_taken
             return
 
-        if consumer_idling and time_elapsed > self._timeout_s:
+        if time_elapsed > self._timeout_s:
             raise ExecutionTimeoutError(self._error_message)
 
     def _total_outputs_taken(self) -> int:
