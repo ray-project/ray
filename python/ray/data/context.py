@@ -115,7 +115,7 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
 )
 
 DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
-    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 128 * 1024 * 1024
+    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -666,7 +666,7 @@ class DataContext:
             increase shuffle parallelism (useful for CPU-intensive shuffles)
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
-            individually. Defaults to 128MiB.
+            individually. Defaults to 1GiB.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
