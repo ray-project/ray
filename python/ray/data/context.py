@@ -784,11 +784,6 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # Whether to use the task-based shuffle v2 path for hash repartition,
-    # join, aggregation, and sort. When False, fall back to their legacy
-    # implementations.
-    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
-
     ################################################################
     # GPU Shuffle configuration
     ################################################################

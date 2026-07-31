@@ -369,7 +369,7 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Sort):
-        if data_context.use_hash_shuffle_v2:
+        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
             return _plan_sort_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None

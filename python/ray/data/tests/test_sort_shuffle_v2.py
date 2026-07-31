@@ -25,7 +25,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_o
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import run_op_tasks_sync
@@ -204,13 +204,13 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     ctx = DataContext.get_current()
     ds = ray.data.range(10, override_num_blocks=2).sort("id")
 
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, ShuffleReduceOp)
     assert dag._preserve_partition_order
     assert isinstance(dag.input_dependencies[0], SortShuffleMapOp)
 
-    ctx.use_hash_shuffle_v2 = False
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, AllToAllOperator)
 
@@ -220,7 +220,7 @@ def test_sort_shuffle_v2_end_to_end(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
     rows = [{"a": i % 4, "b": i} for i in range(40)]
     random.Random(0).shuffle(rows)
@@ -238,7 +238,7 @@ def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
     # Aggregations can produce a null-typed block for an all-null group and an
     # int64-typed block for non-null groups. Sort shuffle may merge these blocks
@@ -276,7 +276,7 @@ def test_sort_shuffle_v2_more_blocks_than_sampling_window(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
     num_blocks = 32
     num_rows = 320
@@ -299,7 +299,7 @@ def test_sort_shuffle_v2_with_user_boundaries(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
     result = (
         ray.data.range(20, override_num_blocks=4)
