@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <array>
 #include <deque>
 #include <vector>
 
@@ -70,6 +71,7 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
+
   /**
    * @brief Rebuilds the dead-worker id queue from the worker table on GCS startup and
    * trims it to the retention cap.
@@ -84,12 +86,13 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
 
   /**
-   * @brief Records a newly dead worker and evicts the oldest one when the retention cap
-   * is exceeded.
+   * @brief Records a newly dead worker in its priority tier and, when the retention cap
+   * is exceeded, evicts the oldest worker from the lowest-priority tier first
    *
    * @param worker_id The id of the worker that just died.
+   * @param exit_type How the worker exited; determines its retention priority tier.
    */
-  void TrimDeadWorkers(const WorkerID &worker_id);
+  void TrimDeadWorkers(const WorkerID &worker_id, rpc::WorkerExitType exit_type);
 
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
@@ -114,9 +117,24 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       "due to system related errors.",
       /*unit=*/""};
 
-  /// Queue of dead worker ids in death order (oldest at front); bounds retention in the
-  /// worker table. Only accessed on io_context_.
-  std::deque<WorkerID> dead_worker_ids_queue_;
+  /// Total dead workers retained across all priority tiers
+  size_t TotalDeadWorkers() const {
+    size_t total = 0;
+    for (const auto &tier : dead_workers_by_tier_) {
+      total += tier.size();
+    }
+    return total;
+  }
+
+  /// Number of dead-worker retention priority tiers; lower index is evicted first
+  /// Right now, we only have two tiers:
+  //    0: INTENDED_SYSTEM_EXIT, INTENDED_USER_EXIT
+  //    1: USER_ERROR, SYSTEM_ERROR, NODE_OUT_OF_MEMORY
+  static constexpr size_t kNumDeadWorkerTiers = 2;
+
+  /// Dead worker ids bucketed by retention priority tier; each tier is FIFO (oldest at
+  /// front). Bounds retention in the worker table. Only accessed on io_context_.
+  std::array<std::deque<WorkerID>, kNumDeadWorkerTiers> dead_workers_by_tier_;
 };
 
 }  // namespace gcs

@@ -1,7 +1,11 @@
 import unittest
 
+import gymnasium as gym
+import numpy as np
+
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
@@ -9,6 +13,72 @@ from ray.rllib.utils.metrics import (
     EPISODE_MODULE_RETURN_MEAN,
 )
 from ray.rllib.utils.test_utils import check
+
+
+class ChangingNumAgentsEnv(MultiAgentEnv):
+    """Multi-agent env whose agents terminate one-by-one at a fixed cadence.
+
+    Used to reproduce https://github.com/ray-project/ray/issues/61602: when an
+    agent terminates exactly at a `truncate_episodes` rollout boundary, its
+    `SingleAgentEpisode` is dropped from the continuation chunk by
+    `MultiAgentEpisode.cut()`, while the (cached) module-to-env
+    `memorized_map_structure` built right before the cut still references it.
+
+    Mirrors the reproduction env from the issue: a removed agent receives a final
+    reward and a termination flag, but no final observation. Removals are
+    deterministic (highest-id removable agent first) so that a removal reliably
+    lands on the truncation boundary.
+    """
+
+    def __init__(self, config=None):
+        super().__init__()
+        config = config or {}
+        num_agents = config.get("num_agents", 6)
+        # Keep this many low-id agents alive for the whole episode, so the episode
+        # is never `done` exactly at a removal/truncation boundary (which is the
+        # buggy case we want to exercise).
+        self._num_persistent = config.get("num_persistent", 2)
+        # Remove one removable agent every `remove_interval` env steps.
+        self._remove_interval = config.get("remove_interval", 5)
+        self._max_steps = config.get("max_steps", 201)
+
+        self.possible_agents = [str(i) for i in range(num_agents)]
+        self.observation_spaces = {
+            aid: gym.spaces.Box(0.0, 1.0, (1,), np.float32)
+            for aid in self.possible_agents
+        }
+        self.action_spaces = {
+            aid: gym.spaces.Discrete(2) for aid in self.possible_agents
+        }
+        self.agents = []
+        self._t = 0
+
+    def reset(self, *, seed=None, options=None):
+        self._t = 0
+        self.agents = list(self.possible_agents)
+        obs = {aid: self.observation_spaces[aid].sample() for aid in self.agents}
+        return obs, {}
+
+    def step(self, action_dict):
+        self._t += 1
+        # Reward all currently-present agents (even one removed this step).
+        rewards = {aid: 1.0 for aid in self.agents}
+        terminateds = {"__all__": False}
+        truncateds = {"__all__": False}
+
+        # Deterministically remove the highest-id removable agent on the cadence.
+        removable = self.agents[self._num_persistent :]
+        if self._t % self._remove_interval == 0 and removable:
+            removed = removable[-1]
+            self.agents.remove(removed)
+            terminateds[removed] = True
+
+        if self._t >= self._max_steps:
+            terminateds["__all__"] = True
+
+        # Only agents that were NOT removed this step get a new observation.
+        obs = {aid: self.observation_spaces[aid].sample() for aid in self.agents}
+        return obs, rewards, terminateds, truncateds, {}
 
 
 class TestMultiAgentEnvRunner(unittest.TestCase):
@@ -109,6 +179,87 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         episodes = env_runner.sample()
         assert len(episodes) == 4
         assert all(e.agent_steps() == 20 for e in episodes)
+
+    def test_agent_terminating_at_truncation_boundary(self):
+        """Agents that terminate on a truncate_episodes boundary must not crash.
+
+        Regression test for https://github.com/ray-project/ray/issues/61602.
+        With `batch_mode="truncate_episodes"` and a set `rollout_fragment_length`,
+        an agent that terminates exactly at the rollout boundary is dropped from
+        the continuation episode by `MultiAgentEpisode.cut()`. The module-to-env
+        `UnBatchToIndividualItems` connector used to `KeyError` on the next
+        `sample()` call because the cached `memorized_map_structure` still
+        referenced that (now removed) agent.
+        """
+        # Cadence of agent removals == rollout boundary, so a removal reliably
+        # lands right on the truncation boundary that triggered the bug.
+        remove_interval = 5
+        num_agents = 6
+        num_persistent = 2
+        # Low-id agents (`"0"`, `"1"`) live for the whole episode; the removable
+        # rest (`"2"`..`"5"`) are removed one-by-one on the truncation boundaries.
+        removable_agents = {str(i) for i in range(num_persistent, num_agents)}
+        config = (
+            PPOConfig()
+            .environment(
+                ChangingNumAgentsEnv,
+                env_config={
+                    "num_agents": num_agents,
+                    "num_persistent": num_persistent,
+                    "remove_interval": remove_interval,
+                },
+            )
+            .env_runners(
+                num_env_runners=0,
+                rollout_fragment_length=remove_interval,
+                batch_mode="truncate_episodes",
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda aid, *a, **kw: "p0",
+                count_steps_by="env_steps",
+            )
+        )
+
+        env_runner = MultiAgentEnvRunner(config=config)
+        # Several consecutive `sample()` calls: the first fills the cache, and each
+        # subsequent one runs the module-to-env pipeline against a `cut()`
+        # continuation whose agents changed at the boundary.
+        terminated_agents = set()
+        for _ in range(8):
+            episodes = env_runner.sample()
+            check(sum(len(e) for e in episodes), remove_interval)
+
+            # Check the returned episode data, not just that `sample()` did not
+            # crash: every single-agent episode must carry exactly one reward per
+            # timestep (coherent, well-aligned per-agent rows out of the
+            # connector), and record which agents actually terminated.
+            for episode in episodes:
+                for agent_id, sa_episode in episode.agent_episodes.items():
+                    check(len(sa_episode.get_rewards()), len(sa_episode))
+                    if sa_episode.is_done:
+                        terminated_agents.add(agent_id)
+
+            # Regression test for #61602: the env-to-module `AgentToModuleMapping`
+            # filter must keep done/removed agents out of `memorized_map_structure`.
+            mms = env_runner._shared_data.get("memorized_map_structure") or {}
+            existing = {
+                (e.id_, aid)
+                for e in env_runner._ongoing_episodes
+                for aid in e.agent_episodes
+            }
+            for pairs in mms.values():
+                for eps_id, agent_id in pairs:
+                    assert (eps_id, agent_id) in existing, (eps_id, agent_id)
+
+        # The test only exercises #61602 if agents actually terminate on the
+        # truncation boundaries. Assert the exact scenario played out: every
+        # removable agent finished and no persistent agent did. Otherwise the
+        # checks above would pass vacuously on an env that never changed agents.
+        assert terminated_agents == removable_agents, (
+            terminated_agents,
+            removable_agents,
+        )
 
     def _build_config(self, num_agents=2, num_policies=2):
         # Build the configuration and use `PPO`.

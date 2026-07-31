@@ -93,6 +93,33 @@ def test_read_parquet_rejects_pickle_object_columns(
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_read_parquet_rejects_nested_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    # A pickled-object column nested inside a `list<...>` must trip the guard
+    # just like a top-level one; otherwise nesting bypasses the check.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
+    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
+    table = pa.table({"col": list_array})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def test_write_parquet_handles_per_block_column_reorder(
     ray_start_regular_shared, tmp_path
 ):
@@ -3324,26 +3351,38 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
-def test_parquet_sampling_fails_on_permanent_error(ray_start_regular_shared, tmp_path):
+def test_parquet_sampling_fails_on_permanent_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
     limited retries. Regression test for #57278."""
     from unittest.mock import patch
 
-    # Write a valid parquet file so that fragment discovery succeeds.
+    # Write a valid parquet file so that file/fragment discovery succeeds and
+    # the failure is isolated to the schema/encoding sampling step.
     table = pa.table({"col": [1, 2, 3]})
     pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
 
-    # Patch the remote sampling function to always raise PermissionError
-    # (a subclass of OSError), simulating invalid credentials.
-    original_fn = (
-        "ray.data._internal.datasource.parquet_datasource._fetch_parquet_file_info"
-    )
-
     def _raise_permission_error(*args, **kwargs):
+        # PermissionError is a subclass of OSError, simulating invalid
+        # credentials against an object store.
         raise PermissionError("Access Denied: invalid credentials")
 
-    with patch(original_fn, new=_raise_permission_error):
+    if DataContext.get_current().use_datasource_v2:
+        # V2 samples schema on the driver by reading Parquet footers via
+        # ``pq.read_schema``; a permanent OSError there must propagate.
+        target = "pyarrow.parquet.read_schema"
+    else:
+        # V1 samples files through a remote task wrapping
+        # ``_fetch_parquet_file_info``; retries are capped so the error
+        # surfaces instead of hanging forever.
+        target = (
+            "ray.data._internal.datasource.parquet_datasource."
+            "_fetch_parquet_file_info"
+        )
+
+    with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
 

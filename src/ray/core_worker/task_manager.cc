@@ -461,6 +461,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
+      RAY_LOG(DEBUG).WithField(task_id)
+          << "Task is already submitted/running, skipping resubmit";
       return std::nullopt;
     } else {
       // Going to resubmit the task now.
@@ -552,6 +554,7 @@ void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
 
 void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   TaskSpecification spec;
+  RAY_LOG(DEBUG).WithField(task_id) << "Marking generator failed and resubmitting";
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -940,6 +943,74 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 }
 
+bool TaskManager::FailStreamingGeneratorReplayIfInconsistent(
+    const TaskID &task_id, const rpc::PushTaskReply &reply) {
+  ObjectID generator_id;
+  int64_t expected_count = 0;
+  int64_t actual_count = 0;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end() || !it->second.spec_.IsStreamingGenerator()) {
+      return false;
+    }
+    // Only a replay can be inconsistent: the first successful execution defines
+    // the expected object count, so there is nothing to compare against yet.
+    if (it->second.num_successful_executions_ == 0) {
+      return false;
+    }
+    expected_count = it->second.spec_.NumStreamingGeneratorReturns();
+    actual_count = reply.streaming_generator_return_ids_size();
+    // NumStreamingGeneratorReturns is only recorded when the first successful
+    // attempt yielded > 0 objects (see CompletePendingTask), so expected_count
+    // == 0 means the count is unknown; we cannot detect drift from it.
+    if (expected_count == 0 || expected_count == actual_count) {
+      return false;
+    }
+    // Use the pinned task spec, so malformed replies without return_objects
+    // still fail fast on the object-count mismatch.
+    generator_id = it->second.spec_.ReturnId(0);
+  }
+  FailStreamingGeneratorReplayInconsistency(
+      task_id, generator_id, expected_count, actual_count);
+  return true;
+}
+
+void TaskManager::FailStreamingGeneratorReplayInconsistency(const TaskID &task_id,
+                                                            const ObjectID &generator_id,
+                                                            int64_t expected_count,
+                                                            int64_t actual_count) {
+  const std::string error_message = absl::StrCat(
+      "Streaming generator task ",
+      task_id.Hex(),
+      " was re-executed and produced ",
+      actual_count,
+      " objects, expected ",
+      expected_count,
+      ". The generator output is non-deterministic, which can hang downstream "
+      "consumers (when fewer objects are produced) or silently truncate their "
+      "input (when more objects are produced).");
+
+  RAY_LOG(ERROR).WithField(task_id).WithField(generator_id)
+      << error_message
+      << " Failing the task instead of leaving the pipeline stuck or silently "
+         "dropping data.";
+
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_message(error_message);
+  // Set the error type explicitly: FailPendingTask forwards this RayErrorInfo
+  // as-is to the task status event, where an unset error_type would default to
+  // WORKER_DIED instead of the actual cause.
+  error_info.set_error_type(rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT);
+  Status status = Status::Invalid(error_message);
+  FailOrRetryPendingTask(task_id,
+                         rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT,
+                         &status,
+                         &error_info,
+                         /*mark_task_object_failed=*/true,
+                         /*fail_immediately=*/true);
+}
+
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
     const ExecutionSignalCallback &execution_signal_callback,
@@ -1039,6 +1110,13 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (!put_res.ok()) {
       RAY_LOG(WARNING).WithField(object_id)
           << "Failed to handle streaming dynamic return: " << put_res.status();
+    } else if (!put_res.value()) {
+      // HandleTaskReturn returns false when the object was stored in plasma
+      // (true means it was inlined into the in-memory store). Remember the
+      // plasma-backed reports so they can be failed if the generator task fails
+      // before its first completion records them on the task spec. Inline
+      // reports live in the owner's memory store and are not lost this way.
+      stream_it->second.MarkReportedInPlasma(object_id);
     }
   }
 
@@ -1092,6 +1170,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
+
+  // Detect a streaming generator replay that produced a different number of
+  // objects than the first attempt, and fail before any return object is
+  // written to the store below — otherwise downstream consumers could observe
+  // the inconsistent objects before the failure propagates. Skipped on
+  // application-error completions, which already route through the failure
+  // path.
+  if (!is_application_error &&
+      FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
+    return;
+  }
 
   bool first_execution = false;
   const auto store_in_plasma_ids =
@@ -1735,6 +1824,16 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   return store_in_plasma_ids;
 }
 
+std::vector<ObjectID> TaskManager::GetStreamingGeneratorReportedPlasmaRefs(
+    const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto it = object_ref_streams_.find(generator_id);
+  if (it == object_ref_streams_.end()) {
+    return {};
+  }
+  return it->second.GetReportedPlasmaRefs();
+}
+
 void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec,
     rpc::ErrorType error_type,
@@ -1807,6 +1906,25 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         in_memory_store_.Put(error,
                              generator_return_id,
                              reference_counter_.HasReference(generator_return_id));
+      }
+    }
+    // num_streaming_generator_returns is only populated on the first complete
+    // execution; after that, reconstructable returns are failed from the task
+    // spec + store_in_plasma_ids. If the task fails before then, it is 0, so
+    // also fail plasma refs already reported to the stream; otherwise those
+    // lost objects never get an error and stay pending creation forever.
+    // Reported refs always go through plasma: a plasma-pull-blocked ray.get
+    // wakes only when the error lands in plasma.
+    if (num_streaming_generator_returns == 0) {
+      for (const auto &reported_id :
+           GetStreamingGeneratorReportedPlasmaRefs(generator_id)) {
+        Status s = put_in_local_plasma_callback_(error, reported_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(reported_id)
+              << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(
+              error, reported_id, reference_counter_.HasReference(reported_id));
+        }
       }
     }
   }

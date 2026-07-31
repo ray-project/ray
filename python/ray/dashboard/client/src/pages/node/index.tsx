@@ -271,8 +271,16 @@ const Nodes = () => {
     accelerators.push("tpu");
   }
   const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
+  const showAcceleratorColumns = accelerators.length > 0;
 
-  const columns = getColumns(accelerator);
+  const unfilteredColumns = getColumns(accelerator);
+  const columns = showAcceleratorColumns
+    ? unfilteredColumns
+    : unfilteredColumns.filter(
+        (col) =>
+          col.label !== acceleratorColumnLabels[accelerator].utilization &&
+          col.label !== acceleratorColumnLabels[accelerator].memory,
+      );
 
   return (
     <Box
@@ -401,6 +409,7 @@ const Nodes = () => {
                     node={node}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
+                    showAcceleratorColumns={showAcceleratorColumns}
                   />
                 ))}
               </TableBody>

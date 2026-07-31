@@ -67,13 +67,16 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
     def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
 
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if _has_marker(callable_obj):
@@ -88,7 +91,13 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
             if _has_marker(attr):
                 return True
 
@@ -289,11 +298,31 @@ def copy_class_metadata(wrapper_cls, target_cls) -> None:
     wrapper_cls.__wrapped__ = target_cls
 
 
+def _register_thread_lock_serializer(serialization_context):
+    """Make threading locks cloudpickle-serializable.
+
+    FastAPI >= 0.137 embeds a threading.Lock in the ASGI app object, which cloudpickle
+    cannot serialize ("cannot pickle '_thread.lock' object"). serve.ingress(app) pickles
+    the app to freeze it (and again to ship it to replicas), so both fail. A lock carries
+    no transferable state and the app is frozen/shipped before it serves any request, so
+    reconstruct a fresh, unlocked lock on deserialization.
+    """
+    import threading
+
+    for lock_factory in (threading.Lock, threading.RLock):
+        serialization_context._register_cloudpickle_serializer(
+            type(lock_factory()),
+            custom_serializer=lambda lock: None,
+            custom_deserializer=lambda _serialized, factory=lock_factory: factory(),
+        )
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
+    _register_thread_lock_serializer(ctx)
 
 
 def msgpack_serialize(obj):
