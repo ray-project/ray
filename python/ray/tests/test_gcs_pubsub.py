@@ -184,44 +184,38 @@ def _publisher_channel_stats(gcs_log_path: str) -> Dict[str, Tuple[int, int]]:
     return stats
 
 
-def test_pubsub_subscriptions_bounded_by_nodes(ray_start_cluster):
-    """GCS pubsub fan-out must stay bounded by node count, not worker count.
-
-    Guards against regressions like #63310, where every core worker
-    subscribed to every worker failure, making each worker death fan out to
-    O(workers) subscribers (fixed by #65136). Asserts on the per-channel
-    subscription counts the GCS dumps periodically into gcs_server.out:
-
-    - worker failures: one all-entity subscription per raylet plus one keyed
-      subscription per generator-backpressure owner; core workers must never
-      appear as all-entity subscribers no matter how many are running.
-    - job updates: raylets only.
-    - actor state: delivered via keyed subscriptions (one per owned actor);
-      the only all-entity subscriber is the dashboard.
-    - node liveness: legitimately has per-worker subscribers (owners
-      subscribe lazily), so only its keyed usage is pinned.
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_nodes": 3,
+            "num_cpus": 2,
+            "_system_config": {
+                "event_stats_print_interval_ms": 200,
+                "event_stats": True,
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_pubsub_subscriptions_bounded_for_regular_cluster(ray_start_cluster):
+    """Asserts the number of pub-sub channel subscriptions to ensure that
+    there are no unexpected increases due to unintended changes. If you find
+    yourself increasing a count for any reason, please carefully think
+    through the performance impact of your change before modifying this.
     """
     num_nodes = 3
     cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=2,
-        _system_config={"event_stats_print_interval_ms": 200, "event_stats": True},
-    )
-    ray.init(address=cluster.address)
-    for _ in range(num_nodes - 1):
-        cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    # Spin up plenty of plain workers across the cluster; none of them may
-    # show up as an all-entity subscriber on the channels below.
+    # Spin some workers
     @ray.remote(num_cpus=0.5)
     def noop():
         return os.getpid()
 
     assert len(set(ray.get([noop.remote() for _ in range(12)]))) >= 4
 
-    # One backpressured generator actor: its executor subscribes keyed to
-    # this driver (the owner) on the worker-failure channel.
+    # One backpressured generator actor: generator executor subscribes (keyed subscription) to the driver (owner) worker death channel.
     @ray.remote(_actor_generator_backpressure_num_objects=2)
     class Gen:
         def f(self):
