@@ -678,6 +678,20 @@ class ReplicaMetricsManager:
     async def shutdown(self):
         """Stop periodic background tasks."""
 
+        reporters = [
+            task
+            for task in (
+                self._cached_metrics_task,
+                self._max_processing_latency_task,
+                self._utilization_task,
+            )
+            if task is not None
+        ]
+        for task in reporters:
+            task.cancel()
+        if reporters:
+            await asyncio.gather(*reporters, return_exceptions=True)
+
         await self._metrics_pusher.graceful_shutdown()
 
     def start_metrics_pusher(self):
