@@ -12,6 +12,7 @@ from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
 from ray.exceptions import (
+    ActorHandleNotFoundError,
     ActorUnschedulableError,
     GetTimeoutError,
     RayActorError,
@@ -297,13 +298,16 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except (RayActorError, ActorUnschedulableError, RayError, Exception):
-            # The actor is dead, permanently unschedulable (e.g. hard-pinned
-            # to a node that no longer exists), or from an older session (e.g.
-            # during RayService GCS restoration), so it's ready for shutdown.
-            return True
         except GetTimeoutError:
+            # The actor is alive and its health check is pending/running.
             pass
+        except Exception:
+            # Any other exception (e.g. RayActorError for dead actors,
+            # ActorUnschedulableError for unschedulable actors, or base Exception /
+            # ActorHandleNotFoundError for actors from an older session or different
+            # cluster during RayService GCS restoration) means the actor is ready
+            # for shutdown.
+            return True
 
         # The actor is still alive, so it's not ready for shutdown.
         return False
@@ -332,12 +336,13 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             shutdown_ref = self._actor_handle.shutdown.remote()
             ray.get(shutdown_ref, timeout=PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-        except (ActorUnschedulableError, RayActorError) as e:
-            # The actor is dead or was never scheduled because its target node died
-            # while creation was pending. Skip graceful shutdown.
+        except (ActorHandleNotFoundError, ActorUnschedulableError, RayActorError) as e:
+            # The actor is dead, was never scheduled because its target node died
+            # while creation was pending, or belongs to an older session. Skip graceful
+            # shutdown.
             logger.info(
-                f"Proxy actor on {self._node_id} is unschedulable or dead ({e}); "
-                "skipping graceful shutdown."
+                f"Proxy actor on {self._node_id} is unschedulable, dead, or from an "
+                f"older session ({e}); skipping graceful shutdown."
             )
         except GetTimeoutError:
             logger.warning(
