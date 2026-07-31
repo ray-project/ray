@@ -140,6 +140,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Set the first time this worker actually decodes a fragment natively, so the
+# "native decode ACTIVE" confirmation is emitted once per worker process rather
+# than once per fragment (which would flood the logs).
+_LOGGED_NATIVE_ACTIVE = False
+
 # ---------------------------------------------------------------------------
 # Tuning knobs
 # ---------------------------------------------------------------------------
@@ -339,7 +344,12 @@ def _raise_if_strict_no_fallback(reason: str) -> None:
     arrow-rs path — a silent fallback would make the run validate PyArrow.
     Read per call (not at import) so a harness can toggle it within a session.
     Inert by default: production reads never set the variable.
+
+    Regardless of strict mode, emit a visible warning naming the reason so a
+    benchmark run can confirm from the logs exactly where (and why) a read
+    dropped off the native path onto PyArrow.
     """
+    logger.warning("Ray Data ARROW-RS: falling back to PyArrow — %s", reason)
     if os.environ.get("RAY_DATA_ARROW_RS_STRICT", "").lower() in ("", "0", "false"):
         return
     raise RuntimeError(
@@ -692,11 +702,6 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 _raise_if_strict_no_fallback(
                     f"unsupported parquet format kwargs {sorted(blocked)}"
                 )
-                logger.debug(
-                    "arrow-rs read falling back to pyarrow: unsupported "
-                    "parquet format kwargs %s",
-                    sorted(blocked),
-                )
             else:
                 _raise_if_strict_no_fallback(
                     f"unsupported filesystem {type(self._filesystem).__name__}"
@@ -716,6 +721,14 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             return
 
         fragments_with_offsets, columns_to_synthesize, scanner_kwargs = plan
+        global _LOGGED_NATIVE_ACTIVE
+        if not _LOGGED_NATIVE_ACTIVE:
+            _LOGGED_NATIVE_ACTIVE = True
+            logger.warning(
+                "Ray Data ARROW-RS: native decode ACTIVE on this worker — "
+                "Parquet fragments are being read via the Rust ray_data_arrow_rs "
+                "crate, not PyArrow."
+            )
         triples = self._dispatch_fragment_reads(fragments_with_offsets, scanner_kwargs)
         yield from self._postprocess(triples, columns_to_synthesize)
 

@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -17,6 +18,8 @@ from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
     ArrowFileScanner,
 )
 from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -91,6 +94,11 @@ class ParquetScanner(ArrowFileScanner):
             )
 
             reader_cls = ArrowRsParquetFileReader
+            logger.warning(
+                "Ray Data ARROW-RS: using the native arrow-rs Parquet reader "
+                "(ray_data_arrow_rs) for this read_parquet. Per-file native vs "
+                "PyArrow-fallback decisions are logged from the read tasks."
+            )
 
         return reader_cls(
             batch_size=self.batch_size,
