@@ -621,6 +621,36 @@ void WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   subscribe_operation_(done);
 }
 
+void WorkerInfoAccessor::AsyncSubscribeToWorkerFailure(
+    const WorkerID &worker_id,
+    const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const rpc::StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  // Capture `done` so AsyncResubscribe can replay the caller's post-subscribe
+  // logic (e.g. a liveness fetch) after a GCS failover: the failover can drop
+  // a failure notification published while the connection was down, and only
+  // the replayed `done` can re-detect it. Resubscribe passes a null
+  // done_callback, which falls back to the captured one.
+  std::function<void(const rpc::StatusCallback &)> subscribe_operation =
+      [this, worker_id, subscribe, done](const rpc::StatusCallback &done_callback) {
+        client_impl_->GetGcsSubscriber().SubscribeWorkerFailure(
+            worker_id, subscribe, done_callback != nullptr ? done_callback : done);
+      };
+  {
+    absl::MutexLock lock(&per_worker_mutex_);
+    per_worker_subscribe_operations_[worker_id] = subscribe_operation;
+  }
+  subscribe_operation(done);
+}
+
+void WorkerInfoAccessor::AsyncUnsubscribeFromWorkerFailure(const WorkerID &worker_id) {
+  {
+    absl::MutexLock lock(&per_worker_mutex_);
+    per_worker_subscribe_operations_.erase(worker_id);
+  }
+  client_impl_->GetGcsSubscriber().UnsubscribeWorkerFailure(worker_id);
+}
+
 void WorkerInfoAccessor::AsyncResubscribe() {
   // TODO(iycheng): Fix the case where messages has been pushed to GCS but
   // resubscribe hasn't been done yet. In this case, we'll lose that message.
@@ -628,6 +658,17 @@ void WorkerInfoAccessor::AsyncResubscribe() {
   // The pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr) {
     subscribe_operation_(nullptr);
+  }
+  // Replay under the lock so a concurrent AsyncUnsubscribeFromWorkerFailure
+  // cannot interleave: replaying a snapshotted operation after its entry was
+  // erased would re-subscribe a worker that was just unsubscribed, leaving a
+  // keyed watch nothing tears down. The operations only queue pubsub commands
+  // and do not retake per_worker_mutex_.
+  absl::MutexLock lock(&per_worker_mutex_);
+  for (const auto &[_, operation] : per_worker_subscribe_operations_) {
+    // nullptr makes the operation fall back to its captured `done` callback,
+    // re-running the caller's post-subscribe logic (e.g. the liveness fetch).
+    operation(nullptr);
   }
 }
 

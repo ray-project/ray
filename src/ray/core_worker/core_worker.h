@@ -1579,13 +1579,23 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void SubscribeToNodeChanges();
 
   /**
-   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can clean up
-   * generator backpressure state when an owner dies. Covers both per-task BP
-   * (unblock ``WaitUntilObjectConsumed``) and actor-wide BP (reclaim shared
-   * budget held by finished tasks). Called from
-   * ``RegisterGeneratorBackpressureState``; idempotent via ``std::call_once``.
+   * @brief Subscribe to the GCS failure notification of a single owner worker
+   * so ``HandleOwnerDied`` can clean up generator backpressure state when that
+   * owner dies. Covers both per-task BP (unblock ``WaitUntilObjectConsumed``)
+   * and actor-wide BP (reclaim shared budget held by finished tasks).
+   *
+   * The subscription is keyed by ``owner_worker_id`` so a worker death only
+   * fans out to the workers executing that owner's generator tasks, keeping
+   * the per-death publish cost proportional to the number of interested
+   * subscribers rather than the cluster's worker count. Called from
+   * ``RegisterGeneratorBackpressureState``; idempotent per owner (tracked in
+   * ``subscribed_bp_owners_``). The subscription is removed in
+   * ``HandleOwnerDied`` once the owner is dead. Must be called without
+   * holding ``mutex_``.
+   *
+   * @param owner_worker_id The owner worker whose failure to watch.
    */
-  void SubscribeToOwnerWorkerFailures();
+  void SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -2176,8 +2186,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
 
-  /** Used to ensure we only subscribe to owner-worker failures once. */
-  std::once_flag subscribe_to_owner_worker_failures_flag_;
+  /// Owners whose worker-failure notifications this worker is subscribed to
+  /// for generator-backpressure cleanup. An owner is inserted on the first
+  /// backpressure registration for one of its generator tasks and erased in
+  /// HandleOwnerDied (a dead owner's keyed subscription is useless; live
+  /// owners stay subscribed so churning generator tasks don't
+  /// unsubscribe/resubscribe).
+  absl::flat_hash_set<WorkerID> subscribed_bp_owners_ ABSL_GUARDED_BY(mutex_);
 
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.

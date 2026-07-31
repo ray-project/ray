@@ -511,6 +511,176 @@ TEST_F(CoreWorkerTest, AsyncGeneratorUnblockNotifyFiresOnConsumptionUpdate) {
   ASSERT_EQ(count, 1);
 }
 
+TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribesToOwnerFailureOnly) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  // Backpressure registration must never install the all-workers failure
+  // subscription. established once per owner no matter how
+  // many generator tasks it submits.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .Times(0);
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  // A second generator task from the same owner reuses the subscription.
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+
+  // Once the owner dies its keyed subscription can never fire again, so the
+  // sweep drops it.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(1);
+  core_worker_->HandleOwnerDied(owner_worker_id);
+
+  // With the owner gone, a fresh registration for it re-subscribes (the
+  // liveness fetch after subscribing re-detects the death in production).
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1);
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureLivenessFetchTreatsMissingOwnerAsDead) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            // Alive workers are always in the worker table, so a missing row
+            // after a successful subscribe means dead-and-trimmed.
+            callback(Status::OK(), std::nullopt);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(1);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+  subscribe_done(Status::OK());
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribeFailureKeepsClaimForResubscribe) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1)
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+
+  // Subscribe failed but the owner is alive: keep the bookkeeping so
+  // AsyncResubscribe can replay the stored operation. Do not unsubscribe.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            rpc::WorkerTableData alive;
+            alive.set_is_alive(true);
+            callback(Status::OK(), alive);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(0);
+  subscribe_done(Status::IOError("subscribe failed"));
+
+  // Still subscribed: another registration must not start a duplicate
+  // subscribe.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(0);
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureFailedSubscribeMissingOwnerDoesNotSweep) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            // Ambiguous: the subscribe failed and the row is missing, so
+            // there is no evidence the owner is dead. Do not sweep.
+            callback(Status::OK(), std::nullopt);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(0);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+  subscribe_done(Status::IOError("subscribe failed"));
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribeRecheckUnsubsIfClaimLost) {
+  // The claim insert and the subscription install are not atomic. If
+  // HandleOwnerDied wins that race, its unsubscribe cannot see the
+  // not-yet-installed subscription, so Subscribe must drop it on re-check
+  // instead of leaving an orphan keyed watch behind.
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  int unsubscribe_count = 0;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .WillRepeatedly(InvokeWithoutArgs([&]() { ++unsubscribe_count; }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .WillOnce(::testing::Invoke(
+          [this, owner_worker_id](const WorkerID &,
+                                  const rpc::ItemCallback<rpc::WorkerDeltaData> &,
+                                  const rpc::StatusCallback &) {
+            // Simulate the owner dying after the claim was inserted but
+            // before the subscribe returned to the re-check.
+            core_worker_->HandleOwnerDied(owner_worker_id);
+          }));
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  // One unsub from HandleOwnerDied, one from the post-subscribe re-check.
+  ASSERT_EQ(unsubscribe_count, 2);
+}
+
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
