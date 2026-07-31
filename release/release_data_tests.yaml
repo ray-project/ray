@@ -29,6 +29,16 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: both scaling variants regressed when the fallback default
+        # moved 64 -> 128 MiB (autoscaling -20.9% -> +3.1%, fixed_size -6.1% ->
+        # -3.8% vs master). Pinned to hold the 64 MiB behaviour.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -75,6 +85,15 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -8.1% vs master at 64 MiB, +32.9% once the fallback default
+        # moved to 128 MiB. The largest Parquet-path regression from that change.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     # Default budget: -25% vs master here, against +2% at 4 GiB.
     cluster_compute: "autoscaling_cpu_compute.yaml"
 
@@ -90,6 +109,16 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: pinned for parity with the other read tests. NOTE: inert here --
+        # this dataset is JPEG, not Parquet, so the bin budget cannot apply. Both
+        # variants did move (+36.9pp / +5.6pp) but the cause is elsewhere.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -106,6 +135,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: pinned for parity. NOTE: inert -- tfrecords, not Parquet.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 3600
     script: >
@@ -113,15 +150,34 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: "read_from_uris_{{scaling}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one wants a pinned bin budget. Leaving
+# fixed_size unpinned keeps it following the fallback default.
+- name: "read_from_uris_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+    cluster_compute: "fixed_size_cpu_compute.yaml"
 
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+
+- name: "read_from_uris_autoscaling"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -17.4% vs master at 64 MiB, +0.3% once the fallback default
+        # moved to 128 MiB. fixed_size was unaffected (-0.4% -> -2.1%), hence
+        # the split above.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: "autoscaling_cpu_compute.yaml"
 
   run:
     timeout: 5400
@@ -163,11 +219,33 @@
 
   matrix:
     setup:
-      mode: [append, upsert, overwrite]
+      mode: [append, upsert]
 
   run:
     timeout: 4800
     script: python iceberg_benchmark.py --mode {{mode}}
+
+# Split out of the matrix above: only ``overwrite`` wants a pinned bin budget,
+# so ``append``/``upsert`` keep following the fallback default.
+- name: "iceberg_benchmark_overwrite"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_pyiceberg.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: +0.2% vs master at 64 MiB, +5.4% at 128 MiB. append/upsert
+        # were flat or improved, hence the split.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: iceberg_benchmark_compute.yaml
+
+  run:
+    timeout: 4800
+    script: python iceberg_benchmark.py --mode overwrite
 
 ###################
 # Aggregation tests
@@ -177,6 +255,15 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: autoscaling went -15.4% -> -1.7% and fixed_size +2.6% -> +3.9%
+        # when the fallback default moved 64 -> 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -652,12 +739,34 @@
 
   variations:
     - __suffix__: 8ds_equal
+      cluster:
+        byod:
+          runtime_env:
+            # 64 MiB pin. NOTE: likely inert -- this dataset is 513
+            # single-row-group files of ~88 MB, which pack one file per
+            # bin at both 64 and 128 MiB, so the granularity the block
+            # comment above describes is unchanged either way. Pinned
+            # because this variant moved (+17.0pp / +0.5pp) when the
+            # default changed; the cause is probably elsewhere.
+            - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
           --max-rows-per-worker 100000
 
     - __suffix__: 8ds_power_law
+      cluster:
+        byod:
+          runtime_env:
+            # 64 MiB pin. NOTE: likely inert -- this dataset is 513
+            # single-row-group files of ~88 MB, which pack one file per
+            # bin at both 64 and 128 MiB, so the granularity the block
+            # comment above describes is unchanged either way. Pinned
+            # because this variant moved (+17.0pp / +0.5pp) when the
+            # default changed; the cause is probably elsewhere.
+            - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8
@@ -712,6 +821,12 @@
             - RAYTEST_FAIL_ON_WORKER_OOM=1
             - RAYTEST_FAIL_ON_DEAD_NODES=0
             - RAYTEST_FAIL_ON_SPILLING=1
+            # 64 MiB: +5.3% vs master at 64 MiB, +23.0% at 128 MiB. The
+            # ``regular`` variant went the other way, so only chaos is
+            # pinned. NOTE: this list replaces the parent's, so it also
+            # drops RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=20 -- pre-existing
+            # behaviour, left unchanged here.
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -723,6 +838,17 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: five of the six variants regressed when the fallback
+        # default moved 64 -> 128 MiB. s3_read_images_gpu improved and is
+        # exempted below. NOTE: the s3_url_image_* and s3_read_images_*
+        # variants read images, not Parquet, so the pin is inert for them.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -774,6 +900,15 @@
 
     - __suffix__: s3_read_images_gpu
       cluster:
+        byod:
+          runtime_env:
+            # Exempt from the block-level 64 MiB pin: this variant improved
+            # at the 128 MiB default (-1.5% -> -2.4%), so it keeps following
+            # the default.
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
         cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
       run:
         timeout: 4800
@@ -849,7 +984,7 @@
     anyscale_sdk_2026: true
   matrix:
     setup:
-      format: [numpy, pandas, pyarrow]
+      format: [numpy, pandas]
 
   run:
     timeout: 2400
@@ -858,10 +993,42 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches {{format}}
 
+# Split out of the matrix above: only the pyarrow format wants a pinned bin
+# budget, so numpy/pandas keep following the fallback default.
+- name: "iter_batches_pyarrow"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -2.2% vs master at 64 MiB, -0.0% at 128 MiB. numpy and pandas
+        # both improved at 128 MiB, hence the split.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pyarrow
+
 - name: to_tf
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: +1.1% -> +4.4% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 2400
     script: >
@@ -873,6 +1040,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -0.1% -> +1.1% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -890,6 +1065,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -17.1% -> -14.1% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
@@ -898,6 +1081,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -23.2% -> -15.5% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -1046,6 +1237,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # 64 MiB: -2.4% -> +4.0% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
