@@ -1812,7 +1812,10 @@ class Node:
             check_alive: If true, then we expect the process to be alive
                 and will raise an exception if the process is already dead.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
 
         Raises:
             This process raises an exception in the following cases:
@@ -2025,7 +2028,10 @@ class Node:
             allow_graceful: Send a SIGTERM first and give each process time
                 to exit gracefully before falling back to SIGKILL.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
         """
         # Kill the raylet first. This is important for suppressing errors at
         # shutdown because we give the raylet a chance to exit gracefully and
@@ -2083,7 +2089,7 @@ class Node:
         # Processes that outlived their SIGKILL are no longer in
         # `all_processes`, but they are still running and callers checking
         # liveness need to see them.
-        for process_type, process_infos in self._unreaped_processes.items():
+        for process_type, process_infos in list(self._unreaped_processes.items()):
             for process_info in process_infos:
                 if process_info.process.poll() is None:
                     result.append((process_type, process_info.process))
