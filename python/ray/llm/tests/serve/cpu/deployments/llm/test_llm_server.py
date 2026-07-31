@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import time
+from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
 from unittest.mock import patch
 
@@ -13,7 +14,12 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import CompletionRequest
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+    _canonicalize_request_id_header,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -691,6 +697,92 @@ class TestGetDeploymentOptions:
 
         assert "placement_group_bundles" not in serve_options
         assert "placement_group_strategy" not in serve_options
+
+
+class TestCanonicalizeRequestIdHeader:
+    """Unit tests for the X-Request-Id header canonicalization helper."""
+
+    def test_uncanonical_variants_dropped(self):
+        """Any case/separator variant of the header is dropped and replaced by a
+        single canonical ``x-request-id`` equal to ``request.request_id``."""
+        request = SimpleNamespace(request_id="canonical-id")
+        raw = RawRequestInfo(
+            headers={
+                "X-Request-ID": "stale-upper",
+                "x_request_id": "stale-underscore",
+                "content-type": "application/json",
+            }
+        )
+        out = _canonicalize_request_id_header(request, raw)
+
+        rid_keys = [
+            k for k in out.headers if k.replace("_", "-").lower() == "x-request-id"
+        ]
+        assert rid_keys == ["x-request-id"], rid_keys
+        assert out.headers["x-request-id"] == "canonical-id"
+        # Unrelated headers are preserved.
+        assert out.headers["content-type"] == "application/json"
+
+    def test_noop_when_request_id_unset(self):
+        """With no request_id the helper is a no-op (returns the same object)."""
+        raw = RawRequestInfo(headers={"x-request-id": "keep"})
+        assert (
+            _canonicalize_request_id_header(SimpleNamespace(request_id=None), raw)
+            is raw
+        )
+
+
+class TestMaybeAddRequestId:
+    """``_maybe_add_request_id_to_request`` fills the Serve request id for a
+    defaulted request_id but never clobbers one the caller set explicitly."""
+
+    def _set_ctx(self, request_id):
+        serve.context._serve_request_context.set(
+            serve.context._RequestContext(request_id=request_id)
+        )
+
+    @pytest.mark.asyncio
+    async def test_defaulted_request_id_is_overwritten_with_serve_id(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi")  # request_id defaulted
+        assert "request_id" not in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert req.request_id == "serve-ctx-id"
+
+    @pytest.mark.asyncio
+    async def test_explicit_request_id_is_preserved(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi", request_id="caller-set-id")
+        assert "request_id" in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        # Caller's id wins; the Serve context id does not clobber it.
+        assert req.request_id == "caller-set-id"
+
+    @pytest.mark.asyncio
+    async def test_request_without_request_id_field_is_skipped(self):
+        """Request types without a request_id field (e.g. tokenize/detokenize)
+        must be handled gracefully, not raise."""
+        from pydantic import BaseModel
+
+        class _NoRequestId(BaseModel):
+            pass
+
+        server = LLMServer.__new__(LLMServer)
+        req = _NoRequestId()
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert not hasattr(req, "request_id")
 
 
 if __name__ == "__main__":

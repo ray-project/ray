@@ -2,7 +2,7 @@ import json
 import os
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import ray
 
@@ -81,7 +81,7 @@ class ChromeTracingMetadataEvent:
     ph: str = "M"
 
 
-def profile(event_type, extra_data=None):
+def profile(event_type: str, extra_data: Optional[Dict[str, str]] = None):
     """Profile a span of time so that it appears in the timeline visualization.
 
     Note that this only works in the raylet code path.

@@ -10,7 +10,6 @@ except ModuleNotFoundError:
 
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.train.tensorflow.tensorflow_predictor import TensorflowPredictor
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.tensorflow.train_loop_utils import prepare_dataset_shard
 from ray.train.v2._internal.constants import is_v2_enabled
@@ -24,7 +23,6 @@ __all__ = [
     "TensorflowCheckpoint",
     "TensorflowConfig",
     "prepare_dataset_shard",
-    "TensorflowPredictor",
     "TensorflowTrainer",
 ]
 

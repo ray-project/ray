@@ -19,6 +19,7 @@
 
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -34,7 +35,8 @@ class ProfileEvent {
   ProfileEvent(TaskEventBuffer &task_event_buffer,
                WorkerContext &worker_context,
                const std::string &node_ip_address,
-               const std::string &event_type);
+               const std::string &event_type,
+               ClockInterface &clock);
 
   ProfileEvent(const ProfileEvent &) = delete;
   ProfileEvent &operator=(const ProfileEvent &) = delete;
@@ -48,6 +50,9 @@ class ProfileEvent {
  private:
   // Reference to the TaskEventBuffer.
   TaskEventBuffer &task_event_buffer_;
+
+  // Clock used to timestamp the start and end of the event.
+  ClockInterface &clock_;
 
   // The underlying event.
   std::unique_ptr<TaskProfileEvent> event_ = nullptr;

@@ -1,5 +1,6 @@
 """The SGLang engine processor."""
 
+import hashlib
 import logging
 from typing import Any, Dict, Optional
 
@@ -250,6 +251,9 @@ def build_sglang_engine_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            model_id_hash=hashlib.sha256(
+                config.model_source.encode("utf-8")
+            ).hexdigest(),
             processor_config_name=type(config).__name__,
             model_architecture=architecture,
             batch_size=config.batch_size,

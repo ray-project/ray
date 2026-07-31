@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
@@ -14,7 +15,6 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-
     from ray.data.block import Schema
 
 __all__ = [
@@ -35,8 +35,7 @@ class AbstractAllToAll(LogicalOperator):
 
     def __init__(
         self,
-        input_op: LogicalOperator,
-        num_outputs: Optional[int] = None,
+        input_dependencies: List[LogicalOperator],
         sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         *,
@@ -45,58 +44,44 @@ class AbstractAllToAll(LogicalOperator):
         """Initialize an ``AbstractAllToAll`` logical operator.
 
         Args:
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            num_outputs: The number of expected output bundles outputted by this
-                operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
+                The outputs of these operators will be the inputs to this operator.
             sub_progress_bar_names: Optional sub-stage progress bar names for this
                 operator.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
         """
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
-        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
-
 
 @dataclass(frozen=True, repr=False, eq=False)
-class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class RandomizeBlocks(
+    AbstractAllToAll,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for randomize_block_order."""
 
     seed_config: Optional[RandomSeedConfig] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.seed_config is None:
             object.__setattr__(self, "seed_config", RandomSeedConfig())
         object.__setattr__(self, "_name", "RandomizeBlockOrder")
-        object.__setattr__(self, "_num_outputs", None)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata()
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Randomizing block order doesn't affect filtering correctness
@@ -104,7 +89,11 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class RandomShuffle(
+    AbstractAllToAll,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for random_shuffle."""
 
     name: InitVar[str] = "RandomShuffle"
@@ -112,7 +101,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self, name: str):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -128,7 +116,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
                 ],
             )
         object.__setattr__(self, "_name", name)
-        object.__setattr__(self, "_num_outputs", None)
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -140,32 +127,28 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata()
 
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
-
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Random shuffle doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class Repartition(
+    AbstractAllToAll,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for repartition."""
 
-    num_outputs: InitVar[int]
     shuffle: bool = False
     keys: Optional[List[str]] = None
     sort: bool = False
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
+    num_outputs: Optional[int] = None
 
-    def __post_init__(self, num_outputs: int):
+    def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.shuffle:
             sub_progress_bar_names = [
@@ -177,7 +160,6 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-        object.__setattr__(self, "_num_outputs", num_outputs)
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -193,28 +175,23 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata()
 
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
-
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class Sort(
+    AbstractAllToAll,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for sort."""
 
     sort_key: SortKey
-    batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -227,19 +204,11 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_num_outputs", None)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata()
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
@@ -250,14 +219,12 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
-    key: Optional[str]
+    key: Optional[str | List[str]]
     aggs: List[AggregateFn]
     num_partitions: Optional[int] = None
-    batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -270,4 +237,29 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_num_outputs", None)
+
+    def infer_schema(self) -> Optional["Schema"]:
+        # Output = key field(s) from input schema + one field per aggregator.
+        # Returns None if any aggregator can't declare its output field
+        # (callers fall back to limit(1)).
+        import pyarrow as pa
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        input_schema = self.input_dependencies[0].infer_schema()
+        if not isinstance(input_schema, pa.Schema):
+            return None
+
+        fields: List[pa.Field] = []
+        if self.key is not None:
+            keys = self.key if isinstance(self.key, list) else [self.key]
+            for key in keys:
+                try:
+                    fields.append(input_schema.field(key))
+                except (KeyError, TypeError, ValueError):
+                    return None
+        for agg in self.aggs:
+            f = agg.output_field(input_schema)
+            if f is None:
+                return None
+            fields.append(f)
+        return pa.schema(fields)

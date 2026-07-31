@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer.h"
@@ -94,7 +95,8 @@ class RaySyncerTest : public ::testing::Test {
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
-    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
+    syncer_ = std::make_unique<RaySyncer>(
+        io_context_, PeriodicalRunner::Create(io_context_), local_id_.Binary(), 1, 0);
   }
 
   MockReporterInterface *GetReporter(MessageType cid) {
@@ -166,18 +168,18 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
 }
 
 struct MockReactor {
-  void StartRead(RaySyncMessageBatch *) { ++read_cnt; }
+  void StartRead(RaySyncMessageBatch *) { ++read_count; }
 
   void StartWrite(const RaySyncMessageBatch *,
                   grpc::WriteOptions opts = grpc::WriteOptions()) {
-    ++write_cnt;
+    ++write_count;
   }
 
   virtual void OnWriteDone(bool ok) {}
   virtual void OnReadDone(bool ok) {}
 
-  size_t read_cnt = 0;
-  size_t write_cnt = 0;
+  size_t read_count = 0;
+  size_t write_count = 0;
 };
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
@@ -306,8 +308,12 @@ struct SyncerServerTest {
       v = 0;
     }
     // Setup syncer and grpc server
-    syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
+    syncer = std::make_unique<RaySyncer>(io_context,
+                                         PeriodicalRunner::Create(io_context),
+                                         node_id.Binary(),
+                                         1,
+                                         0,
+                                         std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -541,15 +547,15 @@ TEST_F(SyncerTest, Test1To1) {
   NodeID node_id2 = NodeID::FromRandom();
 
   // Used to check the number of messages consumed for two servers.
-  int s1_observer_cb_call_cnt = 0;
-  int s2_observer_cb_call_cnt = 0;
+  int s1_observer_cb_call_count = 0;
+  int s2_observer_cb_call_count = 0;
 
   // Register observer callback for syncers.
   auto syncer_observer_cb = [&](const NodeID &node_id) {
     if (node_id == node_id1) {
-      ++s1_observer_cb_call_cnt;
+      ++s1_observer_cb_call_count;
     } else if (node_id == node_id2) {
-      ++s2_observer_cb_call_cnt;
+      ++s2_observer_cb_call_count;
     }
   };
 
@@ -658,8 +664,8 @@ TEST_F(SyncerTest, Test1To1) {
   ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 
   // Make sure registered callbacks have been called.
-  ASSERT_GT(s1_observer_cb_call_cnt, 0);
-  ASSERT_GT(s2_observer_cb_call_cnt, 0);
+  ASSERT_GT(s1_observer_cb_call_count, 0);
+  ASSERT_GT(s2_observer_cb_call_count, 0);
 }
 
 TEST_F(SyncerTest, Reconnect) {
@@ -1103,8 +1109,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
-      syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1145,8 +1154,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ClientSyncer()
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
-      syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 

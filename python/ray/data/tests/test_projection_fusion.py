@@ -4,6 +4,7 @@ from typing import Dict, List, Set
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -16,6 +17,7 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
 )
 from ray.data._internal.util import rows_same
+from ray.data.aggregate import Mean, Sum
 from ray.data.context import DataContext
 from ray.data.expressions import DataType, StarExpr, col, star, udf
 
@@ -765,6 +767,18 @@ class TestProjectionFusion:
         expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
+    def test_with_column_alias_then_rename_preserves_both_columns(
+        self, ray_start_regular_shared
+    ):
+        """Regression test for alias and rename referencing the same input column."""
+        ds = ray.data.from_items([{"a": 1}])
+        ds = ds.with_column("x", col("a")).rename_columns({"a": "b"})
+
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        assert self._count_project_operators(optimized_plan) == 1
+
+        assert ds.take_all() == [{"x": 1, "b": 1}]
+
     @pytest.mark.parametrize(
         "operations,expected",
         [
@@ -1372,6 +1386,97 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
         col("sepal.length").alias("length"),
         col("petal.width").alias("width"),
     ]
+
+
+def _leaf_op(dag):
+    """Return the source (leaf) operator of a logical DAG (e.g. the read)."""
+    op = dag
+    while op.input_dependencies:
+        op = op.input_dependencies[0]
+    return op
+
+
+def _find_op(dag, op_type):
+    """Walk a single-input DAG and return the first op of ``op_type``."""
+    op = dag
+    while op is not None:
+        if isinstance(op, op_type):
+            return op
+        op = op.input_dependencies[0] if op.input_dependencies else None
+    return None
+
+
+class TestAggregateInputPruning:
+    """``ProjectionPushdown`` should prune the columns flowing into an
+    ``Aggregate`` down to the ones it consumes (group keys + aggregation
+    targets), and push that pruning into the read."""
+
+    @pytest.fixture
+    def wide_parquet(self, tmp_path):
+        import os
+
+        path = os.path.join(str(tmp_path), "wide.parquet")
+        pq.write_table(
+            pa.table(
+                {
+                    "k": [i % 3 for i in range(60)],
+                    "a": [float(i) for i in range(60)],
+                    "b": [0.5] * 60,
+                    "unused": ["x" * 32] * 60,  # wide column nothing consumes
+                }
+            ),
+            path,
+        )
+        return path
+
+    @pytest.mark.parametrize(
+        "make_result, expected_input_cols",
+        [
+            pytest.param(
+                lambda ds: ds.with_column("revenue", col("a") * col("b"))
+                .groupby("k")
+                .sum("revenue"),
+                {"k", "revenue"},
+                id="groupby-sum-computed-column",
+            ),
+            pytest.param(
+                lambda ds: ds.groupby("k").sum("a"),
+                {"k", "a"},
+                id="groupby-sum",
+            ),
+            pytest.param(
+                lambda ds: ds.groupby("k").aggregate(Sum("a"), Mean("b")),
+                {"k", "a", "b"},
+                id="groupby-multi-agg",
+            ),
+            pytest.param(
+                # Count reads no column, so only the group key is required.
+                lambda ds: ds.groupby("k").count(),
+                {"k"},
+                id="groupby-count",
+            ),
+        ],
+    )
+    def test_aggregate_input_pruned_to_required_columns(
+        self,
+        wide_parquet,
+        make_result,
+        expected_input_cols,
+        ray_start_regular_shared,
+    ):
+        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+
+        ds = make_result(ray.data.read_parquet(wide_parquet))
+        dag = LogicalOptimizer().optimize(ds._logical_plan).dag
+
+        # The op feeding the aggregate must carry only the consumed columns.
+        agg = _find_op(dag, Aggregate)
+        assert (
+            set(agg.input_dependencies[0].infer_schema().names) == expected_input_cols
+        )
+
+        # The wide unused column is always dropped from the read.
+        assert "unused" not in set(_leaf_op(dag).infer_schema().names)
 
 
 if __name__ == "__main__":

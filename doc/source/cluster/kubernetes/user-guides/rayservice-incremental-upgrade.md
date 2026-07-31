@@ -122,8 +122,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
 1.  **Trigger:** You trigger an upgrade by updating the `RayService` spec, such as changing the container `image` or updating the `resources` used by a worker group in the `rayClusterSpec`.
 2.  **Pending Cluster Creation:** KubeRay detects the change and creates a new, *pending* `RayCluster`. It sets this cluster's initial `target_capacity` (the percentage of serve replicas it should run) to `0%`.
 3.  **Gateway and Route Creation:** KubeRay creates a `Gateway` resource for your `RayService` and an `HTTPRoute` resource that initially routes 100% of traffic to the old, *active* cluster and 0% to the new, *pending* cluster.
-4.  **The Upgrade Loop Begins:**
-    The KubeRay controller now enters a loop that repeats three phases until the upgrade is complete. This loop ensures that the total cluster capacity only exceeds 100% by at most `maxSurgePercent`, preventing resource starvation.
+4.  **The Upgrade Loop Begins:** The KubeRay controller now enters a loop that repeats three phases until the upgrade is complete. This loop ensures that the total cluster capacity only exceeds 100% by at most `maxSurgePercent`, preventing resource starvation.
 
     Let's use an example: `maxSurgePercent: 20` and `stepSizePercent: 5`.
 
@@ -144,8 +143,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * If the Ray Serve autoscaler is enabled, the Serve application will scale its `num_replicas` from `min_replicas` based on the new `target_capacity`. Without the Ray Serve autoscaler enabled, the new `target_capacity` value will directly adjust `num_replicas` for each Serve deployment. Depending on the updated value of`num_replicas`, the Ray Autoscaler will begin provisioning pods for the pending cluster to handle the updated resource load.
 
     * **Phase 2: Shift Traffic (HTTPRoute)**
-        * KubeRay waits for the pending cluster's new pods to be ready. There may be a temporary drop in requests-per-second while worker Pods are being
-        created for the updated Ray serve replicas.
+        * KubeRay waits for the pending cluster's new pods to be ready. There may be a temporary drop in requests-per-second while worker Pods are being created for the updated Ray serve replicas.
         * Once ready, it begins to *gradually* shift traffic. Every `intervalSeconds`, it updates the `HTTPRoute` weights, moving `stepSizePercent` (5%) of traffic from the active to the pending cluster.
         * This continues until the *actual* traffic (`trafficRoutedPercent`) "catches up" to the *pending* cluster's `target_capacity` (20% in this example).
 
@@ -159,8 +157,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
 
     ---
 
-5.  **Completion & Cleanup:**
-    This cycle of **(Scale Up Pending $\rightarrow$ Shift Traffic $\rightarrow$ Scale Down Active)** continues until the pending cluster is at 100% `target_capacity` and 100% `trafficRoutedPercent`, and the active cluster is at 0%.
+5.  **Completion & Cleanup:** This cycle of **(Scale Up Pending $\rightarrow$ Shift Traffic $\rightarrow$ Scale Down Active)** continues until the pending cluster is at 100% `target_capacity` and 100% `trafficRoutedPercent`, and the active cluster is at 0%.
 
     KubeRay then promotes the pending cluster to active, updates the `HTTPRoute` to send 100% of traffic to it, and safely terminates the old `RayCluster`.
 
@@ -244,8 +241,7 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
 
     During an upgrade, you will see `Target Capacity` on the pending cluster increase in steps (e.g., 20%, 40%) and `Traffic Routed Percent` gradually climb to meet it.
 
-2.  **Check `HTTPRoute` Weights:**
-    You can also see the traffic weights directly on the `HTTPRoute` resource KubeRay manages.
+2.  **Check `HTTPRoute` Weights:** You can also see the traffic weights directly on the `HTTPRoute` resource KubeRay manages.
     ```bash
     kubectl get httproute rayservice-incremental-upgrade-httproute -o yaml
     ```

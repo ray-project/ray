@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Dask DataFrame and array workloads on a Ray cluster via the dask_on_ray scheduler, without a separate Dask cluster.
+
 .. _dask-on-ray:
 
 Using Dask on Ray

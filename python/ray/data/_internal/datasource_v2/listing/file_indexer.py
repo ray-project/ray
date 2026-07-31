@@ -1,15 +1,23 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, Optional
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ChunkMetadata,
+    FileChunker,
+    WholeFileChunker,
+)
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
-from ray.data._internal.datasource_v2.listing.indexing_utils import _get_file_infos
-from ray.data._internal.util import make_async_gen
+from ray.data._internal.datasource_v2.listing.indexing_utils import (
+    _get_file_infos,
+    _get_path_contents,
+)
+from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
 from ray.data.block import BlockColumn
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
@@ -17,6 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
+    @property
+    @abstractmethod
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses."""
+        ...
+
     @abstractmethod
     def list_files(
         self,
@@ -41,12 +55,40 @@ class FileIndexer(ABC):
         ...
 
 
-@dataclass
+@dataclass(frozen=True)
 class FileInfo:
     """File information for file listing."""
 
     path: str
     size: Optional[int]
+
+
+@dataclass(frozen=True)
+class _TraversalWorkItem:
+    """Work item for parallel directory traversal. Distinguishes seed paths
+    (user-provided, need resolution) from subdir paths (from filesystem listing,
+    use directly to avoid redundant resolution that breaks non-local
+    filesystems)."""
+
+    # Could be a file path or a directory path.
+    path: str
+    # True for subdirectories discovered during traversal; False for seed input paths.
+    is_discovered_subdir: bool = False
+    # Original seed-path index used to restore deterministic ordering when requested.
+    input_path_index: Optional[int] = None
+    # Top-level path the traversal started from, used to scope hidden-prefix
+    # exclusion to entries whose path relative to the root is hidden.
+    root_path: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class OrderedFileResult:
+    """File result with order information for sorting when preserve_order is True."""
+
+    input_path_index: int
+    # The leaf file path.
+    file_path: str
+    file_info: FileInfo
 
 
 class NonSamplingFileIndexer(FileIndexer):
@@ -61,7 +103,7 @@ class NonSamplingFileIndexer(FileIndexer):
         "RAY_DATA_MAX_PATHS_PER_LIST_FILES_OUTPUT", 1000
     )
 
-    _DEFAULT_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 4)
+    _DEFAULT_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 8)
 
     def __init__(
         self,
@@ -69,6 +111,7 @@ class NonSamplingFileIndexer(FileIndexer):
         ignore_missing_paths: bool,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
+        file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
         self._max_paths_per_output = (
@@ -83,6 +126,18 @@ class NonSamplingFileIndexer(FileIndexer):
             "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
             self._max_paths_per_output * 4,
         )
+        self._file_chunker: FileChunker = (
+            file_chunker if file_chunker is not None else WholeFileChunker()
+        )
+
+    @property
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses.
+
+        Exposed primarily for tests and shuffle-aware planning code that needs
+        to introspect or override the chunking strategy.
+        """
+        return self._file_chunker
 
     def list_files(
         self,
@@ -122,35 +177,90 @@ class NonSamplingFileIndexer(FileIndexer):
         filesystem: "FileSystem",
         preserve_order: bool = False,
     ) -> Iterable[FileInfo]:
+        """Threaded file info iterator with work stealing for parallel directory
+        traversal. Subdirectories are added as work items for idle workers to
+        process."""
         paths_list = paths.to_pylist()
         if len(paths_list) == 0:
             return
 
-        num_workers = min(self._num_workers, len(paths_list))
+        num_workers = self._num_workers
 
-        def process_paths(
-            path_iterator: Iterator[str],
-        ) -> Iterator[FileInfo]:
-            for input_path in path_iterator:
-                resolved_paths, _ = _resolve_paths_and_filesystem(
-                    input_path, filesystem
-                )
+        seed_items = [
+            _TraversalWorkItem(
+                path=p,
+                is_discovered_subdir=False,
+                input_path_index=i if preserve_order else None,
+            )
+            for i, p in enumerate(paths_list)
+        ]
+
+        def process_fn(
+            item: _TraversalWorkItem,
+            add_work: Callable[[_TraversalWorkItem], None],
+            add_result: Callable[[Union[OrderedFileResult, FileInfo]], None],
+        ) -> None:
+            """Process a single item, adding discovered subdirs as work and
+            files as results."""
+            input_path_index = item.input_path_index
+
+            if item.is_discovered_subdir:
+                # Subdir paths from filesystem listing: use directly. Re-resolution
+                # would infer LocalFileSystem for scheme-less paths on S3/GCS,
+                # and add redundant overhead.
+                path = item.path
+                root_path = item.root_path
+            else:
+                # Seed paths from user: resolve once to get normalized path + fs.
+                resolved_paths, _ = _resolve_paths_and_filesystem(item.path, filesystem)
                 assert len(resolved_paths) == 1
+                path = resolved_paths[0]
+                root_path = path
 
-                for path, file_size in _get_file_infos(
-                    resolved_paths[0],
-                    filesystem,
-                    self._ignore_missing_paths,
-                ):
-                    yield FileInfo(path=path, size=file_size)
+            contents = _get_path_contents(
+                path, filesystem, self._ignore_missing_paths, root_path=root_path
+            )
+            for file_path, file_size in contents.files:
+                file_info_result = FileInfo(path=file_path, size=file_size)
+                if preserve_order:
+                    add_result(
+                        OrderedFileResult(
+                            input_path_index=input_path_index,
+                            file_path=file_path,
+                            file_info=file_info_result,
+                        )
+                    )
+                else:
+                    add_result(file_info_result)
+            for subdir_path in contents.subdirs:
+                add_work(
+                    _TraversalWorkItem(
+                        path=subdir_path,
+                        is_discovered_subdir=True,
+                        input_path_index=input_path_index,
+                        root_path=root_path,
+                    )
+                )
 
-        yield from make_async_gen(
-            base_iterator=iter(paths_list),
-            fn=process_paths,
-            preserve_ordering=preserve_order,
-            num_workers=num_workers,
-            buffer_size=self._queue_size_per_thread,
-        )
+        def _ordered_result_key(result: OrderedFileResult) -> Tuple[int, str]:
+            return (result.input_path_index, result.file_path)
+
+        if preserve_order:
+            for result in parallel_process_work_stealing(
+                seed_items=seed_items,
+                process_fn=process_fn,
+                num_workers=num_workers,
+                preserve_order=True,
+                order_key=_ordered_result_key,
+            ):
+                # Ordered mode returns `OrderedFileResult` for sorting, so unwrap.
+                yield result.file_info
+        else:
+            yield from parallel_process_work_stealing(
+                seed_items=seed_items,
+                process_fn=process_fn,
+                num_workers=num_workers,
+            )
 
     def _process_file_infos_to_manifests(
         self,
@@ -159,34 +269,53 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
+        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
-        files_count = 0
+        chunks_count = 0
 
         for file_info in file_infos:
             path, file_size = file_info.path, file_info.size
 
-            if file_size == 0:
+            if file_size is None or file_size == 0:
                 logger.warning(f"Skipping zero-size file: {path!r}")
                 continue
 
             if not all(pruner.should_include(path) for pruner in pruners):
                 continue
 
-            running_paths.append(path)
-            running_file_sizes.append(file_size)
-            files_count += 1
+            # Drive the chunker once per file; emit one manifest row per chunk.
+            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
+            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
+            # smaller than the target chunk size).
+            for (
+                chunk_metadata,
+                chunk_size,
+            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
+                running_paths.append(path)
+                running_file_sizes.append(chunk_size)
+                running_chunk_metadatas.append(chunk_metadata)
+                chunks_count += 1
 
-            if len(running_paths) >= self._max_paths_per_output:
-                manifests_count += 1
-                yield FileManifest.construct_manifest(running_paths, running_file_sizes)
-                running_paths = []
-                running_file_sizes = []
+                if len(running_paths) >= self._max_paths_per_output:
+                    manifests_count += 1
+                    yield FileManifest.construct_manifest(
+                        running_paths,
+                        running_file_sizes,
+                        running_chunk_metadatas,
+                    )
+                    running_paths = []
+                    running_file_sizes = []
+                    running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1
-            yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+            yield FileManifest.construct_manifest(
+                running_paths,
+                running_file_sizes,
+                running_chunk_metadatas,
+            )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
-            f"with {files_count} files"
+            f"with {chunks_count} file chunks"
         )

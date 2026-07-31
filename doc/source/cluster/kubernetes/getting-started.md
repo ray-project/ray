@@ -15,8 +15,7 @@ getting-started/raycronjob-quick-start
 
 ## Custom Resource Definitions (CRDs)
 
-[KubeRay](https://github.com/ray-project/kuberay) is a powerful, open-source Kubernetes operator that simplifies the deployment and management of Ray applications on Kubernetes.
-It offers 3 custom resource definitions (CRDs):
+[KubeRay](https://github.com/ray-project/kuberay) is a powerful, open-source Kubernetes operator that simplifies the deployment and management of Ray applications on Kubernetes. It offers 3 custom resource definitions (CRDs):
 
 * **RayCluster**: KubeRay fully manages the lifecycle of RayCluster, including cluster creation/deletion, autoscaling, and ensuring fault tolerance.
 
@@ -28,8 +27,7 @@ It offers 3 custom resource definitions (CRDs):
 
 ## Which CRD should you choose?
 
-Using [RayService](kuberay-rayservice-quickstart) to serve models and using [RayCluster](kuberay-raycluster-quickstart) to develop Ray applications are no-brainer recommendations from us.
-However, if the use case is not model serving or prototyping, how do you choose between [RayCluster](kuberay-raycluster-quickstart), [RayJob](kuberay-rayjob-quickstart), and [RayCronJob](kuberay-raycronjob-quickstart)?
+Using [RayService](kuberay-rayservice-quickstart) to serve models and using [RayCluster](kuberay-raycluster-quickstart) to develop Ray applications are no-brainer recommendations from us. However, if the use case is not model serving or prototyping, how do you choose between [RayCluster](kuberay-raycluster-quickstart), [RayJob](kuberay-rayjob-quickstart), and [RayCronJob](kuberay-raycronjob-quickstart)?
 
 ### Q: Is downtime acceptable during a cluster upgrade (e.g. Upgrade Ray version)?
 
@@ -47,8 +45,7 @@ If yes, use RayJob. It allows automatic deletion of the RayCluster upon job comp
 
 ### Q: Do you care about the latency introduced by spinning up a RayCluster?
 
-If yes, use RayCluster.
-Unlike RayJob and RayCronJob, which create a new RayCluster every time a job is submitted, RayCluster creates the cluster just once and can be used multiple times.
+If yes, use RayCluster. Unlike RayJob and RayCronJob, which create a new RayCluster every time a job is submitted, RayCluster creates the cluster just once and can be used multiple times.
 
 ## Run your first Ray application on Kubernetes!
 

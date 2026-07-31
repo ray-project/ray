@@ -152,8 +152,8 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[this]() -> double { return clock_.NowUnixMicros(); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*clock=*/clock_,
+        /*subscriber_timeout_ms=*/absl::ToInt64Milliseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));

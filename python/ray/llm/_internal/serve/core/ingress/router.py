@@ -1,26 +1,57 @@
 import asyncio
-import random
-import time
-from typing import FrozenSet, List, Optional, Tuple
+import json
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.serve._private.common import ReplicaID
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    REQUEST_TOKEN_IDS_KWARG,
+)
+from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
+
+# Type-only import as LLMConfig transitively pulls in vLLM. This file should
+# remain engine-agnostic.
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+
+logger = get_logger(__name__)
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
-# How long to wait for the underlying RequestRouter to be lazily created.
-# It's created on the first long-poll from the controller; that is normally
-# sub-second, but we allow up to a minute to ride out controller hiccups
-# before failing the constructor and letting Serve retry.
-_REQUEST_ROUTER_INIT_TIMEOUT_S = 60.0
-_REQUEST_ROUTER_INIT_POLL_INTERVAL_S = 0.05
-
-_ReplicaCacheSignature = FrozenSet[ReplicaID]
+# A request body routes on one of these fields. Body-aware routers read it off
+# the namespace; a body without any of them degrades to load-balancing. Extend
+# as routers learn to route additional request types.
+_ROUTING_KEY_FIELDS = ("messages", "prompt")
 
 router_app = FastAPI()
+
+
+def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+    """Wrap a request body as a namespace a body-aware router routes on.
+
+    Routers read a routing field (``messages`` or ``prompt``) off the first
+    positional routing arg, the parsed request the normal ingress forwards.
+    Direct streaming has only the raw body, so this wraps the parsed body in a
+    namespace exposing every field by attribute, which a router reads the same
+    way regardless of request type. Returns ``None`` for an empty, non-object,
+    unparseable, or keyless body, so the caller falls back to load-balancing.
+    """
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
+        return None
+    return SimpleNamespace(**data)
 
 
 @serve.ingress(router_app)
@@ -31,85 +62,134 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
+    Replica selection is delegated to the underlying deployment's configured
+    request router, and this class translates the resulting pick into a backend
+    HTTP endpoint.
+
     /internal/route HTTP contract
     -----------------------------
     Request:
         POST /internal/route
         Content-Type: application/json
-        Body: the target ChatCompletions / Completions request payload.
-            Today the router uses round-robin and ignores the body, but it
-            is plumbed through so future routing policies (e.g. prefix
-            cache aware) can score replicas against ``messages`` /
-            ``prompt``. HAProxy should continue forwarding the payload
-            (subject to truncation below).
+        Body: the target ChatCompletions or Completions request payload.
+            Wrapped in a namespace by ``_parse_routing_payload`` and passed to
+            ``choose_replica`` positionally, exposing the request fields the way
+            the parsed request does. Body-aware policies then score replicas the
+            same way on both paths.
 
     Truncated bodies:
-        HAProxy may forward only a prefix of the request body for routing.
-        When it does, it must set the ``x-body-truncated`` header. The
-        router forwards both the body bytes and this signal to
-        ``_pick_replica`` for future body-aware policies.
+        HAProxy may forward only a prefix of the body for routing and sets the
+        ``x-body-truncated`` header. A truncated prefix is usually not valid
+        JSON, so no routing key is derived and the request falls back to the
+        default load-balanced pick.
+
+    Session affinity:
+        If the client request carried the session-id header configured by
+        ``RAY_SERVE_SESSION_ID_HEADER_KEY`` (default ``x-session-id``),
+        HAProxy's Lua action forwards it to ``/internal/route`` on the same
+        name. This handler reads it and applies
+        ``handle.options(session_id=...)`` before calling
+        ``choose_replica`` so session-aware policies (e.g.
+        ``ConsistentHashRouter``) pin all turns of a session to one replica.
 
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
             succeeded.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
-            treats any non-200 as a routing failure.
+            treats any non-200 as a routing failure. When using KV aware routing,
+            a pre-routing ``/tokenize`` rejection is surfaced here.
 
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
         Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
-    async def __init__(self, server: DeploymentHandle):
-        # Randomized so multiple LLMRouter replicas don't lockstep on the
-        # same replica sequence.
-        self._round_robin_counter = random.randrange(2**31)
-        self._cached_dict_id: Optional[int] = None
-        self._cached_replica_signature: Optional[_ReplicaCacheSignature] = None
-        self._cached_endpoints: List[Tuple[str, int, str]] = []
+    # Warn once per replica when no routing key is derived. Class-level default
+    # keeps the guard safe before __init__ runs.
+    _warned_no_routing_key: bool = False
+
+    async def __init__(
+        self,
+        server: DeploymentHandle,
+        llm_config: Optional["LLMConfig"] = None,
+    ):
         self._handle: DeploymentHandle = server
+        self._tokenizer = None
+        # Holds the KVTokenTracker (KV-aware deployments only) so the
+        # engine-facing on_lifecycle_events method can book load into it.
+        self._kv_token_tracker = None
+        # A non-None llm_config signals pre-routing tokenization, which the
+        # builder binds only for a KV-aware request router.
+        if llm_config is not None:
+            # Build the tracker before _handle._init() below, which initializes
+            # the KVAwareRouter that looks it up. server.deployment_id is the
+            # tracked LLMServer deployment.
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                build_kv_token_tracker,
+            )
 
-        # Initialize the handle and wait for its underlying RequestRouter to
-        # be lazily created. The RequestRouter is built on the first long-poll
-        # from the controller (which delivers the deployment config that
-        # selects the request-router class), so `_get_request_router()`
-        # returns None for a brief window after `_init()`.
-        # `curr_replicas` is populated by the same long-poll client; until it
-        # carries at least one ready endpoint, /internal/route returns 503
-        # (HAProxy retries). That keeps router liveness decoupled from
-        # LLMServer cold start.
+            self._kv_token_tracker = build_kv_token_tracker(
+                llm_config, server.deployment_id
+            )
+            # Lazy import: this module pulls in vLLM's renderer;
+            # keep it off the non-KV ingress import path.
+            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+                Tokenizer,
+            )
+
+            self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
         self._handle._init()
-        self._request_router = await self._wait_for_request_router(
-            _REQUEST_ROUTER_INIT_TIMEOUT_S
-        )
-
-    async def _wait_for_request_router(self, timeout_s: float):
-        deadline = time.monotonic() + timeout_s
-        while True:
-            request_router = self._handle._get_request_router()
-            if request_router is not None:
-                return request_router
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    "DeploymentHandle._get_request_router() still returned "
-                    f"None after {timeout_s}s. The Serve controller may be "
-                    "unreachable, or Serve internals may have changed."
-                )
-            await asyncio.sleep(_REQUEST_ROUTER_INIT_POLL_INTERVAL_S)
-
-    async def check_health(self):
-        if self._request_router is None:
-            raise RuntimeError("request router not initialized")
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        try:
-            host, port, replica_id = self._pick_replica(
-                request_body=body, body_truncated=body_truncated
+        routing_payload = _parse_routing_payload(body)
+        if routing_payload is None and not self._warned_no_routing_key:
+            self._warned_no_routing_key = True
+            logger.warning(
+                "Could not derive a routing key from the request body. "
+                "body_truncated=%s. Falling back to load-balanced replica "
+                "selection. A configured body-aware router such as "
+                "PrefixCacheAffinityRouter cannot take effect for these "
+                "requests. For truncated bodies, raise HAProxy's routing body "
+                "limit.",
+                body_truncated,
             )
-        except RuntimeError as e:
+        # Tokenize only a parseable, routable body; a truncated or unparseable
+        # body has no routing payload, so fall back to token-less routing.
+        request_token_ids = None
+        if self._tokenizer is not None and routing_payload is not None:
+            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+                TokenizeError,
+            )
+
+            try:
+                request_token_ids = await self._tokenizer.tokenize(
+                    vars(routing_payload)
+                )
+            except TokenizeError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.message)
+        # HAProxy forwards the configured session header on the same name,
+        # but use the same case-insensitive, separator-tolerant matcher as
+        # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
+        # doesn't silently drop session affinity.
+        session_id = next(
+            (v for k, v in request.headers.items() if _matches_session_id_header(k)),
+            None,
+        )
+        handle = (
+            self._handle.options(session_id=session_id) if session_id else self._handle
+        )
+        try:
+            host, port, replica_id = await self._pick_replica(
+                handle=handle,
+                routing_payload=routing_payload,
+                request_token_ids=request_token_ids,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}
 
@@ -117,46 +197,54 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
-    def _ready_endpoints(self) -> List[Tuple[str, int, str]]:
-        """Backend (host, port, full_id) tuples, cached on replica-set change."""
-        curr_replicas = self._request_router.curr_replicas
-        # RequestRouter swaps the dict wholesale on every controller broadcast,
-        # so dict identity is a cheap "did anything change" check; the keyset
-        # check then filters out broadcasts that didn't actually change the
-        # replica set.
-        if id(curr_replicas) == self._cached_dict_id:
-            return self._cached_endpoints
-        signature = frozenset(curr_replicas.keys())
-        if signature != self._cached_replica_signature:
-            self._cached_replica_signature = signature
-            ready = sorted(
-                (r for r in curr_replicas.values() if r.backend_http_endpoint),
-                key=lambda r: r.replica_id.unique_id,
-            )
-            self._cached_endpoints = [
-                (*r.backend_http_endpoint, r.replica_id.to_full_id_str()) for r in ready
-            ]
-        self._cached_dict_id = id(curr_replicas)
-        return self._cached_endpoints
+    async def on_lifecycle_events(self, batch):
+        """Engine-facing intake for request lifecycle events.
 
-    def _pick_replica(
-        self,
-        request_body: Optional[bytes] = None,
-        body_truncated: bool = False,
-    ) -> Tuple[str, int, str]:
-        """Pick a backend HTTP replica.
-
-        Today this is plain round-robin and ignores the payload. The
-        ``request_body`` (possibly a HAProxy-truncated prefix, indicated by
-        ``body_truncated``) is plumbed through so a future prefix cache aware
-        policy can score replicas against the request's prompt / messages
-        without changing the /internal/route contract or the call site.
+        Engine replicas broadcast each batch to every LLMRouter replica to
+        book request load; this applies it to the KVTokenTracker on this
+        ingress replica's event loop.
         """
-        del request_body, body_truncated
-        candidates = self._ready_endpoints()
-        if not candidates:
-            raise RuntimeError("no backend-http replicas")
+        return await self._kv_token_tracker.on_lifecycle_events(batch)
 
-        index = self._round_robin_counter % len(candidates)
-        self._round_robin_counter += 1
-        return candidates[index]
+    async def _pick_replica(
+        self,
+        handle: DeploymentHandle,
+        routing_payload: Optional[SimpleNamespace] = None,
+        request_token_ids: Optional[List[int]] = None,
+    ) -> Tuple[str, int, str]:
+        """Pick a backend HTTP replica via the deployment's request router.
+
+        ``handle`` is the LLMServer deployment handle, optionally configured
+        with ``.options(session_id=...)`` by the caller so session-aware
+        routers see the session id on ``RequestMetadata``.
+
+        ``routing_payload``, when present, is passed to ``choose_replica``
+        positionally. It lands in ``pending_request.args`` where the normal
+        ingress puts the parsed request, so a body-aware policy scores replicas
+        as on the normal path. When ``None``, nothing is forwarded. The router
+        sees empty ``args`` and falls back to its default load-balanced pick.
+
+        ``request_token_ids``, when present, is forwarded as a keyword arg so a
+        KV-aware request router can score replicas on prompt-prefix overlap.
+
+        ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
+        RPC and the rejection-retry loop: the real request goes out via
+        HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
+        the extra RPC + retry introduced burstiness compared to the prior
+        local round-robin implementation.
+        """
+        route_args = (routing_payload,) if routing_payload is not None else ()
+        choose_replica_kwargs = {"_reserve": False}
+        if request_token_ids is not None:
+            choose_replica_kwargs[REQUEST_TOKEN_IDS_KWARG] = request_token_ids
+        async with handle.choose_replica(
+            *route_args, **choose_replica_kwargs
+        ) as selection:
+            replica = selection._replica
+            endpoint = replica.backend_http_endpoint
+            if endpoint is None:
+                raise RuntimeError(
+                    f"replica {selection.replica_id} has no backend HTTP endpoint"
+                )
+            host, port = endpoint
+            return host, port, replica.replica_id.to_full_id_str()

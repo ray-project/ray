@@ -44,7 +44,6 @@ _HEAVY_MODULES = (
     "ray.llm._internal.batch.stages.vllm_engine_stage",
     "ray.llm._internal.batch.stages.sglang_engine_stage",
     "ray.llm._internal.batch.stages.prepare_multimodal_stage",
-    "ray.llm._internal.batch.stages.prepare_image_stage",
     "ray.llm._internal.batch.stages.serve_deployment_stage",
     # Processor submodules whose top-level statements import heavy deps
     # directly (e.g. ``import transformers`` in sglang_engine_proc.py).
@@ -103,7 +102,6 @@ def test_http_request_stage_only_loads_its_own_submodule():
         ("TokenizeStage", "tokenize_stage"),
         ("DetokenizeStage", "tokenize_stage"),
         ("ChatTemplateStage", "chat_template_stage"),
-        ("PrepareImageStage", "prepare_image_stage"),
         ("PrepareMultimodalStage", "prepare_multimodal_stage"),
         ("ServeDeploymentStage", "serve_deployment_stage"),
         ("SGLangEngineStage", "sglang_engine_stage"),
@@ -167,7 +165,6 @@ def test_dir_lists_lazy_attrs():
         "TokenizeStage",
         "DetokenizeStage",
         "ChatTemplateStage",
-        "PrepareImageStage",
         "PrepareMultimodalStage",
         "ServeDeploymentStage",
         "SGLangEngineStage",

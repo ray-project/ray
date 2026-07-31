@@ -4,6 +4,11 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    LineDelimitedFileChunker,
+    ParquetFileChunker,
+    WholeFileChunker,
+)
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
@@ -196,6 +201,78 @@ class TestManifestBatching:
 
         total_files = sum(len(m) for m in manifests)
         assert total_files == 7
+
+
+class TestFileChunkerIntegration:
+    """Cover ``NonSamplingFileIndexer`` interaction with a ``FileChunker``."""
+
+    def test_default_uses_whole_file_chunker(self):
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+        assert isinstance(indexer.file_chunker, WholeFileChunker)
+
+    def test_explicit_chunker_is_exposed(self):
+        chunker = ParquetFileChunker(target_chunk_size=1024)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, file_chunker=chunker
+        )
+        assert indexer.file_chunker is chunker
+
+    def test_whole_file_chunker_yields_none_chunk_metadata(self, tmp_path):
+        (tmp_path / "a.csv").write_bytes(b"x" * 100)
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False, num_workers=1)
+        fs = LocalFileSystem()
+        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
+        assert len(manifests) == 1
+        manifest = manifests[0]
+        assert len(manifest) == 1
+        # ``WholeFileChunker`` emits one ``None`` chunk per file.
+        assert list(manifest.file_chunk_metadatas) == [None]
+        assert list(manifest.file_sizes) == [100]
+
+    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
+        # Write a "Parquet" file by name only — the chunker doesn't open it.
+        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
+        chunker = ParquetFileChunker(target_chunk_size=1024)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            file_chunker=chunker,
+        )
+        fs = LocalFileSystem()
+        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
+        rows = []
+        for m in manifests:
+            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
+                rows.append((str(path), int(size), md))
+
+        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
+        assert len(rows) == 10
+        for i, (_, _, md) in enumerate(rows):
+            assert md is not None
+            assert md["chunk_idx"] == i
+            assert md["total_num_chunks"] == 10
+
+    def test_line_delimited_chunker_byte_ranges(self, tmp_path):
+        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
+        chunker = LineDelimitedFileChunker()
+        # Force smaller chunks via a private override so the unit test
+        # doesn't need a 256 MB file on disk.
+        chunker._CHUNK_BYTE_SIZE = 1024
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            file_chunker=chunker,
+        )
+        fs = LocalFileSystem()
+        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
+        rows = []
+        for m in manifests:
+            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
+                rows.append((str(path), int(size), md))
+        assert len(rows) == 10
+        # Byte ranges must tile the file exactly.
+        assert rows[0][2]["chunk_byte_start_idx"] == 0
+        assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
 
 
 if __name__ == "__main__":
