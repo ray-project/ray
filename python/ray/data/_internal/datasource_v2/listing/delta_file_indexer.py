@@ -7,7 +7,7 @@ from urllib.parse import unquote
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     FileChunker,
-    WholeFileChunker,
+    ParquetFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.delta_file_pruning import (
     prune_add_actions,
@@ -42,11 +42,13 @@ class DeltaFileIndexer(FileIndexer):
     query can skip. Pruning therefore happens *before* a file is listed, so
     skipped files are never sized, chunked, or scheduled.
 
-    Predicates are optional. An indexer without them lists the whole
-    snapshot, which is what makes pruning an optimization rather than a
-    correctness requirement -- the predicate is independently enforced by
-    the scanner (see
-    :class:`~ray.data._internal.logical.rules.delta_file_pruning_pushdown.PushdownDeltaFilePruning`).
+    Predicates are optional: an indexer without them lists the whole
+    snapshot. That is what keeps pruning an optimization rather than a
+    correctness requirement -- the scanner independently enforces the same
+    predicates while reading (see
+    :class:`~ray.data._internal.logical.rules.delta_file_pruning_pushdown.PushdownDeltaFilePruning`),
+    which for partition columns depends on ``read_delta`` giving the
+    partitioning a ``field_types`` mapping so path-parsed values are typed.
     """
 
     def __init__(
@@ -71,9 +73,9 @@ class DeltaFileIndexer(FileIndexer):
             table_schema: Arrow schema of the table, used to cast partition
                 values (strings in the log) before comparing them.
             file_chunker: Strategy for splitting a file across read tasks.
-                Defaults to whole-file reads; chunking Parquet requires
-                reading footers, which is exactly the per-file metadata cost
-                this indexer exists to avoid.
+                Defaults to :class:`ParquetFileChunker`, matching
+                ``read_parquet``; a Delta table of a few large files would
+                otherwise get one read task per file.
             max_paths_per_output: Maximum files per emitted manifest block.
         """
         self._version = version
@@ -82,7 +84,7 @@ class DeltaFileIndexer(FileIndexer):
         self._data_predicate = data_predicate
         self._table_schema = table_schema
         self._file_chunker = (
-            file_chunker if file_chunker is not None else WholeFileChunker()
+            file_chunker if file_chunker is not None else ParquetFileChunker()
         )
         self._max_paths_per_output = max_paths_per_output
 

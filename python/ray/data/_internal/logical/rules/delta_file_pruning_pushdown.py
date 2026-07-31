@@ -1,6 +1,7 @@
 """Relay settled read predicates into Delta's log-driven file listing."""
 
 from dataclasses import replace
+from typing import List, Type
 
 from ray.data._internal.datasource_v2.listing.delta_file_indexer import DeltaFileIndexer
 from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
@@ -8,6 +9,7 @@ from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+from ray.data._internal.logical.rules.predicate_pushdown import PredicatePushdown
 
 __all__ = [
     "PushdownDeltaFilePruning",
@@ -25,13 +27,26 @@ class PushdownDeltaFilePruning(Rule):
     copies them onto the upstream :class:`DeltaFileIndexer` to make that
     happen.
 
-    It must run *after* ``PredicatePushdown``, whose output it reads.
+    Skipping this rule costs performance and nothing else. The scanner holds
+    the same predicates and enforces them while reading -- data predicates
+    through the PyArrow scanner filter, partition predicates by parsing the
+    file path -- so a plan shape this rule doesn't recognize reads more files
+    than it needs but returns the same rows.
 
-    Skipping this rule costs performance and nothing else. The scanner still
-    holds and applies the predicates, so a plan shape this rule doesn't
-    recognize reads more files than it needs but returns the same rows. No
-    correctness argument may be built on this rule firing.
+    That second guarantee only holds because ``read_delta`` gives the
+    partitioning a ``field_types`` mapping, so path-parsed partition values
+    are typed and comparable to the predicate's literals. Tables whose
+    partition types can't be expressed that way stay on the V1 read path
+    rather than depend on this rule for a correct answer.
     """
+
+    @classmethod
+    def dependencies(cls) -> List[Type["Rule"]]:
+        # This rule reads the predicates ``PredicatePushdown`` settles onto
+        # the scanner, so it has to see the plan afterwards. Declared rather
+        # than left to list order: ``Ruleset`` only honors declared edges, and
+        # position is merely a tiebreaker among rules with no dependencies.
+        return [PredicatePushdown]
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag = plan.dag

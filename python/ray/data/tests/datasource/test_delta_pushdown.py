@@ -312,30 +312,318 @@ def test_deletion_vectors_are_rejected(
         ray.data.read_delta(path)
 
 
+# ---------------------------------------------------------------------------
+# Things the V2 path must not change
+# ---------------------------------------------------------------------------
+
+
+def test_count_matches_v1(zordered_table, restore_data_context):
+    """``count()`` takes a different plan shape than a normal read.
+
+    ``PushdownCountFiles`` rewrites `Count -> ReadFiles` into a metadata-only
+    pass over ``ListFiles``, so it exercises the indexer through a path a
+    plain ``take_all()`` never reaches. Call it on a fresh dataset -- reading
+    first would populate the cached row count and answer from there.
+    """
+    assert _read(zordered_table, v2=True).count() == 40
+    assert _read(zordered_table, v2=False).count() == 40
+
+
+def test_arrow_parquet_args_are_honored(zordered_table, restore_data_context):
+    """``**arrow_parquet_args`` reaches ``iter_batches`` only on the V1 path.
+
+    Dropping them silently would change which rows come back, so a read that
+    passes them stays on V1 instead.
+    """
+    import pyarrow.compute as pc
+
+    v2 = _read(zordered_table, v2=True, filter=pc.field("val") > 250)
+    v1 = _read(zordered_table, v2=False, filter=pc.field("val") > 250)
+    # The table holds 0-9, 100-109, 200-209 and 300-309.
+    assert sorted(row["val"] for row in v2.take_all()) == list(range(300, 310))
+    assert _sorted_rows(v2) == _sorted_rows(v1)
+
+
+def test_include_paths_matches_v1(partitioned_table, restore_data_context):
+    v1 = _read(partitioned_table, v2=False, include_paths=True)
+    v2 = _read(partitioned_table, v2=True, include_paths=True)
+    assert v2.schema().names == v1.schema().names
+    assert all(row["path"] for row in v2.take_all())
+
+
+def test_include_paths_survives_a_column_projection(
+    partitioned_table, restore_data_context
+):
+    """``path`` is synthesized post-read, so it isn't in the caller's columns.
+
+    A projection built only from ``columns`` would drop the very column
+    ``include_paths`` was asked to add.
+    """
+    v1 = _read(partitioned_table, v2=False, columns=["val"], include_paths=True)
+    v2 = _read(partitioned_table, v2=True, columns=["val"], include_paths=True)
+    assert v2.schema().names == v1.schema().names
+
+
+def test_snapshot_is_pinned_at_call_time(tmp_path, restore_data_context):
+    """Listing is deferred, so the version must not be re-resolved later.
+
+    Without pinning, a commit landing between construction and execution
+    would be read with a schema inferred before it existed -- and a retried
+    task could disagree with its first attempt.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "concurrent")
+    write_deltalake(path, pa.table({"val": [1, 2, 3]}))
+
+    DataContext.get_current().use_datasource_v2 = True
+    ds = ray.data.read_delta(path)
+    write_deltalake(path, pa.table({"val": [4, 5]}), mode="append")
+
+    assert sorted(row["val"] for row in ds.take_all()) == [1, 2, 3]
+
+
 @pytest.mark.parametrize(
-    "mode,expects_v2",
+    "kwargs,expected_columns",
+    [
+        ({}, ["a", "b"]),
+        ({"columns": ["a"]}, ["a"]),
+        ({"include_paths": True}, ["a", "b", "path"]),
+    ],
+)
+def test_empty_table_honors_read_options(
+    tmp_path, kwargs, expected_columns, restore_data_context
+):
+    """An empty table still has to produce the schema a full read would.
+
+    Otherwise unioning it with a populated table fails on mismatched schemas.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "empty_opts")
+    write_deltalake(
+        path,
+        pa.table(
+            {"a": pa.array([], type=pa.int64()), "b": pa.array([], type=pa.string())}
+        ),
+    )
+
+    ds = _read(path, v2=True, **kwargs)
+    assert ds.schema().names == expected_columns
+    assert ds.count() == 0
+
+
+def test_empty_table_rejects_unknown_columns(tmp_path, restore_data_context):
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "empty_bad_col")
+    write_deltalake(path, pa.table({"a": pa.array([], type=pa.int64())}))
+
+    with pytest.raises(ValueError, match="don't exist"):
+        _read(path, v2=True, columns=["nope"])
+
+
+# ---------------------------------------------------------------------------
+# Pruning is an optimization, not the thing enforcing the predicate
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def int_partitioned_table(tmp_path) -> str:
+    """Partitioned by an ``int64`` column, which only the Delta log knows.
+
+    ``read_parquet`` types partition columns as strings, so this case only
+    arises once the schema comes from the Delta log.
+    """
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "int_partitioned")
+    write_deltalake(
+        path,
+        pa.table(
+            {
+                "year": pa.array([2023, 2023, 2024], type=pa.int64()),
+                "val": [1, 2, 3],
+            }
+        ),
+        partition_by=["year"],
+    )
+    return path
+
+
+def test_scanner_enforces_typed_partition_predicates_on_its_own(
+    int_partitioned_table, restore_data_context
+):
+    """The claim that pruning is optional has to hold for typed partitions.
+
+    Partition values come back from the path as strings unless the
+    partitioning carries ``field_types``. Comparing ``"2023"`` to ``lit(2023)``
+    raises inside PyArrow, and the scanner conservatively keeps the file --
+    which would leave log-level pruning as the only thing enforcing the
+    predicate, contradicting the design.
+
+    This drives the scanner's own path evaluation directly, with no log
+    pruning involved.
+    """
+    from deltalake import DeltaTable
+
+    from ray.data._internal.datasource_v2.delta_datasource_v2 import DeltaDatasourceV2
+    from ray.data.datasource.partitioning import PathPartitionParser
+
+    partitioning = DeltaDatasourceV2(int_partitioned_table)._partitioning()
+    parser = PathPartitionParser(partitioning)
+    predicate = col("year") == lit(2024)
+
+    kept = {
+        uri: parser.evaluate_predicate_on_partition(uri, predicate)
+        for uri in DeltaTable(int_partitioned_table).file_uris()
+    }
+    assert any(kept.values()), "the matching partition must be kept"
+    assert not all(kept.values()), (
+        "the scanner kept every partition, so it is not enforcing the "
+        "predicate and correctness would depend on the pruning rule firing"
+    )
+
+
+def test_typed_partition_predicate_is_correct_without_the_pruning_rule(
+    int_partitioned_table, restore_data_context, monkeypatch
+):
+    """Remove the rule entirely; the answer must not change."""
+    from ray.data._internal.logical import optimizers
+    from ray.data._internal.logical.interfaces.optimizer import Rule
+    from ray.data._internal.logical.rules import PushdownDeltaFilePruning
+
+    without_rule = [
+        rule
+        for rule in optimizers._LOGICAL_RULESET
+        if rule is not PushdownDeltaFilePruning
+    ]
+    monkeypatch.setattr(
+        optimizers, "_LOGICAL_RULESET", type(optimizers._LOGICAL_RULESET)(without_rule)
+    )
+    assert issubclass(PushdownDeltaFilePruning, Rule)
+
+    DataContext.get_current().use_datasource_v2 = True
+    rows = (
+        ray.data.read_delta(int_partitioned_table)
+        .filter(expr=col("year") == lit(2024))
+        .take_all()
+    )
+    assert sorted(row["val"] for row in rows) == [3]
+
+
+def test_pruning_rule_declares_its_ordering_dependency():
+    """List position is only a tiebreaker; the edge has to be declared.
+
+    The rule reads predicates that ``PredicatePushdown`` settles onto the
+    scanner. If another rule later declares ``PredicatePushdown`` as a
+    dependent, topological order flips and this rule would see a bare plan.
+    """
+    from ray.data._internal.logical.rules import (
+        PredicatePushdown,
+        PushdownDeltaFilePruning,
+    )
+
+    assert PredicatePushdown in PushdownDeltaFilePruning.dependencies()
+
+
+@pytest.mark.parametrize(
+    "partition_type,supported",
+    [
+        (pa.int64(), True),
+        (pa.string(), True),
+        (pa.bool_(), True),
+        (pa.date32(), False),
+    ],
+)
+def test_v2_eligibility_by_partition_type(
+    tmp_path, partition_type: pa.DataType, supported: bool
+):
+    """Partition types that path parsing can't coerce belong on V1.
+
+    ``Partitioning.field_types`` can only express int/float/str/bool. For
+    anything else the scanner cannot evaluate a partition predicate, so the
+    V2 path would depend on the pruning rule for correctness.
+    """
+    from ray.data.read_api import _delta_partition_field_types
+
+    class _FakeMetadata:
+        partition_columns = ["p"]
+
+    class _FakeSchema:
+        @staticmethod
+        def to_arrow():
+            return pa.schema(
+                [pa.field("p", partition_type), pa.field("val", pa.int64())]
+            )
+
+    class _FakeTable:
+        def metadata(self):
+            return _FakeMetadata()
+
+        def schema(self):
+            return _FakeSchema()
+
+    assert (_delta_partition_field_types(_FakeTable()) is not None) is supported
+
+
+@pytest.mark.parametrize(
+    "mode,eligible",
     [(None, True), ("none", True), ("name", False), ("id", False)],
 )
-def test_column_mapping_tables_stay_on_the_v1_path(
-    monkeypatch, mode: Optional[str], expects_v2: bool
-):
+def test_column_mapping_tables_stay_on_the_v1_path(mode: Optional[str], eligible: bool):
     """Column mapping renames columns between the schema and the Parquet.
 
     The V2 reader opens the data files directly with the logical schema, so
     it would ask for names the files don't have and return empty columns.
-    Such tables keep going through ``to_pyarrow_dataset``, which either
-    handles the mapping or raises -- either beats silently wrong data.
     """
-    from ray.data.read_api import _delta_table_uses_column_mapping
+    from ray.data.read_api import _delta_table_supports_datasource_v2
 
     class _FakeMetadata:
+        partition_columns = []
         configuration = {} if mode is None else {"delta.columnMapping.mode": mode}
 
     class _FakeTable:
         def metadata(self):
             return _FakeMetadata()
 
-    assert _delta_table_uses_column_mapping(_FakeTable()) is not expects_v2
+    assert _delta_table_supports_datasource_v2(_FakeTable(), {}) is eligible
+
+
+def test_v2_eligibility_fails_closed():
+    """A table that can't be inspected goes to V1 rather than guessing."""
+    from ray.data.read_api import _delta_table_supports_datasource_v2
+
+    class _BrokenTable:
+        def metadata(self):
+            raise RuntimeError("log unreadable")
+
+    assert _delta_table_supports_datasource_v2(_BrokenTable(), {}) is False
+
+
+def test_null_partition_value_with_field_types(tmp_path):
+    """``null_fallback`` resolves to ``None``, which must skip coercion.
+
+    Delta sets both: a typed partition column and the Hive null sentinel.
+    Casting the sentinel-derived ``None`` to ``int`` would raise.
+    """
+    from ray.data.datasource.partitioning import (
+        HIVE_DEFAULT_PARTITION,
+        Partitioning,
+        PartitionStyle,
+        PathPartitionParser,
+    )
+
+    parser = PathPartitionParser(
+        Partitioning(
+            style=PartitionStyle.HIVE,
+            field_names=["year"],
+            field_types={"year": int},
+            null_fallback=HIVE_DEFAULT_PARTITION,
+        )
+    )
+    assert parser(f"/base/year={HIVE_DEFAULT_PARTITION}/f.parquet") == {"year": None}
+    assert parser("/base/year=2024/f.parquet") == {"year": 2024}
 
 
 if __name__ == "__main__":

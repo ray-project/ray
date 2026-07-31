@@ -299,7 +299,12 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
-            partitions[field] = _cast_value(partitions[field], data_type)
+            value = partitions[field]
+            # ``null_fallback`` already resolved this directory to a null;
+            # there is nothing to coerce, and ``_cast_value`` would raise.
+            if value is None:
+                continue
+            partitions[field] = _cast_value(value, data_type)
 
         return partitions
 
