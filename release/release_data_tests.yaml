@@ -439,7 +439,7 @@
 # Do adjust timeout below based on SF above.
 #
 
-- name: joins_{{dataset}}_{{join_type}}
+- name: joins_{{dataset}}_{{join_type}}{{batch}}
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -453,12 +453,76 @@
 
   matrix:
     setup:
-      dataset: [sf100]
-      join_type: [inner, left_outer, right_outer, full_outer]
+      dataset: []
+      join_type: []
+      batch: []
+      run_env: []
+    adjustments:
+      - with:
+          dataset: sf100
+          join_type: inner
+          batch: ""
+          run_env: ""
+      - with:
+          dataset: sf100
+          join_type: inner
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+      - with:
+          dataset: sf100
+          join_type: inner
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+      - with:
+          dataset: sf100
+          join_type: left_outer
+          batch: ""
+          run_env: ""
+      - with:
+          dataset: sf100
+          join_type: left_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+      - with:
+          dataset: sf100
+          join_type: left_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+      - with:
+          dataset: sf100
+          join_type: right_outer
+          batch: ""
+          run_env: ""
+      - with:
+          dataset: sf100
+          join_type: right_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+      - with:
+          dataset: sf100
+          join_type: right_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+      - with:
+          dataset: sf100
+          join_type: full_outer
+          batch: ""
+          run_env: ""
+      - with:
+          dataset: sf100
+          join_type: full_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+      - with:
+          dataset: sf100
+          join_type: full_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
 
   run:
     timeout: 3600
     script: >
+      {{run_env}}
       python join_benchmark.py
       --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
       --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
