@@ -16,7 +16,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
     TokenizeError,
     build_tokenize_request,
 )
