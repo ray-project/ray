@@ -87,13 +87,11 @@ bool ClusterResourceManager::UpdateNode(
   const auto resources_available =
       MapFromProtobuf(resource_view_sync_message.resources_available());
   auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = std::move(node_resources.total);
-  local_view.SetAvailable(node_resources.TakeAvailable());
+  local_view.total = NodeResourceSet(resources_total);
+  local_view.SetAvailable(NodeResourceSet(resources_available));
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
