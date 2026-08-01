@@ -95,9 +95,11 @@ async def main():
 
     # This is what the router does: register a done-callback and wait.
     received: List = []
+    callback_done = asyncio.Event()
 
     def router_callback(value):
         received.append(value)
+        callback_done.set()
         if isinstance(value, ActorUnavailableError):
             print(
                 "\n✅ FIX VERIFIED: Router callback received " "ActorUnavailableError."
@@ -114,7 +116,7 @@ async def main():
 
     # Fire the done callback to simulate request completion.
     fake_call.fire_done()
-    await asyncio.sleep(0)
+    await asyncio.wait_for(callback_done.wait(), timeout=1)
 
     if not received:
         print("\n❌ NO CALLBACK FIRED — something is wrong.")

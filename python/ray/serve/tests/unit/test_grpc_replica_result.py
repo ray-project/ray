@@ -454,10 +454,16 @@ class TestDoneCallbackTranslation:
         result = self._make_result(fake_call)
 
         received: List = []
-        result.add_done_callback(lambda r: received.append(r))
+        callback_done = asyncio.Event()
+
+        def capture_result(value):
+            received.append(value)
+            callback_done.set()
+
+        result.add_done_callback(capture_result)
 
         fake_call.fire_done()
-        await asyncio.sleep(0)
+        await asyncio.wait_for(callback_done.wait(), timeout=1)
 
         # Filter out the in-flight-tracking callback's invocation (it was
         # registered in gRPCReplicaResult.__init__ and also fires; its return
@@ -470,10 +476,16 @@ class TestDoneCallbackTranslation:
         result = self._make_result(fake_call)
 
         received: List = []
-        result.add_done_callback(lambda r: received.append(r))
+        callback_done = asyncio.Event()
+
+        def capture_result(value):
+            received.append(value)
+            callback_done.set()
+
+        result.add_done_callback(capture_result)
 
         fake_call.fire_done()
-        await asyncio.sleep(0)
+        await asyncio.wait_for(callback_done.wait(), timeout=1)
 
         # A done-but-not-failed call should not be replaced with a Ray error;
         # the call object itself is delivered.
@@ -487,10 +499,16 @@ class TestDoneCallbackTranslation:
         result = self._make_result(fake_call)
 
         received: List = []
-        result.add_done_callback(lambda r: received.append(r))
+        callback_done = asyncio.Event()
+
+        def capture_result(value):
+            received.append(value)
+            callback_done.set()
+
+        result.add_done_callback(capture_result)
 
         fake_call.fire_done()
-        await asyncio.sleep(0)
+        await asyncio.wait_for(callback_done.wait(), timeout=1)
 
         assert len(received) == 1
         assert received[0] is fake_call
