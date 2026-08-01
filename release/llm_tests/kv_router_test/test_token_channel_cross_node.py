@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import requests
+import sys
 
 import ray
 from ray import serve
@@ -87,6 +88,7 @@ def _send_batch(host, round_index):
             future.result()
 
 
+@pytest.mark.asyncio
 async def test_router_connects_to_remote_token_receiver(deployed_app):
     replica_ips = deployed_app
     host = sorted(replica_ips)[0]
@@ -117,3 +119,9 @@ async def test_router_connects_to_remote_token_receiver(deployed_app):
     # remote endpoint and accepted the payload into that pipe.
     assert cross_node, f"No cross-node token push succeeded: {attempts}"
     assert replica_ips <= target_nodes, (replica_ips, attempts)
+
+
+if __name__ == "__main__":
+    if not ray.is_initialized():
+        ray.init(address="auto")
+    sys.exit(pytest.main(["-v", "-s", __file__]))
