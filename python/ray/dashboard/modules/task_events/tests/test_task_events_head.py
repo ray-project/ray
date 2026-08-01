@@ -12,10 +12,15 @@ from ray._common.ray_constants import (
 )
 from ray._common.test_utils import async_wait_for_condition
 from ray._raylet import JobID
-from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
+from ray.core.generated import (
+    events_event_aggregator_service_pb2,
+    gcs_pb2,
+    gcs_service_pb2,
+)
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_task_definition_event_pb2 import TaskDefinitionEvent
+from ray.dashboard.modules.task_events import task_event_query
 from ray.dashboard.modules.task_events.task_events_head import TaskEventsHead
 from ray.dashboard.subprocesses.module import SubprocessModuleConfig
 
@@ -128,6 +133,38 @@ def test_deserialize_request_roundtrip():
     request = head._deserialize_request(body)
 
     assert len(request.events_data.events) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_task_events_endpoint_roundtrip():
+    head = _make_head()
+    _add_stored_task(head, _task_id(1))
+
+    query = gcs_service_pb2.GetTaskEventsRequest()
+    response = await head.get_task_events(_fake_request(query.SerializeToString()))
+
+    assert response.status == 200
+    reply = gcs_service_pb2.GetTaskEventsReply()
+    reply.ParseFromString(response.body)
+    assert [event.task_id for event in reply.events_by_task] == [_task_id(1)]
+
+
+@pytest.mark.asyncio
+async def test_get_task_events_invalid_predicate_returns_status_in_reply():
+    head = _make_head()
+    _add_stored_task(head, _task_id(1))
+
+    query = gcs_service_pb2.GetTaskEventsRequest()
+    task_filter = query.filters.task_filters.add()
+    task_filter.task_id = _task_id(1)
+    task_filter.predicate = 100
+    response = await head.get_task_events(_fake_request(query.SerializeToString()))
+
+    assert response.status == 200
+    reply = gcs_service_pb2.GetTaskEventsReply()
+    reply.ParseFromString(response.body)
+    assert reply.status.code == task_event_query._INVALID_ARGUMENT_STATUS_CODE
+    assert len(reply.events_by_task) == 0
 
 
 _HEAD = "ray.dashboard.modules.task_events.task_events_head"
