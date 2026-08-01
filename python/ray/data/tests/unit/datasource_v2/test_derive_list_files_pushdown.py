@@ -22,7 +22,15 @@ from ray.data._internal.datasource_v2.listing.listing_utils import sample_files
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
-from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
+    ArrowFileScanner,
+)
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalPlan,
+    Plan,
+    Rule,
+)
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.optimizers import LogicalOptimizer, get_logical_ruleset
@@ -64,17 +72,38 @@ def _apply(dag: LogicalOperator) -> LogicalPlan:
     return DeriveListFilesPushdown().apply(plan)
 
 
-def _list_files_of(plan: LogicalPlan) -> ListFiles:
+def _list_files_of(plan: Plan) -> ListFiles:
     (list_files,) = [
         op for op in plan.dag.post_order_iter() if isinstance(op, ListFiles)
     ]
     return list_files
 
 
+def _source_list_files(read_files: ReadFiles) -> ListFiles:
+    """The ``ListFiles`` feeding ``read_files``, typed as such.
+
+    ``input_dependencies`` is declared as plain ``LogicalOperator``.
+    """
+    (list_files,) = read_files.input_dependencies
+    assert isinstance(list_files, ListFiles), list_files
+    return list_files
+
+
+def _scanner_of(read_files: ReadFiles) -> ArrowFileScanner:
+    """The scanner of ``read_files``, typed as the pushdown-capable subclass.
+
+    ``ReadFiles.scanner`` is declared as the base ``Scanner``, which carries
+    none of the ``Supports*`` pushdown methods these tests drive.
+    """
+    scanner = read_files.scanner
+    assert isinstance(scanner, ArrowFileScanner), scanner
+    return scanner
+
+
 def test_derives_state_the_scanner_accepted(tmp_path):
     read_files = _mk_read_files(tmp_path)
     predicate = col("a") > 2
-    scanner, _residual = read_files.scanner.push_filters(predicate)
+    scanner, _residual = _scanner_of(read_files).push_filters(predicate)
     scanner = scanner.prune_columns(["a"]).push_limit(5)
     read_files = replace(read_files, scanner=scanner)
 
@@ -113,7 +142,7 @@ def test_state_the_scanner_does_not_carry_is_cleared(tmp_path, stale):
     read_files = _mk_read_files(tmp_path)
     read_files = replace(
         read_files,
-        input_dependencies=[replace(read_files.input_dependencies[0], **stale)],
+        input_dependencies=[replace(_source_list_files(read_files), **stale)],
     )
 
     list_files = _list_files_of(_apply(read_files))
@@ -127,7 +156,7 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
     """``PushdownCountFiles`` rewrites ``ReadFiles`` out of the plan entirely."""
     read_files = _mk_read_files(tmp_path)
     list_files = replace(
-        read_files.input_dependencies[0], predicate=col("a") > 2, limit=1
+        _source_list_files(read_files), predicate=col("a") > 2, limit=1
     )
     count_rows = MapBatches(
         fn=lambda batch: batch,
@@ -144,7 +173,7 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
 
 def test_bare_list_files_root_is_cleared(tmp_path):
     read_files = _mk_read_files(tmp_path)
-    list_files = replace(read_files.input_dependencies[0], predicate=col("a") > 2)
+    list_files = replace(_source_list_files(read_files), predicate=col("a") > 2)
 
     assert _list_files_of(_apply(list_files)).predicate is None
 
@@ -154,8 +183,10 @@ class _WeakenScannerPredicate(Rule):
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
         def transform(node: LogicalOperator) -> LogicalOperator:
-            if isinstance(node, ReadFiles) and node.scanner.pushed_predicate():
-                return replace(node, scanner=replace(node.scanner, predicate=None))
+            if isinstance(node, ReadFiles):
+                scanner = _scanner_of(node)
+                if scanner.pushed_predicate() is not None:
+                    return replace(node, scanner=replace(scanner, predicate=None))
             return node
 
         return LogicalPlan(
@@ -193,7 +224,7 @@ def test_optimizer_does_not_strand_a_predicate_a_later_rule_dropped(
     read_files_ops: List[ReadFiles] = [
         op for op in optimized.dag.post_order_iter() if isinstance(op, ReadFiles)
     ]
-    (scanner_predicate,) = [op.scanner.pushed_predicate() for op in read_files_ops]
+    (scanner_predicate,) = [_scanner_of(op).pushed_predicate() for op in read_files_ops]
     assert scanner_predicate is None
     assert _list_files_of(optimized).predicate is None
 
@@ -210,7 +241,7 @@ def test_optimizer_keeps_list_files_in_sync_with_the_scanner(tmp_path):
     )
 
     (scanner_predicate,) = [
-        op.scanner.pushed_predicate()
+        _scanner_of(op).pushed_predicate()
         for op in optimized.dag.post_order_iter()
         if isinstance(op, ReadFiles)
     ]
