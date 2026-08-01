@@ -168,11 +168,10 @@ class TestIterLine:
         f.write("line2\n")
         f.flush()
 
-        # The call immediately after truncation flushes the (now empty)
-        # in-flight chunk from before rotation, same as the natural EOF
-        # flush behavior exercised in test_multiple_lines.
-        assert await anext(it) is None
-
+        # Our truncation check now runs before every read (not only
+        # after hitting EOF), so recovery happens on the very next call
+        # rather than needing an extra call to first flush an empty
+        # in-flight chunk from before rotation.
         result = await anext(it)
         assert result == ["line2\n"], (
             "Expected clean recovery after truncation, got possibly "

@@ -56,6 +56,23 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
     New line characters are kept in the line string.
 
     Returns None until the file exists or if no new line has been written.
+
+    Detects external truncation of the file (e.g. copytruncate log
+    rotation) by checking file size before every read, and recovers by
+    seeking back to the start. This check runs on every internal read,
+    not only on EOF, so gradual truncation-then-regrowth (the realistic
+    case, matching how a subprocess writes incrementally) is handled
+    correctly.
+
+    Known limitation, shared with log_monitor.py's equivalent size-based
+    detection for the same problem: if the file is truncated and then
+    regrows past our last-observed size in a single write, entirely
+    between two of our checks, the truncation can go undetected and a
+    line may be read from the wrong position. This requires the file to
+    both shrink and then grow past the previous size within one
+    uninterrupted burst faster than we can observe it, which is
+    possible in principle but unlikely in practice for incrementally
+    written logs.
     """
     if not isinstance(path, str):
         raise TypeError(f"path must be a string, got {type(path)}.")
@@ -71,6 +88,7 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
 
         chunk_char_count = 0
         curr_line = None
+        last_seen_size = 0
 
         while True:
             # We want to flush current chunk in following cases:
@@ -89,6 +107,39 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
                 lines = []
                 chunk_char_count = 0
 
+            # Before reading, check whether the file has been rotated
+            # (e.g. via copytruncate log rotation) out from under us.
+            # This has to run before every read, not only when we hit
+            # EOF: a stale read position can land exactly on a real byte
+            # boundary in unrelated new content written after rotation,
+            # in which case readline() would return what looks like a
+            # normal line instead of EOF, silently skipping content
+            # instead of erroring.
+            #
+            # Comparing only against our current read position
+            # (f.tell()) is not sufficient either: if the file is
+            # truncated and then grows back past our old position
+            # before this check runs, the size comparison would come
+            # back clean and we would resume from the middle of the new
+            # content instead of detecting the rotation. To catch that,
+            # we also track the largest size we have observed across
+            # previous checks (last_seen_size) and compare the current
+            # size against both, the same approach used by
+            # log_monitor.py's LogFileInfo.reopen_if_necessary for the
+            # same problem.
+            try:
+                current_size = os.path.getsize(path)
+                if current_size < max(f.tell(), last_seen_size):
+                    f.seek(0)
+                    last_seen_size = 0
+                else:
+                    last_seen_size = max(last_seen_size, current_size)
+            except FileNotFoundError:
+                # File may have been removed entirely; keep waiting,
+                # os.path.exists loop above already handles this case
+                # on the next full iteration if needed.
+                pass
+
             # Read next line
             curr_line = f.readline()
 
@@ -99,23 +150,8 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
                 # Add line to current chunk
                 lines.append(curr_line)
                 chunk_char_count += len(curr_line)
+                last_seen_size = max(last_seen_size, f.tell())
             else:
-                # If the file was rotated (e.g. via copytruncate log
-                # rotation) out from under us, our current read position
-                # will be past the file's actual size. Reading from a
-                # stale position would return garbled data from whatever
-                # was written after rotation instead of erroring, since
-                # the OS just returns what's there. Detect this and seek
-                # back to the start so we pick up from the rotated file
-                # cleanly instead of silently returning corrupted lines.
-                try:
-                    if f.tell() > os.path.getsize(path):
-                        f.seek(0)
-                except FileNotFoundError:
-                    # File may have been removed entirely; keep waiting,
-                    # os.path.exists loop above already handles this
-                    # case on the next full iteration if needed.
-                    pass
                 # If EOF is reached sleep for 1s before continuing
                 await asyncio.sleep(1)
 

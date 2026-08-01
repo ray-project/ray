@@ -379,7 +379,14 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     [
         {
             "env": {
-                "RAY_ROTATION_MAX_BYTES": "1000",
+                # Set high enough that only a single rotation fires partway
+                # through the entrypoint's ~4200 bytes of total output. This
+                # test verifies a single rotation boundary is handled
+                # cleanly, not that history survives many rapid rotations,
+                # which backup_count alone cannot guarantee (each rotation
+                # overwrites the prior backup, by design, matching
+                # logrotate's own behavior).
+                "RAY_ROTATION_MAX_BYTES": "2200",
                 "RAY_ROTATION_BACKUP_COUNT": "1",
                 "RAY_JOB_LOG_ROTATION_CHECK_PERIOD_S": "0.5",
             },
@@ -395,8 +402,9 @@ async def test_job_driver_log_rotation(call_ray_start, tmp_path):  # noqa: F811
     gcs_client = ray._private.worker.global_worker.gcs_client
     job_manager = JobManager(gcs_client, tmp_path)
 
-    # Write enough lines to comfortably exceed the 1000 byte threshold set
-    # above. Each line is ~20 bytes, 200 lines is ~4000 bytes total.
+    # Write enough lines that total output (~4200 bytes) comfortably
+    # exceeds the 2200 byte threshold set above, producing exactly one
+    # rotation partway through. Each line is ~21 bytes, 200 lines total.
     entrypoint = (
         'python -c "'
         "import sys, time\n"
