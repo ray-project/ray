@@ -26,6 +26,7 @@ the two stateless ``prepare_*`` calls agree without per-request backend state.
 """
 
 import hashlib
+import secrets
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import ray
@@ -62,6 +63,13 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     _bootstrap_host: Optional[str] = None
     _bootstrap_port: Optional[int] = None
 
+    # Per-instance salt so id(request) recycling across this connector's
+    # lifetime can't produce the same _bootstrap_room seed for two different
+    # requests. Only used as a fallback when the client didn't set rid.
+    # Set in setup() (once per replica, before engine start) -- not as a class
+    # default, which would evaluate once and be shared across all instances.
+    _room_salt: Optional[str] = None
+
     @staticmethod
     def _check_request_model_has_bootstrap_fields() -> None:
         """Fail early if the resolved OpenAI request model lacks bootstrap fields.
@@ -88,6 +96,7 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     def setup(self) -> None:
         """Pick a free bootstrap port + set host to the node IP, before engine start."""
         self._check_request_model_has_bootstrap_fields()
+        self._room_salt = secrets.token_hex(16)
         offset = self._compute_port_offset()
         engine_kwargs = self.llm_config.engine_kwargs
 
@@ -135,12 +144,20 @@ class SGLangConnectorBackend(BaseConnectorBackend):
         return host, port
 
     def _bootstrap_room(self, request: Any) -> int:
-        """Deterministic per-request room id from the request id (stateless).
+        """Per-request room id, stable across both prepare_* calls on this request.
 
-        Both prepare_* calls run on the same request id, so they agree; uniqueness
-        per request is inherited from the (uuid-defaulted) request id.
+        SGLang's ``rid`` is client-optional and defaults to ``None`` -- most
+        OpenAI-compatible clients never set it, so seeding off it collides
+        concurrent requests onto one room. ``prepare_prefill_request`` and
+        ``prepare_decode_request`` both run on the same (unmodified) request
+        object before either copies it, so ``id(request)`` is a valid shared
+        key for that object's lifetime; mixing in a per-process random salt
+        keeps room ids from being predictable or reused across id() recycling.
         """
-        seed = str(request.rid)
+        if request.rid is not None:
+            seed = str(request.rid)
+        else:
+            seed = f"{self._room_salt}:{id(request)}"
         digest = hashlib.sha256(seed.encode()).hexdigest()
         return int(digest, 16) & ((1 << _ROOM_BITS) - 1)
 
