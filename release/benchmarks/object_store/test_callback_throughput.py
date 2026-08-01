@@ -113,10 +113,9 @@ def test_callback_pipeline(num_blocks, timeout_s=300):
 
 
 def test_registration_cost(num_blocks):
-    """Measures per-callback registration cost via BlockRefCounter.
+    """Measures per-callback registration cost via BlockRefCounter.on_block_produced.
 
-    Uses on_block_produced (the real Data-layer path) which includes:
-    Python lock + set add + dict increment + Core API call + Py_INCREF.
+    Includes BRC bookkeeping and the Core API call to register the callback.
     """
     counter = BlockRefCounter()
     refs = _produce_blocks(num_blocks)
@@ -136,11 +135,10 @@ def test_registration_cost(num_blocks):
 
 
 def test_burst_drop(num_blocks, timeout_s=60):
-    """All refs dropped at once, 1 Core API callback per block.
+    """All refs dropped at once, 1 Core API callback per block (no BlockRefCounter).
 
     Measures time from burst start to each callback firing. The max
     latency approximates total drain time (how long the burst hangs).
-    This is the production-representative baseline (no BlockRefCounter).
     """
     core_worker = ray._private.worker.global_worker.core_worker
     on_freed, fire_times, done = _make_timing_callback(num_blocks)
