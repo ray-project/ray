@@ -13,6 +13,7 @@ sentinel on stdout, benchmark against it, then kill the process.
 """
 
 import argparse
+import os
 import time
 
 from ray import serve
@@ -108,6 +109,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    os.environ["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
     args = parse_args()
     model_id = args.model_id or args.model.split("/")[-1].lower() + "-sglang-pd"
 

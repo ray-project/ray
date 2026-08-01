@@ -1,12 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=pd_ttft_ray
-#SBATCH --output=/home/ldcunha/pd_ttft_bench/logs/ray_ttft_%j.out
-#SBATCH --error=/home/ldcunha/pd_ttft_bench/logs/ray_ttft_%j.err
+#SBATCH --output=%j/logs/ray_ttft_%j.out
+#SBATCH --error=%j/logs/ray_ttft_%j.err
 #SBATCH --time=00-04:00
 #SBATCH --mem=120000
 #SBATCH --gres=gpu:2
 #SBATCH --partition=defq
-#SBATCH --nodelist=quadro1
 
 # ---------------------------------------------------------------------------
 # Overnight TTFT benchmark: Ray Serve LLM SGLang PD disaggregation.
@@ -16,10 +15,10 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
-BENCH=/home/ldcunha/pd_ttft_bench
+BENCH="${BENCH:?set BENCH to the repo checkout path}"
 RESULTS=$BENCH/results
 LOGS=$BENCH/logs
-MODEL_ID=qwen-0.5b-sglang-pd          # RAY_MODEL_ID from launch_ray_pd.py
+MODEL_ID=qwen2.5-7b-instruct-sglang-pd   # must match launch_ray_pd.py's default model_id
 BASE_URL=http://127.0.0.1:8000
 mkdir -p "$RESULTS" "$LOGS"
 
@@ -28,20 +27,22 @@ nvidia-smi
 
 echo "=== env ==="
 module load conda cuda/12.6
-conda activate pd_ttft_bench
+conda activate "${CONDA_ENV:?set CONDA_ENV to your environment name}"
 # NOTE: branch's LLM code was already overlaid into the installed ray wheel
 # during setup (cp python/ray/llm/* -> site-packages/ray/llm/). No PYTHONPATH
 # needed -- that would shadow the compiled core and break ray._raylet import.
 
 echo "=== launch Ray PD (background) ==="
-python "$BENCH/bench/launch_ray_pd.py" > "$LOGS/ray_pd_serve.log" 2>&1 &
+python "$BENCH/bench/launch_ray_pd.py" --model-id "$MODEL_ID" > "$LOGS/ray_pd_serve.log" 2>&1 &
 RAY_PID=$!
 
 # Wait for the readiness sentinel the launcher prints (max ~11 min).
 echo "=== waiting for RAY_PD_READY ==="
+READY=0
 for i in $(seq 1 330); do
     if grep -q "RAY_PD_READY" "$LOGS/ray_pd_serve.log" 2>/dev/null; then
         echo "Ray PD ready after ~$((i*2))s"
+        READY=1
         break
     fi
     if ! kill -0 "$RAY_PID" 2>/dev/null; then
@@ -50,6 +51,13 @@ for i in $(seq 1 330); do
     fi
     sleep 2
 done
+
+if [ "$READY" -ne 1 ]; then
+    echo "!! timed out waiting for RAY_PD_READY -- see $LOGS/ray_pd_serve.log"
+    kill "$RAY_PID" 2>/dev/null
+    wait "$RAY_PID" 2>/dev/null
+    exit 1
+fi
 
 echo "=== benchmark sweep (TTFT) ==="
 # Same tool, fixed ISL/OSL, sweep concurrency. --save-result writes JSON
