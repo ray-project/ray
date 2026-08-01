@@ -6,10 +6,16 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import (
+    get_tpu_cores_per_chip,
+    get_tpu_resource_per_chip,
+)
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_torchtpu_env_vars,
+    normalize_torchtpu_topology,
 )
 
 
@@ -2635,6 +2641,185 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+def test_normalize_torchtpu_topology():
+    """Test topology normalization for 3D/4D Torus and device accounting across all three TPU categories."""
+    # 1) Megacore (v4, v5p): 2 TensorCores per chip fused into 1 logical XLA device (3D topology).
+    assert get_tpu_cores_per_chip("v4") == 2
+    assert get_tpu_resource_per_chip("v4") == 1
+    assert get_tpu_cores_per_chip("v5p") == 2
+    assert get_tpu_resource_per_chip("v5p") == 1
+    assert (
+        normalize_torchtpu_topology(
+            "2x2x1", tpu_resource_per_chip=get_tpu_resource_per_chip("v4")
+        )
+        == "2,2,1"
+    )
+    assert (
+        normalize_torchtpu_topology(
+            "2x2x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v5p")
+        )
+        == "2,2,4"
+    )
+    assert (
+        normalize_torchtpu_topology(
+            "4x4x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v4")
+        )
+        == "4,4,4"
+    )
+    assert (
+        normalize_torchtpu_topology(
+            "4x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v5p")
+        )
+        == "4,4,1"
+    )
+
+    # 2) Single-Core (v5litepod, v6e): 1 TensorCore per chip and 1 logical XLA device (3D topology).
+    assert get_tpu_cores_per_chip("v5litepod") == 1
+    assert get_tpu_resource_per_chip("v5litepod") == 1
+    assert get_tpu_cores_per_chip("v6e") == 1
+    assert get_tpu_resource_per_chip("v6e") == 1
+    assert (
+        normalize_torchtpu_topology(
+            "2x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v6e")
+        )
+        == "2,4,1"
+    )
+
+    # 3) Dual-Device (v7 / v7x): 2 discrete chiplets per package enumerated as 2 logical XLA devices (4D topology).
+    assert get_tpu_cores_per_chip("v7x") == 2
+    assert get_tpu_resource_per_chip("v7x") == 2
+    assert (
+        normalize_torchtpu_topology(
+            "2x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v7x")
+        )
+        == "2,4,1,2"
+    )
+    assert (
+        normalize_torchtpu_topology(
+            "2x2x4", tpu_resource_per_chip=get_tpu_resource_per_chip("v7x")
+        )
+        == "2,2,4,2"
+    )
+    assert normalize_torchtpu_topology(" 4X4 ", tpu_resource_per_chip=1) == "4,4,1"
+    assert normalize_torchtpu_topology(" 2, 4, 1 ", tpu_resource_per_chip=1) == "2,4,1"
+    assert normalize_torchtpu_topology(" 4 x 4 ", tpu_resource_per_chip=1) == "4,4,1"
+    assert get_tpu_resource_per_chip("tpu7x") == 2
+    assert get_tpu_resource_per_chip("tpu7x-16") == 2
+    assert get_tpu_resource_per_chip("TPU-V7X") == 2
+    assert get_tpu_resource_per_chip("v7x-16") == 2
+
+
+def test_get_torchtpu_env_vars():
+    """Test get_torchtpu_env_vars utility with string, list, and None addresses."""
+    env_vars_str = get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses="10.0.0.1:8431,10.0.0.2:8431",
+    )
+    assert env_vars_str["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+    assert (
+        env_vars_str["TORCH_TPU_SLICEBUILDER_ADDRESSES"]
+        == "10.0.0.1:8431,10.0.0.2:8431"
+    )
+
+    env_vars_list = get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=["10.0.0.1:8431", "10.0.0.2:8431"],
+    )
+    assert env_vars_list["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+    assert (
+        env_vars_list["TORCH_TPU_SLICEBUILDER_ADDRESSES"]
+        == "10.0.0.1:8431,10.0.0.2:8431"
+    )
+
+    env_vars_none = get_torchtpu_env_vars(topology="2x4", slicebuilder_addresses=None)
+    assert env_vars_none == {"TORCH_TPU_TOPOLOGY": "2,4,1"}
+
+
+def test_subslice_placement_group_torchtpu_env():
+    """Test SubslicePlacementGroup TPU environment variable and runtime_env methods."""
+    ss_pg = SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=0,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4},
+    )
+
+    ss_env = ss_pg.get_tpu_env_vars("10.0.0.1:8431,10.0.0.2:8431")
+    assert ss_env["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+    assert ss_env["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == "10.0.0.1:8431,10.0.0.2:8431"
+
+    ss_env_list = ss_pg.get_tpu_env_vars(["10.0.0.1:8431", "10.0.0.2:8431"])
+    assert (
+        ss_env_list["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == "10.0.0.1:8431,10.0.0.2:8431"
+    )
+
+    ss_env_none = ss_pg.get_tpu_env_vars(None)
+    assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in ss_env_none
+
+    addrs_16 = ",".join(f"host:{8470+i}" for i in range(16))
+    ss_env_sliced = ss_pg.get_tpu_env_vars(addrs_16)
+    expected_sliced = ",".join(f"host:{8470+i}" for i in range(8))
+    assert ss_env_sliced["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == expected_sliced
+
+    ss_pg_1 = SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4},
+    )
+    ss_env_sliced_1 = ss_pg_1.get_tpu_env_vars(addrs_16)
+    expected_sliced_1 = ",".join(f"host:{8470+i}" for i in range(8, 16))
+    assert ss_env_sliced_1["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == expected_sliced_1
+
+    addrs_32 = ",".join(f"host:{8470+i}" for i in range(32))
+    ss_pg_rpc2 = SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 8},
+        tpu_resource_per_chip=2,
+    )
+    ss_env_rpc2 = ss_pg_rpc2.get_tpu_env_vars(addrs_32)
+    assert ss_env_rpc2["TORCH_TPU_TOPOLOGY"] == "2,4,1,2"
+    expected_rpc2_addrs = ",".join(f"host:{8470+i}" for i in range(16, 32))
+    assert ss_env_rpc2["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == expected_rpc2_addrs
+    assert "CHIPS_PER_HOST_BOUNDS" not in ss_env_rpc2
+    assert "TPU_CHIPS_PER_HOST_BOUNDS" not in ss_env_rpc2
+    assert "TPU_HOST_BOUNDS" not in ss_env_rpc2
+
+    runtime_env = ss_pg.get_tpu_runtime_env("10.0.0.1:8431,10.0.0.2:8431")
+    assert runtime_env["env_vars"]["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+
+
+def test_slice_placement_group_torchtpu_env():
+    """Test SlicePlacementGroup TPU environment variable and runtime_env methods."""
+    slice_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    slice_pg._topology = "4x4"
+    slice_pg._tpu_resource_per_chip = 1
+
+    slice_env = slice_pg.get_tpu_env_vars(["10.0.0.1:8431", "10.0.0.2:8431"])
+    assert slice_env["TORCH_TPU_TOPOLOGY"] == "4,4,1"
+    assert (
+        slice_env["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == "10.0.0.1:8431,10.0.0.2:8431"
+    )
+    slice_runtime_env = slice_pg.get_tpu_runtime_env(None)
+    assert slice_runtime_env["env_vars"] == {
+        "TORCH_TPU_TOPOLOGY": "4,4,1",
+    }
 
 
 if __name__ == "__main__":

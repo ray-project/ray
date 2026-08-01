@@ -40,8 +40,9 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
+
 
 # The following defines environment variables that allow
 # us to access a subset of TPU visible chips.
@@ -69,9 +70,15 @@ TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 # Topologies that are always sub-host or single-host
 TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
-# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
-# Accelerators that are 1 core per chip: v5e, v6e
+# TPU generations fall into three hardware/software accounting categories:
+# 1) Megacore (v2, v3, v4, v5p): 2 TensorCores per chip, but fused into 1 logical XLA
+#    device per chip (3D topology, e.g. "2,2,1"). Listed in neither set below.
+# 2) Single-Core (v5litepod, v6e): 1 TensorCore per chip and 1 logical XLA device per chip
+#    (3D topology, e.g. "2,4,1"). Listed in SINGLE_CORE_TPU_TYPES.
+# 3) Dual-Device (v7x): 2 discrete chiplets, enumerated as 2 logical XLA devices
+#    per chip (4D topology, e.g. "2,2,1,2"). Listed in DUAL_DEVICE_TPU_TYPES.
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+DUAL_DEVICE_TPU_TYPES = ("v7x", "tpu7x")
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
@@ -110,8 +117,8 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 16, 24)),
-    "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v5litepod": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
     "v7x": {
         "2x2x1",
         "2x2x2",
@@ -167,6 +174,29 @@ _VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
 def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
     """Parse a topology string (e.g. "2x4", "2x2x2") into a dimension tuple."""
     return tuple(int(d) for d in topology.strip().lower().split("x"))
+
+
+def normalize_torchtpu_topology(topology: str, tpu_resource_per_chip: int = 1) -> str:
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' -> '2,2,4,2')."""
+    clean_topo = topology.strip().lower().replace("x", ",")
+    dims = [d.strip() for d in clean_topo.split(",") if d.strip().isdigit()]
+    if len(dims) == 2:
+        dims.append("1")
+    if len(dims) == 3 and tpu_resource_per_chip > 1:
+        dims.append(str(tpu_resource_per_chip))
+    return ",".join(dims)
+
+
+def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
+    """Returns the number of TPU custom resources per chip for a TPU accelerator type."""
+    val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
+    if val is not None:
+        return int(val)
+    if not accelerator_type:
+        accelerator_type = os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+    if any(t in str(accelerator_type).lower() for t in DUAL_DEVICE_TPU_TYPES):
+        return 2
+    return 1
 
 
 @lru_cache(maxsize=None)
