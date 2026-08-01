@@ -142,6 +142,12 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
+# Join reducers materialize both sides' shards and build a hash table over one
+# of them, so their peak memory runs well past the generic 2x-of-input shuffle
+# estimate; under-requesting overpacks reducers per node and OOMs at scale.
+_JOIN_SHUFFLE_PEAK_MEMORY_MULTIPLIER = 3
+
+
 def _plan_join_shuffle_v2(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
@@ -185,6 +191,7 @@ def _plan_join_shuffle_v2(
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
         reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
+        peak_memory_multiplier=_JOIN_SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name=f"JoinShuffleReduce(num_partitions={num_partitions})",
     )
 

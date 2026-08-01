@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -244,6 +245,39 @@ def test_shuffle_input_batch_bytes_from_context(ctx_value, restore_data_context)
         partition_fn=lambda table: {},
     )
     assert op._input_batch_bytes == ctx_value
+
+
+def test_peak_memory_multiplier_override():
+    """Reduce-task memory requests scale by the operator-level multiplier."""
+    ctx = DataContext.get_current()
+
+    def _build(multiplier_kwargs):
+        map_op = ShuffleMapOp(
+            InputDataBuffer(ctx, []),
+            ctx,
+            num_partitions=2,
+            partition_fn=lambda table: {},
+            **multiplier_kwargs,
+        )
+        reduce_op = ShuffleReduceOp(
+            map_op,
+            ctx,
+            num_partitions=2,
+            reduce_fn=lambda partition_id, tables_by_input: [],
+            **multiplier_kwargs,
+        )
+        map_op._partition_bytes[0] = 100
+        return map_op, reduce_op
+
+    map_default, reduce_default = _build({})
+    assert map_default._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
+    assert reduce_default.incremental_resource_usage().memory == (
+        100 * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+    )
+
+    map_x3, reduce_x3 = _build({"peak_memory_multiplier": 3})
+    assert map_x3._peak_memory_multiplier == 3
+    assert reduce_x3.incremental_resource_usage().memory == 300
 
 
 def test_shuffle_map_task_uses_operator_name():
