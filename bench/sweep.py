@@ -79,14 +79,27 @@ async def one_request(
     try:
         async with session.post(f"{url}/v1/chat/completions", json=payload) as resp:
             resp.raise_for_status()
-            async for raw_line in resp.content:
+            # readline() buffers internally across TCP reads, so a frame split
+            # or coalesced mid-line by the network still yields one complete
+            # line per call; iterating resp.content directly relies on the
+            # same buffering but obscures EOF handling, so drive it explicitly.
+            while True:
+                raw_line = await resp.content.readline()
+                if not raw_line:
+                    break
                 line = raw_line.decode("utf-8").strip()
                 if not line.startswith("data: "):
                     continue
                 data = line[len("data: ") :]
                 if data == "[DONE]":
                     break
-                chunk = json.loads(data)
+                try:
+                    chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    # A line split across reads despite readline()'s buffering
+                    # (e.g. a proxy coalescing frames) -- skip it rather than
+                    # fail the whole request over one malformed SSE line.
+                    continue
                 delta = chunk["choices"][0].get("delta", {})
                 if not delta.get("content"):
                     # Role-only preamble chunk carries no generated token.

@@ -391,6 +391,13 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    def routing_stats(self) -> dict:
+        # SGLang has no KV-events-based routing integration (unlike VLLMEngine),
+        # so there is nothing to surface. Non-PD SGLang deploys this class
+        # directly as server_cls and never calls this; PD wraps it in LLMServer,
+        # whose record_routing_stats polls this every replica, so it must exist.
+        return {}
+
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
     ) -> dict[str, Any]:

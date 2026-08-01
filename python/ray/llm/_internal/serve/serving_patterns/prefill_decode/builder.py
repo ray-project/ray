@@ -218,13 +218,16 @@ class PDServingArgs(BaseModelExtended):
         ):
             if config.llm_engine != "SGLang":
                 continue
-            dp_size = config.engine_kwargs.get("data_parallel_size", 1)
-            if isinstance(dp_size, int) and dp_size > 1:
-                raise NotImplementedError(
-                    f"SGLang P/D disaggregation does not support "
-                    f"data_parallel_size>1 yet (got {dp_size} on {label}). "
-                    "Use data_parallel_size=1."
-                )
+            # SGLang's own engine kwarg is dp_size, not vLLM's
+            # data_parallel_size; check both so neither name bypasses the guard.
+            for key in ("data_parallel_size", "dp_size"):
+                dp_size = config.engine_kwargs.get(key, 1)
+                if isinstance(dp_size, int) and dp_size > 1:
+                    raise NotImplementedError(
+                        f"SGLang P/D disaggregation does not support "
+                        f"{key}>1 yet (got {dp_size} on {label}). "
+                        f"Use {key}=1."
+                    )
         return self
 
     @model_validator(mode="after")
