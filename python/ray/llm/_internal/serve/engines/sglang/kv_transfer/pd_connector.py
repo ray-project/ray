@@ -141,13 +141,17 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     def _compute_gpu_offset(self) -> int:
         """This replica's device-block offset within its side of the P/D pair.
 
-        Each replica occupies ``num_devices`` (tp x pp) consecutive GPUs, so
-        replica ``r`` starts at ``r * num_devices``. Mirrors the replica-rank
-        branch of ``_compute_port_offset``; a missing replica context raises
-        rather than silently returning 0, which would double-book GPU 0.
+        Each replica occupies ``num_devices`` (tp x pp) consecutive GPUs, so the
+        n-th replica *on this node* starts at ``n * num_devices``.
+
+        Keyed on ``local_rank``, not the cluster-wide ``rank``: base_gpu_id
+        indexes node-local CUDA devices, so a global rank would walk off the end
+        of a multi-node deployment's per-node device range (the P/D release
+        compute is two GPU workers). A missing replica context raises rather
+        than silently returning 0, which would double-book GPU 0.
         """
         rc = serve.get_replica_context()
-        return rc.rank.rank * self.llm_config.num_devices
+        return rc.rank.local_rank * self.llm_config.num_devices
 
     def replica_metadata(self) -> Dict[str, Any]:
         """Publish this (prefill) replica's bootstrap address for the decode peer."""

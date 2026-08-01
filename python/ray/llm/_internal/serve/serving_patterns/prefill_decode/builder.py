@@ -232,13 +232,17 @@ class PDServingArgs(BaseModelExtended):
 
     @model_validator(mode="after")
     def _set_sglang_disaggregation_mode(self):
-        """Auto-set disaggregation_mode so users never set it by hand."""
+        """Set disaggregation_mode from the role, so users never set it by hand.
+
+        Assigned, not defaulted: the field is owned by the position in the graph
+        (prefill_config vs decode_config), so a stale or copied-across value must
+        be corrected. Reusing one config dict for both sides is the easy mistake,
+        and leaving decode in "prefill" mode breaks the KV handoff silently.
+        """
         if self.prefill_config.llm_engine == "SGLang":
-            self.prefill_config.engine_kwargs.setdefault(
-                "disaggregation_mode", "prefill"
-            )
+            self.prefill_config.engine_kwargs["disaggregation_mode"] = "prefill"
         if self.decode_config.llm_engine == "SGLang":
-            self.decode_config.engine_kwargs.setdefault("disaggregation_mode", "decode")
+            self.decode_config.engine_kwargs["disaggregation_mode"] = "decode"
         return self
 
     @model_validator(mode="after")
