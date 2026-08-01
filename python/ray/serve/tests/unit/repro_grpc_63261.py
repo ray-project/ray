@@ -42,10 +42,10 @@ from ray.serve._private.replica_result import gRPCReplicaResult
 class ControllableFakeCall:
     """Fake grpc.aio.Call that lets the test trigger done-callback firing."""
 
-    def __init__(self, *, exception: BaseException = None):
+    def __init__(self, *, status_code: grpc.StatusCode):
         self._loop = asyncio.get_running_loop()
         self._done = False
-        self._exception = exception
+        self._status_code = status_code
         self._callbacks: List[Callable] = []
 
     def __getattr__(self, name):
@@ -62,10 +62,10 @@ class ControllableFakeCall:
     def done(self) -> bool:
         return self._done
 
-    async def exception(self):
+    async def code(self):
         if not self._done:
             raise asyncio.InvalidStateError("Call is not done.")
-        return self._exception
+        return self._status_code
 
     def cancelled(self) -> bool:
         return False
@@ -77,20 +77,9 @@ class ControllableFakeCall:
         self._callbacks.clear()
 
 
-def make_aio_rpc_error(code: grpc.StatusCode) -> grpc.aio.AioRpcError:
-    return grpc.aio.AioRpcError(
-        code=code,
-        initial_metadata=grpc.aio.Metadata(),
-        trailing_metadata=grpc.aio.Metadata(),
-        details="simulated replica unavailable",
-    )
-
-
 async def main():
     # Simulate a UNAVAILABLE gRPC call — the exact scenario that triggers the bug.
-    fake_call = ControllableFakeCall(
-        exception=make_aio_rpc_error(grpc.StatusCode.UNAVAILABLE)
-    )
+    fake_call = ControllableFakeCall(status_code=grpc.StatusCode.UNAVAILABLE)
 
     result = gRPCReplicaResult(
         fake_call,
