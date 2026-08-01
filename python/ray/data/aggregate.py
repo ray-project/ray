@@ -4,7 +4,6 @@ import math
 import pickle
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -41,9 +40,6 @@ from ray.data.block import (
     KeyType,
 )
 from ray.util.annotations import Deprecated, PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.dataset import Schema
 
 
 class _SupportsRichComparison(Protocol):
@@ -157,7 +153,7 @@ class AggregateFn:
         self.accumulate_block = accumulate_block
         self.finalize = finalize
 
-    def _validate(self, schema: Optional["Schema"]) -> None:
+    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
         pass
 
@@ -355,7 +351,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """
         return accumulator
 
-    def _validate(self, schema: Optional["Schema"]) -> None:
+    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
         if self._target_col_name:
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 

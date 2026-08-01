@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
+import pyarrow.types as pa_types
 
 from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
@@ -10,24 +11,28 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
-    from ray.data.aggregate import AggregateFn
+    from ray.data.aggregate import AggregateFn, AggregateFnV2
 
 
 def _agg_specs(
     aggregation_fns: Tuple["AggregateFn", ...],
-) -> Optional[List[ArrowAggSpec]]:
+) -> Optional[Tuple[Tuple["AggregateFnV2", ...], List[ArrowAggSpec]]]:
     """Per-agg Arrow vectorization specs, each aggregation declares its own via
     ``AggregateFn._arrow_agg_spec``.  Returns None (caller falls back to the
     Python engine) if there are no aggregations or any one isn't vectorizable."""
+    from ray.data.aggregate import AggregateFnV2
+
     if not aggregation_fns:
         return None
+    aggs: List[AggregateFnV2] = []
     specs: List[ArrowAggSpec] = []
     for agg in aggregation_fns:
         spec = agg._arrow_agg_spec()
-        if spec is None:
+        if spec is None or not isinstance(agg, AggregateFnV2):
             return None
+        aggs.append(agg)
         specs.append(spec)
-    return specs
+    return tuple(aggs), specs
 
 
 def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
@@ -70,9 +75,10 @@ def _make_vectorized_aggregating_transformer(
 ) -> Optional[BlockTransformer]:
     """Arrow-vectorized map-side combiner, driven by each agg's own spec, or None
     if the query isn't vectorizable (caller falls back to the Python engine)."""
-    specs = _agg_specs(aggregation_fns)
-    if specs is None:
+    unpacked = _agg_specs(aggregation_fns)
+    if unpacked is None:
         return None
+    aggs, specs = unpacked
 
     keys = list(key_columns)
     if not _is_vectorizable(keys, specs):
@@ -87,15 +93,15 @@ def _make_vectorized_aggregating_transformer(
                 keys
                 + [
                     a.get_target_column()
-                    for a in aggregation_fns
+                    for a in aggs
                     if a.get_target_column() is not None
                 ]
             )
         )
 
-        def _prune_transform(block: Block) -> Block:
+        def _prune_transform(block: pa.Table) -> pa.Table:
             block_schema = BlockAccessor.for_block(block).schema()
-            for agg in aggregation_fns:
+            for agg in aggs:
                 agg._validate(block_schema)
             if block.num_rows == 0:
                 return block
@@ -103,9 +109,9 @@ def _make_vectorized_aggregating_transformer(
 
         return _prune_transform
 
-    def _arrow_transform(block: Block) -> Block:
+    def _arrow_transform(block: pa.Table) -> pa.Table:
         block_schema = BlockAccessor.for_block(block).schema()
-        for agg in aggregation_fns:
+        for agg in aggs:
             agg._validate(block_schema)
 
         if block.num_rows == 0:
@@ -113,7 +119,7 @@ def _make_vectorized_aggregating_transformer(
 
         agg_specs: List[tuple] = []
         names: List[str] = []
-        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+        for i, (agg, spec) in enumerate(zip(aggs, specs)):
             col = agg.get_target_column()
             opts = arrow_agg_options(agg._ignore_nulls)
             if spec.prep is not None:
@@ -131,9 +137,10 @@ def _make_vectorized_aggregating_reduce_fn(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
 ) -> Optional[ReduceFn]:
-    specs = _agg_specs(aggregation_fns)
-    if specs is None:
+    unpacked = _agg_specs(aggregation_fns)
+    if unpacked is None:
         return None
+    aggs, specs = unpacked
 
     keys = list(key_columns)
     if not _is_vectorizable(keys, specs):
@@ -141,9 +148,7 @@ def _make_vectorized_aggregating_reduce_fn(
     has_collection = any(spec.collection for spec in specs)
     _fallback_map = _fallback_aggregating_transformer(key_columns, aggregation_fns)
     _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
-    src_cols = (
-        [a.get_target_column() for a in aggregation_fns] if has_collection else []
-    )
+    src_cols = [a.get_target_column() for a in aggs] if has_collection else []
 
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
@@ -157,7 +162,7 @@ def _make_vectorized_aggregating_reduce_fn(
         # The distinct/count_distinct kernels have no impl for a nested source
         # column (the map shipped raw rows); delegate the partition to Python.
         if has_collection and any(
-            c is not None and pa.types.is_nested(combined.schema.field(c).type)
+            c is not None and pa_types.is_nested(combined.schema.field(c).type)
             for c in src_cols
         ):
             yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
@@ -169,7 +174,7 @@ def _make_vectorized_aggregating_reduce_fn(
         agg_specs: List[tuple] = []
         names: List[str] = []
         comps: List[Tuple[str, ...]] = []
-        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+        for i, (agg, spec) in enumerate(zip(aggs, specs)):
             opts = arrow_agg_options(agg._ignore_nulls)
             out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
             comps.append(out_cols)
@@ -180,6 +185,7 @@ def _make_vectorized_aggregating_reduce_fn(
                     combined = spec.prep(i, col, combined)
                 agg_specs += spec.raw_agg_specs(i, col, opts)
             else:
+                assert spec.merge_specs is not None  # reduction specs define it
                 agg_specs += spec.merge_specs(out_cols, opts)
 
         merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
@@ -189,7 +195,7 @@ def _make_vectorized_aggregating_reduce_fn(
         # name, name_2, name_3, ... (counting against the original name).
         cols = {k: merged[k] for k in keys}
         seen: dict = {}
-        for i, (agg, spec) in enumerate(zip(aggregation_fns, specs)):
+        for i, (agg, spec) in enumerate(zip(aggs, specs)):
             name = agg.name
             n = seen.get(name, 0)
             seen[name] = n + 1
@@ -209,7 +215,7 @@ def _fallback_aggregating_transformer(
 
     sort_key = SortKey(key=list(key_columns), descending=False)
 
-    def _transform(block: Block) -> Block:
+    def _transform(block: pa.Table) -> pa.Table:
         from ray.data._internal.planner.exchange.aggregate_task_spec import (
             SortAggregateTaskSpec,
         )
