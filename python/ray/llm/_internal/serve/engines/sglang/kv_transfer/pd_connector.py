@@ -30,6 +30,7 @@ import secrets
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import ray
+from ray import serve
 from ray.llm._internal.serve.engines.common.kv_transfer.base import (
     BaseConnectorBackend,
     clamp_request_to_single_token,
@@ -117,8 +118,36 @@ class SGLangConnectorBackend(BaseConnectorBackend):
             port = base + offset
             engine_kwargs["disaggregation_bootstrap_port"] = port
 
+        # Same story for the GPUs. This deployment runs with
+        # RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1 (see the SGLang P/D
+        # release test), so replicas see every device on the node and pick
+        # theirs via base_gpu_id instead of Serve masking one in as cuda:0.
+        # Serve has no per-replica engine_kwargs, so every replica on a side
+        # inherits the SAME base_gpu_id from the shared config and they would
+        # all drive the same physical GPUs. Shift it by this replica's device
+        # block so a multi-replica side (2P/2D, 4P/4D) spreads out; the
+        # configured value stays the side's starting device.
+        #
+        # Computed from the replica rank directly rather than reusing the port
+        # offset above: that one returns a bare DP rank in the DP case, which is
+        # a port stride, not a device stride (it would collide when tp_size>1).
+        engine_kwargs["base_gpu_id"] = (
+            int(engine_kwargs.get("base_gpu_id", 0)) + self._compute_gpu_offset()
+        )
+
         self._bootstrap_host = host
         self._bootstrap_port = port
+
+    def _compute_gpu_offset(self) -> int:
+        """This replica's device-block offset within its side of the P/D pair.
+
+        Each replica occupies ``num_devices`` (tp x pp) consecutive GPUs, so
+        replica ``r`` starts at ``r * num_devices``. Mirrors the replica-rank
+        branch of ``_compute_port_offset``; a missing replica context raises
+        rather than silently returning 0, which would double-book GPU 0.
+        """
+        rc = serve.get_replica_context()
+        return rc.rank.rank * self.llm_config.num_devices
 
     def replica_metadata(self) -> Dict[str, Any]:
         """Publish this (prefill) replica's bootstrap address for the decode peer."""
