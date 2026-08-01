@@ -108,9 +108,7 @@ async def test_router_connects_to_remote_token_receiver(deployed_app):
             if push["sent"] and source != _endpoint_host(push["endpoint"])
         ]
         target_nodes = {
-            _endpoint_host(push["endpoint"])
-            for _, push in attempts
-            if push["sent"]
+            _endpoint_host(push["endpoint"]) for _, push in attempts if push["sent"]
         }
         if cross_node and replica_ips <= target_nodes:
             break
