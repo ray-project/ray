@@ -126,11 +126,20 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_client: GcsClient):
+    def __init__(
+        self,
+        gcs_channel: grpc.aio.Channel,
+        gcs_client: GcsClient,
+        dashboard_socket_dir: Optional[str] = None,
+        dashboard_session_name: Optional[str] = None,
+    ):
         self.register_gcs_client(gcs_channel)
         self._job_client = JobInfoStorageClient(gcs_client)
         self._gcs_client = gcs_client
         self._client_session = aiohttp.ClientSession()
+        self._dashboard_socket_dir = dashboard_socket_dir
+        self._dashboard_session_name = dashboard_session_name
+        self._task_events_head_session: Optional[aiohttp.ClientSession] = None
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -228,7 +237,6 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_all_task_info(
         self,
         timeout: int = None,
@@ -236,7 +244,17 @@ class StateDataSourceClient:
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
+        request = self._build_task_events_request(limit, filters, exclude_driver)
+        if ray_constants.RAY_task_events_read_from_dashboard_head:
+            return await self._get_task_events_from_dashboard_head(request, timeout)
+        return await self._get_task_events_from_gcs(request, timeout)
 
+    def _build_task_events_request(
+        self,
+        limit: int,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]],
+        exclude_driver: bool,
+    ) -> GetTaskEventsRequest:
         if filters is None:
             filters = []
 
@@ -289,9 +307,45 @@ class StateDataSourceClient:
 
         req_filters.exclude_driver = exclude_driver
 
-        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
-        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
-        return reply
+        return GetTaskEventsRequest(limit=limit, filters=req_filters)
+
+    @handle_grpc_network_errors
+    async def _get_task_events_from_gcs(
+        self, request: GetTaskEventsRequest, timeout: int = None
+    ) -> Optional[GetTaskEventsReply]:
+        return await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
+
+    async def _get_task_events_from_dashboard_head(
+        self, request: GetTaskEventsRequest, timeout: int = None
+    ) -> Optional[GetTaskEventsReply]:
+        if self._dashboard_socket_dir is None or self._dashboard_session_name is None:
+            raise ValueError(
+                "Cannot read task events from the dashboard head: the dashboard "
+                "subprocess socket directory and session name were not provided to "
+                "StateDataSourceClient."
+            )
+        if self._task_events_head_session is None:
+            from ray.dashboard.subprocesses.utils import get_http_session_to_module
+
+            self._task_events_head_session = get_http_session_to_module(
+                "TaskEventsHead",
+                self._dashboard_socket_dir,
+                self._dashboard_session_name,
+            )
+        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        async with self._task_events_head_session.post(
+            "http://localhost/api/task_events/query",
+            data=request.SerializeToString(),
+            timeout=client_timeout,
+        ) as resp:
+            if 200 <= resp.status < 300:
+                reply = GetTaskEventsReply()
+                reply.ParseFromString(await resp.read())
+                return reply
+            raise DataSourceUnavailable(
+                "Failed to query task events from the dashboard head. "
+                f"Response is {resp.status}, reason {resp.reason}"
+            )
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
