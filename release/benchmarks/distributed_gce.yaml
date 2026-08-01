@@ -1,0 +1,26 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: n2-standard-64 # Network optimized.
+    resources:
+      CPU: 0
+      node: 1
+      small: 1
+
+worker_nodes:
+    - name: worker_node_m
+      instance_type: n2-standard-64
+      min_nodes: 32
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+        node: 1
+    - name: worker_node_r
+      instance_type: n2-standard-64
+      min_nodes: 32
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+        node: 1

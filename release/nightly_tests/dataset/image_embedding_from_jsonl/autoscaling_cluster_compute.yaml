@@ -1,0 +1,18 @@
+# This cluster compute is based on a real user setup.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: r6a.8xlarge
+
+worker_nodes:
+    - instance_type: r6a.8xlarge
+      min_nodes: 0
+      max_nodes: 100
+      market_type: ON_DEMAND
+    - instance_type: g5.4xlarge
+      min_nodes: 0
+      max_nodes: 40
+      market_type: ON_DEMAND

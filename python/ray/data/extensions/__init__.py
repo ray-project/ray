@@ -1,0 +1,49 @@
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
+    FixedShapeTensorType,
+    create_arrow_fixed_shape_tensor_type,
+    get_arrow_extension_tensor_types,
+)
+from ray.data.extensions.object_extension import (
+    ArrowPythonObjectArray,
+    ArrowPythonObjectScalar,
+    ArrowPythonObjectType,
+    PythonObjectArray,
+    PythonObjectDtype,
+)
+from ray.data.extensions.tensor_extension import (
+    ArrowConversionError,
+    ArrowTensorArray,
+    ArrowTensorType,
+    ArrowVariableShapedTensorArray,
+    ArrowVariableShapedTensorType,
+    TensorArray,
+    TensorArrayElement,
+    TensorDtype,
+    column_needs_tensor_extension,
+)
+
+__all__ = [
+    # Tensor array extension.
+    "TensorDtype",
+    "TensorArray",
+    "TensorArrayElement",
+    "ArrowTensorType",
+    "ArrowTensorTypeV2",
+    "ArrowTensorArray",
+    "ArrowVariableShapedTensorType",
+    "ArrowVariableShapedTensorArray",
+    "column_needs_tensor_extension",
+    "ArrowConversionError",
+    "FixedShapeTensorType",
+    "FixedShapeTensorFormat",
+    "create_arrow_fixed_shape_tensor_type",
+    # Object array extension
+    "ArrowPythonObjectArray",
+    "ArrowPythonObjectType",
+    "ArrowPythonObjectScalar",
+    "PythonObjectArray",
+    "PythonObjectDtype",
+    "get_arrow_extension_tensor_types",
+]

@@ -1,0 +1,4 @@
+name: testmissingcluster
+
+environment:
+  shell: "one command"

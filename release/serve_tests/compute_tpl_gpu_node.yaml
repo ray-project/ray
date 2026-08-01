@@ -1,0 +1,22 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
+
+head_node:
+    instance_type: g4dn.4xlarge
+    # GPU head — explicitly expose the instance's natural 16 vCPU + 1 GPU so the
+    # test driver (on the head) can actually run GPU workloads.
+    resources:
+      CPU: 16
+      GPU: 1
+
+worker_nodes:
+    - instance_type: m5.4xlarge
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND

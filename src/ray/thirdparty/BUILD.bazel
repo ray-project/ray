@@ -1,0 +1,18 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "sha256",
+    srcs = ["sha256.c"],
+    hdrs = ["sha256.h"],
+)
+
+ray_cc_library(
+    name = "aligned_alloc",
+    srcs = ["aligned_alloc.c"],
+    hdrs = ["aligned_alloc.h"],
+)
+
+ray_cc_library(
+    name = "dlmalloc",
+    hdrs = ["dlmalloc.c"],
+)

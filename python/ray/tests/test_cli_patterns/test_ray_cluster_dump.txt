@@ -1,0 +1,16 @@
+You are about to create a cluster dump\. This will collect data from cluster nodes\.
+
+The dump will contain this information:
+
+  - The logfiles of your Ray session
+    This usually includes Python outputs \(stdout/stderr\)
+  - Debug state information on your Ray cluster
+    e\.g\. number of workers, drivers, objects, etc\.
+  - Your installed Python packages \(`pip freeze`\)
+
+If you are concerned about leaking private information, extract the archive and inspect its contents before sharing it with anyone\.
+Retrieving cluster information from ray cluster file: .+
+Checking AWS environment settings
+Collecting data from remote node: .+
+This is a test!
+Created archive: .+

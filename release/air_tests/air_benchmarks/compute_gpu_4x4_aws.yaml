@@ -1,0 +1,23 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: g4dn.12xlarge
+    resources:
+        CPU: 48
+        GPU: 4
+
+worker_nodes:
+    - instance_type: g4dn.12xlarge
+      min_nodes: 3
+      max_nodes: 3
+      market_type: ON_DEMAND
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 800
+            Iops: 5000
+            Throughput: 1000
+            VolumeType: gp3

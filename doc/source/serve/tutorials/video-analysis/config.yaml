@@ -1,0 +1,91 @@
+# This file was generated using the `serve build` command on Ray v2.53.0.
+
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
+
+logging_config:
+  encoding: JSON
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
+  additional_log_standard_attrs: []
+
+applications:
+- name: app1
+  route_prefix: /
+  import_path: app:app
+  runtime_env: {}
+  autoscaling_policy:
+    policy_function: autoscaling_policy:coordinated_scaling_policy
+  deployments:
+  - name: VideoEncoder
+    num_replicas: "auto"
+    max_ongoing_requests: 2
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 32
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 2.0
+      num_gpus: 1.0
+  - name: MultiDecoder
+    num_replicas: "auto"
+    max_ongoing_requests: 4
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 32
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 1.0
+  - name: VideoAnalyzer
+    num_replicas: "auto"
+    max_ongoing_requests: 4
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 64
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 6.0

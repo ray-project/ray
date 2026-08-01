@@ -1,0 +1,4 @@
+applications:
+  - name: default
+    import_path: "basic_dag.DagNode"
+    route_prefix: /

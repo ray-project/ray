@@ -1,0 +1,17 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: g5.16xlarge
+
+worker_nodes:
+    - instance_type: g5.4xlarge
+      min_nodes: 15
+      max_nodes: 15
+      market_type: ON_DEMAND
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'

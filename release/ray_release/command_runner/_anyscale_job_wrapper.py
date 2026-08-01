@@ -1,0 +1,607 @@
+"""
+This script provides extra functionality for Anyscale Jobs tests.
+It will be ran on the cluster.
+
+We need to reimplement some utility functions here as it will not
+have access to the ray_release package.
+"""
+
+import argparse
+import json
+import logging
+import multiprocessing
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional, Tuple
+from urllib.parse import urlparse
+
+AZURE_STORAGE_ACCOUNT = "rayreleasetests"
+OUTPUT_JSON_FILENAME = "output.json"
+AWS_CP_TIMEOUT = 300
+TIMEOUT_RETURN_CODE = 124  # same as bash timeout
+
+# Prometheus metric type for idle worker evictions. We expect Ray to kill idle workers
+# under memory pressure, so we exclude them from the OOM check.
+IDLE_WORKER_EVICTION_METRIC_TYPE = "MemoryManager.IdleWorkerEviction.Total"
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(stream=sys.stderr)
+formatter = logging.Formatter(
+    fmt="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
+def exponential_backoff_retry(
+    f, retry_exceptions, initial_retry_delay_s, max_retries
+) -> None:
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.warning(
+                f"Retry function call failed due to {e} "
+                f"in {retry_delay_s} seconds..."
+            )
+            time.sleep(retry_delay_s)
+            retry_delay_s *= 2
+
+
+def run_storage_cp(source: str, target: str):
+    if not source or not target:
+        return False
+
+    if not Path(source).exists():
+        logger.warning(f"Couldn't upload to cloud storage: '{source}' does not exist.")
+        return False
+
+    storage_service = urlparse(target).scheme
+    if target.startswith(f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"):
+        storage_service = "azure_blob"
+    cp_cmd_args = []
+    if storage_service == "s3":
+        cp_cmd_args = [
+            "aws",
+            "s3",
+            "cp",
+            source,
+            target,
+            "--acl",
+            "bucket-owner-full-control",
+        ]
+    elif storage_service == "gs":
+        cp_cmd_args = [
+            "gcloud",
+            "storage",
+            "cp",
+            source,
+            target,
+        ]
+    elif storage_service == "azure_blob":
+        subprocess.run(["azcopy", "login", "--identity"], check=True)
+        cp_cmd_args = [
+            "azcopy",
+            "copy",
+            source,
+            target,
+        ]
+    else:
+        raise Exception(f"Not supporting storage service: {storage_service}")
+
+    try:
+        exponential_backoff_retry(
+            lambda: subprocess.run(
+                cp_cmd_args,
+                timeout=AWS_CP_TIMEOUT,
+                check=True,
+            ),
+            subprocess.SubprocessError,
+            initial_retry_delay_s=10,
+            max_retries=3,
+        )
+        return True
+    except subprocess.SubprocessError:
+        logger.exception("Couldn't upload to cloud storage.")
+        return False
+
+
+def collect_metrics(start_time: float, time_taken: float) -> bool:
+    if "METRICS_OUTPUT_JSON" not in os.environ:
+        return False
+
+    # Timeout is the time the test took divided by 200
+    # (~7 minutes for a 24h test) but no less than 90s
+    # and no more than 900s
+    metrics_timeout = max(90, min(time_taken / 200, 900))
+    logger.info(f"Collecting Prometheus metrics (timeout: {metrics_timeout:.0f}s).")
+    try:
+        subprocess.run(
+            [
+                "python",
+                "prometheus_metrics.py",
+                str(start_time),
+                "--path",
+                os.environ["METRICS_OUTPUT_JSON"],
+            ],
+            timeout=metrics_timeout,
+            check=True,
+        )
+        logger.info("Metrics collection subprocess finished successfully.")
+        return True
+    # TimeoutExpired and CalledProcessError are SubprocessError subclasses, so
+    # they must be caught first to differentiate them in the logs.
+    except subprocess.TimeoutExpired:
+        logger.error(
+            f"Metrics collection TIMED OUT after {metrics_timeout:.0f}s. The metrics "
+            "file may be missing or incomplete. This is a metrics-collection timeout, "
+            "distinct from an actual metric/OOM/spill issue."
+        )
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Metrics collection subprocess exited with non-zero return code "
+            f"{e.returncode}. See the prometheus_metrics.py output above for the "
+            "specific failure."
+        )
+        return False
+    except subprocess.SubprocessError:
+        logger.exception("Couldn't collect metrics due to an unexpected error.")
+        return False
+
+
+# Has to be here so it can be pickled
+def _run_bash_command_subprocess(command: str, timeout: float):
+    """Ran in a multiprocessing process."""
+    try:
+        subprocess.run(command, check=True, timeout=timeout)
+        return_code = 0
+    except subprocess.TimeoutExpired:
+        return_code = TIMEOUT_RETURN_CODE
+    except subprocess.CalledProcessError as e:
+        return_code = e.returncode
+    print(f"Subprocess return code: {return_code}", file=sys.stderr)
+    # Exit so the return code is propagated to the outer process
+    sys.exit(return_code)
+
+
+def run_bash_command(workload: str, timeout: float):
+    timeout = timeout if timeout > 0 else None
+    cwd = Path.cwd()
+    workload_path = cwd / "workload.sh"
+    workload_path = workload_path.resolve()
+    with open(workload_path, "w") as fp:
+        fp.write(workload)
+
+    command = ["bash", "-x", str(workload_path)]
+    logger.info(f"Running command {workload}")
+
+    # Pop job's runtime env to allow workload's runtime env to take precedence
+    # TODO: Confirm this is safe
+    os.environ.pop("RAY_JOB_CONFIG_JSON_ENV_VAR", None)
+
+    # We use multiprocessing with 'spawn' context to avoid
+    # forking (as happens when using subprocess directly).
+    # Forking messes up Ray interactions and causes deadlocks.
+    return_code = None
+    try:
+        ctx = multiprocessing.get_context("spawn")
+        p = ctx.Process(target=_run_bash_command_subprocess, args=(command, timeout))
+        p.start()
+        logger.info(f"Starting process {p.pid}.")
+        # Add a little extra to the timeout as _run_bash_command_subprocess
+        # also has a timeout internally and it's cleaner to use that
+        p.join(timeout=timeout + 10)
+    except multiprocessing.TimeoutError:
+        return_code = TIMEOUT_RETURN_CODE
+    except multiprocessing.ProcessError:
+        pass
+    finally:
+        if p.is_alive():
+            logger.warning(f"Terminating process {p.pid} forcefully.")
+            p.terminate()
+        if return_code is None:
+            return_code = p.exitcode
+        os.remove(str(workload_path))
+    logger.info(f"Process {p.pid} exited with return code {return_code}.")
+    assert return_code is not None
+    return return_code
+
+
+def run_prepare_commands(
+    prepare_commands: List[str], prepare_commands_timeouts: List[float]
+) -> Tuple[bool, List[int], float]:
+    """Run prepare commands. All commands must pass. Fails fast."""
+    prepare_return_codes = []
+    prepare_passed = True
+    prepare_time_taken = None
+
+    if not prepare_commands:
+        return prepare_passed, prepare_return_codes, prepare_time_taken
+
+    logger.info("### Starting prepare commands ###")
+    for prepare_command, timeout in zip(prepare_commands, prepare_commands_timeouts):
+        command_start_time = time.monotonic()
+        prepare_return_codes.append(run_bash_command(prepare_command, timeout))
+        prepare_time_taken = time.monotonic() - command_start_time
+        return_code = prepare_return_codes[-1]
+
+        if return_code == 0:
+            continue
+
+        timed_out = return_code == TIMEOUT_RETURN_CODE
+        if timed_out:
+            logger.error(
+                "Prepare command timed out. " f"Time taken: {prepare_time_taken}"
+            )
+        else:
+            logger.info(
+                f"Prepare command finished with return code {return_code}. "
+                f"Time taken: {prepare_time_taken}"
+            )
+        logger.error("Prepare command failed.")
+        prepare_passed = False
+        break
+
+    return prepare_passed, prepare_return_codes, prepare_time_taken
+
+
+def _load_metrics_for_check(check_name: str, env_var: str) -> Optional[dict]:
+    """Load the Prometheus metrics file for a failure check.
+
+    Returns the parsed metrics dict, or ``None`` when the metrics could not be
+    obtained at all (file missing, unreadable, or an empty ``{}`` written
+    because every Prometheus query failed). In every ``None`` case this is a
+    metrics-collection/infra failure rather than an actual metric signal, and
+    the caller should treat it as such.
+    """
+    metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+    if not (metrics_path and Path(metrics_path).exists()):
+        logger.error(
+            f"{check_name}: {env_var} is set to 1, but no metrics file was found "
+            f"at path: {metrics_path}. Metrics collection failed entirely."
+        )
+        return None
+    try:
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"{check_name}: could not read metrics file {metrics_path}: {e}")
+        return None
+    if not isinstance(metrics, dict) or not metrics:
+        logger.error(
+            f"{check_name}: metrics file at {metrics_path} is empty. "
+            "See the prometheus_metrics.py output above for the cause."
+        )
+        return None
+    return metrics
+
+
+def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
+    """Return True if ``key`` could not be collected (missing or null).
+
+    Distinguishes a metrics-collection/infra failure (logged here) from an
+    actual metric signal, which the caller inspects when this returns False.
+    A ``None`` value means the Prometheus query failed; an empty list ``[]``
+    means the query succeeded but matched no series (i.e. a healthy result).
+    """
+    if key not in metrics:
+        logger.error(
+            f"{check_name}: '{key}' is missing from the metrics file, likely a collection issue."
+        )
+        return True
+    if metrics[key] is None:
+        logger.error(
+            f"{check_name}: '{key}' is None, likely the Prometheus query failed "
+            "(timeout / connection error / non-200)"
+        )
+        return True
+    return False
+
+
+def run_oom_check():
+    metrics = _load_metrics_for_check("OOM check", "RAYTEST_FAIL_ON_WORKER_OOM")
+    if metrics is None:
+        return 1
+
+    return_code = 0
+    if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
+        return_code = 1
+    else:
+        worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+        if worker_oom_kills:
+            logger.error(
+                f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
+            )
+            return_code = 1
+
+    if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
+        return_code = 1
+    elif metrics["unexpected_worker_failures"]:
+        logger.error(
+            "Test failed: Unexpected worker failures detected "
+            "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+            f"Details: {metrics['unexpected_worker_failures']}"
+        )
+        return_code = 1
+    return return_code
+
+
+def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
+    """Drop idle-worker evictions from the worker OOM kill series.
+
+    Idle-worker evictions are expected behavior, so we exclude them and only keep task
+    and actor kills.
+    """
+    return [
+        series
+        for series in worker_oom_kills
+        if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
+    ]
+
+
+def run_spilling_check():
+    metrics = _load_metrics_for_check("Spilling check", "RAYTEST_FAIL_ON_SPILLING")
+    if metrics is None:
+        return 1
+
+    return_code = 0
+    if _metric_unavailable("Spilling check", metrics, "spilled_bytes"):
+        return_code = 1
+    elif metrics["spilled_bytes"]:
+        logger.error(
+            "Test failed: unexpected object-store spilling detected. "
+            f"Details: {metrics['spilled_bytes']}"
+        )
+        return_code = 1
+    return return_code
+
+
+def run_dead_node_check():
+    # Connect to the cluster and check for dead nodes
+    import ray
+    from ray.core.generated import common_pb2
+
+    return_code = 0
+    try:
+        ray.init(address="auto")  # Connect to the local cluster
+        unexpected_termination = common_pb2.NodeDeathInfo.Reason.Value(
+            "UNEXPECTED_TERMINATION"
+        )
+        unspecified = common_pb2.NodeDeathInfo.Reason.Value("UNSPECIFIED")
+        dead_nodes = [
+            node["NodeID"]
+            for node in ray.nodes()
+            if not node["Alive"]
+            and node.get("DeathReason") in [unexpected_termination, unspecified]
+        ]
+        if dead_nodes:
+            logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
+            return_code = 1
+    except Exception as e:
+        logger.error(f"Error during dead node check: {e}")
+        return_code = 1
+    finally:
+        ray.shutdown()  # Disconnect from the cluster
+    return return_code
+
+
+def main(
+    test_workload: str,
+    test_workload_timeout: float,
+    test_no_raise_on_timeout: bool,
+    results_cloud_storage_uri: Optional[str],
+    metrics_cloud_storage_uri: Optional[str],
+    output_cloud_storage_uri: Optional[str],
+    upload_cloud_storage_uri: Optional[str],
+    artifact_path: Optional[str],
+    prepare_commands: List[str],
+    prepare_commands_timeouts: List[str],
+):
+    """
+    This function provides extra functionality for an Anyscale Job.
+
+    1. Runs prepare commands and handles their timeouts
+    2. Runs the actual test workload and handles its timeout
+    3. Uploads test results.json
+    4. Gathers prometheus metrics
+    5. Uploads prometheus metrics.json
+    6. Uploads output.json
+    """
+    logger.info("### Starting ###")
+    start_time = time.monotonic()
+
+    if len(prepare_commands) != len(prepare_commands_timeouts):
+        raise ValueError(
+            "`prepare_commands` and `prepare_commands_timeouts` must "
+            "have the same length."
+        )
+
+    # Run prepare commands. All prepare commands must pass.
+    (
+        prepare_passed,
+        prepare_return_codes,
+        last_prepare_time_taken,
+    ) = run_prepare_commands(prepare_commands, prepare_commands_timeouts)
+
+    uploaded_results = False
+    collected_metrics = False
+    uploaded_metrics = False
+    uploaded_artifact = artifact_path is not None
+    workload_time_taken = None
+
+    # If all prepare commands passed, run actual test workload.
+    if prepare_passed:
+        logger.info("### Starting entrypoint ###")
+        command_start_time = time.monotonic()
+        workload_start_unix_time = time.time()
+        return_code = run_bash_command(test_workload, test_workload_timeout)
+        workload_time_taken = time.monotonic() - command_start_time
+
+        timed_out = return_code == TIMEOUT_RETURN_CODE
+        if timed_out:
+            msg = f"Timed out. Time taken: {workload_time_taken}"
+            if test_no_raise_on_timeout:
+                logger.info(msg)
+            else:
+                logger.error(msg)
+        else:
+            logger.info(
+                f"Finished with return code {return_code}. "
+                f"Time taken: {workload_time_taken}"
+            )
+
+        test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
+
+        if return_code == 0 and test_fail_on_dead_nodes:
+            return_code = run_dead_node_check()
+
+        # Upload results.json
+        uploaded_results = run_storage_cp(
+            os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
+        )
+
+        # Collect prometheus metrics
+        collected_metrics = collect_metrics(
+            workload_start_unix_time, workload_time_taken
+        )
+        if collected_metrics:
+            # Upload prometheus metrics
+            uploaded_metrics = run_storage_cp(
+                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
+            )
+
+        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+
+        # Fail if any OOM kills occurred
+        if return_code == 0 and test_fail_on_worker_oom:
+            return_code = run_oom_check()
+
+        test_fail_on_spilling = os.environ.get("RAYTEST_FAIL_ON_SPILLING") == "1"
+
+        # Fail if any object-store spilling occurred
+        if return_code == 0 and test_fail_on_spilling:
+            return_code = run_spilling_check()
+
+        uploaded_artifact = run_storage_cp(
+            artifact_path,
+            os.path.join(
+                upload_cloud_storage_uri, os.environ["USER_GENERATED_ARTIFACT"]
+            )
+            if "USER_GENERATED_ARTIFACT" in os.environ
+            else None,
+        )
+
+    else:
+        return_code = None
+
+    total_time_taken = time.monotonic() - start_time
+    output_json = {
+        "return_code": return_code,
+        "prepare_return_codes": prepare_return_codes,
+        "last_prepare_time_taken": last_prepare_time_taken,
+        "workload_time_taken": workload_time_taken,
+        "total_time_taken": total_time_taken,
+        "uploaded_results": uploaded_results,
+        "collected_metrics": collected_metrics,
+        "uploaded_metrics": uploaded_metrics,
+        "uploaded_artifact": uploaded_artifact,
+    }
+    output_json = json.dumps(
+        output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+
+    output_json_file = (Path.cwd() / OUTPUT_JSON_FILENAME).resolve()
+    with open(output_json_file, "w") as fp:
+        fp.write(output_json)
+
+    # Upload output.json
+    run_storage_cp(str(output_json_file), output_cloud_storage_uri)
+
+    logger.info("### Finished ###")
+    # This will be read by the AnyscaleJobRunner on the buildkite runner
+    # if output.json cannot be obtained from cloud storage
+    logger.info(f"### JSON |{output_json}| ###")
+
+    # Flush buffers
+    logging.shutdown()
+    print("", flush=True)
+    print("", file=sys.stderr, flush=True)
+
+    if return_code == TIMEOUT_RETURN_CODE and test_no_raise_on_timeout:
+        return_code = 0
+    elif return_code is None:
+        return_code = 1
+
+    time.sleep(1)
+    return return_code
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "test_workload", type=str, help="test workload, eg. python workloads/script.py"
+    )
+    parser.add_argument(
+        "--test-workload-timeout",
+        default=3600,
+        type=float,
+        help="test workload timeout (set to <0 for infinite)",
+    )
+    parser.add_argument(
+        "--test-no-raise-on-timeout",
+        action="store_true",
+        help="don't fail on timeout",
+    )
+    parser.add_argument(
+        "--results-cloud-storage-uri",
+        type=str,
+        help="bucket address to upload results.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--metrics-cloud-storage-uri",
+        type=str,
+        help="bucket address to upload metrics.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--output-cloud-storage-uri",
+        type=str,
+        help="bucket address to upload output.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--upload-cloud-storage-uri",
+        type=str,
+        help="root cloud-storage bucket address to upload stuff",
+        required=False,
+    )
+    parser.add_argument(
+        "--artifact-path",
+        type=str,
+        help="user provided artifact path (on head node), must be a single file path",
+        required=False,
+    )
+    parser.add_argument(
+        "--prepare-commands", type=str, nargs="*", help="prepare commands to run"
+    )
+    parser.add_argument(
+        "--prepare-commands-timeouts",
+        default=3600,
+        type=float,
+        nargs="*",
+        help="timeout for prepare commands (set to <0 for infinite)",
+    )
+
+    args = parser.parse_args()
+    sys.exit(main(**args.__dict__))

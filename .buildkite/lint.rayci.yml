@@ -1,0 +1,52 @@
+group: lint
+steps:
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-small
+    tags:
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - clang_format
+      - pre_commit
+      - semgrep_lint
+      - banned_words
+      - doc_readme
+      - dashboard_format
+      - copyright_format
+      - bazel_team
+      - bazel_buildifier
+      - pytest_format
+      - test_coverage
+      - documentation_style
+      - doc_no_new_rst
+
+  - label: ":lint-roller: pre-commit pydoclint"
+    key: pydoclint-small
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit_pydoclint
+
+  # Scope guard for the "docs-go" label: runs only when the label is present,
+  # and fails unless the PR is content-only (changes under doc/, excluding
+  # BUILD files). This is the check the label cannot turn off, so the label
+  # can skip doc/library tests on a content PR but never on a code, CI, or
+  # build change.
+  - label: ":lint-roller: lint: validate docs-go scope"
+    key: docs-go-scope
+    if: build.pull_request.labels includes "docs-go"
+    tags:
+      - oss
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/validate_docs_go_scope.sh

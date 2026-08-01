@@ -1,0 +1,10 @@
+# Unit tests for always.rules.txt
+#
+# Format: file_path: tag1 tag2 tag3
+#
+# This rules file adds "always lint" to all files via wildcard fallthrough.
+
+# Any file gets always lint tags
+some/random/file.txt: always lint
+python/ray/actor.py: always lint
+doc/source/index.rst: always lint

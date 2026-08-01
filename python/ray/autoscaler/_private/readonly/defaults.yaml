@@ -1,0 +1,31 @@
+cluster_name: default
+max_workers: 0
+provider:
+    type: readonly
+    # This must be true since the nodes share the same ip!
+    use_node_id_as_ip: True
+    disable_node_updaters: True
+    disable_launch_config_check: True
+available_node_types:
+    ray.head.default:
+        resources: {}
+        node_config: {}
+        max_workers: 0
+head_node_type: ray.head.default
+upscaling_speed: 1.0
+#
+# !!! Configurations below are not supported in fake cluster mode !!!
+#
+auth: {}
+docker: {}
+initialization_commands: []
+setup_commands: []
+head_setup_commands: []
+worker_setup_commands: []
+head_start_ray_commands: []
+worker_start_ray_commands: []
+file_mounts: {}
+cluster_synced_files: []
+file_mounts_sync_continuously: false
+rsync_exclude: []
+rsync_filter: []

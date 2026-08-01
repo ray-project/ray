@@ -1,0 +1,28 @@
+cluster_name: sg
+
+max_workers: 1
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+auth:
+    ssh_user: ubuntu
+
+# If required, head and worker nodes can exist on subnets in different VPCs and
+# communicate via VPC peering.
+
+# VPC peering overview: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.
+# Setup VPC peering: https://docs.aws.amazon.com/vpc/latest/peering/create-vpc-peering-connection.html.
+# Configure VPC peering route tables: https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-routing.html.
+available_node_types:
+    ray.head.default:
+      node_config:
+        SecurityGroupIds:
+            - sg-1234abcd # Replace with an actual security group id.
+
+    ray.worker.default:
+      node_config:
+        SecurityGroupIds:
+            - sg-1234abcd # Replace with an actual security group id.

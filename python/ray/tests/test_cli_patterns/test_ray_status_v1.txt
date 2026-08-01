@@ -1,0 +1,21 @@
+======== Autoscaler status: .+
+Node status
+---------------------------------------------------------------
+Active:
+ 1 node_.+
+Pending:
+ \(no pending nodes\)
+Recent failures:
+ \(no failures\)
+
+Resources
+---------------------------------------------------------------
+Total Usage:
+ 0.0/3.0 CPU
+ 0.+
+ 0.+
+
+From request_resources:
+ \(none\)
+Pending Demands:
+ \(no resource demands\)
