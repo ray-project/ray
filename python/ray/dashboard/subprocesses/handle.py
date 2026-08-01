@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import multiprocessing
+import multiprocessing.context
 import os
-from typing import Optional, Union
+import sys
+from typing import List, Optional, Union
 
 import multidict
 
@@ -82,9 +84,45 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
-    # Class variable. Force using spawn because Ray C bindings have static variables
-    # that need to be re-initialized for a new process.
-    mp_context = multiprocessing.get_context("spawn")
+    # Class variable. Never use plain `fork`: Ray C bindings have static variables that
+    # need to be re-initialized for a new process, and a forked child would inherit the
+    # parent's already-initialized state.
+    #
+    # `forkserver` is safe here and much cheaper than `spawn`. Its server process is
+    # exec'd as a fresh interpreter rather than forked from us, so children start from
+    # freshly-imported Ray state exactly as they do under `spawn` -- but the imports
+    # happen once in the server instead of once per module. Under `spawn` every module
+    # re-executes `dashboard.py` via `_fixup_main_from_path` and re-imports Ray, which
+    # put ~9 redundant interpreter startups on the critical path of `ray start`.
+    #
+    # `forkserver` is POSIX-only, so Windows keeps using `spawn`. Set
+    # RAY_DASHBOARD_SUBPROCESS_START_METHOD=spawn to opt back out.
+    #
+    # The branches pass literals to get_context() so it returns a concrete context
+    # type; forwarding a runtime string widens the result to BaseContext, which does
+    # not expose Process.
+    mp_context: Union[
+        multiprocessing.context.SpawnContext, multiprocessing.context.ForkServerContext
+    ]
+    if sys.platform == "win32" or (
+        os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD") == "spawn"
+    ):
+        mp_context = multiprocessing.get_context("spawn")
+    else:
+        mp_context = multiprocessing.get_context("forkserver")
+
+    @classmethod
+    def set_forkserver_preload(cls, module_names: List[str]) -> None:
+        """Import these modules once in the forkserver, so forked children inherit them.
+
+        No-op when the start method is not ``forkserver`` (Windows, or the opt-out env
+        var). Must be called before the first ``start_module()``, and every name must be
+        importable in a bare interpreter -- an ImportError in the forkserver breaks
+        every module, not just one.
+        """
+        if not isinstance(cls.mp_context, multiprocessing.context.ForkServerContext):
+            return
+        cls.mp_context.set_forkserver_preload(module_names)
 
     def __init__(
         self,
