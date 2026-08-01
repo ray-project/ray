@@ -1475,5 +1475,80 @@ def test_get_actor_timeout_multiplier(shutdown_only):
     assert result["actor_id"] == actor_id
 
 
+class _FakeAsyncResponse:
+    """Minimal aiohttp-style response usable as an async context manager."""
+
+    def __init__(self, status, body=b""):
+        self.status = status
+        self.reason = "test-reason"
+        self._body = body
+
+    async def read(self):
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _task_info_client(**kwargs):
+    return StateDataSourceClient(
+        gcs_channel=MagicMock(), gcs_client=MagicMock(), **kwargs
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_reads_from_gcs_by_default(monkeypatch):
+    monkeypatch.setattr(
+        ray_constants, "RAY_task_events_read_from_dashboard_head", False
+    )
+    client = _task_info_client()
+    expected = GetTaskEventsReply()
+    client._gcs_task_info_stub.GetTaskEvents = AsyncMock(return_value=expected)
+
+    reply = await client.get_all_task_info()
+
+    client._gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+    assert reply is expected
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_reads_from_dashboard_head_when_enabled(monkeypatch):
+    monkeypatch.setattr(ray_constants, "RAY_task_events_read_from_dashboard_head", True)
+    client = _task_info_client(
+        dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
+    )
+    expected = GetTaskEventsReply(num_status_task_events_dropped=3)
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_FakeAsyncResponse(200, expected.SerializeToString())
+    )
+    client._task_events_head_session = session
+
+    reply = await client.get_all_task_info()
+
+    session.post.assert_called_once()
+    assert session.post.call_args.args[0] == "http://localhost/api/task_events/query"
+    # The co-located socket call is trusted, so no auth header is attached.
+    assert "headers" not in session.post.call_args.kwargs
+    assert reply.num_status_task_events_dropped == 3
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_from_dashboard_head_non_2xx_raises(monkeypatch):
+    monkeypatch.setattr(ray_constants, "RAY_task_events_read_from_dashboard_head", True)
+    client = _task_info_client(
+        dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
+    )
+    session = MagicMock()
+    session.post = MagicMock(return_value=_FakeAsyncResponse(500))
+    client._task_events_head_session = session
+
+    with pytest.raises(DataSourceUnavailable):
+        await client.get_all_task_info()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
