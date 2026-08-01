@@ -27,6 +27,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
+    ErrorInfo,
     ErrorResponse,
 )
 from ray.llm._internal.serve.core.ingress.utils import (
@@ -371,16 +372,34 @@ class PDOrchestratorMixin:
         next_fut = None
 
         def _prefill_error() -> Optional[ErrorResponse]:
-            """Prefill's ErrorResponse, if it finished and produced one.
+            """An error to surface to the client, if prefill finished badly.
 
-            Never raises: an exception or cancellation on prefill_task is
-            reported by the ``finally`` block below, which awaits the task;
-            raising here would abort an otherwise-healthy decode stream.
+            Covers all three "prefill is done and it's bad" cases -- returned
+            an ``ErrorResponse``, raised, or got cancelled -- so a dead
+            prefill always aborts decode instead of leaving it to hang on KV
+            that will never arrive. Never raises itself: ``.exception()`` and
+            ``.cancelled()`` just report state, and the real exception object
+            is still awaited (and logged) by the ``finally`` block below.
             """
-            if not prefill_task.done() or prefill_task.cancelled():
+            if not prefill_task.done():
                 return None
-            if prefill_task.exception() is not None:
-                return None
+            if prefill_task.cancelled():
+                return ErrorResponse(
+                    error=ErrorInfo(
+                        message="Remote prefill was cancelled",
+                        type="internal_error",
+                        code=500,
+                    )
+                )
+            exc = prefill_task.exception()
+            if exc is not None:
+                return ErrorResponse(
+                    error=ErrorInfo(
+                        message=f"Remote prefill failed: {exc}",
+                        type="internal_error",
+                        code=500,
+                    )
+                )
             result = prefill_task.result()
             return result if isinstance(result, ErrorResponse) else None
 
