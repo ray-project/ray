@@ -281,6 +281,72 @@ def test_read_parquet_label_selector(shutdown_only, tmp_path):
     assert logical_op.ray_remote_args["label_selector"] == test_selector
 
 
+def test_read_datasource_label_selector_overwrite(shutdown_only):
+    """Verify top-level label_selector overwrites ray_remote_args['label_selector']."""
+
+    class DummyDatasource(Datasource):
+        def get_read_tasks(self, parallelism):
+            return []
+
+        def estimate_inmemory_data_size(self):
+            return None
+
+    ds = ray.data.read_datasource(
+        DummyDatasource(),
+        label_selector={"a": "1"},
+        ray_remote_args={"label_selector": {"b": "2"}},
+    )
+    logical_op = ds._logical_plan.dag
+    assert logical_op.ray_remote_args["label_selector"] == {"a": "1"}
+
+
+def test_read_datasource_label_selector_no_mutation(shutdown_only):
+    """Verify caller ray_remote_args dict and nested dict are not mutated in place."""
+
+    class DummyDatasource(Datasource):
+        def get_read_tasks(self, parallelism):
+            return []
+
+        def estimate_inmemory_data_size(self):
+            return None
+
+    caller_args = {"label_selector": {"orig": "val"}}
+    ray.data.read_datasource(
+        DummyDatasource(),
+        label_selector={"new": "val"},
+        ray_remote_args=caller_args,
+    )
+    assert caller_args == {"label_selector": {"orig": "val"}}
+
+
+def test_read_datasource_non_distributed_no_mutation(shutdown_only):
+    """Verify non-distributed datasource does not mutate caller's label_selector dict."""
+
+    class DummyDatasource(Datasource):
+        def __init__(self):
+            self._supports_distributed_reads = False
+
+        @property
+        def supports_distributed_reads(self) -> bool:
+            return self._supports_distributed_reads
+
+        def get_read_tasks(self, parallelism):
+            return []
+
+        def estimate_inmemory_data_size(self):
+            return None
+
+    caller_args = {"label_selector": {"region": "us-west"}}
+    ds = ray.data.read_datasource(
+        DummyDatasource(),
+        ray_remote_args=caller_args,
+    )
+    assert caller_args == {"label_selector": {"region": "us-west"}}
+    logical_op = ds._logical_plan.dag
+    assert "region" in logical_op.ray_remote_args["label_selector"]
+    assert ray._raylet.RAY_NODE_ID_KEY in logical_op.ray_remote_args["label_selector"]
+
+
 if __name__ == "__main__":
     import sys
 

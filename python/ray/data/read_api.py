@@ -411,13 +411,20 @@ def _resolve_read_remote_args(
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    if label_selector is not None:
-        current_selector = ray_remote_args.get("label_selector", {})
-        current_selector.update(label_selector)
-        ray_remote_args["label_selector"] = current_selector
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+        label_selector=label_selector,
+    )
 
     if not datasource.supports_distributed_reads:
-        resolved_selector = ray_remote_args.get("label_selector", {})
+        resolved_selector = (
+            ray_remote_args.get("label_selector", {}).copy()
+            if "label_selector" in ray_remote_args
+            else {}
+        )
         resolved_selector[
             ray._raylet.RAY_NODE_ID_KEY
         ] = ray.get_runtime_context().get_node_id()
@@ -428,12 +435,7 @@ def _resolve_read_remote_args(
         and "label_selector" not in ray_remote_args
     ):
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-    return merge_resources_to_ray_remote_args(
-        num_cpus,
-        num_gpus,
-        memory,
-        ray_remote_args,
-    )
+    return ray_remote_args
 
 
 @wrap_auto_init
@@ -968,6 +970,7 @@ def read_zarr(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
@@ -1133,6 +1136,8 @@ def read_zarr(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
@@ -1156,6 +1161,7 @@ def read_zarr(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2880,6 +2886,7 @@ def read_lerobot(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2976,6 +2983,8 @@ def read_lerobot(
             accelerate decoding -- it only reserves GPUs for the read tasks.
         memory: The heap memory in bytes to reserve for each parallel read
             worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set
             this to control number of tasks to run concurrently. This doesn't
@@ -3017,6 +3026,7 @@ def read_lerobot(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
