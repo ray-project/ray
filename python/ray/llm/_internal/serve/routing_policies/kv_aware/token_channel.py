@@ -210,6 +210,10 @@ class TokenStore:
         # _total_bytes is a running counter that is never recomputed, so a missed
         # subtraction here would permanently shrink the effective cap and start evicting
         # entries that in-flight requests still need.
+        # 
+        # Popping and re-adding the entry is necessary to honor the invariant that the
+        # oldest entry is at the front of _entries, so TTL expiry and eviction can scan
+        # from the front.
         old = self._entries.pop(key, None)
         if old is not None:
             self._total_bytes -= len(old.payload)
