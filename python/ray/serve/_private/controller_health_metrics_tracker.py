@@ -85,7 +85,8 @@ class ControllerHealthMetricsTracker:
         # Calculate event loop delay (actual sleep - expected sleep)
         # Positive values indicate the event loop is overloaded
         event_loop_delay = max(
-            0.0, self.last_sleep_duration_s - CONTROL_LOOP_INTERVAL_S
+            0.0,
+            self.last_sleep_duration_s - CONTROL_LOOP_INTERVAL_S,
         )
 
         # Get asyncio task count

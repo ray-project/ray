@@ -1,3 +1,6 @@
+.. meta::
+   :description: Get started with the Ray Data Dataset API: load data from files or cloud storage, transform it, consume it, and save results.
+
 .. _data_quickstart:
 
 Ray Data Quickstart

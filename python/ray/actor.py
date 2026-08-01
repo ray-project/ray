@@ -706,7 +706,7 @@ def method(*args: Any, **kwargs: Any):
                 method
             ) or inspect.isasyncgenfunction(method)
             ray_option_utils.validate_num_returns(
-                is_generator_callable, kwargs["num_returns"]
+                is_generator_callable, kwargs["num_returns"], stacklevel=3
             )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -969,6 +969,11 @@ class ActorMethod:
                 "call. Use @ray.method(_num_objects_per_yield=...) instead."
             )
 
+        if "num_returns" in options:
+            ray_option_utils.validate_num_returns(
+                self._is_generator, options["num_returns"], stacklevel=3
+            )
+
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             from ray.experimental.rdt.util import (
@@ -999,6 +1004,9 @@ class ActorMethod:
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
         )
+
+        if num_returns is None:
+            num_returns = self._num_returns
 
         # TODO(sang): unify option passing
         options = {
@@ -2944,7 +2952,7 @@ def exit_actor():
     observes the actor's death rather than a return value, and methods that have
     not started executing fail with ``RayActorError``.
 
-    Tasks queued for execution will fail with ``RayActorError``. For concurrent actors, tasks currently executing will run to completion before the actor exits.
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent and async actors, tasks currently executing will run to completion before the actor exits.
 
     Any ``atexit`` handlers installed in the actor will be run.
 

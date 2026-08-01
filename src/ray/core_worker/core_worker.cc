@@ -2272,6 +2272,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     // for local driver. But the current code all go through the gcs right now.
     auto status = actor_creator_->RegisterActor(task_spec);
     if (!status.ok()) {
+      task_manager_->FailPendingTask(
+          task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+      // Detached actor doesn't need ref counting.
+      if (!is_detached) {
+        RemoveActorHandleReference(actor_id);
+      }
       return status;
     }
     io_service_.post(

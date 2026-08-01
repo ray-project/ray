@@ -213,9 +213,16 @@ class JobSupervisor:
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
                 # alive. If it fails, SIGKILL the child process group and exit
+                #
+                # start_new_session=True detaches this watcher into its own
+                # session/process group. Otherwise it would inherit the supervisor
+                # actor's process group and the raylet's per-worker process-group
+                # cleanup (killpg on worker exit) would kill this watcher before it
+                # can reap the driver, potentially leaking the driver subprocess.
                 subprocess.Popen(
                     f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
                     shell=True,
+                    start_new_session=True,
                     # Suppress output
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,

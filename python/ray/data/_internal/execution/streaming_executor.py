@@ -57,6 +57,7 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
@@ -306,9 +307,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            status_detail = (
-                f"failed with {exception}" if exception else "completed successfully"
-            )
+            if exception is None:
+                status_detail = "completed successfully"
+            elif isinstance(exception, UserCodeException):
+                # For a user-code error, str(exception) is the (already-logged)
+                # user traceback, so interpolating it here just re-dumps the stack
+                # a third time. Log only the exception type. Genuine internal /
+                # system errors keep the full exception below for diagnostics.
+                status_detail = f"failed with {type(exception).__name__}"
+            else:
+                status_detail = f"failed with {exception}"
 
             logger.debug(
                 f"Shutting down executor for dataset {self._dataset_id} "

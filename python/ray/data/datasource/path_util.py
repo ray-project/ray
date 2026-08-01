@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import sys
+import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
@@ -9,6 +10,7 @@ from ray.data._internal.util import (
     _normalize_paths_to_strings,
     _resolve_custom_scheme,
 )
+from ray.util.annotations import RayDeprecationWarning
 
 logger = logging.getLogger(__name__)
 
@@ -361,6 +363,13 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
+    if any(path.lower().startswith("local:") for path in paths):
+        warnings.warn(
+            "`local://` paths in Ray Data are deprecated and will be removed after "
+            "January 2027. Use shared or cloud storage for distributed execution.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)
@@ -468,6 +477,32 @@ def _unwrap_protocol(path):
         parsed_path = parsed_path[1:]
 
     return netloc + parsed_path + params + query
+
+
+def _filesystem_root_from_uri(uri: str) -> str:
+    """The path form the filesystem backing ``uri`` expects to be given.
+
+    Returns what ``pyarrow.fs.FileSystem.from_uri`` would hand back as its
+    path, without also *building* a filesystem the way ``from_uri`` does. That
+    matters because for an ``s3://`` URI ``from_uri`` resolves the bucket's
+    region against real AWS: it fails outright against any S3-compatible
+    endpoint (MinIO, moto, Ceph) even with ``AWS_ENDPOINT_URL`` set, and costs a
+    network round-trip every time it's called.
+
+    Scheme conventions, matching ``from_uri``:
+
+    * ``s3``/``s3a``/``gs``/``gcs``: ``bucket/key``.
+    * ``abfs``/``abfss``: ``container/key``. The storage account belongs to the
+      ``AzureFileSystem`` object rather than the path, so the
+      ``@account.dfs.core.windows.net`` host is dropped -- leaving it in points
+      writes at a container literally named ``container@account...``.
+    * local paths: unchanged.
+    """
+    parsed = urlparse(uri, allow_fragments=False)
+    if parsed.scheme in ("abfs", "abfss") and "@" in parsed.netloc:
+        container = parsed.netloc.split("@")[0]
+        return f"{container}{parsed.path}"
+    return _unwrap_protocol(uri)
 
 
 def _is_http_url(path) -> bool:

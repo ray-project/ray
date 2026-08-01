@@ -432,8 +432,16 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
+/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+/// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
+/// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
+/// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The storage backend to use for the GCS. It can be 'memory', 'redis', or
 /// 'rocksdb'.
@@ -881,7 +889,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
-           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA")
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for

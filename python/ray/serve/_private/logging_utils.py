@@ -40,6 +40,9 @@ def should_skip_context_filter(record: logging.LogRecord) -> bool:
 
 
 class ServeCoreContextFilter(CoreContextFilter):
+    # The parent `filter` is unannotated; this matches the `logging.Filter`
+    # contract.
+    # pyrefly: ignore[bad-override]
     def filter(self, record: logging.LogRecord) -> bool:
         if should_skip_context_filter(record):
             return True
@@ -236,7 +239,7 @@ def log_access_log_filter(record: logging.LogRecord) -> bool:
     return not record.serve_access_log
 
 
-def get_component_logger_file_path() -> Optional[str]:
+def get_component_logger_file_path() -> Optional[str]:  # type: ignore[return]
     """Returns the relative file path for the Serve logger, if it exists.
 
     If a logger was configured through configure_component_logger() for the Serve
@@ -246,8 +249,8 @@ def get_component_logger_file_path() -> Optional[str]:
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
         if isinstance(handler, logging.handlers.MemoryHandler):
-            absolute_path = handler.target.baseFilename
-            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+            absolute_path = handler.target.baseFilename  # type: ignore[union-attr]
+            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()  # type: ignore[attr-defined]
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
 
@@ -391,9 +394,9 @@ def configure_component_logger(
     os.makedirs(logs_dir, exist_ok=True)
 
     if max_bytes is None:
-        max_bytes = ray._private.worker._global_node.max_bytes
+        max_bytes = ray._private.worker._global_node.max_bytes  # type: ignore[attr-defined]
     if backup_count is None:
-        backup_count = ray._private.worker._global_node.backup_count
+        backup_count = ray._private.worker._global_node.backup_count  # type: ignore[attr-defined]
 
     log_file_name = get_component_file_name(
         component_name=component_name,
@@ -437,8 +440,8 @@ def configure_component_logger(
     # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
     if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
         builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
-        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)  # type: ignore[assignment]
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)  # type: ignore[assignment]
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)

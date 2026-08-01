@@ -214,7 +214,10 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 )
 async def test_asyncio_exit_actor(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/12649
-    # The test should just hang without the fix.
+    # exit_actor() must terminate the actor and not leak the process.
+    # exit_actor() drains in-flight tasks before exiting (matching
+    # threaded actors). In-flight task draining on graceful exit is covered in
+    # test_worker_graceful_shutdown.py.
 
     @ray.remote
     class Actor:
@@ -224,14 +227,9 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         async def ping(self):
             return os.getpid()
 
-        async def loop_forever(self):
-            while True:
-                await asyncio.sleep(5)
-
     a = Actor.options(max_task_retries=0).remote()
     pid = ray.get(a.ping.remote())
-    a.loop_forever.remote()
-    # Make sure exit_actor exits immediately, not once all tasks completed.
+    # exit_actor() exits the actor, so the caller observes the actor's death.
     with pytest.raises(ray.exceptions.RayError):
         ray.get(a.exit.remote())
 
@@ -264,13 +262,13 @@ def test_asyncio_exit_actor_with_concurrency_group(ray_start_regular_shared):
             ray.actor.exit_actor()
 
         @ray.method(concurrency_group="async")
-        async def loop_forever(self):
-            while True:
-                await asyncio.sleep(5)
+        async def echo(self, value):
+            return value
 
     a = Actor.remote()
-    a.loop_forever.remote()
     pid = ray.get(a.getpid.remote())
+    # Exercise the concurrency group, then exit the actor.
+    assert ray.get(a.echo.remote("hi")) == "hi"
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.exit.remote())
     wait_for_pid_to_exit(pid)
