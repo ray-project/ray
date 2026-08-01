@@ -232,6 +232,7 @@ class PDOrchestratorMixin:
                 prefill_handle = prefill_handle.options(session_id=session_id)
         prefill_handle_method = getattr(prefill_handle, method)
 
+        # This is holding of prefill
         if backend.requires_peer_binding:
             # Connector needs to bind to the selected prefill replica *before*
             # dispatch (e.g. request-id-addressed transfers). Reserve a replica
@@ -350,65 +351,93 @@ class PDOrchestratorMixin:
     ):
         """Run local decode while a remote prefill drains concurrently.
 
-        While prefill is in flight, each decode chunk is raced against the
-        prefill task so a prefill failure surfaces to the client as an
-        ``ErrorResponse`` (instead of a hung — decode may be waiting on KV that
-        will never arrive — or seemingly-successful decode stream). The
-        background prefill task is always awaited so it never leaks on the
-        prefill/decode engines.
+        Two phases, split on whether prefill is still in flight:
 
-        Args:
-            method: The handle method name ("chat" or "completions").
-            decode_request: The request to run on the local decode engine.
-            prefill_resp: The in-flight remote prefill response stream.
-            raw_request_info: Raw HTTP request info forwarded to the engine.
-            cancel_on_failure: Whether to cancel the in-flight prefill when
-                local decode does not complete. Must be False for
-                ``dispatch()``-based prefill (the choose_replica path): its
-                completion accounting fires when the response completes, so the
-                stream must be drained to exhaustion, never abandoned. Prefill
-                is clamped to a single token, so draining is bounded either way.
+        Phase 1 races each decode chunk against prefill via ``asyncio.wait``,
+        so a prefill failure surfaces as soon as it's observed instead of a
+        hung decode (waiting on KV that will never arrive) or a
+        seemingly-successful stream. ``asyncio.wait`` costs real event-loop
+        time per call -- constructing the wait set, attaching callbacks,
+        tearing down -- and every concurrent request on this replica shares
+        one event loop, so that cost compounds under load.
+
+        Phase 2 drops the racing once prefill is done (clamped to a single
+        token, so this is early) and drains decode directly: no per-token
+        Future bookkeeping for the ~127 remaining tokens.
         """
         prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
         completed = False
         local_gen = None
         next_fut = None
+
+        def _prefill_error() -> Optional[ErrorResponse]:
+            """Prefill's ErrorResponse, if it finished and produced one.
+
+            Never raises: an exception or cancellation on prefill_task is
+            reported by the ``finally`` block below, which awaits the task;
+            raising here would abort an otherwise-healthy decode stream.
+            """
+            if not prefill_task.done() or prefill_task.cancelled():
+                return None
+            if prefill_task.exception() is not None:
+                return None
+            result = prefill_task.result()
+            return result if isinstance(result, ErrorResponse) else None
+
         try:
             local_gen = await getattr(super(), method)(decode_request, raw_request_info)
             gen = local_gen.__aiter__()
-            while True:
-                # Surface a failed prefill as soon as it is observed.
-                if prefill_task.done() and isinstance(
-                    prefill_task.result(), ErrorResponse
-                ):
-                    err = prefill_task.result()
-                    logger.error("Remote prefill returned error: %s", err)
-                    yield err
-                    return
+
+            # Phase 1: race against prefill while it's still in flight.
+            while not prefill_task.done():
                 if next_fut is None:
                     next_fut = asyncio.ensure_future(gen.__anext__())
-                # Race the next decode chunk against the in-flight prefill;
-                # once prefill has completed (successfully), just stream.
-                awaitables = {next_fut}
-                if not prefill_task.done():
-                    awaitables.add(prefill_task)
-                done, _ = await asyncio.wait(
-                    awaitables, return_when=asyncio.FIRST_COMPLETED
+
+                await asyncio.wait(
+                    {next_fut, prefill_task}, return_when=asyncio.FIRST_COMPLETED
                 )
-                if next_fut in done:
+
+                if next_fut.done():
                     try:
                         chunk = next_fut.result()
                     except StopAsyncIteration:
+                        completed = True
                         break
-                    next_fut = None
+                    finally:
+                        if next_fut.done():
+                            next_fut = None
                     yield chunk
-                # else: prefill finished first; loop back to inspect it.
-            completed = True
+
+            err = _prefill_error()
+            if err is not None:
+                logger.error("Remote prefill returned error: %s", err)
+                yield err
+                return
+
+            # Phase 2: prefill is done, nothing left to race -- drain decode
+            # directly through the same iterator Phase 1 was pulling from.
+            if not completed:
+                if next_fut is not None:
+                    try:
+                        chunk = next_fut.result() if next_fut.done() else await next_fut
+                    except StopAsyncIteration:
+                        completed = True
+                    else:
+                        yield chunk
+                    finally:
+                        next_fut = None
+                if not completed:
+                    async for chunk in gen:
+                        yield chunk
+                    completed = True
+
         finally:
+            # Robust cleanup remains unchanged to prevent memory/task leaks
             if next_fut is not None and not next_fut.done():
                 next_fut.cancel()
                 with contextlib.suppress(BaseException):
                     await next_fut
+
             if not completed:
                 # Abort the local decode request if we bailed early.
                 if local_gen is not None:
