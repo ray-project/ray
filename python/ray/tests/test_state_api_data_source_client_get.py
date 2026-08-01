@@ -603,6 +603,60 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Exercises the POSIX unix-socket hop between the StateHead and "
+    "TaskEventsHead subprocesses.",
+)
+def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
+    """End-to-end reroute of ``ray list tasks`` from GCS to the dashboard head.
+
+    With ``RAY_task_events_read_from_dashboard_head`` on, ``StateHead`` queries the
+    ``TaskEventsHead`` subprocess over its unix socket instead of GCS. This drives the
+    real socket hop that the ``get_all_task_info`` unit tests mock out: events flow
+    worker -> aggregator -> ``TaskEventsHead`` store, and the read comes back over the
+    socket.
+    """
+    # Feed task events into the dashboard-head store via the aggregator, and read them
+    # back from there instead of GCS.
+    monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+    monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+    monkeypatch.setenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", "1"
+    )
+    monkeypatch.setenv("RAY_task_events_read_from_dashboard_head", "1")
+
+    ray_context = ray.init(num_cpus=2)
+    wait_for_aggregator_agent_if_enabled(
+        ray_context.address_info["address"],
+        ray_context.address_info["node_id"],
+    )
+    job_id = ray.get_runtime_context().get_job_id()
+
+    @ray.remote
+    def f():
+        return 1
+
+    names = [f"dh_task_{i}" for i in range(3)]
+    ray.get([f.options(name=name).remote() for name in names])
+
+    def verify():
+        tasks = list_tasks()
+        names_seen = {task["name"] for task in tasks}
+        assert set(names).issubset(names_seen), (names, names_seen)
+        for task in tasks:
+            assert task["job_id"] == job_id
+
+        # The filter is serialized into the request and applied on the dashboard-head
+        # side, so a correct filtered result also proves the request survived the wire.
+        filtered = list_tasks(filters=[("name", "=", names[0])])
+        assert len(filtered) == 1
+        assert filtered[0]["name"] == names[0]
+        return True
+
+    wait_for_condition(verify, timeout=30)
+
+
 @pytest.mark.parametrize(
     "event_routing_config", ["default", "aggregator"], indirect=True
 )
