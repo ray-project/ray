@@ -30,12 +30,21 @@ from ray.serve.llm.request_router import KVAwareRouter
 MODEL_ID = "Qwen/Qwen3-0.6B"
 
 
-def build_kv_config(*, request_router_class, kv_events_port_base, num_replicas=1):
+def build_kv_config(
+    *,
+    request_router_class,
+    kv_events_port_base,
+    num_replicas=1,
+    decode_progress=False,
+):
     """Config for a direct-streaming KV-aware app with engine KV events enabled.
 
     Build it outside ``patch_ingress``: serializing the router class clears this
     module from cloudpickle's pickle-by-value registry.
     """
+    runtime_env = {}
+    if decode_progress:
+        runtime_env = {"env_vars": {"RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS": "1"}}
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=MODEL_ID,
@@ -57,6 +66,7 @@ def build_kv_config(*, request_router_class, kv_events_port_base, num_replicas=1
         ),
         placement_group_config={"bundles": [{"GPU": 1}]},
         experimental_configs={"KV_EVENTS_PORT_BASE": kv_events_port_base},
+        runtime_env=runtime_env,
     )
     # Emit engine KV-cache events so each ingress tracker registers the
     # replica's worker (schedulable, required to book a reservation against it).
@@ -105,10 +115,6 @@ class LLMRouter(_LLMRouter):
             except Exception as e:  # noqa: BLE001 - recorded for assertion
                 self._errors.append((hook_name, repr(e)))
 
-    # -- lifecycle-event booking passthroughs (probe requests) --------------
-    async def on_request_added(self, *args, **kwargs):
-        return await self._kv_token_tracker.on_request_added(*args, **kwargs)
-
     async def on_prefill_complete(self, *args, **kwargs):
         return await self._kv_token_tracker.on_prefill_complete(*args, **kwargs)
 
@@ -137,7 +143,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return []
-        workers = svc.list_workers(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        workers = svc.list_workers(model_name=_MODEL_NAME, routing_group=_TENANT_ID)
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
@@ -162,7 +168,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return 0
-        for model in svc.loads(model_name=_MODEL_NAME, tenant_id=_TENANT_ID):
+        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load["active_requests"]
@@ -175,7 +181,7 @@ class LLMRouter(_LLMRouter):
         svc = self._kv_token_tracker._svc
         if svc is None:
             return None
-        for model in svc.loads(model_name=_MODEL_NAME, tenant_id=_TENANT_ID):
+        for model in svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID):
             for load in model["loads"]:
                 if load["worker_id"] == worker_id:
                     return load
@@ -212,10 +218,12 @@ class LLMRouter(_LLMRouter):
         """(Test only) The KV-cache block size the tracker pinned."""
         return self._kv_token_tracker.get_block_size()
 
-    async def select_worker(self, request_id, token_ids, allowed_worker_ids):
+    async def select_worker(
+        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+    ):
         """(Test only) Score ``allowed_worker_ids`` for a prompt via the tracker."""
         return await self._kv_token_tracker.select_worker(
-            request_id, token_ids, allowed_worker_ids
+            request_id, token_ids, allowed_worker_ids, expected_output_tokens
         )
 
 

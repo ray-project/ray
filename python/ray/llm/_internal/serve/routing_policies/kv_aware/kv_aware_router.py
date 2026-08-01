@@ -19,6 +19,18 @@ from ray.serve.config import RequestRouterConfig
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _get_expected_output_tokens(pending_request: PendingRequest) -> Optional[int]:
+    """The request's output cap from the routing payload, if present."""
+    if not pending_request.args:
+        return None
+    payload = pending_request.args[0]
+    for field in ("max_completion_tokens", "max_tokens"):
+        value = getattr(payload, field, None)
+        if isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
 class KVAwareRouter(RequestRouter):
     """Routes each request to the candidate that best balances expected KV-cache
     overlap against the worker's current prefill/decode load.
@@ -83,6 +95,7 @@ class KVAwareRouter(RequestRouter):
             pending_request.metadata.request_id,
             token_ids,
             list(worker_id_to_replica),
+            _get_expected_output_tokens(pending_request),
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 
