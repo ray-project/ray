@@ -943,9 +943,23 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         if chunk_metadata is None:
             return [(_NativeParquetFragment(path, None, alignment), 0)]
 
-        total = len(row_group_num_rows)
-        start = min(chunk_metadata["row_group_start"], total)
-        end = min(chunk_metadata["row_group_end"], total)
+        from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (  # noqa: E501
+            _calculate_row_group_range,
+        )
+
+        # ``chunk_metadata`` carries a *relative* chunk descriptor
+        # (``chunk_idx``/``total_num_chunks``), not absolute row-group indices.
+        # Resolve it to a ``[start, end)`` row-group range with the same helper
+        # the base reader uses, so native fragments line up byte-for-byte with
+        # the PyArrow path (identical ``row_hash`` offsets and limit slicing).
+        rg_range = _calculate_row_group_range(
+            chunk_metadata["chunk_idx"],
+            chunk_metadata["total_num_chunks"],
+            len(row_group_num_rows),
+        )
+        if rg_range is None:
+            return []
+        start, end = rg_range
         fragments: List[Tuple[_NativeParquetFragment, int]] = []
         file_row_offset = sum(row_group_num_rows[:start])
         for rg in range(start, end):
@@ -968,9 +982,21 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         if chunk_metadata is None:
             return [(_NativeCountFragment(path, sum(row_group_num_rows)), 0)]
 
-        total = len(row_group_num_rows)
-        start = min(chunk_metadata["row_group_start"], total)
-        end = min(chunk_metadata["row_group_end"], total)
+        from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (  # noqa: E501
+            _calculate_row_group_range,
+        )
+
+        # See ``_native_fragments_for_file``: resolve the relative chunk
+        # descriptor to an absolute ``[start, end)`` row-group range so count
+        # fragments share the base reader's granularity and offsets.
+        rg_range = _calculate_row_group_range(
+            chunk_metadata["chunk_idx"],
+            chunk_metadata["total_num_chunks"],
+            len(row_group_num_rows),
+        )
+        if rg_range is None:
+            return []
+        start, end = rg_range
         fragments: List[Tuple[_NativeCountFragment, int]] = []
         file_row_offset = sum(row_group_num_rows[:start])
         for rg in range(start, end):
