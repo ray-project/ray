@@ -6,6 +6,13 @@
   team: data
 
   cluster:
+    # WARNING: a test that declares its own ``byod.runtime_env`` REPLACES this
+    # list rather than extending it -- ``deep_update`` (release/ray_release/
+    # util.py) merges dicts but overwrites lists. A test that sets one env var
+    # here silently loses every RAYTEST_FAIL_ON_* below, i.e. it stops failing
+    # on OOM / dead nodes / spilling. Re-list the four entries verbatim in any
+    # test that needs its own runtime_env, or deliberately override them (as
+    # ``heterogeneous_memory_batch_inference_multitenancy`` does).
     byod:
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
@@ -65,6 +72,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # 1 GiB packs ~14 row groups per bin, cutting the task count ~14x.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     cluster_compute: "fixed_size_cpu_compute.yaml"
@@ -115,10 +126,6 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=1
-        # 64 MiB: pinned for parity with the other read tests. NOTE: inert here --
-        # this dataset is JPEG, not Parquet, so the bin budget cannot apply. Both
-        # variants did move (+36.9pp / +5.6pp) but the cause is elsewhere.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -193,6 +200,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # sf1000 lineitem is read with its full 17-column schema: ~1.16 GiB
         # uncompressed per file over 1000 files. 1.25 GiB packs ~one file per
         # bin (~943 read tasks vs the ~1000 blocks master's round-robin
@@ -673,6 +684,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # imagenet parquet: 7416 single-row-group files of ~8.15 MiB, listed on
         # one task. ListFiles dominates this test, and its cost tracks the number
         # of results the driver pulls back rather than the footer IO itself: at
@@ -721,6 +736,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # No bin budget override: at the default this dataset (513 single-row-
         # group files of ~88 MB) already packs ~one file per bin, matching the
         # granularity master's round-robin partitioner produced.
@@ -742,6 +761,10 @@
       cluster:
         byod:
           runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
             # 64 MiB pin. NOTE: likely inert -- this dataset is 513
             # single-row-group files of ~88 MB, which pack one file per
             # bin at both 64 and 128 MiB, so the granularity the block
@@ -759,12 +782,10 @@
       cluster:
         byod:
           runtime_env:
-            # 64 MiB pin. NOTE: likely inert -- this dataset is 513
-            # single-row-group files of ~88 MB, which pack one file per
-            # bin at both 64 and 128 MiB, so the granularity the block
-            # comment above describes is unchanged either way. Pinned
-            # because this variant moved (+17.0pp / +0.5pp) when the
-            # default changed; the cause is probably elsewhere.
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
             - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
             - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
@@ -799,6 +820,10 @@
     byod:
       post_build_script: byod_install_mosaicml.sh
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # This benchmark hands in 200 explicit parquet paths, listed on a single
         # task. At the default footer batch size of 10 that is 20 batches, so
         # actors past the 20th are provisioned and never dispatched to.
@@ -1008,7 +1033,9 @@
         # 64 MiB: -2.2% vs master at 64 MiB, -0.0% at 128 MiB. numpy and pandas
         # both improved at 128 MiB, hence the split.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
-    cluster_compute: fixed_size_cpu_compute.yaml
+    # No cluster_compute: inherit DEFAULTS (fixed_size_cpu_compute.yaml), which
+    # is what this test ran on inside the matrix. Pinning the same value here
+    # would only make this variant stop tracking numpy/pandas if DEFAULTS moves.
 
   run:
     timeout: 2400
@@ -1126,6 +1153,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # sf1000 lineitem, full 17-column schema: 1000 files x 49 row groups of
         # 24.36 MiB uncompressed = 1.16 GiB per file, and the distribution is
         # flat (p0 24.35 MiB, p100 24.78 MiB). 1 GiB packs 42 row groups per bin
@@ -1643,6 +1674,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # sf1000 lineitem: 1000 files x 49 row groups, 24.36 MiB uncompressed
         # per row group at the full 17-column schema. q1 projects 7 of those
         # columns and pre-filters on l_shipdate, so the packer sizes on a
@@ -1996,6 +2031,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # q20 projects 4 of lineitem's 17 columns -> ~160 MiB uncompressed per
         # file. At the default budget that splits each file ~4 ways (400 blocks
         # vs the 100 master's round-robin partitioner produced), and the extra
