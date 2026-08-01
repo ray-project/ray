@@ -19,6 +19,7 @@ from dynamo.llm import compute_block_hash_for_seq
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.llm.request_router import KVAwareRouter
 
 from utils import MODEL_ID, build_kv_app, build_kv_config, patch_ingress
@@ -37,23 +38,32 @@ PROMPT_TEXT = (
 MESSAGES = [{"role": "user", "content": PROMPT_TEXT}]
 
 
-def _post_chat(endpoint, max_tokens=MAX_TOKENS, request_id=None):
+def _post_chat(endpoint, max_tokens=MAX_TOKENS, request_id=None, stream=False):
     """Send one chat completion through the deployment's HTTP ingress."""
-    host, port = endpoint
+    if isinstance(endpoint, tuple):
+        host, port = endpoint
+        url = f"http://{host}:{port}/v1/chat/completions"
+    else:
+        url = f"{endpoint}/v1/chat/completions"
     headers = {"X-Request-Id": request_id} if request_id else None
-    resp = requests.post(
-        f"http://{host}:{port}/v1/chat/completions",
+    with requests.post(
+        url,
         json={
             "model": MODEL_ID,
             "messages": MESSAGES,
             "max_tokens": max_tokens,
             "temperature": 0.0,
             "ignore_eos": True,
+            "stream": stream,
         },
         headers=headers,
+        stream=stream,
         timeout=300,
-    )
-    assert resp.status_code == 200, resp.text
+    ) as resp:
+        assert resp.status_code == 200, resp.text
+        if stream:
+            for _ in resp.iter_content(chunk_size=None):
+                pass
 
 
 def _tokenize_chat(endpoint):
@@ -223,7 +233,10 @@ class TestIngressSynchronization:
             await _ingress_replica_ids(router, ingress_replicas_per_node)
         )
         worker_id = await _registered_worker(router, num_ingress_replicas)
-        endpoint = await _backend_endpoint(deployed_handle)
+        # Atomic reservation happens in LLMRouter while HAProxy routes the
+        # request. A backend HTTP endpoint bypasses that selection path, so it
+        # cannot exercise the reservation or its ingress-to-ingress broadcast.
+        endpoint = get_application_url(app_name=APP_NAME, use_localhost=True)
 
         # A long generation keeps the request in flight while we observe it.
         request_errors = []
@@ -234,6 +247,7 @@ class TestIngressSynchronization:
                     endpoint,
                     max_tokens=1024,
                     request_id="token-load-inflight-1",
+                    stream=True,
                 )
             except Exception as e:
                 request_errors.append(e)
