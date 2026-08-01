@@ -583,39 +583,17 @@ class gRPCReplicaResult(ReplicaResult):
             async def _translate_and_call_callback() -> None:
                 translated: Any = call
                 try:
-                    # ``exception()`` is only safe once the call is done and
-                    # not cancelled (otherwise it raises ``InvalidStateError`` /
-                    # ``CancelledError``). Cancellation is client-initiated and
-                    # not a replica failure, so leave it alone.
-                    if call.done() and not call.cancelled():
-                        exception_fn = getattr(call, "exception", None)
-                        if exception_fn is not None:
-                            exc = exception_fn()
-                            if inspect.isawaitable(exc):
-                                exc = await exc
-                            if exc is not None:
-                                if isinstance(exc, grpc.aio.AioRpcError):
-                                    # ``code()`` itself may raise if the gRPC
-                                    # status is unavailable in the error object
-                                    # (e.g. a serialization edge case). Treat a
-                                    # raise-on-code() as a non-match and pass
-                                    # the call through to the original callback.
-                                    try:
-                                        if exc.code() == grpc.StatusCode.UNAVAILABLE:
-                                            translated = ActorUnavailableError(
-                                                "Actor is unavailable.",
-                                                self._actor_id.binary(),
-                                            )
-                                    except Exception:
-                                        logger.debug(
-                                            "gRPC AioRpcError.code() raised; "
-                                            "passing call through.",
-                                            exc_info=True,
-                                        )
-                                elif isinstance(exc, ActorUnavailableError):
-                                    # Already the right type — forward as-is
-                                    # (e.g. from an upstream translation).
-                                    translated = exc
+                    # AsyncIO Call exposes the terminal status through code();
+                    # it intentionally has no exception() method.
+                    if (
+                        call.done()
+                        and not call.cancelled()
+                        and await call.code() == grpc.StatusCode.UNAVAILABLE
+                    ):
+                        translated = ActorUnavailableError(
+                            "Actor is unavailable.",
+                            self._actor_id.binary(),
+                        )
                 except Exception:
                     logger.exception(
                         "Failed to translate gRPC done-callback result; "

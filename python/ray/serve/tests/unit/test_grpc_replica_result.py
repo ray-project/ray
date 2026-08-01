@@ -393,10 +393,10 @@ class TestSeparateLoop:
 class _ControllableFakeCall:
     """Fake grpc.aio.Call that lets the test trigger done-callback firing."""
 
-    def __init__(self, *, exception: BaseException = None):
+    def __init__(self, *, status_code: grpc.StatusCode):
         self._loop = asyncio.get_running_loop()
         self._done = False
-        self._exception = exception
+        self._status_code = status_code
         self._callbacks: List[Callable] = []
 
     # gRPCReplicaResult inspects __aiter__ to decide whether to consume as a
@@ -415,10 +415,10 @@ class _ControllableFakeCall:
     def done(self) -> bool:
         return self._done
 
-    async def exception(self):
+    async def code(self):
         if not self._done:
             raise asyncio.InvalidStateError("Call is not done.")
-        return self._exception
+        return self._status_code
 
     def cancelled(self) -> bool:
         return False
@@ -428,15 +428,6 @@ class _ControllableFakeCall:
         for cb in list(self._callbacks):
             cb(self)
         self._callbacks.clear()
-
-
-def _make_aio_rpc_error(code: grpc.StatusCode) -> grpc.aio.AioRpcError:
-    return grpc.aio.AioRpcError(
-        code=code,
-        initial_metadata=grpc.aio.Metadata(),
-        trailing_metadata=grpc.aio.Metadata(),
-        details="fake",
-    )
 
 
 @pytest.mark.asyncio
@@ -459,9 +450,7 @@ class TestDoneCallbackTranslation:
         )
 
     async def test_unavailable_call_translated_to_actor_unavailable_error(self):
-        fake_call = _ControllableFakeCall(
-            exception=_make_aio_rpc_error(grpc.StatusCode.UNAVAILABLE)
-        )
+        fake_call = _ControllableFakeCall(status_code=grpc.StatusCode.UNAVAILABLE)
         result = self._make_result(fake_call)
 
         received: List = []
@@ -477,7 +466,7 @@ class TestDoneCallbackTranslation:
         assert isinstance(received[0], ActorUnavailableError)
 
     async def test_successful_call_passes_through(self):
-        fake_call = _ControllableFakeCall(exception=None)
+        fake_call = _ControllableFakeCall(status_code=grpc.StatusCode.OK)
         result = self._make_result(fake_call)
 
         received: List = []
@@ -494,9 +483,7 @@ class TestDoneCallbackTranslation:
     async def test_non_unavailable_failure_passes_through(self):
         # CANCELLED is a client-initiated abort, not a replica problem. The
         # translator should leave it alone and let upstream callers decide.
-        fake_call = _ControllableFakeCall(
-            exception=_make_aio_rpc_error(grpc.StatusCode.CANCELLED)
-        )
+        fake_call = _ControllableFakeCall(status_code=grpc.StatusCode.CANCELLED)
         result = self._make_result(fake_call)
 
         received: List = []
@@ -507,40 +494,6 @@ class TestDoneCallbackTranslation:
 
         assert len(received) == 1
         assert received[0] is fake_call
-
-    async def test_non_grpc_error_passes_through(self):
-        """Non-gRPC exceptions (e.g. RuntimeError from serialization)
-        should be passed through without translation. Only gRPC
-        transport failures get translated."""
-        fake_call = _ControllableFakeCall(
-            exception=RuntimeError("serialization failed")
-        )
-        result = self._make_result(fake_call)
-
-        received: List = []
-        result.add_done_callback(lambda r: received.append(r))
-
-        fake_call.fire_done()
-        await asyncio.sleep(0)
-
-        assert len(received) == 1
-        assert received[0] is fake_call
-
-    async def test_already_actor_unavailable_error_forwarded(self):
-        """If the exception is already an ActorUnavailableError
-        (e.g. from an upstream translation), forward it as-is."""
-        already_translated = ActorUnavailableError("already translated", b"a" * 16)
-        fake_call = _ControllableFakeCall(exception=already_translated)
-        result = self._make_result(fake_call)
-
-        received: List = []
-        result.add_done_callback(lambda r: received.append(r))
-
-        fake_call.fire_done()
-        await asyncio.sleep(0)
-
-        assert len(received) == 1
-        assert received[0] is already_translated
 
 
 if __name__ == "__main__":
