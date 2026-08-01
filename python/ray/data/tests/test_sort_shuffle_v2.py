@@ -79,11 +79,21 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
     op.add_input(bundles[1], 0)
     assert len(op.get_active_tasks()) == 2
     op.add_input(bundles[2], 0)
+    assert op.internal_input_queue_num_blocks() == 3
+    assert op.internal_input_queue_num_bytes() == sum(
+        bundle.size_bytes() for bundle in bundles
+    )
+    assert op.metrics.obj_store_mem_internal_inqueue == sum(
+        bundle.size_bytes() for bundle in bundles
+    )
     op.all_inputs_done()
     run_op_tasks_sync(op)
 
     assert op.boundaries is not None
     assert len(op.boundaries) == 1
+    assert op.internal_input_queue_num_blocks() == 0
+    assert op.internal_input_queue_num_bytes() == 0
+    assert op.metrics.obj_store_mem_internal_inqueue == 0
 
     partition_rows = []
     partition_ids = []
@@ -231,6 +241,20 @@ def test_sort_shuffle_v2_end_to_end(
     )
 
     assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))
+
+
+def test_sort_shuffle_v2_validates_sort_key(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+
+    with pytest.raises(
+        ValueError,
+        match="You specified the column 'missing'.*dataset has columns: \\['id'\\]",
+    ):
+        ray.data.range(10, override_num_blocks=2).sort("missing").take_all()
 
 
 def test_sort_shuffle_v2_promotes_compatible_block_schemas(

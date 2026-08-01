@@ -3,6 +3,10 @@ import typing
 from typing import Any, Dict, List, Optional
 
 import ray
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -68,7 +72,7 @@ class SortShuffleMapOp(ShuffleMapOp):
 
         self._sort_key = sort_key
         self._sample_num_blocks = sample_num_blocks
-        self._buffered_bundles: List[RefBundle] = []
+        self._buffered_bundles = FIFOBundleQueue()
         self._sample_block_refs: List[ObjectRef[Block]] = []
         self._sample_tasks: Dict[int, MetadataOpTask] = {}
         self._sample_results: List[Block] = []
@@ -113,13 +117,22 @@ class SortShuffleMapOp(ShuffleMapOp):
     def boundaries(self) -> Optional[List]:
         return self._boundaries
 
+    @property
+    def _input_queues(self) -> List[BaseBundleQueue]:
+        return [self._buffered_bundles, *super()._input_queues]
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
+        # Match sort V1's validation before any sampling or partitioning work.
+        # Validate at execution time because schemas after UDFs may be unknown
+        # while the physical plan is being constructed.
+        self._sort_key.validate_schema(refs.schema)
         if self._boundaries is not None:
             super()._add_input_inner(refs, input_index)
             return
 
-        self._buffered_bundles.append(refs)
+        self._buffered_bundles.add(refs)
+        self._metrics.on_input_queued(refs, input_index=input_index)
         remaining = self._sample_num_blocks - len(self._sample_block_refs)
         if remaining > 0:
             self._sample_block_refs.extend(list(refs.block_refs[:remaining]))
@@ -197,8 +210,9 @@ class SortShuffleMapOp(ShuffleMapOp):
         self._partition_fn = make_range_partition_fn(
             boundaries, self._sort_key, self.data_context
         )
-        buffered_bundles, self._buffered_bundles = self._buffered_bundles, []
-        for bundle in buffered_bundles:
+        while self._buffered_bundles.has_next():
+            bundle = self._buffered_bundles.get_next()
+            self._metrics.on_input_dequeued(bundle, input_index=0)
             super()._add_input_inner(bundle, 0)
         if self._inputs_complete:
             self._finish_map_inputs()
