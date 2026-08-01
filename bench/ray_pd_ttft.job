@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH --job-name=pd_ttft_ray
+#SBATCH --output=/home/ldcunha/pd_ttft_bench/logs/ray_ttft_%j.out
+#SBATCH --error=/home/ldcunha/pd_ttft_bench/logs/ray_ttft_%j.err
+#SBATCH --time=00-04:00
+#SBATCH --mem=120000
+#SBATCH --gres=gpu:2
+#SBATCH --partition=defq
+#SBATCH --nodelist=quadro1
+
+# ---------------------------------------------------------------------------
+# Overnight TTFT benchmark: Ray Serve LLM SGLang PD disaggregation.
+# Queues until the h100 node frees 2 GPUs, then runs fully unattended:
+#   nvidia-smi -> launch Ray PD -> benchmark sweep -> save JSON -> teardown.
+# Native SGLang baseline is a separate follow-up job (CLI TBD).
+# ---------------------------------------------------------------------------
+set -uo pipefail
+
+BENCH=/home/ldcunha/pd_ttft_bench
+RESULTS=$BENCH/results
+LOGS=$BENCH/logs
+MODEL_ID=qwen-0.5b-sglang-pd          # RAY_MODEL_ID from launch_ray_pd.py
+BASE_URL=http://127.0.0.1:8000
+mkdir -p "$RESULTS" "$LOGS"
+
+echo "=== node check ==="
+nvidia-smi
+
+echo "=== env ==="
+module load conda cuda/12.6
+conda activate pd_ttft_bench
+# NOTE: branch's LLM code was already overlaid into the installed ray wheel
+# during setup (cp python/ray/llm/* -> site-packages/ray/llm/). No PYTHONPATH
+# needed -- that would shadow the compiled core and break ray._raylet import.
+
+echo "=== launch Ray PD (background) ==="
+python "$BENCH/bench/launch_ray_pd.py" > "$LOGS/ray_pd_serve.log" 2>&1 &
+RAY_PID=$!
+
+# Wait for the readiness sentinel the launcher prints (max ~11 min).
+echo "=== waiting for RAY_PD_READY ==="
+for i in $(seq 1 330); do
+    if grep -q "RAY_PD_READY" "$LOGS/ray_pd_serve.log" 2>/dev/null; then
+        echo "Ray PD ready after ~$((i*2))s"
+        break
+    fi
+    if ! kill -0 "$RAY_PID" 2>/dev/null; then
+        echo "!! launcher died before ready -- see $LOGS/ray_pd_serve.log"
+        exit 1
+    fi
+    sleep 2
+done
+
+echo "=== benchmark sweep (TTFT) ==="
+# Same tool, fixed ISL/OSL, sweep concurrency. --save-result writes JSON
+# containing TTFT P50/P90/P99. --warm-up discards cold-start requests.
+for C in 1 8 32; do
+    echo "--- concurrency=$C ---"
+    python -m ray.llm._internal.serve.benchmark.cli \
+        --base-url "$BASE_URL" \
+        --model "$MODEL_ID" \
+        --isl 1024 --osl 128 \
+        --concurrency "$C" \
+        --num-sessions "$((C*4))" \
+        --warm-up 5 \
+        --save-result "$RESULTS/ray_pd_c${C}.json"
+done
+
+echo "=== teardown ==="
+kill "$RAY_PID" 2>/dev/null
+wait "$RAY_PID" 2>/dev/null
+
+echo "=== DONE. results in $RESULTS ==="
+ls -la "$RESULTS"
