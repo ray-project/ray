@@ -449,9 +449,9 @@ def test_coerce_int96_kwarg_routes_int96_file_to_fallback(tmp_path, monkeypatch)
 
 
 def test_native_chunked_read_row_hash_parity(tmp_path):
-    """A chunked file (one manifest row per ``[row_group_start, row_group_end)``
-    range) must produce byte-identical ``row_hash`` values via the native path
-    and PyArrow.
+    """A chunked file (one manifest row per ``(chunk_idx, total_num_chunks)``
+    descriptor, resolved to a ``[start, end)`` row-group range at read time) must
+    produce byte-identical ``row_hash`` values via the native path and PyArrow.
 
     ``row_hash`` is seeded by ``(fragment_path, file_row_offset)`` per sub-
     fragment (:func:`_compute_row_hashes`), so this is the load-bearing test for
@@ -481,14 +481,16 @@ def test_native_chunked_read_row_hash_parity(tmp_path):
     pq.write_table(table, str(path), write_page_index=True, row_group_size=5_000)
     assert pq.ParquetFile(str(path)).num_row_groups == 4
 
-    # Two chunks over the same file: row groups [0,2) and [2,4). This forces the
-    # per-row-group native fragment path with a non-zero offset on the 2nd chunk.
+    # Two chunks over the same file. With 4 row groups split into 2 chunks, the
+    # reader resolves chunk 0 -> row groups [0, 2) and chunk 1 -> [2, 4) via
+    # ``_calculate_row_group_range``; the 2nd chunk forces the per-row-group
+    # native fragment path with a non-zero file row offset.
     chunks = [
         create_chunk_metadata(
-            ParquetFileChunkMetadata, row_group_start=0, row_group_end=2
+            ParquetFileChunkMetadata, chunk_idx=0, total_num_chunks=2
         ),
         create_chunk_metadata(
-            ParquetFileChunkMetadata, row_group_start=2, row_group_end=4
+            ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=2
         ),
     ]
     size = os.path.getsize(path)
