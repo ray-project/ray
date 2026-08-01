@@ -1051,7 +1051,11 @@ class PhysicalOperator(Operator):
         return ExecutionResources.zero()
 
     def estimate_object_store_usage(self) -> int:
-        """Returns this operator's object store memory usage in bytes."""
+        """Returns this operator's object store memory usage in bytes.
+
+        ShuffleMapOperator overrides this since its outputs are intermediate
+        partitions managed by the reduce stage.
+        """
         return self._block_ref_counter.get_object_store_memory_usage(self.id)
 
     def running_logical_usage(self) -> ExecutionResources:

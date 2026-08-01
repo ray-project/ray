@@ -111,7 +111,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
                 "DownstreamCapacityBackpressurePolicy enabled with backpressure "
-                f"capacity ratio: {self._backpressure_capacity_ratio}"
+                f"Backpressure ratio: {self._backpressure_capacity_ratio}"
             )
 
     def _get_downstream_capacity_size_bytes(self, op: "PhysicalOperator") -> int:

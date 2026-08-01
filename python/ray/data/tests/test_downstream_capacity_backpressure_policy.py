@@ -215,8 +215,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         - downstream_capacity = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
         - ratio = (output_size / downstream_capacity) - 1
         """
+        # Set output size via get_mem_op_outputs
         rm.get_mem_op_outputs.return_value = output_size
 
+        # Set downstream capacity on the first output dependency
         if op.output_dependencies:
             downstream_op = op.output_dependencies[0]
             downstream_op.metrics.obj_store_mem_pending_task_inputs = (
@@ -390,7 +392,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is False
 
     def test_backpressure_triggered_high_backpressure_ratio(self):
-        """Test backpressure triggered when queue/capacity ratio is high."""
+        """Test backpressure triggered when backpressure ratio is high."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -416,7 +418,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is False
 
     def test_no_backpressure_low_backpressure_ratio(self):
-        """Test no backpressure when queue/capacity ratio is acceptable."""
+        """Test no backpressure when backpressure ratio is acceptable."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -581,10 +583,10 @@ class TestDownstreamCapacityBackpressurePolicy:
     def test_backpressure_applied_fast_producer_slow_consumer(self):
         """Test backpressure IS applied when producer is faster than consumer.
 
-        In a fast producer → slow consumer scenario:
+        In a fast producer -> slow consumer scenario:
         - Queue builds up (producer outputs faster than consumer can process)
         - Downstream capacity is low (slow consumer has fewer pending inputs)
-        - Queue/capacity ratio exceeds threshold → backpressure applied
+        - Backpressure ratio exceeds threshold -> backpressure applied
         """
         # Fast producer -> slow consumer topology
         producer_op, producer_state = self._mock_task_pool_map_operator(
@@ -611,14 +613,14 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
 
-        # Fast producer scenario: large output, low downstream input
+        # Fast producer scenario: large output, low downstream capacity
         # Backpressure ratio = (2200 / 200) - 1 = 10 (well above 2.0 threshold)
         backpressure_ratio = self._set_backpressure_ratio(
             producer_op,
             producer_state,
             rm,
             output_size=2200,  # Large output (producer outputting fast)
-            downstream_capacity=200,  # Low input (slow consumer)
+            downstream_capacity=200,  # Low capacity (slow consumer)
         )
         assert backpressure_ratio > 2.0  # Verify ratio exceeds backpressure threshold
 
