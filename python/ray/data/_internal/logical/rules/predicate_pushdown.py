@@ -286,30 +286,10 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
-            # Mirror the pushed (data-column) predicate onto an upstream
-            # ``ListFiles`` so a footer-based indexer can skip row groups by
-            # their statistics. ``apply_predicate`` may wrap the ``ReadFiles`` in
-            # a ``Filter`` (partition residual); sync the ``ReadFiles`` in either
-            # shape. No-op for datasources without a ``ListFiles``.
-            from ray.data._internal.datasource_v2.logical_optimizers import (
-                sync_list_files_pushdown,
-            )
-            from ray.data._internal.logical.operators.read_operator import (
-                ReadFiles,
-            )
-
-            if isinstance(result_op, ReadFiles):
-                result_op = sync_list_files_pushdown(result_op)
-            elif (
-                isinstance(result_op, Filter)
-                and result_op.input_dependencies
-                and isinstance(result_op.input_dependencies[0], ReadFiles)
-            ):
-                synced = sync_list_files_pushdown(result_op.input_dependencies[0])
-                result_op = Filter(
-                    predicate_expr=result_op.predicate_expr,
-                    input_dependencies=[synced],
-                )
+            # The pushed (data-column) predicate reaches an upstream
+            # ``ListFiles`` -- letting a footer-based indexer skip row groups by
+            # their statistics -- via ``DeriveListFilesPushdown``, which reads it
+            # off the scanner once the plan is final. Nothing to mirror here.
 
             # Convertible conjuncts were pushed into the read. Re-apply any
             # residual (non-convertible) conjuncts as a Filter above it.

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 from ray.data.expressions import Expr
@@ -7,7 +6,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
-    from ray.data._internal.logical.interfaces import LogicalOperator
 
 
 @DeveloperAPI
@@ -30,6 +28,18 @@ class SupportsFilterPushdown(ABC):
             - new_scanner: New Scanner instance with the filter applied
             - residual_predicate: Any part of the predicate that couldn't be
               pushed down and must be applied post-scan. None if fully pushed.
+        """
+        ...
+
+    @abstractmethod
+    def pushed_predicate(self) -> Optional["Expr"]:
+        """The predicate this scanner will apply at read time, if any.
+
+        This is the accepted result of :meth:`push_filters`, not the predicate
+        that was offered to it. Planning derives upstream listing-time pruning
+        from this value, so it must never be stronger than what the scanner
+        actually evaluates -- returning ``None`` is always safe, returning a
+        predicate the reader does not apply drops rows.
         """
         ...
 
@@ -86,6 +96,16 @@ class SupportsLimitPushdown(ABC):
         """
         ...
 
+    @abstractmethod
+    def pushed_limit(self) -> Optional[int]:
+        """The row limit this scanner will stop at, if any.
+
+        This is the accepted result of :meth:`push_limit`. Planning derives
+        early-stop listing from it, so it must never be smaller than the limit
+        the scanner actually honors.
+        """
+        ...
+
 
 @DeveloperAPI
 class SupportsPartitionPruning(ABC):
@@ -124,36 +144,24 @@ class SupportsPartitionPruning(ABC):
         ...
 
 
-def sync_list_files_pushdown(read_files: "LogicalOperator") -> "LogicalOperator":
-    """Mirror a ``ReadFiles`` scanner's pushed-down state onto its ``ListFiles``.
+def derive_list_files_pushdown(
+    scanner: Optional["Scanner"],
+) -> Tuple[Optional["Expr"], Optional[List[str]], Optional[int]]:
+    """Read the pushed-down state a scanner accepted, for upstream listing.
 
-    Called by the predicate / projection / limit pushdown rules after they push
-    onto the ``ReadFiles`` scanner. A metadata-aware indexer (e.g. the
-    footer-based Parquet indexer) reads ``predicate`` / ``projected_columns`` /
-    ``limit`` off ``ListFiles`` at planning time to prune row groups, size only
-    projected columns, and stop listing early.
+    Returns ``(predicate, projected_columns, limit)`` -- the constraints a
+    ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely apply while
+    listing (see :class:`~ray.data._internal.logical.rules.
+    derive_list_files_pushdown.DeriveListFilesPushdown`). Each element is
+    ``None`` unless the scanner both implements the corresponding ``Supports*``
+    mixin and reports state it actually accepted, so a datasource that ignores
+    a pushdown can never cause listing-time pruning.
 
-    Reads the pushed state straight from the scanner, so it is inherently gated
-    on the datasource supporting each pushdown -- the scanner only carries state
-    it actually accepted (via the ``Supports*`` mixins here). No-op unless
-    ``read_files`` is a ``ReadFiles`` whose immediate input is a ``ListFiles``.
+    ``scanner`` may be ``None`` (no downstream reader), which yields all-``None``:
+    nothing downstream applies these constraints, so listing must not either.
     """
-    from ray.data._internal.logical.operators.read_operator import (
-        ListFiles,
-        ReadFiles,
-    )
-
-    if not isinstance(read_files, ReadFiles):
-        return read_files
-    if not read_files.input_dependencies:
-        return read_files
-    upstream = read_files.input_dependencies[0]
-    if not isinstance(upstream, ListFiles):
-        return read_files
-
-    scanner = read_files.scanner
     predicate = (
-        getattr(scanner, "predicate", None)
+        scanner.pushed_predicate()
         if isinstance(scanner, SupportsFilterPushdown)
         else None
     )
@@ -163,15 +171,6 @@ def sync_list_files_pushdown(read_files: "LogicalOperator") -> "LogicalOperator"
     else:
         projected_columns = None
     limit = (
-        getattr(scanner, "limit", None)
-        if isinstance(scanner, SupportsLimitPushdown)
-        else None
+        scanner.pushed_limit() if isinstance(scanner, SupportsLimitPushdown) else None
     )
-
-    new_list_files = replace(
-        upstream,
-        predicate=predicate,
-        projected_columns=projected_columns,
-        limit=limit,
-    )
-    return replace(read_files, input_dependencies=[new_list_files])
+    return predicate, projected_columns, limit

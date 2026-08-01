@@ -242,16 +242,15 @@ class LimitPushdownRule(Rule):
                 if isinstance(op, ReadFiles):
                     from ray.data._internal.datasource_v2.logical_optimizers import (
                         SupportsLimitPushdown,
-                        sync_list_files_pushdown,
                     )
 
                     if isinstance(op.scanner, SupportsLimitPushdown):
-                        # Mirror the pushed limit onto the upstream ``ListFiles``
-                        # so a footer-based indexer can stop listing early once
-                        # enough exact-survivor rows are found.
-                        return sync_list_files_pushdown(
-                            replace(op, scanner=op.scanner.push_limit(limit))
-                        )
+                        # The pushed limit reaches the upstream ``ListFiles`` --
+                        # letting a footer-based indexer stop listing early once
+                        # enough exact-survivor rows are found -- via
+                        # ``DeriveListFilesPushdown``, which reads it off the
+                        # scanner once the plan is final.
+                        return replace(op, scanner=op.scanner.push_limit(limit))
                     return op
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(
