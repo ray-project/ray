@@ -233,17 +233,29 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
-@pytest.mark.parametrize("ctx_value", [64 * 1024 * 1024, 0])
-def test_shuffle_input_batch_bytes_from_context(ctx_value, restore_data_context):
-    ctx = restore_data_context
-    ctx.shuffle_input_batch_bytes = ctx_value
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
     op = ShuffleMapOp(
-        InputDataBuffer(ctx, []),
-        ctx,
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
         num_partitions=2,
         partition_fn=lambda table: {},
     )
-    assert op._input_batch_bytes == ctx_value
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch.object(op, "_submit_shuffle_map_task") as submit:
+        for bundle in make_ref_bundles([[0], [1]]):
+            op._add_input_inner(bundle, 0)
+        op.all_inputs_done()
+    assert submit.call_count == expected_num_tasks
 
 
 def test_shuffle_map_task_uses_operator_name():
