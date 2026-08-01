@@ -223,6 +223,185 @@ def test_filtered_read():
     assert all(len(rt.metadata.input_files) == 1 for rt in read_tasks)
 
 
+def _iceberg_scan_row_count(**scan_kwargs) -> int:
+    """Rows PyIceberg itself returns for a scan -- the ground truth for counts."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS.copy())
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    return table.scan(**scan_kwargs).to_arrow().num_rows
+
+
+# Every entry builds a Dataset whose row count is unambiguous, so ``count()`` can
+# be checked against the rows the same query actually yields. ``count()`` has two
+# strategies -- read the count from plan metadata, or project to zero columns and
+# count what comes back -- and these cases cover both, including the cases that
+# defeat the metadata short-circuit.
+_COUNT_CASES = {
+    "plain": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ),
+    "select_columns": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ).select_columns(["col_b"]),
+    # An expression filter is pushed into the datasource, which removes the
+    # ``Filter`` from the plan and leaves the zero-column projection sitting
+    # directly on the read.
+    "expr_filter": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ).filter(expr=col("col_a") < 10),
+    # Same query as a Python UDF: the predicate cannot be pushed down, so the
+    # ``Filter`` stays in the plan. This is the control case -- it must keep
+    # working, so a fix cannot simply disable predicate pushdown.
+    "udf_filter": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ).filter(lambda row: row["col_a"] < 10),
+    "expr_filter_then_select": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    .filter(expr=col("col_a") < 10)
+    .select_columns(["col_b"]),
+    # A filter supplied at read time leaves no ``Filter`` in the plan at all, so
+    # the count is answered from the Iceberg manifest.
+    "read_time_row_filter": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        row_filter=pyi_expr.LessThan("col_a", 10),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ),
+    "select_columns_materialized": lambda: read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    .select_columns(["col_b"])
+    .materialize(),
+}
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.parametrize("case", list(_COUNT_CASES), ids=list(_COUNT_CASES))
+def test_count_matches_rows_actually_produced(case):
+    """``count()`` must agree with the number of rows the query yields.
+
+    A projection or a pushed-down filter must not change the answer: the count is
+    a property of the query, not of how much of it was pushed into the reader.
+    """
+    make_ds = _COUNT_CASES[case]
+    expected = len(make_ds().take_all())
+    assert make_ds().count() == expected
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_empty_projection_preserves_row_count():
+    """Selecting zero columns must yield N rows of no columns, not zero rows.
+
+    ``Dataset.count()`` projects to zero columns to avoid reading column data, so
+    an empty projection that drops rows silently corrupts every count built that
+    way.
+    """
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        selected_fields=(),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    expected = _iceberg_scan_row_count()
+    assert expected > 0, "fixture table should not be empty"
+
+    rows_read = sum(
+        block.num_rows
+        for read_task in iceberg_ds.get_read_tasks(1)
+        for block in read_task()
+    )
+    assert rows_read == expected
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.parametrize(
+    ("row_filter", "count_must_be_exact"),
+    [
+        (None, True),
+        # Prunes whole files, so the manifest row counts stay exact and must
+        # keep being reported -- this is the free ``count()`` we do not want to
+        # regress while fixing the case below.
+        (pyi_expr.In("col_c", {1, 2}), True),
+        # Selective *within* a file: file-level pruning cannot resolve it, so a
+        # manifest row count would overcount and must be reported as unknown.
+        (pyi_expr.LessThan("col_a", 10), False),
+    ],
+    ids=["no_filter", "partition_filter", "row_level_filter"],
+)
+def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
+    """Read-task metadata must never claim a row count the read does not deliver.
+
+    ``Dataset.count()`` returns this number directly when the plan has nothing
+    that could change the row count, so an overcount here reaches the user as
+    the answer. ``None`` means "unknown" and makes ``count()`` do the read, so it
+    is always safe -- but it also gives up a free count, hence
+    ``count_must_be_exact`` pinning the cases where the shortcut is sound.
+    """
+    kwargs = {} if row_filter is None else {"row_filter": row_filter}
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        **kwargs,
+    )
+    read_tasks = iceberg_ds.get_read_tasks(2)
+
+    claimed = [read_task.metadata.num_rows for read_task in read_tasks]
+    actual = sum(block.num_rows for read_task in read_tasks for block in read_task())
+
+    if count_must_be_exact:
+        assert all(count is not None for count in claimed), (
+            "row counts are exact for this filter and must still be reported, "
+            "otherwise count() pays for a read it does not need"
+        )
+    if all(count is not None for count in claimed):
+        assert sum(claimed) == actual
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_read_iceberg_does_not_mutate_caller_kwargs():
+    """The caller's dicts belong to the caller.
+
+    ``catalog_kwargs`` is stored by reference and then ``pop("name")``-ed, so the
+    caller loses the catalog name and a second read of the same table fails.
+    """
+    catalog_kwargs = _CATALOG_KWARGS.copy()
+    scan_kwargs = {}
+    expected_catalog_kwargs = catalog_kwargs.copy()
+
+    first = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=catalog_kwargs,
+        scan_kwargs=scan_kwargs,
+        snapshot_id=None,
+    )
+    assert catalog_kwargs == expected_catalog_kwargs
+    assert scan_kwargs == {}
+
+    # Reusing the same dicts must work exactly like the first read.
+    second = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=catalog_kwargs,
+        scan_kwargs=scan_kwargs,
+    )
+    assert second.count() == first.count()
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
