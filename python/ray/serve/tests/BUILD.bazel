@@ -107,6 +107,7 @@ py_test_module_list(
         "test_batching.py",
         "test_broadcast.py",
         "test_callback.py",
+        "test_circuit_breaker.py",
         "test_cluster.py",
         "test_controller.py",
         "test_controller_benchmark.py",
