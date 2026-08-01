@@ -159,6 +159,24 @@ class PDServingArgs(BaseModelExtended):
         return value
 
     @model_validator(mode="after")
+    def _unalias_configs(self):
+        """Give the two sides independent configs before anything mutates them.
+
+        Passing one ``LLMConfig`` instance for both fields is natural (the sides
+        are identical apart from their role) and the field validator hands the
+        same object back for both. The role-specific validators below then mutate
+        ``decode_config`` in place -- disaggregation_mode, the shifted bootstrap
+        port bases -- so a shared instance would leave BOTH sides in decode mode
+        on the same ports, breaking the KV handoff with no error.
+
+        Runs first: every mutating validator is defined after this one, and
+        ``mode="after"`` validators run in definition order.
+        """
+        if self.prefill_config is self.decode_config:
+            self.decode_config = self.decode_config.model_copy(deep=True)
+        return self
+
+    @model_validator(mode="after")
     def _validate_model_ids(self):
         """Validate that prefill and decode configs use the same model ID."""
         if self.prefill_config.model_id != self.decode_config.model_id:
