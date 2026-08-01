@@ -135,16 +135,15 @@ class LLMRouter:
             # Build the tracker before _handle._init() below, which initializes
             # the KVAwareRouter that looks it up. server.deployment_id is the
             # tracked LLMServer deployment.
-            from ray.llm._internal.serve.routing_policies.kv_aware import (
-                kv_token_tracker,
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                build_kv_token_tracker,
+                get_llm_router_handle,
             )
 
-            self._kv_token_tracker = kv_token_tracker.build_kv_token_tracker(
+            self._kv_token_tracker = build_kv_token_tracker(
                 llm_config, server.deployment_id
             )
-            self._kv_token_tracker.start_reservation_broadcast(
-                kv_token_tracker.get_llm_router_handle()
-            )
+            self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (

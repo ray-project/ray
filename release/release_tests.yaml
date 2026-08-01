@@ -4867,6 +4867,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
         - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
@@ -4913,6 +4914,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
         - RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE=2
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true

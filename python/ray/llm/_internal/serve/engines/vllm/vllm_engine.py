@@ -2,6 +2,7 @@ import argparse
 import dataclasses
 import inspect
 import json
+import types
 import typing
 from typing import (
     TYPE_CHECKING,
@@ -15,7 +16,7 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -25,7 +26,9 @@ from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorRe
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS
+from ray.llm._internal.serve.constants import (
+    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -119,55 +122,46 @@ def _canonicalize_request_id_header(
     return dataclasses.replace(raw_request_info, headers=headers)
 
 
-def _convert_config_dicts(merged: dict) -> dict:
-    """Convert dict values to their proper vLLM config classes based on type hints.
+def _get_vllm_config_type(annotation: Any) -> Optional[type]:
+    """Return the config dataclass contained in a vLLM field annotation."""
+    if isinstance(annotation, type) and dataclasses.is_dataclass(annotation):
+        return annotation
 
-    vLLM's AsyncEngineArgs has fields like structured_outputs_config,
-    compilation_config, etc. that expect dataclass instances. When users pass
-    dicts for these fields, we need to convert them to the proper config classes
-    so that default values are populated correctly.
+    origin = typing.get_origin(annotation)
+    annotation_args = typing.get_args(annotation)
+    if origin is typing.Annotated:
+        return _get_vllm_config_type(annotation_args[0])
+    # Only unwrap type modifiers. Recursing through arbitrary generic types
+    # could mistake a mapping of dataclasses for a config dataclass itself.
+    if origin in (Union, types.UnionType):
+        for annotation_arg in annotation_args:
+            if config_type := _get_vllm_config_type(annotation_arg):
+                return config_type
+    return None
 
-    Without this conversion, dicts get converted to argparse.Namespace objects
-    which lack the default field values, causing AttributeError when vLLM code
-    tries to access those fields.
-    """
-    fields_by_name = {f.name: f for f in dataclasses.fields(AsyncEngineArgs)}
 
-    for key, value in list(merged.items()):
-        if not isinstance(value, dict) or key not in fields_by_name:
+def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize structured config dictionaries as vLLM's CLI parser does."""
+    fields_by_name = {
+        field.name: field for field in dataclasses.fields(AsyncEngineArgs)
+    }
+    normalized_kwargs = engine_kwargs.copy()
+
+    for key, value in engine_kwargs.items():
+        field = fields_by_name.get(key)
+        if field is None or not isinstance(value, dict):
             continue
 
-        hint = fields_by_name[key].type
-        if isinstance(hint, str):
+        config_type = _get_vllm_config_type(field.type)
+        if config_type is None:
             continue
 
-        # Handle Optional[X] (Union[X, None]) -> X
-        origin = typing.get_origin(hint)
-        if origin is Union:
-            args = typing.get_args(hint)
-            hint = next((a for a in args if a is not type(None)), hint)
+        try:
+            normalized_kwargs[key] = TypeAdapter(config_type).validate_python(value)
+        except ValidationError as e:
+            raise ValueError(f"Invalid vLLM config for {key!r}: {e}") from e
 
-        # Convert dict to dataclass if the field expects a dataclass type
-        if isinstance(hint, type) and dataclasses.is_dataclass(hint):
-            try:
-                merged[key] = hint(**value)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to convert {key} dict to {hint.__name__}: {e}. "
-                    "Using dict as-is."
-                )
-
-    return merged
-
-
-def _dict_to_namespace(obj: Any) -> Any:
-    """Recursively converts dictionaries to argparse.Namespace."""
-    if isinstance(obj, dict):
-        return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
-    elif isinstance(obj, list):
-        return [_dict_to_namespace(item) for item in obj]
-    else:
-        return obj
+    return normalized_kwargs
 
 
 def _get_vllm_engine_config(
@@ -197,9 +191,10 @@ def _get_vllm_engine_config(
 
             current_platform.device_type = device_type
 
-        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-            **engine_config.get_initialization_kwargs()
+        engine_kwargs = _normalize_vllm_engine_kwargs(
+            engine_config.get_initialization_kwargs()
         )
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_kwargs)
         vllm_engine_config = async_engine_args.create_engine_config(
             usage_context=UsageContext.OPENAI_API_SERVER
         )
@@ -410,14 +405,9 @@ class VLLMEngine(LLMEngine):
         )
 
         state = State()
-        # TODO (Kourosh): There might be some variables that needs protection?
-        merged = vllm_frontend_args.__dict__ | vllm_engine_args.__dict__
-
-        # Convert dict values to proper vLLM config classes (e.g., StructuredOutputsConfig)
-        # so that default field values are populated correctly.
-        merged = _convert_config_dicts(merged)
-
-        args = _dict_to_namespace(merged)
+        # vLLM's parser produces a flat Namespace. Its values have already been
+        # parsed into their declared types; nested dictionaries stay dictionaries.
+        args = argparse.Namespace(**(vars(vllm_frontend_args) | vars(vllm_engine_args)))
         self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.

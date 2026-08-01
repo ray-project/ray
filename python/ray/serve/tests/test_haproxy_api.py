@@ -1003,7 +1003,7 @@ def test_ingress_request_router_forward_body_gate_renders(
 
 
 def _create_replica_server(port: int, replica_id_header: str):
-    """Fake data-plane replica that echoes its identity in a response header."""
+    """Fake data-plane replica that echoes routing and request-ID headers."""
     app = FastAPI()
 
     @app.get("/-/healthz")
@@ -1016,6 +1016,7 @@ def _create_replica_server(port: int, replica_id_header: str):
         for name, value in req.headers.items():
             if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
                 res.headers[f"echo-{name}"] = value
+        res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
         return {"replica": replica_id_header, "echo": body.decode("utf-8")}
 
@@ -1025,15 +1026,15 @@ def _create_replica_server(port: int, replica_id_header: str):
 def _create_router_server(
     port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
 ):
-    """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    forwards the buffered request body prefix to the router."""
+    """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": []}
+    captured = {"bodies": [], "request_ids": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
+        captured["request_ids"].append(req.headers.get("x-request-id", ""))
         response = {"replica_id": replica_id_to_return}
         if extra_response:
             response.update(extra_response)
@@ -1048,8 +1049,9 @@ def _create_router_server(
         )
 
     server, thread = _serve_fastapi_app(app, port, ready)
-    # Discard the readiness-probe body so callers see only client traffic.
+    # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
+    captured["request_ids"].clear()
     return server, thread, captured
 
 
@@ -1180,6 +1182,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["request_ids"] == [
+                resp.headers.get("x-received-request-id")
+            ]
+            assert router_captured["request_ids"][0]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
@@ -1194,6 +1200,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 )
                 assert resp.headers.get("x-replica-id") == "B"
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
+            assert len(router_captured["request_ids"]) == 4
+            assert all(router_captured["request_ids"])
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
