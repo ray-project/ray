@@ -14,6 +14,7 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
+from ray.dashboard.modules.task_events import task_event_query
 from ray.dashboard.modules.task_events.ray_event_converter import convert_to_task_events
 from ray.dashboard.modules.task_events.task_event_storage import (
     GC_JOB_SUMMARY_INTERVAL_S,
@@ -97,6 +98,27 @@ class TaskEventsHead(SubprocessModule):
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="",
+        )
+
+    @routes.post("/api/task_events/query")
+    async def get_task_events(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Answer a serialized ``GetTaskEventsRequest`` with a serialized reply.
+
+        Internal read endpoint for the State API (``StateHead``); the request/reply protos
+        match GCS's ``GetTaskEvents`` so the caller is transport-only.
+        """
+        body = await request.read()
+        try:
+            query_request = gcs_service_pb2.GetTaskEventsRequest.FromString(body)
+            reply = task_event_query.get_task_events(self._store, query_request)
+        except Exception as e:
+            logger.warning(f"Failed to query task events: {e}")
+            return aiohttp.web.Response(status=400, text=str(e))
+        return aiohttp.web.Response(
+            body=reply.SerializeToString(),
+            content_type="application/octet-stream",
         )
 
     def _handle_worker_delta(self, worker_delta: gcs_pb2.WorkerDeltaData) -> None:
