@@ -140,7 +140,7 @@ class SGLangConnectorBackend(BaseConnectorBackend):
         Both prepare_* calls run on the same request id, so they agree; uniqueness
         per request is inherited from the (uuid-defaulted) request id.
         """
-        seed = str(request.request_id)
+        seed = str(request.rid)
         digest = hashlib.sha256(seed.encode()).hexdigest()
         return int(digest, 16) & ((1 << _ROOM_BITS) - 1)
 
