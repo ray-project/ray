@@ -52,6 +52,10 @@ BOOTSTRAP_PORT_BASE_KEY = "SGLANG_BOOTSTRAP_PORT_BASE"
 # so both prepare_* calls agree.
 _ROOM_BITS = 62
 
+# Attribute the minted room is cached under when the client sent no ``rid``.
+# Set on the incoming request so both prepare_* calls read the same value.
+_ROOM_ATTR = "_ray_sglang_bootstrap_room"
+
 
 class SGLangConnectorBackend(BaseConnectorBackend):
     """SGLang P/D connector: concurrent handoff, prefill-address-first."""
@@ -62,13 +66,6 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     # Set by setup(); published via replica_metadata().
     _bootstrap_host: Optional[str] = None
     _bootstrap_port: Optional[int] = None
-
-    # Per-instance salt so id(request) recycling across this connector's
-    # lifetime can't produce the same _bootstrap_room seed for two different
-    # requests. Only used as a fallback when the client didn't set rid.
-    # Set in setup() (once per replica, before engine start) -- not as a class
-    # default, which would evaluate once and be shared across all instances.
-    _room_salt: Optional[str] = None
 
     @staticmethod
     def _check_request_model_has_bootstrap_fields() -> None:
@@ -96,7 +93,6 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     def setup(self) -> None:
         """Pick a free bootstrap port + set host to the node IP, before engine start."""
         self._check_request_model_has_bootstrap_fields()
-        self._room_salt = secrets.token_hex(16)
         offset = self._compute_port_offset()
         engine_kwargs = self.llm_config.engine_kwargs
 
@@ -144,22 +140,25 @@ class SGLangConnectorBackend(BaseConnectorBackend):
         return host, port
 
     def _bootstrap_room(self, request: Any) -> int:
-        """Per-request room id, stable across both prepare_* calls on this request.
+        """Per-request room id, shared by both prepare_* calls on this request.
 
         SGLang's ``rid`` is client-optional and defaults to ``None`` -- most
-        OpenAI-compatible clients never set it, so seeding off it collides
-        concurrent requests onto one room. ``prepare_prefill_request`` and
-        ``prepare_decode_request`` both run on the same (unmodified) request
-        object before either copies it, so ``id(request)`` is a valid shared
-        key for that object's lifetime; mixing in a per-process random salt
-        keeps room ids from being predictable or reused across id() recycling.
+        OpenAI-compatible clients never set it, so hashing it would collide
+        every concurrent request onto one room and let the bootstrap server
+        mix KV caches. When ``rid`` is absent we mint a fresh random room and
+        cache it on the request, so the prefill and decode calls agree without
+        depending on object identity or per-backend request state.
         """
-        if request.rid is not None:
-            seed = str(request.rid)
-        else:
-            seed = f"{self._room_salt}:{id(request)}"
-        digest = hashlib.sha256(seed.encode()).hexdigest()
-        return int(digest, 16) & ((1 << _ROOM_BITS) - 1)
+        rid = getattr(request, "rid", None)
+        if rid is not None:
+            digest = hashlib.sha256(str(rid).encode()).hexdigest()
+            return int(digest, 16) & ((1 << _ROOM_BITS) - 1)
+
+        room = getattr(request, _ROOM_ATTR, None)
+        if room is None:
+            room = secrets.randbits(_ROOM_BITS)
+            object.__setattr__(request, _ROOM_ATTR, room)
+        return room
 
     def _stamp(self, request: Any, peer: Optional[Dict[str, Any]]) -> Any:
         host, port = self._peer_address(peer)

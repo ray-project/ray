@@ -57,13 +57,19 @@ for ((i = 0; i < PREFILL_REPLICAS; i++)); do
 done
 
 # --- decode servers: remaining GPUs -----------------------------------------
+# Decode dials the prefill bootstrap address per request and never binds a
+# bootstrap server of its own, but give each replica a distinct port anyway so
+# they never share one value if that ever changes. Offset past the prefill
+# range so the two sides can't overlap.
 for ((i = 0; i < DECODE_REPLICAS; i++)); do
   port=$((BASE_PORT + PREFILL_REPLICAS + i))
+  bootstrap_port=$((BOOTSTRAP_BASE_PORT + PREFILL_REPLICAS + i))
   gpus=$(seq -s, "$gpu_id" $((gpu_id + TP_SIZE - 1)))
   CUDA_VISIBLE_DEVICES="$gpus" python -m sglang.launch_server \
     --model-path "$MODEL" \
     --disaggregation-mode decode \
     --disaggregation-transfer-backend nixl \
+    --disaggregation-bootstrap-port "$bootstrap_port" \
     --tp-size "$TP_SIZE" \
     --mem-fraction-static "$MEM_FRACTION" \
     --host 127.0.0.1 \

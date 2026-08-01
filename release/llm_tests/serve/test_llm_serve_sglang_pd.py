@@ -14,6 +14,7 @@ bootstrap-server class, so a prefill-mode engine cannot start under it.
 import sys
 import concurrent.futures
 from types import SimpleNamespace
+from typing import Optional
 
 import pytest
 from openai import OpenAI
@@ -216,10 +217,9 @@ def _connector() -> SGLangConnectorBackend:
     return SGLangConnectorBackend(cfg)
 
 
-def _req(request_id: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        request_id=request_id, model_copy=lambda deep: SimpleNamespace()
-    )
+def _req(rid: Optional[str] = None) -> SimpleNamespace:
+    """A stand-in request. ``rid`` is None by default, matching real clients."""
+    return SimpleNamespace(rid=rid, model_copy=lambda deep: SimpleNamespace())
 
 
 def test_sglang_pd_flags_on():
@@ -233,17 +233,19 @@ def test_sglang_pd_bootstrap_field_injection():
 
     The bootstrap server runs on the prefill worker; ``peer`` is always the
     prefill replica's metadata, so both sides use that address. Both
-    ``prepare_*`` calls derive the same ``bootstrap_room`` from the request id.
+    ``prepare_*`` calls run on the SAME request object (as in pd_server) and
+    must agree on ``bootstrap_room``.
     """
     backend = _connector()
     peer = {"bootstrap_host": "10.0.0.5", "bootstrap_port": 9201}
+    request = _req()
 
-    prefill_req = backend.prepare_prefill_request(request=_req("r1"), peer=peer)
+    prefill_req = backend.prepare_prefill_request(request=request, peer=peer)
     assert prefill_req.bootstrap_host == "10.0.0.5"
     assert prefill_req.bootstrap_port == 9201
 
     decode_req = backend.prepare_decode_request(
-        request=_req("r1"), peer=peer, prefill_response=None
+        request=request, peer=peer, prefill_response=None
     )
     assert decode_req.bootstrap_host == "10.0.0.5"
     assert decode_req.bootstrap_port == 9201
@@ -251,16 +253,38 @@ def test_sglang_pd_bootstrap_field_injection():
 
 
 def test_sglang_pd_bootstrap_room_uniqueness():
-    """Distinct requests get distinct bootstrap_room values."""
+    """Distinct requests get distinct rooms even when no client sets ``rid``.
+
+    ``rid`` is optional and defaults to None, so this is the common path: if
+    rooms were derived from it, every concurrent request would share one room
+    and the bootstrap server could mix KV caches.
+    """
     backend = _connector()
     peer = {"bootstrap_host": "10.0.0.5", "bootstrap_port": 9201}
     rooms = {
-        backend.prepare_prefill_request(
-            request=_req(f"req-{i}"), peer=peer
-        ).bootstrap_room
-        for i in range(1000)
+        backend.prepare_prefill_request(request=_req(), peer=peer).bootstrap_room
+        for _ in range(1000)
     }
     assert len(rooms) == 1000, "bootstrap_room values are not unique"
+
+
+def test_sglang_pd_bootstrap_room_honors_client_rid():
+    """A client-supplied ``rid`` still drives the room, and stays stable."""
+    backend = _connector()
+    peer = {"bootstrap_host": "10.0.0.5", "bootstrap_port": 9201}
+
+    room_a = backend.prepare_prefill_request(
+        request=_req("r1"), peer=peer
+    ).bootstrap_room
+    room_b = backend.prepare_prefill_request(
+        request=_req("r1"), peer=peer
+    ).bootstrap_room
+    room_c = backend.prepare_prefill_request(
+        request=_req("r2"), peer=peer
+    ).bootstrap_room
+
+    assert room_a == room_b
+    assert room_a != room_c
 
 
 def test_sglang_pd_replica_metadata_publishes_address():
