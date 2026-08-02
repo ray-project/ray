@@ -21,6 +21,7 @@ from typing import (
     Iterable,
     Optional,
     Tuple,
+    Type,
 )
 
 from ray.data.util.torch_inference import TorchInference
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data.block import CallableClass, DataBatch
+    from ray.data.collate_fn import TensorBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ def is_torch_inference_instance(fn: Any) -> bool:
 
 
 def validate_torch_inference_op(
-    cls: type,
+    cls: Type[TorchInference],
     fn_args: Optional[Iterable[Any]],
     fn_kwargs: Optional[Dict[str, Any]],
     compute: "ComputeStrategy",
@@ -94,7 +96,7 @@ def validate_torch_inference_op(
                 "`TorchInference` methods are called synchronously."
             )
 
-    if "__call__" in vars(cls):
+    if "__call__" in cls.__dict__:
         logger.warning(
             f"`TorchInference` subclass `{cls.__name__}` defines "
             "`__call__`, but it will not be used directly: batches flow "
@@ -123,7 +125,7 @@ def split_batch_and_other(ret: Any) -> "Tuple[Any, Any]":
     return ret, None
 
 
-def _resolve_cuda_device(user: Any, user_cls: type) -> "torch.device":
+def _resolve_cuda_device(user: TorchInference) -> "torch.device":
     """Resolve and validate ``user.get_device()`` into a concrete CUDA device."""
     import torch
 
@@ -132,7 +134,7 @@ def _resolve_cuda_device(user: Any, user_cls: type) -> "torch.device":
     device = torch.device(user.get_device())
     if device.type != "cuda":
         raise ValueError(
-            f"`{user_cls.__name__}.get_device()` must return a CUDA device; "
+            f"`{type(user).__name__}.get_device()` must return a CUDA device; "
             f"got `{device}`. The `TorchInference` flow is GPU-only."
         )
     if torch.cuda.is_available() and device.index is None:
@@ -142,11 +144,22 @@ def _resolve_cuda_device(user: Any, user_cls: type) -> "torch.device":
     return device
 
 
-def validate_collated_batch(collated: Any, user_cls: type) -> None:
+def _validate_no_tensors_off_device(
+    batch: "TensorBatchType", device: "torch.device", requirement: str
+) -> None:
+    """Raise if any tensor in ``batch`` is not on ``device``; ``requirement``
+    is the caller's message prefix (what must hold, and why)."""
+    from ray.data._internal.utils.torch_utils import find_tensor_off_device
+
+    off_device = find_tensor_off_device(batch, device)
+    if off_device is not None:
+        raise ValueError(f"{requirement}; found a tensor on `{off_device.device}`.")
+
+
+def validate_collated_batch(collated: Any, user_cls: Type[TorchInference]) -> None:
     """Validate the ``collate`` output: a ``TensorBatchType`` of CPU tensors."""
     import torch
 
-    from ray.data._internal.utils.torch_utils import find_tensor_off_device
     from ray.data.collate_fn import is_tensor_batch_type
 
     if not is_tensor_batch_type(collated):
@@ -156,19 +169,19 @@ def validate_collated_batch(collated: Any, user_cls: type) -> None:
             f"tensors), or a `(TensorBatchType, other)` tuple; got "
             f"{type(collated)}."
         )
-    off_cpu = find_tensor_off_device(collated, torch.device("cpu"))
-    if off_cpu is not None:
-        raise ValueError(
-            f"`{user_cls.__name__}.collate` must return CPU tensors (Ray "
-            "manages the transfer to the device); found a tensor on "
-            f"`{off_cpu.device}`."
-        )
+    _validate_no_tensors_off_device(
+        collated,
+        torch.device("cpu"),
+        f"`{user_cls.__name__}.collate` must return CPU tensors (Ray "
+        "manages the transfer to the device)",
+    )
 
 
-def validate_processed_batch(out: Any, device: "torch.device", user_cls: type) -> None:
+def validate_processed_batch(
+    out: Any, device: "torch.device", user_cls: Type[TorchInference]
+) -> None:
     """Validate the ``process_on_device`` output: a ``TensorBatchType`` on
     ``device``."""
-    from ray.data._internal.utils.torch_utils import find_tensor_off_device
     from ray.data.collate_fn import is_tensor_batch_type
 
     if not is_tensor_batch_type(out):
@@ -177,16 +190,15 @@ def validate_processed_batch(out: Any, device: "torch.device", user_cls: type) -
             "`TensorBatchType`, or a `(TensorBatchType, other)` tuple; got "
             f"{type(out)}."
         )
-    off_device = find_tensor_off_device(out, device)
-    if off_device is not None:
-        raise ValueError(
-            f"`{user_cls.__name__}.process_on_device` must return tensors on "
-            f"`{device}` (Ray manages the transfer back to the host); found "
-            f"a tensor on `{off_device.device}`."
-        )
+    _validate_no_tensors_off_device(
+        out,
+        device,
+        f"`{user_cls.__name__}.process_on_device` must return tensors on "
+        f"`{device}` (Ray manages the transfer back to the host)",
+    )
 
 
-def make_torch_inference_callable(user_cls: "CallableClass") -> "CallableClass":
+def make_torch_inference_callable(user_cls: Type[TorchInference]) -> "CallableClass":
     """Wrap a ``TorchInference`` subclass in a managed callable class.
 
     Per batch, the wrapper's ``__call__`` runs the flow serially: ``collate``
@@ -205,7 +217,7 @@ def make_torch_inference_callable(user_cls: "CallableClass") -> "CallableClass":
             self._ti_user: TorchInference = user_cls(*args, **kwargs)
             assert isinstance(self._ti_user, TorchInference)
 
-            self._ti_device = _resolve_cuda_device(self._ti_user, user_cls)
+            self._ti_device = _resolve_cuda_device(self._ti_user)
 
         def __repr__(self) -> str:
             return repr(self._ti_user)
