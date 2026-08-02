@@ -37,6 +37,11 @@ PREFILL_URLS=()
 DECODE_URLS=()
 
 # --- prefill servers: low GPUs, matching launch_ray_pd.py's layout -----------
+# Staggered: launching N processes at once can spike past the container's
+# cgroup PID/thread limit for a moment (each SGLang process spins up its own
+# tokenizer thread pool, scheduler, detokenizer), crashing whichever process
+# happens to hit the ceiling. A few seconds between launches avoids the spike.
+LAUNCH_STAGGER_S="${LAUNCH_STAGGER_S:-5}"
 for ((i = 0; i < PREFILL_REPLICAS; i++)); do
   port=$((BASE_PORT + i))
   bootstrap_port=$((BOOTSTRAP_BASE_PORT + i))
@@ -54,6 +59,7 @@ for ((i = 0; i < PREFILL_REPLICAS; i++)); do
   PIDS+=($!)
   PREFILL_URLS+=("http://127.0.0.1:$port")
   gpu_id=$((gpu_id + TP_SIZE))
+  sleep "$LAUNCH_STAGGER_S"
 done
 
 # --- decode servers: remaining GPUs -----------------------------------------
@@ -78,6 +84,7 @@ for ((i = 0; i < DECODE_REPLICAS; i++)); do
   PIDS+=($!)
   DECODE_URLS+=("http://127.0.0.1:$port")
   gpu_id=$((gpu_id + TP_SIZE))
+  sleep "$LAUNCH_STAGGER_S"
 done
 
 # --- wait for every worker to answer /health before starting the router ------
