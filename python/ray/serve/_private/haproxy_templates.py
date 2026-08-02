@@ -140,6 +140,13 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router %}
+    # Direct-streaming requests first pass through the ingress request router,
+    # then are forwarded to a selected replica. Generate a request ID here when
+    # the client did not provide one so both hops use the same lifecycle ID.
+    unique-id-format %[uuid]
+    http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
+    {%- endif %}
     {%- if config.metrics_enabled %}
     log global
     # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
