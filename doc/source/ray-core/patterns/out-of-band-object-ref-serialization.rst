@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: serializing an ObjectRef out of band escapes reference counting and can let its value be reclaimed early.
+
 .. _ray-out-of-band-object-ref-serialization:
 
 Anti-pattern: Serialize ray.ObjectRef out of band

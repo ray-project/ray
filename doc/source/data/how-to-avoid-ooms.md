@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Avoid Ray Data out-of-memory errors: recognize Ray and kernel OOM kills, tune batch size, and configure memory for reads and high-memory UDFs."
+---
+
 # How to avoid out-of-memory errors (OOMs)
 
 Out-of-memory errors (OOMs) are one of the most common issues Ray Data users encounter.
