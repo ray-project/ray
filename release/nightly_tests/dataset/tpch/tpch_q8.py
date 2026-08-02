@@ -6,6 +6,11 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # Join partition counts below were tuned empirically at sf100; scale
+        # them with the scale factor so per-partition size stays roughly
+        # constant (a fixed count means ~10x larger partitions at sf1000,
+        # producing reduce tasks too large for a single node).
+        join_num_partitions = max(16, int(args.sf) * 16 // 100)
         from datetime import datetime
 
         # Q8: National Market Share Query
@@ -73,7 +78,7 @@ def main(args):
         # Join region with nation
         nation_region = region_filtered.join(
             nation,
-            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -82,7 +87,7 @@ def main(args):
         # Join customer with nation in the region.
         customer_nation = nation_region.join(
             customer,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("n_nationkey",),
             right_on=("c_nationkey",),
@@ -98,7 +103,7 @@ def main(args):
         )
         orders_customer = orders_filtered.join(
             customer_nation,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -107,7 +112,7 @@ def main(args):
         # Join lineitem with orders
         lineitem_orders = lineitem.join(
             orders_customer,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -125,7 +130,7 @@ def main(args):
         # Join with part
         lineitem_part = lineitem_orders.join(
             part_filtered,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
@@ -134,7 +139,7 @@ def main(args):
         # Keep supplier->nation on the main path.
         lineitem_supplier = lineitem_part.join(
             supplier,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
@@ -144,7 +149,7 @@ def main(args):
 
         ds = lineitem_supplier.join(
             nation,
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),

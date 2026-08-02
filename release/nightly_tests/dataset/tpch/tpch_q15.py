@@ -6,6 +6,11 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # Join partition counts below were tuned empirically at sf100; scale
+        # them with the scale factor so per-partition size stays roughly
+        # constant (a fixed count means ~10x larger partitions at sf1000,
+        # producing reduce tasks too large for a single node).
+        join_num_partitions = max(16, int(args.sf) * 16 // 100)
         from datetime import datetime
 
         # Q15: Top Supplier Query
@@ -66,7 +71,7 @@ def main(args):
             supplier.join(
                 top,
                 join_type="inner",
-                num_partitions=16,
+                num_partitions=join_num_partitions,
                 on=("s_suppkey",),
                 right_on=("l_suppkey",),
             )

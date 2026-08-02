@@ -6,6 +6,11 @@ from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # Join partition counts below were tuned empirically at sf100; scale
+        # them with the scale factor so per-partition size stays roughly
+        # constant (a fixed count means ~10x larger partitions at sf1000,
+        # producing reduce tasks too large for a single node).
+        join_num_partitions = max(128, int(args.sf) * 128 // 100)
         # Q13: Customer Distribution Query
         # Find the distribution of customers by number of orders,
         # excluding orders with comments matching '%[WORD1]%[WORD2]%'
@@ -43,7 +48,7 @@ def main(args):
         joined = customers.join(
             orders,
             join_type="left_outer",
-            num_partitions=128,
+            num_partitions=join_num_partitions,
             on=("c_custkey",),
             right_on=("o_custkey",),
         )
