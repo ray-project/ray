@@ -42,20 +42,38 @@ def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
         }
     )
 
-    _pin_block_hash_seed(llm_config)
+    _configure_runtime_env_for_kv_routing(llm_config)
 
 
-def _pin_block_hash_seed(llm_config: LLMConfig) -> None:
-    """Make engine block hashes content-deterministic across replicas.
+def enable_native_kv_offload_events(vllm_config: Any) -> None:
+    """Make vLLM's native CPU-offload events usable by the KV router."""
+    cache_config = vllm_config.cache_config
+    if (
+        cache_config.kv_offloading_size is None
+        or cache_config.kv_offloading_backend != "native"
+    ):
+        return
+
+    vllm_config.kv_transfer_config.kv_connector_extra_config[
+        "self_describing_kv_events"
+    ] = True
+
+
+def _configure_runtime_env_for_kv_routing(llm_config: LLMConfig) -> None:
+    """Configure vLLM process-wide settings required by KV-aware routing.
 
     The KV router's global indexer chains and dedups blocks by the engines'
     block hashes, so identical content must hash identically on every
     replica. vLLM salts its block-hash chain root per process unless
     ``PYTHONHASHSEED`` is set, so pin it deployment-wide.
+
+    Native offloading must use ``OffloadingConnector`` because it emits the
+    self-describing CPU-tier events consumed by the KV router.
     """
     runtime_env = dict(llm_config.runtime_env or {})
     env_vars = dict(runtime_env.get("env_vars") or {})
     env_vars.setdefault("PYTHONHASHSEED", "0")
+    env_vars["VLLM_USE_SIMPLE_KV_OFFLOAD"] = "0"
     runtime_env["env_vars"] = env_vars
     llm_config.runtime_env = runtime_env
 
