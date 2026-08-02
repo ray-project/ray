@@ -83,11 +83,27 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
 
     EOF = ""
 
-    with open(path, "r") as f:
+    # Pin the encoding explicitly (rather than relying on the platform
+    # default) so our own byte-count tracking below, computed via
+    # line.encode(file_encoding), always matches what was actually
+    # decoded from disk.
+    file_encoding = "utf-8"
+
+    with open(path, "r", encoding=file_encoding) as f:
         lines = []
 
         chunk_char_count = 0
         curr_line = None
+        # Tracks bytes consumed so far, computed from the actual decoded
+        # line content rather than f.tell(). TextIOWrapper.tell() returns
+        # an opaque, implementation-defined cookie per Python's own
+        # documentation, not a byte offset, so it cannot be safely
+        # compared against os.path.getsize() (a real byte count). This
+        # was flagged correctly by review as a real bug in an earlier
+        # version of this fix, which compared f.tell() directly against
+        # file size and could misfire, especially with multi-byte
+        # characters or non-Unix newline translation.
+        bytes_read = 0
         last_seen_size = 0
 
         while True:
@@ -129,8 +145,9 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
             # same problem.
             try:
                 current_size = os.path.getsize(path)
-                if current_size < max(f.tell(), last_seen_size):
+                if current_size < max(bytes_read, last_seen_size):
                     f.seek(0)
+                    bytes_read = 0
                     last_seen_size = 0
                 else:
                     last_seen_size = max(last_seen_size, current_size)
@@ -150,7 +167,8 @@ async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
                 # Add line to current chunk
                 lines.append(curr_line)
                 chunk_char_count += len(curr_line)
-                last_seen_size = max(last_seen_size, f.tell())
+                bytes_read += len(curr_line.encode(file_encoding))
+                last_seen_size = max(last_seen_size, bytes_read)
             else:
                 # If EOF is reached sleep for 1s before continuing
                 await asyncio.sleep(1)
