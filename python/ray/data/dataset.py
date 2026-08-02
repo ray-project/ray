@@ -473,7 +473,7 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature. This argument is deprecated and will be removed
-                after January 2027.
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -754,7 +754,7 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature. This argument is deprecated and will be removed
-                after January 2027.
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1531,7 +1531,7 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature. This argument is deprecated and will be
-                removed after January 2027.
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1667,7 +1667,7 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature. This argument is deprecated and will be
-                removed after January 2027.
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
