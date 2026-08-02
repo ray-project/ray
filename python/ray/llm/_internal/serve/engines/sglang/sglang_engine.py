@@ -13,6 +13,7 @@ import json
 import signal
 import time
 import uuid
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncGenerator,
@@ -397,6 +398,65 @@ class SGLangServer:
         # directly as server_cls and never calls this; PD wraps it in LLMServer,
         # whose record_routing_stats polls this every replica, so it must exist.
         return {}
+
+    async def build_asgi_app(self) -> Any:
+        """Build an ASGI app serving directly from this engine's tokenizer manager.
+
+        SGLang has no per-instance app factory like vLLM's build_app/
+        init_app_state — its OpenAI routes live on a single module-level
+        FastAPI app (sglang.srt.entrypoints.http_server.app) that reads its
+        serving handlers off ``request.app.state`` at request time. Importing
+        that module registers all its routes once; we then populate
+        app.state / the module's _global_state from this engine's already-
+        running TokenizerManager instead of going through that module's
+        lifespan(), which assumes it owns process startup (multi-tokenizer
+        shm handoff, gRPC server, warmup thread) that doesn't apply here.
+        """
+        from sglang.srt.entrypoints import http_server as sglang_http_server
+        from sglang.srt.parser.template_manager import TemplateManager
+
+        # Reuse http_server's own reference rather than guessing its import
+        # path — that module already imports this class for its lifespan().
+        OpenAIServingCompletion = sglang_http_server.OpenAIServingCompletion
+
+        tokenizer_manager = self.engine.tokenizer_manager
+        server_args = tokenizer_manager.server_args
+
+        template_manager = TemplateManager()
+        template_manager.initialize_templates(
+            tokenizer_manager=tokenizer_manager,
+            model_path=server_args.model_path,
+            chat_template=server_args.chat_template,
+            completion_template=server_args.completion_template,
+        )
+
+        sglang_http_server.set_global_state(
+            sglang_http_server._GlobalState(
+                tokenizer_manager=tokenizer_manager,
+                template_manager=template_manager,
+                scheduler_info={},
+            )
+        )
+
+        app = sglang_http_server.app
+        app.state.openai_serving_completion = OpenAIServingCompletion(
+            tokenizer_manager, template_manager
+        )
+        app.state.openai_serving_chat = tokenizer_manager.serving_chat_class(
+            tokenizer_manager, template_manager
+        )
+
+        # This engine already started (see __init__); skip the module's
+        # lifespan(), which re-initializes a tokenizer manager from shared
+        # memory and starts a warmup thread meant for the standalone server
+        # process, neither of which apply to an in-process Ray actor.
+        @asynccontextmanager
+        async def _noop_lifespan(_app):
+            yield
+
+        app.router.lifespan_context = _noop_lifespan
+
+        return app
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
