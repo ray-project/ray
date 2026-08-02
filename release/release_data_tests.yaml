@@ -299,7 +299,7 @@
     script: >
       RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES={{batch_bytes}}
       python groupby_benchmark.py --sf {{sf}} --aggregate --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
 
 
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}{{batch}}_{{columns}}"
@@ -416,7 +416,7 @@
     script: >
       RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES={{batch_bytes}}
       python groupby_benchmark.py --sf {{sf}} --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
 
 ###############
 # Join tests
