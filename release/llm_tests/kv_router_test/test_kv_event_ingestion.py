@@ -42,7 +42,9 @@ class _TestKVTokenTracker(KVTokenTracker):
         """(Test only) Worker ids the selection service can currently schedule."""
         if self._svc is None:
             return []
-        workers = self._svc.list_workers(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        workers = self._svc.list_workers(
+            model_name=_MODEL_NAME, routing_group=_TENANT_ID
+        )
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
@@ -87,7 +89,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         """(Test only) Current per-worker active load."""
         if self._svc is None:
             return {}
-        model_loads = self._svc.loads(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        model_loads = self._svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID)
         if not model_loads:
             return {}
         return {load["worker_id"]: load for load in model_loads[0]["loads"]}
@@ -238,11 +240,6 @@ async def book_uncached_load(tracker, worker_id, count, base):
         selection = await tracker.select_worker(reservation_id, token_ids, [worker_id])
         assert selection["worker_id"] == worker_id
         assert selection["effective_prefill_tokens"] == len(token_ids)
-        await tracker.on_request_added(
-            reservation_id,
-            worker_id,
-            token_ids,
-        )
         reservation_ids.append(reservation_id)
     return reservation_ids
 
@@ -256,14 +253,10 @@ async def book_decode_load(
     expected_output_tokens=None,
 ):
     """Book a request, move it to decode, and add output blocks."""
-    selection = await tracker.select_worker(reservation_id, token_ids, [worker_id])
-    assert selection["worker_id"] == worker_id
-    await tracker.on_request_added(
-        reservation_id,
-        worker_id,
-        list(token_ids),
-        expected_output_tokens=expected_output_tokens,
+    selection = await tracker.select_worker(
+        reservation_id, token_ids, [worker_id], expected_output_tokens
     )
+    assert selection["worker_id"] == worker_id
     await tracker.on_prefill_complete(reservation_id)
     await tracker.on_decode_progress(reservation_id, output_tokens)
     return reservation_id

@@ -14,6 +14,8 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
     enable_native_kv_offload_events,
     get_kv_event_routing_stats,
+    get_prompt_token_routing_stats,
+    get_token_channel_endpoints,
     resolve_kv_event_source_endpoint,
 )
 from ray.serve.llm.request_router import KVAwareRouter
@@ -176,6 +178,24 @@ class TestConfigureKvEvents:
             )
             == {}
         )
+
+    def test_prompt_token_endpoint_offsets_by_replica_rank(self, ray_instance):
+        """The token channel gets its own per-replica ZMQ port."""
+        llm_config = make_kv_aware_llm_config(
+            experimental_configs={"KV_TOKEN_PORT_BASE": 7700}
+        )
+        replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=3))
+        with mock.patch("ray.serve.get_replica_context", return_value=replica_context):
+            endpoints = get_token_channel_endpoints(llm_config)
+
+        node_ip = ray.util.get_node_ip_address()
+        assert endpoints == ("tcp://*:7703", f"tcp://{node_ip}:7703")
+
+    def test_prompt_token_routing_stats_advertise_endpoint(self):
+        assert get_prompt_token_routing_stats("tcp://10.0.0.1:7557") == {
+            "kv_token_metadata": {"endpoint": "tcp://10.0.0.1:7557"}
+        }
+        assert get_prompt_token_routing_stats(None) == {}
 
 
 if __name__ == "__main__":
