@@ -106,6 +106,7 @@ class GroupedData:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
+        label_selector: Optional[Dict[str, str]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -193,6 +194,8 @@ class GroupedData:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            label_selector: The label selector requirements for each node that runs a
+                parallel map worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor or task, and will be called each time prior
@@ -303,6 +306,7 @@ class GroupedData:
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
+            label_selector=label_selector,
             concurrency=concurrency,
             udf_modifying_row_count=True,
             ray_remote_args_fn=ray_remote_args_fn,
