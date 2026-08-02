@@ -104,6 +104,21 @@ class LLMRouter(_LLMRouter):
         await super().__init__(*args, **kwargs)
         self._event_log = []
         self._errors = []
+        self._token_pushes = []
+
+    def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
+        key = super()._push_prompt_tokens(
+            token_endpoint=token_endpoint,
+            replica_id=replica_id,
+            request_token_ids=request_token_ids,
+        )
+        self._token_pushes.append(
+            dict(
+                endpoint=token_endpoint,
+                sent=key is not None,
+            )
+        )
+        return key
 
     async def on_lifecycle_events(self, events):
         """Record events, then apply each hook to the tracker directly so a
@@ -129,6 +144,15 @@ class LLMRouter(_LLMRouter):
     def get_errors(self):
         """(Test only) (hook, repr(exc)) for each hook that raised while booking."""
         return self._errors
+
+    def reset_token_pushes(self):
+        self._token_pushes.clear()
+
+    def get_token_push_report(self):
+        return dict(
+            node_ip=ray.util.get_node_ip_address(),
+            pushes=list(self._token_pushes),
+        )
 
     def get_kv_event_worker_replicas(self):
         """(Test only) Registered Dynamo worker id -> replica full id mapping."""
