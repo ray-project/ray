@@ -574,6 +574,31 @@ def test_fuse_map_into_shuffle_reduce(
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 
+def test_fused_shuffle_reduce_preserves_operator_config(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Fusing a map into ShuffleReduceOp must carry over operator-level config.
+
+    Regression test: the fusion rule rebuilds the reduce op, and used to drop
+    peak_memory_multiplier (resetting the join reduce's 3x memory request back
+    to the 2x default) and should_emit_empty_partitions.
+    """
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+
+    left = ray.data.range(10)
+    right = ray.data.range(10)
+    ds = left.join(right, "inner", num_partitions=2, on=("id",)).map_batches(
+        lambda b: b
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name.startswith("JoinShuffleReduce")
+    assert "->MapBatches" in dag.name
+    assert dag._fused_output_map_transformer is not None
+    assert dag._peak_memory_multiplier == 3
+
+
 def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
