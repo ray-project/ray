@@ -308,6 +308,17 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   int64_t GetCurrentSpilledBytes() { return manager.spilled_bytes_current_; }
 
+  void SetRestoredStats(int64_t restored_bytes, int64_t restored_objects) {
+    manager.restored_bytes_total_ = restored_bytes;
+    manager.restored_objects_total_ = restored_objects;
+  }
+
+  double GetSpillManagerObjectsBytesMetric(const std::string &state) {
+    auto tag_to_value = fake_spill_manager_objects_bytes_gauge_.GetTagToValue();
+    absl::flat_hash_map<std::string, std::string> tags{{"State", state}};
+    return tag_to_value.at(tags);
+  }
+
   size_t GetCurrentSpilledCount() { return manager.spilled_objects_url_.size(); }
 
   void AssertNoLeaks() {
@@ -490,6 +501,14 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   worker_pool.io_worker_client->ReplyRestoreObjects(10);
   // The restore should've been invoked.
   ASSERT_EQ(num_times_fired, 1);
+}
+
+TEST_F(LocalObjectManagerTest, TestRecordMetricsRestoredObjectsBytes) {
+  SetRestoredStats(10, 1);
+
+  manager.RecordMetrics();
+
+  EXPECT_DOUBLE_EQ(GetSpillManagerObjectsBytesMetric("Restored"), 10);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {

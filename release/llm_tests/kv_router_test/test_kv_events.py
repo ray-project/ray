@@ -13,7 +13,12 @@ from ray.serve.config import RequestRouterConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
-from utils import _TestKVAwareRouter, patch_ingress
+from utils import (
+    _TestKVAwareRouter,
+    build_kv_app,
+    discover_replica_endpoints,
+    patch_ingress,
+)
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -43,6 +48,16 @@ MESSAGES = [
 ]
 FLUSH_MESSAGES = [
     {"role": "user", "content": _SHARED_PREFIX + " beside the tall fence."}
+]
+OFFLOAD_MESSAGES = [
+    {
+        "role": "user",
+        "content": (
+            "Remember this native KV offload target exactly. "
+            + ("alpha beta gamma delta epsilon zeta eta theta iota kappa " "lambda mu ")
+            * 20
+        ),
+    }
 ]
 
 
@@ -141,27 +156,10 @@ class TestKvEvents:
         # Swap the ingress for the introspection LLMRouter so the embedded
         # tracker's state is reachable over the deployment handle.
         with patch_ingress():
-            app = build_openai_app({"llm_configs": [llm_config]})
+            app = build_kv_app(llm_config)
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
-
-    async def _discover_replicas(self, handle):
-        """Map each replica's full id to its backend HTTP endpoint."""
-        endpoints = {}
-        for _ in range(100):
-            async with handle.choose_replica() as selection:
-                replica = selection._replica
-                if replica.backend_http_endpoint is not None:
-                    replica_id = replica.replica_id.to_full_id_str()
-                    endpoints[replica_id] = replica.backend_http_endpoint
-            if len(endpoints) == NUM_REPLICAS:
-                return endpoints
-            await asyncio.sleep(0.5)
-        raise AssertionError(
-            f"Expected {NUM_REPLICAS} replicas with backend endpoints, "
-            f"found {len(endpoints)}."
-        )
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)
@@ -172,7 +170,9 @@ class TestKvEvents:
         worker."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
 
-        replica_endpoints = await self._discover_replicas(deployed_handle)
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
 
         # Each replica advertises its KV-events endpoint via record_routing_stats;
         # the controller propagates it on the LongPoll replica snapshot and the
@@ -258,7 +258,9 @@ class TestKvEvents:
         """Ensure chat template is applied: a chat request scores the same overlap as
         the prompt rendered with the model's chat template and tokenized as raw text."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
-        replica_endpoints = await self._discover_replicas(deployed_handle)
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
 
         async def all_registered():
             registered = await router.get_kv_event_worker_replicas.remote()
@@ -294,6 +296,145 @@ class TestKvEvents:
         chat_overlaps = await router.get_kv_overlap_blocks.remote(chat_token_ids)
         assert chat_overlaps.get(worker_id) == prompt_blocks
         assert chat_token_ids == manual_token_ids
+
+
+class TestKvOffload:
+    """End-to-end native vLLM CPU offload with tier-aware routing."""
+
+    @pytest.fixture(scope="class")
+    def deployed_handle(self):
+        if not ray.is_initialized():
+            ray.init(address="auto")
+        serve.shutdown()
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id=MODEL_ID,
+                model_source=MODEL_SOURCE,
+            ),
+            deployment_config=dict(
+                autoscaling_config=dict(
+                    min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
+                ),
+                request_router_config=RequestRouterConfig(
+                    request_router_class=KVAwareRouter
+                ),
+            ),
+            engine_kwargs=dict(
+                enable_prefix_caching=True,
+                enable_prompt_tokens_details=True,
+                enable_force_include_usage=True,
+                enforce_eager=True,
+                gpu_memory_utilization=0.4,
+                kv_offloading_backend="native",
+                kv_offloading_size=1.0,
+                max_model_len=512,
+                num_gpu_blocks_override=32,
+            ),
+            experimental_configs={"KV_EVENTS_PORT_BASE": 21700},
+            runtime_env=dict(
+                env_vars={
+                    "RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
+                    "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+                }
+            ),
+            log_engine_metrics=False,
+        )
+        with patch_ingress():
+            app = build_kv_app(llm_config)
+            handle = serve.run(app, name="kv_offload_gpu_test")
+        yield handle
+        serve.shutdown()
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(600)
+    async def test_offload_routes_to_cpu_prefix_and_reloads(self, deployed_handle):
+        """A GPU-evicted CPU prefix stays routable and reloads on its replica."""
+        router = serve.get_deployment_handle(
+            "LLMRouter", app_name="kv_offload_gpu_test"
+        )
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
+
+        async def all_registered():
+            registered = await router.get_kv_event_worker_replicas.remote()
+            return sorted(registered.values()) == sorted(replica_endpoints)
+
+        await async_wait_for_condition(all_registered, timeout=90)
+        replica_by_worker = await router.get_kv_event_worker_replicas.remote()
+        endpoints = {
+            worker_id: replica_endpoints[replica_id]
+            for worker_id, replica_id in replica_by_worker.items()
+        }
+        cached_worker, miss_worker = sorted(endpoints)
+        target_tokens = tokenize_prompt(endpoints[cached_worker], OFFLOAD_MESSAGES)
+        target_blocks = num_prompt_blocks(target_tokens)
+        assert 4 < target_blocks < 32
+
+        post_chat(endpoints[cached_worker], OFFLOAD_MESSAGES, max_tokens=2)
+
+        async def target_is_on_gpu():
+            scores = await router.get_kv_overlap_scores.remote(target_tokens)
+            return scores.get(cached_worker, {}).get("device_blocks") == target_blocks
+
+        await async_wait_for_condition(target_is_on_gpu, timeout=60)
+
+        # Each unique prompt displaces old GPU blocks. Native offload retains
+        # the target in CPU memory and emits CPU-tier events as that happens.
+        async def target_is_only_on_cpu():
+            scores = await router.get_kv_overlap_scores.remote(target_tokens)
+            cached_score = scores.get(cached_worker, {})
+            return (
+                cached_score.get("device_blocks") == 0
+                and cached_score.get("host_pinned_blocks", 0) > 0
+            )
+
+        offloaded = False
+        for i in range(12):
+            filler = [
+                {
+                    "role": "user",
+                    "content": (
+                        f"Unique GPU eviction sequence {i}. " + f"filler-{i} " * 60
+                    ),
+                }
+            ]
+            post_chat(endpoints[cached_worker], filler, max_tokens=1)
+            for _ in range(10):
+                if await target_is_only_on_cpu():
+                    offloaded = True
+                    break
+                await asyncio.sleep(0.5)
+            if offloaded:
+                break
+        if not offloaded:
+            raise AssertionError("Target prefix was not offloaded from GPU to CPU.")
+
+        scores = await router.get_kv_overlap_scores.remote(target_tokens)
+        cached_score = scores[cached_worker]
+        miss_score = scores[miss_worker]
+        assert cached_score["host_pinned_extension_blocks"] > 0
+        assert (
+            0
+            < cached_score["router_credit_blocks"]
+            < cached_score["host_pinned_blocks"]
+        )
+        assert miss_score["device_blocks"] == 0
+        assert miss_score["host_pinned_blocks"] == 0
+
+        # Exercise the production HAProxy -> LLMRouter -> KVAwareRouter path.
+        # The response can only report a cache hit if it reached the replica
+        # whose target prefix is still available in CPU memory.
+        response = post_chat(("127.0.0.1", 8000), OFFLOAD_MESSAGES, max_tokens=2)
+        assert response["usage"]["prompt_tokens_details"]["cached_tokens"] > 0
+
+        # The request was served from CPU and the loaded blocks are visible on
+        # GPU again on that replica, while the uncached replica remains empty.
+        await async_wait_for_condition(target_is_on_gpu, timeout=60)
+        scores = await router.get_kv_overlap_scores.remote(target_tokens)
+        assert scores[miss_worker]["device_blocks"] == 0
+        assert scores[miss_worker]["host_pinned_blocks"] == 0
 
 
 class TestKvScoring:
@@ -335,7 +476,7 @@ class TestKvScoring:
             ),
             log_engine_metrics=False,
         )
-        app = build_openai_app({"llm_configs": [llm_config]})
+        app = build_kv_app(llm_config)
         handle = serve.run(app, name="kv_scoring_gpu_test")
         yield handle
         serve.shutdown()

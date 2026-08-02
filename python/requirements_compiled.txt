@@ -104,7 +104,7 @@ anyio==4.13.0
     #   watchfiles
 applicationinsights==0.11.10
     # via azure-cli-telemetry
-argcomplete==3.3.0
+argcomplete==3.5.3
     # via
     #   azure-cli-core
     #   gsutil
@@ -163,7 +163,7 @@ aws-xray-sdk==2.15.0
     # via moto
 ax-platform==1.2.1
     # via -r python/requirements/ml/tune-requirements.txt
-azure-cli-core==2.62.0
+azure-cli-core==2.77.0
     # via -r python/requirements/test-requirements.txt
 azure-cli-telemetry==1.1.0
     # via azure-cli-core
@@ -173,9 +173,10 @@ azure-common==1.1.28
     #   azure-mgmt-network
     #   azure-mgmt-resource
     #   smart-open
-azure-core==1.39.0
+azure-core==1.35.1
     # via
     #   adlfs
+    #   azure-cli-core
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
@@ -183,12 +184,12 @@ azure-core==1.39.0
     #   smart-open
 azure-datalake-store==0.0.53
     # via adlfs
-azure-identity==1.17.1
+azure-identity==1.23.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adlfs
-azure-mgmt-compute==31.0.0
+azure-mgmt-compute==35.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.6.0
     # via
@@ -196,9 +197,9 @@ azure-mgmt-core==1.6.0
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
-azure-mgmt-network==25.4.0
+azure-mgmt-network==29.0.0
     # via -r python/requirements/test-requirements.txt
-azure-mgmt-resource==23.1.1
+azure-mgmt-resource==24.0.0
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.28.0
     # via
@@ -218,8 +219,6 @@ bayesian-optimization==1.4.0
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   nevergrad
-bcrypt==5.0.0
-    # via paramiko
 beautifulsoup4==4.11.1
     # via
     #   -r python/requirements/test-requirements.txt
@@ -299,7 +298,6 @@ cffi==1.17.1
     #   cryptography
     #   moocore
     #   pymunk
-    #   pynacl
     #   soundfile
 cfgv==3.5.0
     # via pre-commit
@@ -411,7 +409,6 @@ cryptography==44.0.3
     #   mlflow
     #   moto
     #   msal
-    #   paramiko
     #   pyjwt
     #   pyopenssl
     #   snowflake-connector-python
@@ -1101,6 +1098,8 @@ memray==1.19.3 ; platform_system != "Windows" and sys_platform != "darwin" and p
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
+microsoft-security-utilities-secret-masker==1.0.0b4
+    # via azure-cli-core
 minigrid==2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mistune==3.2.0
@@ -1148,13 +1147,13 @@ mpmath==1.3.0
     # via
     #   gpytorch
     #   sympy
-msal==1.28.1
+msal==1.34.0b1
     # via
     #   azure-cli-core
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0b1
+msal-extensions==1.2.0
     # via
     #   azure-cli-core
     #   azure-identity
@@ -1171,10 +1170,8 @@ msgpack-numpy==0.4.8
     # via -r python/requirements/ml/rllib-requirements.txt
 msrest==0.7.1
     # via msrestazure
-msrestazure==0.6.4
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   azure-cli-core
+msrestazure==0.6.4.post1
+    # via -r python/requirements/test-requirements.txt
 mujoco==3.2.4
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
@@ -1547,8 +1544,6 @@ pandas==2.3.3
     #   utilsforecast
 pandocfilters==1.5.1
     # via nbconvert
-paramiko==3.5.1
-    # via azure-cli-core
 parso==0.8.6
     # via jedi
 partd==1.4.2
@@ -1685,6 +1680,8 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
+py-deviceid==0.1.1
+    # via azure-cli-core
 py-partiql-parser==0.6.3
     # via moto
 py-spy==0.4.1 ; python_version < "3.12"
@@ -1777,8 +1774,6 @@ pymunk==6.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pymysql==1.1.3
     # via -r python/requirements/serve/serve-test-requirements.txt
-pynacl==1.6.0
-    # via paramiko
 pyopengl==3.1.10
     # via
     #   dm-control
@@ -2179,6 +2174,7 @@ six==1.17.0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   astunparse
+    #   azure-core
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-pasta
@@ -2507,6 +2503,9 @@ typing-extensions==4.15.0
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
     #   azure-storage-blob
     #   botorch
     #   cfn-lint

@@ -737,6 +737,11 @@ class LLMServer(LLMServerProtocol):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
+    async def __del__(self) -> None:
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            await engine.shutdown()
+
     @staticmethod
     def _maybe_update_with_engine_env_vars(engine_config, ray_actor_options: dict):
         """Seed replica env_vars with engine-derived vars (e.g. fractional-GPU
