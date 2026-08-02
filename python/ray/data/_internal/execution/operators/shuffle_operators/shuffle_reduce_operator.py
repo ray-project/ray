@@ -148,52 +148,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
 
-        # -- Memory request clamping -------------------------------------------
-        self._max_node_memory: Optional[float] = None
-        self._warned_memory_request_clamped: bool = False
-
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
-
-    # Cap each reduce task's memory request at this fraction of the largest
-    # node's logical memory. A request no node can satisfy fails the whole
-    # dataset with TaskUnschedulableError, which is strictly worse than
-    # scheduling the task alone on the biggest node and letting it run: past
-    # ~half a node the request cannot co-schedule with another reduce task
-    # anyway, so clamping loses no over-packing protection.
-    _MAX_MEMORY_REQUEST_NODE_FRACTION = 0.8
-
-    def _get_max_node_memory(self) -> Optional[float]:
-        if self._max_node_memory is None:
-            try:
-                self._max_node_memory = max(
-                    node["Resources"].get("memory", 0)
-                    for node in ray.nodes()
-                    if node.get("Alive")
-                )
-            except Exception:
-                return None
-        return self._max_node_memory or None
-
-    def _clamp_memory_request(self, memory_estimate: int) -> int:
-        max_node_memory = self._get_max_node_memory()
-        if max_node_memory is None:
-            return memory_estimate
-        cap = int(max_node_memory * self._MAX_MEMORY_REQUEST_NODE_FRACTION)
-        if memory_estimate <= cap:
-            return memory_estimate
-        if not self._warned_memory_request_clamped:
-            self._warned_memory_request_clamped = True
-            logger.warning(
-                f"{self.name}: reduce task memory estimate "
-                f"({memory_estimate / 1e9:.1f}GB) exceeds "
-                f"{self._MAX_MEMORY_REQUEST_NODE_FRACTION:.0%} of the largest "
-                f"node's memory ({max_node_memory / 1e9:.1f}GB); clamping the "
-                f"request to {cap / 1e9:.1f}GB so the task remains schedulable. "
-                "The task may exceed its request at runtime; consider more "
-                "partitions or larger nodes."
-            )
-        return cap
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -202,7 +158,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             "runtime_env": _SHUFFLE_REDUCE_RUNTIME_ENV,
         }
         if memory_estimate > 0:
-            remote_args["memory"] = self._clamp_memory_request(memory_estimate)
+            remote_args["memory"] = memory_estimate
         remote_args.update(self._reduce_ray_remote_args)
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"

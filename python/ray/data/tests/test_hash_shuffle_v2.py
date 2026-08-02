@@ -280,41 +280,6 @@ def test_peak_memory_multiplier_override():
     assert reduce_x3.incremental_resource_usage().memory == 300
 
 
-def test_reduce_memory_request_clamped_to_largest_node(monkeypatch):
-    """A memory request bigger than any node is clamped, not left unschedulable.
-
-    Regression test: tpch q8's 16-partition joins produce ~15GB partitions;
-    a 3x multiplier requested 45GB against 38.4GB nodes and failed the whole
-    dataset with TaskUnschedulableError.
-    """
-    ctx = DataContext.get_current()
-    map_op = ShuffleMapOp(
-        InputDataBuffer(ctx, []),
-        ctx,
-        num_partitions=2,
-        partition_fn=lambda table: {},
-    )
-    reduce_op = ShuffleReduceOp(
-        map_op,
-        ctx,
-        num_partitions=2,
-        reduce_fn=lambda partition_id, tables_by_input: [],
-        peak_memory_multiplier=3,
-    )
-    node_memory = 40 * 1024**3
-    monkeypatch.setattr(
-        ray,
-        "nodes",
-        lambda: [{"Alive": True, "Resources": {"memory": node_memory}}],
-    )
-
-    cap = int(node_memory * ShuffleReduceOp._MAX_MEMORY_REQUEST_NODE_FRACTION)
-    over = node_memory * 2
-    assert reduce_op._reduce_task_remote_args(over)["memory"] == cap
-    under = node_memory // 4
-    assert reduce_op._reduce_task_remote_args(under)["memory"] == under
-
-
 def test_shuffle_map_task_uses_operator_name():
     ctx = DataContext.get_current()
     name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
