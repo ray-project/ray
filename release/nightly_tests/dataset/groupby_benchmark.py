@@ -35,6 +35,17 @@ def parse_args() -> argparse.Namespace:
         help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
     )
 
+    parser.add_argument(
+        "--cast-large-string",
+        action="store_true",
+        help=(
+            "Cast string columns to large_string after reading. Needed when a "
+            "single group's string data exceeds 2GB per column: Arrow's "
+            "int32-offset `string` type overflows when the shuffle reduce "
+            "sorts such a partition into one contiguous table."
+        ),
+    )
+
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--aggregate", action="store_true")
     consume_group.add_argument("--map-groups", action="store_true")
@@ -59,9 +70,10 @@ def main(args):
             if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
             else None
         )
-        grouped_ds = ray.data.read_parquet(
-            path, override_num_blocks=override_num_blocks
-        ).groupby(args.group_by)
+        ds = ray.data.read_parquet(path, override_num_blocks=override_num_blocks)
+        if args.cast_large_string:
+            ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
+        grouped_ds = ds.groupby(args.group_by)
         consume_fn(grouped_ds)
 
         # Report arguments for the benchmark.
@@ -89,6 +101,21 @@ def get_consume_fn(args: argparse.Namespace):
         assert False, f"Invalid consume argument: {args}"
 
     return consume_fn
+
+
+def _cast_strings_to_large(table: pa.Table) -> pa.Table:
+    schema = pa.schema(
+        [
+            pa.field(
+                f.name,
+                pa.large_string() if types.is_string(f.type) else f.type,
+                f.nullable,
+            )
+            for f in table.schema
+        ],
+        metadata=table.schema.metadata,
+    )
+    return table.cast(schema)
 
 
 def normalize_table(table: pa.Table) -> pa.Table:
