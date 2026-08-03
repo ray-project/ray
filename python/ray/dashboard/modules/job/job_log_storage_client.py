@@ -79,11 +79,9 @@ class JobLogStorageClient:
         except FileNotFoundError:
             active_line_count = 0
 
-        if active_line_count >= num_log_lines or active_line_count == 0:
-            # Either the active file alone has enough lines, or there's
-            # nothing to read at all (job hasn't produced output yet, or
-            # log file doesn't exist). Either way no need to look at
-            # backups.
+        if active_line_count >= num_log_lines:
+            # Active file alone already has enough lines, no need to
+            # look at backups.
             try:
                 return fast_tail_last_n_lines(
                     path=log_path,
@@ -93,10 +91,18 @@ class JobLogStorageClient:
             except FileNotFoundError:
                 return ""
 
-        # Active file has fewer lines than requested, most likely because
-        # a rotation just happened. Pull the remainder from the most
-        # recent backup, if one exists.
+        # Active file has fewer lines than requested. Most likely a
+        # rotation just happened, possibly truncating it all the way to
+        # zero lines. Check backups before concluding there is nothing
+        # to read: an empty active file does not necessarily mean the
+        # job has produced no output, it may just mean rotation moved
+        # that output into a backup file moments ago.
         backup_paths = self._get_rotated_backup_paths(log_path)
+        if active_line_count == 0 and not backup_paths:
+            # Genuinely nothing to read: job hasn't produced output yet,
+            # or the log file doesn't exist at all.
+            return ""
+
         remaining_lines = num_log_lines - active_line_count
         backup_text = ""
         if backup_paths:

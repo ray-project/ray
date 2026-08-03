@@ -328,6 +328,61 @@ class TestJobLogStorageClientRotation:
         client, _ = log_client
         assert client.get_logs("test_job") == ""
 
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_empty_active_file_reads_backup(
+        self, log_client
+    ):
+        """Regression test: an active file that is empty because
+        rotation just truncated it should not be treated the same as
+        "job has produced no output at all". If a backup with real
+        content exists, it should be read.
+        """
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("line1\nline2\nline3\n")
+        # Active file exists but is empty, exactly what copytruncate
+        # rotation leaves behind immediately after firing.
+        with open(log_path, "w"):
+            pass
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=10)
+        assert result == "line1\nline2\nline3\n", (
+            "Expected backup content to be returned when the active "
+            f"file is empty but a backup exists. Got: {result!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_empty_active_no_backup_returns_empty(
+        self, log_client
+    ):
+        """An active file that is empty with no backups at all should
+        still return an empty string, this is the genuine "job has not
+        produced output yet" case, distinct from the rotation case
+        above.
+        """
+        client, log_path = log_client
+        with open(log_path, "w"):
+            pass
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=10)
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_active_file_alone_sufficient(self, log_client):
+        """When the active file alone already has enough lines, backups
+        should not be consulted at all, even if they exist (they would
+        represent older, already-superseded history).
+        """
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("should not appear\n")
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=2)
+        assert "should not appear" not in result
+        assert result.endswith("b\nc\n")
+
 
 class TestFastTailLastNLines:
     def test_nonexistent_path(self, tmp):
