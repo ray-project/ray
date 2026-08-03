@@ -16,9 +16,15 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
     TokenizeError,
     build_tokenize_request,
+)
+from ray.serve._private.constants import (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm.request_router import KVAwareRouter
@@ -107,7 +113,7 @@ class TestRoute:
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = None
-        router._pick_replica = AsyncMock(return_value=("h", 1, "rid"))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
@@ -122,13 +128,38 @@ class TestRoute:
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
-        router._pick_replica = AsyncMock(return_value=("h", 1, "rid"))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
         request.headers = Headers({})
         await router.route(request)
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("pushed_token_key", ["trusted-key", None])
+    async def test_route_token_header(self, pushed_token_key):
+        router = LLMRouter.__new__(LLMRouter)
+        router._handle = MagicMock()
+        router._tokenizer = MagicMock()
+        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._pick_replica = AsyncMock(
+            return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
+        )
+        router._push_prompt_tokens = MagicMock(return_value=pushed_token_key)
+
+        request = MagicMock()
+        request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
+        request.headers = Headers({})
+        response = await router.route(request)
+
+        router._push_prompt_tokens.assert_called_once()
+        if pushed_token_key:
+            assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
+                KV_TOKEN_KEY_HEADER: pushed_token_key
+            }
+        else:
+            assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
     async def test_unparseable_body_skips_tokenization(self):
@@ -138,7 +169,7 @@ class TestRoute:
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
-        router._pick_replica = AsyncMock(return_value=("h", 1, "rid"))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         # Truncated prefix: not valid JSON, so it can't be parsed or tokenized.

@@ -438,7 +438,12 @@ steps:
     commands:
       - bazel run .buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
+      - bazel run //ci/ray_ci/automation:generate_index --
+        --prefix nightly
+        --image-type ray-llm
     depends_on:
       - ray_images_push(*)
       - ray_images_push_aarch64(*)
+      - ray_llm_images_cuda_push(*)
+      - ray_llm_images_cuda_push_aarch64(*)
       - forge
