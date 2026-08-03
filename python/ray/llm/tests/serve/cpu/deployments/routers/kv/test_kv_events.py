@@ -18,9 +18,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_token_channel_endpoints,
     resolve_kv_event_source_endpoint,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
-    _maybe_setup_kv_aware_routing,
-)
 from ray.serve.llm.request_router import KVAwareRouter
 
 

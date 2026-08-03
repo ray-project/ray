@@ -1,5 +1,7 @@
 # ruff: noqa: E501
 
+from collections.abc import Sequence
+
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
@@ -104,6 +106,35 @@ def _ratio_with_join_and_guard(
         "  and on(WorkerId)\n"
         "  (\n"
         f"    sum by(WorkerId) (rate({guard}{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        "  )\n"
+        ")" + _WORKER_JOIN
+    )
+
+
+def _summed_ratio_with_join_and_guard(
+    numerator_metrics: Sequence[str],
+    denominator_metric: str,
+) -> str:
+    """Ratio of added rate metrics over one denominator, NaN guard + WorkerId join.
+
+    The numerator rates are added before the division, so counters that each
+    contribute a share of the same denominator chart as a single ratio.
+    """
+    return (
+        "(\n"
+        "  (\n"
+        "    (\n"
+        + "\n      +\n".join(
+            f"      sum by(WorkerId) (rate({metric}{{{{{_VLLM_FILTER}}}}}[$interval]))"
+            for metric in numerator_metrics
+        )
+        + "\n    )\n"
+        "    /\n"
+        f"    sum by(WorkerId) (rate({denominator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        "  )\n"
+        "  and on(WorkerId)\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({denominator_metric}{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
         "  )\n"
         ")" + _WORKER_JOIN
     )
@@ -662,8 +693,8 @@ _kv_offload_panels = [
     ),
     Panel(
         id=57,
-        title="KV Offload: CPU Transfer Pressure",
-        description="Pinned CPU KV capacity, not resident cache size.",
+        title="KV Offload: CPU Capacity Pinned by Transfers",
+        description="Share of the CPU KV pool pinned by in-flight transfers. Sustained values near 100% mean transfers may be dropped.",
         unit="percentunit",
         targets=[
             Target(
@@ -704,7 +735,42 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 119, 12, 8),
+        grid_pos=GridPos(0, 119, 8, 8),
+    ),
+    Panel(
+        id=60,
+        title="KV Offload: Overall Prefix Hit Rate",
+        description="Prompt tokens served from either cache tier, GPU or offloaded.",
+        unit="percent",
+        targets=[
+            Target(
+                expr=(
+                    "100 * "
+                    + _summed_ratio_with_join_and_guard(
+                        [
+                            "ray_vllm_prefix_cache_hits_total",
+                            "ray_vllm_external_prefix_cache_hits_total",
+                        ],
+                        "ray_vllm_prefix_cache_queries_total",
+                    )
+                ),
+                legend="overall — " + _DEP_REPLICA,
+            ),
+            Target(
+                expr=(
+                    "100 * "
+                    + _ratio_with_join_and_guard(
+                        "ray_vllm_prefix_cache_hits_total",
+                        "ray_vllm_prefix_cache_queries_total",
+                    )
+                ),
+                legend="GPU only — " + _DEP_REPLICA,
+            ),
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
+        grid_pos=GridPos(8, 119, 8, 8),
     ),
     Panel(
         id=59,
@@ -722,7 +788,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(12, 119, 12, 8),
+        grid_pos=GridPos(16, 119, 8, 8),
     ),
 ]
 

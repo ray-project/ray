@@ -10,7 +10,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
 from utils import (
