@@ -286,7 +286,7 @@ class TaskEventStorage:
     def get_all_task_events(self) -> List[gcs_pb2.TaskEvents]:
         """All stored task events, higher-priority tiers first, oldest-first within a tier."""
         result: List[gcs_pb2.TaskEvents] = []
-        for tier in range(self._gc_policy.MAX_PRIORITY - 1, -1, -1):
+        for tier in range(self._gc_policy.max_priority - 1, -1, -1):
             result.extend(self._tiers[tier].values())
         return result
 
