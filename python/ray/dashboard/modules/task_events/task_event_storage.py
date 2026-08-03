@@ -15,10 +15,7 @@ from ray._private import ray_constants
 from ray._raylet import JobID, TaskID
 from ray.core.generated import gcs_pb2
 from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo, TaskStatus, TaskType
-from ray.dashboard.modules.task_events.gc_policy import (
-    FinishedTaskActorTaskGcPolicy,
-    is_task_terminated,
-)
+from ray.dashboard.modules.task_events.gc_policy import FinishedTaskActorTaskGcPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -389,12 +386,20 @@ class TaskEventStorage:
                 self._remove_task_attempt(oldest)
                 return
 
+    @staticmethod
+    def _is_task_terminated(task_event: gcs_pb2.TaskEvents) -> bool:
+        """Whether the task attempt has reported a FINISHED or FAILED state."""
+        if not task_event.HasField("state_updates"):
+            return False
+        state_ts_ns = task_event.state_updates.state_ts_ns
+        return TaskStatus.FINISHED in state_ts_ns or TaskStatus.FAILED in state_ts_ns
+
     def _mark_task_attempt_failed_if_needed(
         self, attempt: TaskAttempt, failed_ts_ns: int, error_info: RayErrorInfo
     ) -> None:
         task_event = self._tiers[self._primary_index[attempt]][attempt]
         # Don't fail a task attempt that already reached a terminal state.
-        if is_task_terminated(task_event):
+        if self._is_task_terminated(task_event):
             return
         task_event.state_updates.state_ts_ns[TaskStatus.FAILED] = failed_ts_ns
         task_event.state_updates.error_info.CopyFrom(error_info)
