@@ -377,18 +377,28 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
 def test_read_iceberg_does_not_mutate_caller_kwargs():
     """The caller's dicts belong to the caller.
 
-    ``catalog_kwargs`` is stored by reference and then ``pop("name")``-ed, so the
-    caller loses the catalog name and a second read of the same table fails.
+    Both dicts were stored by reference. ``catalog_kwargs`` is then
+    ``pop("name")``-ed, so the caller loses the catalog name and a second read of
+    the same table raises ``NoSuchTableError``. ``scan_kwargs`` has
+    ``snapshot_id`` written into it, which fails silently instead: a later read
+    reusing the dict inherits the pin and returns rows from a stale snapshot.
     """
     catalog_kwargs = _CATALOG_KWARGS.copy()
     scan_kwargs = {}
     expected_catalog_kwargs = catalog_kwargs.copy()
 
+    # An explicit ``snapshot_id`` is required to reach the ``scan_kwargs`` write:
+    # the buggy line is guarded by ``if snapshot_id``, so passing ``None`` would
+    # leave the dict untouched whether or not the bug is present.
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS.copy())
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    snapshot_id = table.current_snapshot().snapshot_id
+
     first = read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
         catalog_kwargs=catalog_kwargs,
         scan_kwargs=scan_kwargs,
-        snapshot_id=None,
+        snapshot_id=snapshot_id,
     )
     assert catalog_kwargs == expected_catalog_kwargs
     assert scan_kwargs == {}

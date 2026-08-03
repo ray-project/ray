@@ -562,6 +562,9 @@ class IcebergDatasource(Datasource):
         # by row, and the counts would over-report. Old PyIceberg versions do not
         # populate ``residual``, in which case we cannot prove anything and fall
         # back to reporting an unknown row count.
+        #
+        # This is deliberately the same test PyIceberg's own ``DataScan.count()``
+        # applies, so the two agree on when a manifest count still holds.
         counts_are_exact = isinstance(row_filter, AlwaysTrue) or all(
             isinstance(getattr(task, "residual", None), AlwaysTrue)
             for task in plan_files
