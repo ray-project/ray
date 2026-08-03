@@ -1,8 +1,13 @@
 import logging
 import sys
+from unittest.mock import patch
 
+import aiohttp
 import pytest
+from aiohttp.test_utils import TestClient, TestServer
+from aiohttp.web import Application, StreamResponse
 
+from ray.dashboard.optional_utils import init_ray_and_catch_exceptions
 from ray.dashboard.utils import close_logger_file_descriptor
 
 
@@ -19,6 +24,37 @@ def test_close_logger_file_descriptor():
     assert job_driver_handler.stream.closed is False
     close_logger_file_descriptor(logger)
     assert job_driver_handler.stream is None
+
+
+@pytest.mark.asyncio
+async def test_init_ray_decorator_does_not_replace_started_response():
+    class Handler:
+        @init_ray_and_catch_exceptions()
+        async def fail_before_prepare(self, request):
+            raise RuntimeError("test error")
+
+        @init_ray_and_catch_exceptions()
+        async def fail_after_prepare(self, request):
+            response = StreamResponse()
+            await response.prepare(request)
+            await response.write(b"partial")
+            response.force_close()
+            raise RuntimeError("test error")
+
+    app = Application()
+    handler = Handler()
+    app.router.add_get("/before", handler.fail_before_prepare)
+    app.router.add_get("/after", handler.fail_after_prepare)
+
+    with patch("ray.dashboard.optional_utils.ray.is_initialized", return_value=True):
+        async with TestClient(TestServer(app)) as client:
+            response = await client.get("/before")
+            assert response.status == 500
+
+            response = await client.get("/after")
+            assert response.status == 200
+            with pytest.raises(aiohttp.ClientPayloadError):
+                await response.read()
 
 
 if __name__ == "__main__":
