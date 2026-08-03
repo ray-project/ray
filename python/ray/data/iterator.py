@@ -524,7 +524,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over Torch Tensor batches.
         """
-        from torch import device as torch_device
+        import torch
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
@@ -540,7 +540,14 @@ class DataIterator(abc.ABC):
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-        device = torch_device(device)
+        device = torch.device(device)
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
+            # "cuda" without an index is thread-relative: it resolves to the
+            # calling thread's *current* CUDA device. finalize_fn runs on a
+            # background fetch thread, so the device on the finalize thread
+            # and consumer thread might be different. Pin the device to a
+            # concrete index here.
+            device = torch.device("cuda", torch.cuda.current_device())
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.

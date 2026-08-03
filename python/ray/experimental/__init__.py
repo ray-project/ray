@@ -10,6 +10,7 @@ from ray.experimental.rdt import (
     register_nixl_memory_pool,
     register_tensor_transport,
     set_nixl_cuda_stream,
+    set_target_device_for_ref,
     set_target_for_ref,
     wait_tensor_freed,
 )
@@ -29,4 +30,5 @@ __all__ = [
     "TensorTransportMetadata",
     "CommunicatorMetadata",
     "set_target_for_ref",
+    "set_target_device_for_ref",
 ]
