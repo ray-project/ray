@@ -1720,6 +1720,13 @@ def _busy_process():
         process.wait()
 
 
+def _reaped_process():
+    """A process that has already exited and been reaped, so its pid is gone."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    return process
+
+
 def _fake_subprocess_module_handle(process, module_name="DataHead"):
     """Build a stand-in for SubprocessModuleHandle.
 
@@ -1875,6 +1882,30 @@ async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir):
             if cpu_percentage > 0:
                 break
         assert cpu_percentage > 0
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_exited_subprocess_module_does_not_hide_other_modules(tmpdir):
+    """A module that has exited must not cost the other modules their metrics.
+
+    A module can exit between a health check and the next record cycle, which
+    makes `psutil.Process(pid)` raise `NoSuchProcess`. Recording has to carry on
+    with the remaining modules instead of abandoning the cycle.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    with _busy_process() as live_process:
+        # The exited module is recorded first, so an unhandled NoSuchProcess
+        # would abandon the cycle before reaching the live one.
+        handles = [
+            _fake_subprocess_module_handle(_reaped_process(), "ExitedHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+
+        assert await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
 
 
 if __name__ == "__main__":

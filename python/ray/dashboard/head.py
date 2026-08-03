@@ -381,10 +381,11 @@ class DashboardHead:
             assert subprocess_module_handle.process is not None
             pid = subprocess_module_handle.process.pid
             live_pids.add(pid)
-            self._record_cpu_mem_metrics_for_proc(
-                self._get_subprocess_module_proc(pid),
-                subprocess_module_handle.module_cls.__name__,
-            )
+            proc = self._get_subprocess_module_proc(pid)
+            if proc is not None:
+                self._record_cpu_mem_metrics_for_proc(
+                    proc, subprocess_module_handle.module_cls.__name__
+                )
         # Drop the handles of modules that exited or restarted under a new pid.
         for stale_pid in self._subprocess_module_procs.keys() - live_pids:
             del self._subprocess_module_procs[stale_pid]
@@ -402,18 +403,26 @@ class DashboardHead:
             )
             self._event_loop_lag_s_max = None
 
-    def _get_subprocess_module_proc(self, pid: int) -> psutil.Process:
+    def _get_subprocess_module_proc(self, pid: int) -> Optional[psutil.Process]:
         """Return the cached psutil.Process for pid, creating it if needed.
 
         Reusing the handle is what gives cpu_percent() a baseline to measure
         against. See the comment on self._subprocess_module_procs.
+
+        Returns None if the process is gone or inaccessible, so that one module
+        exiting mid-cycle does not cost the remaining modules their metrics.
         """
         proc = self._subprocess_module_procs.get(pid)
         # is_running() is False once the process is gone, and also once the pid
         # has been reused by an unrelated process, in which case the cached
         # handle's baseline no longer describes the process being measured.
         if proc is None or not proc.is_running():
-            proc = psutil.Process(pid)
+            try:
+                proc = psutil.Process(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # A module can exit between a health check and this cycle.
+                self._subprocess_module_procs.pop(pid, None)
+                return None
             self._subprocess_module_procs[pid] = proc
         return proc
 
