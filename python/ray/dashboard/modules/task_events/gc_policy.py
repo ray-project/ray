@@ -8,14 +8,6 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 
 
-def is_task_terminated(task_event: gcs_pb2.TaskEvents) -> bool:
-    """Whether the task attempt has reported a FINISHED or FAILED state."""
-    if not task_event.HasField("state_updates"):
-        return False
-    state_ts_ns = task_event.state_updates.state_ts_ns
-    return TaskStatus.FINISHED in state_ts_ns or TaskStatus.FAILED in state_ts_ns
-
-
 class FinishedTaskActorTaskGcPolicy:
     """Buckets task events into priority tiers; a higher tier is evicted later."""
 
