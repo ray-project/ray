@@ -110,14 +110,21 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         output[QF_PREDS] = qf_out  # (batch, n_critics, n_quantiles)
 
         # Compute Q-values for resampled actions (for the actor loss).
-        # Freeze the critic parameters for this pass (same as SAC): the actor
-        # loss must only produce gradients w.r.t. the policy (through the
-        # actions), not w.r.t. the critics. Without this, the actor loss's
-        # critic gradients leak into the critic optimizer's update and push
-        # the critics to inflate Q-values at the policy's actions.
+        # Freeze the critic parameters for this pass (the same "straight-through"
+        # trick SAC uses): the actor loss must produce gradients w.r.t. the
+        # policy (through the sampled actions) but not w.r.t. the critics.
+        # Without it, the actor loss's critic gradients leak into the critic
+        # optimizer's update and push the critics to inflate Q-values at the
+        # policy's actions. We toggle `requires_grad` rather than using
+        # `torch.no_grad()`/`.detach()` on purpose: those would sever the graph
+        # and also block the policy gradient that must flow back through the
+        # (frozen) critics. Restore each parameter's original `requires_grad`
+        # afterwards, so a critic parameter the user intentionally froze stays
+        # frozen.
         all_qf_params = list(self.qf_encoders.parameters()) + list(
             self.qf_heads.parameters()
         )
+        original_requires_grad = [param.requires_grad for param in all_qf_params]
         for param in all_qf_params:
             param.requires_grad = False
         qf_curr = self._qf_forward_all_critics(
@@ -125,8 +132,8 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
             actions_curr,
             use_target=False,
         )
-        for param in all_qf_params:
-            param.requires_grad = True
+        for param, requires_grad in zip(all_qf_params, original_requires_grad):
+            param.requires_grad = requires_grad
         output["qf_curr"] = qf_curr
 
         # For next state Q-values (target computation)
