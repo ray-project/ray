@@ -24,7 +24,6 @@ class Sandbox:
         **kwargs,
     ):
         runsc_path_override = kwargs.pop("runsc_path_override", None)
-        self.runtime = SandboxRuntime(runsc_path_override=runsc_path_override)
 
         if config is None:
             config = SandboxConfig(**kwargs)
@@ -33,11 +32,43 @@ class Sandbox:
                 if hasattr(config, k):
                     setattr(config, k, v)
 
+        if runsc_path_override is None and config.runsc_path != "runsc":
+            runsc_path_override = config.runsc_path
+
+        self.runtime = SandboxRuntime(runsc_path_override=runsc_path_override)
+
+        # Translate resources assigned to this Ray actor into runtime config resources
+        try:
+            assigned = ray.get_runtime_context().get_assigned_resources()
+            if "CPU" in assigned:
+                config.cpu = float(assigned["CPU"])
+
+            if "memory" in assigned:
+                config.memory = int(assigned["memory"])
+
+            custom_resources = {}
+            for k, v in assigned.items():
+                if (
+                    k not in ("CPU", "memory")
+                    and not k.startswith("node:")
+                    and k != "object_store_memory"
+                ):
+                    custom_resources[k] = float(v)
+
+            if custom_resources:
+                config.resources.update(custom_resources)
+        except Exception:
+            pass
+
         self.instance_id = self.runtime.create(config)
 
     def get_instance_id(self) -> str:
         """Get the unique instance ID for the sandbox."""
         return self.instance_id
+
+    def get_config(self) -> SandboxConfig:
+        """Get the sandbox configuration used by the runtime."""
+        return self.runtime._backend._sandbox_meta[self.instance_id]["config"]
 
     def exec(
         self,
@@ -98,6 +129,10 @@ class SandboxHandle:
     def sandbox_id(self) -> str:
         """Alias for instance_id."""
         return self.instance_id
+
+    def get_config(self) -> SandboxConfig:
+        """Get the configuration of the sandbox instance."""
+        return ray.get(self._actor.get_config.remote())
 
     def exec(
         self,

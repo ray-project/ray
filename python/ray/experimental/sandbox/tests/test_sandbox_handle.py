@@ -145,3 +145,17 @@ def test_ray_remote_sandbox_runtime():
 
     ray.get(rt_actor.delete.remote(instance_id))
     ray.kill(rt_actor)
+
+
+def test_sandbox_actor_resource_translation():
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    config = SandboxConfig(work_dir="/workspace", runsc_path="/bin/sh", cpu=1.0)
+    actor = Sandbox.options(num_cpus=2.0).remote(config=config)
+
+    ret_config = ray.get(actor.get_config.remote())
+    assert ret_config.cpu == 2.0
+
+    ray.get(actor.delete.remote())
+    ray.kill(actor)
