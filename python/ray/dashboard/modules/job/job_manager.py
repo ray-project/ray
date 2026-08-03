@@ -8,6 +8,8 @@ import time
 import traceback
 from typing import Any, AsyncIterator, Dict, Optional, Union
 
+import grpc
+
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import Timer, run_background_task
@@ -33,11 +35,39 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.utils import close_logger_file_descriptor, get_head_node_id
-from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnschedulableError,
+    RpcError,
+    RuntimeEnvSetupError,
+)
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 
 logger = logging.getLogger(__name__)
+
+# gRPC status codes that only mean the RPC didn't reach its destination, so they
+# carry no information about whether the JobSupervisor is still alive. These are
+# what in-flight RPCs fail with while the GCS is restarting during a failover.
+_TRANSIENT_RPC_CODES = frozenset(
+    {
+        grpc.StatusCode.CANCELLED.value[0],
+        grpc.StatusCode.UNAVAILABLE.value[0],
+    }
+)
+
+# How long the JobSupervisor may keep failing to answer pings with a transient RPC
+# error before it is presumed gone. This reuses the GCS reconnect budget on purpose:
+# once the GCS has been unreachable for longer than this, the GCS client gives up and
+# tears down the process, so there is nothing to be gained by retrying for longer.
+_GCS_RECONNECT_TIMEOUT_S = ray_constants.env_integer(
+    "RAY_gcs_rpc_server_reconnect_timeout_s", 60
+)
+
+
+def _is_transient_rpc_error(exc: Exception) -> bool:
+    """Whether `exc` is an RPC failure that may succeed when retried."""
+    return isinstance(exc, RpcError) and exc.rpc_code in _TRANSIENT_RPC_CODES
 
 
 def generate_job_id() -> str:
@@ -164,6 +194,12 @@ class JobManager:
         job_status = None
         job_info = None
         ping_obj_ref = None
+        # Start of the current streak of `JobSupervisor` pings that failed with a
+        # transient RPC error, or None if there is no such streak. Only pings move
+        # this window: a transient error from any other RPC means this iteration never
+        # got as far as asking the supervisor anything, so it carries no evidence
+        # about the supervisor and the streak starts over.
+        first_failed_ping_time = None
 
         while True:
             try:
@@ -265,16 +301,87 @@ class JobManager:
                         max_task_retries=-1
                     ).remote()
                 ready, _ = ray.wait([ping_obj_ref], timeout=0)
-                if ready:
-                    ray.get(ping_obj_ref)
-                    ping_obj_ref = None
-                else:
+                if not ready:
                     continue
 
+                try:
+                    ray.get(ping_obj_ref)
+                except Exception as ping_exc:
+                    if _is_transient_rpc_error(ping_exc):
+                        # The ping never made it to the supervisor (e.g. the GCS is
+                        # failing over), which says nothing about whether the
+                        # supervisor is alive. Give it the reconnect budget to answer
+                        # before concluding anything.
+                        if first_failed_ping_time is None:
+                            first_failed_ping_time = time.monotonic()
+                        elapsed = time.monotonic() - first_failed_ping_time
+                        if elapsed < _GCS_RECONNECT_TIMEOUT_S:
+                            logger.warning(
+                                f"Job monitoring for job {job_id} could not reach the "
+                                f"JobSupervisor for {elapsed:.0f}s, retrying for up "
+                                f"to {_GCS_RECONNECT_TIMEOUT_S}s: {ping_exc}."
+                            )
+                            # Drop the failed ping so the next iteration issues a new
+                            # one instead of replaying the same error.
+                            ping_obj_ref = None
+                            continue
+                    # Either the supervisor is known to be gone, or it stayed
+                    # unreachable for the whole window and is presumed gone. Let the
+                    # handler below fail the job.
+                    raise
+
+                ping_obj_ref = None
+                # The supervisor answered, so it is alive and any earlier streak of
+                # failed pings is over -- including one long enough to have presumed
+                # it gone, since an answer is better evidence than a timed-out window.
+                first_failed_ping_time = None
+
             except Exception as e:
-                job_status = await self._job_info_client.get_status(
-                    job_id, timeout=None
+                is_transient = _is_transient_rpc_error(e)
+                # A streak of failed pings that outlasted the window means the
+                # supervisor is presumed gone. That conclusion has to survive the
+                # retries below, so it is not reset by transient errors on the way to
+                # recording it.
+                supervisor_presumed_gone = (
+                    first_failed_ping_time is not None
+                    and time.monotonic() - first_failed_ping_time
+                    >= _GCS_RECONNECT_TIMEOUT_S
                 )
+                if is_transient and not supervisor_presumed_gone:
+                    # This error did not come from a ping, so the supervisor was never
+                    # asked anything on this iteration: retry, and don't touch the GCS
+                    # while doing so -- reading the job status here would be one more
+                    # RPC to the component that is currently unreachable.
+                    logger.warning(
+                        f"Job monitoring for job {job_id} hit a transient RPC error, "
+                        f"retrying: {e}."
+                    )
+                    # Nothing was learned about the supervisor, so the ping streak
+                    # starts over, and any in-flight ping is dropped so that the next
+                    # iteration issues a new one.
+                    first_failed_ping_time = None
+                    ping_obj_ref = None
+                    continue
+
+                try:
+                    job_status = await self._job_info_client.get_status(
+                        job_id, timeout=None
+                    )
+                except Exception as status_exc:
+                    if not _is_transient_rpc_error(status_exc):
+                        raise
+                    # Keep the monitor alive and try again on the next iteration
+                    # instead of letting this escape: an exception here would drop
+                    # the job from `monitored_jobs` without a terminal status and
+                    # without killing the supervisor, leaving it running with nobody
+                    # left to converge it.
+                    logger.warning(
+                        f"Job monitoring for job {job_id} could not read the job "
+                        f"status, retrying: {status_exc}."
+                    )
+                    ping_obj_ref = None
+                    continue
+
                 target_job_error_message = ""
                 target_job_error_type: Optional[JobErrorType] = None
                 if job_status is not None and job_status.is_terminal():
@@ -307,26 +414,47 @@ class JobManager:
                         target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
 
                     else:
-                        logger.error(
-                            f"Job monitoring for job {job_id} failed "
-                            f"unexpectedly: {e}.",
-                            exc_info=e,
-                        )
+                        if is_transient:
+                            logger.error(
+                                f"Job monitoring for job {job_id} gave up after the "
+                                f"JobSupervisor stayed unreachable for more than "
+                                f"{_GCS_RECONNECT_TIMEOUT_S}s: {e}.",
+                                exc_info=e,
+                            )
+                        else:
+                            logger.error(
+                                f"Job monitoring for job {job_id} failed "
+                                f"unexpectedly: {e}.",
+                                exc_info=e,
+                            )
 
                         target_job_error_message = f"Unexpected error occurred: {e}"
                         target_job_error_type = (
                             JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
                         )
 
+                    try:
+                        await self._job_info_client.put_status(
+                            job_id,
+                            JobStatus.FAILED,
+                            message=target_job_error_message,
+                            error_type=target_job_error_type
+                            or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                            timeout=None,
+                        )
+                    except Exception as put_exc:
+                        if not _is_transient_rpc_error(put_exc):
+                            raise
+                        # Same reasoning as the status read above: retry rather than
+                        # exit, so that the job is still converged once the GCS is
+                        # reachable again.
+                        logger.warning(
+                            f"Job monitoring for job {job_id} could not record the "
+                            f"terminal status, retrying: {put_exc}."
+                        )
+                        ping_obj_ref = None
+                        continue
                     job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=target_job_error_message,
-                        error_type=target_job_error_type
-                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
-                        timeout=None,
-                    )
 
                 # Log error message to the job driver file for easy access.
                 if target_job_error_message:
@@ -349,10 +477,21 @@ class JobManager:
                 break
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
-        if job_supervisor is None:
-            job_supervisor = self._get_actor_for_job(job_id)
-        if job_supervisor is not None:
-            ray.kill(job_supervisor, no_restart=True)
+        try:
+            if job_supervisor is None:
+                job_supervisor = self._get_actor_for_job(job_id)
+            if job_supervisor is not None:
+                ray.kill(job_supervisor, no_restart=True)
+        except Exception as kill_exc:
+            if not _is_transient_rpc_error(kill_exc):
+                raise
+            # The job has reached a terminal status by now, so there is nothing left
+            # to converge; the supervisor exits on its own once its driver is done,
+            # and is reaped with the cluster otherwise.
+            logger.warning(
+                f"Job monitoring for job {job_id} could not kill the JobSupervisor: "
+                f"{kill_exc}."
+            )
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.

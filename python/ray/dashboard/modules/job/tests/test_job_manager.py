@@ -9,6 +9,7 @@ import urllib.request
 from unittest.mock import patch
 from uuid import uuid4
 
+import grpc
 import pytest
 
 import ray
@@ -42,6 +43,7 @@ from ray.dashboard.modules.job.tests.conftest import (
     create_job_manager,
     create_ray_cluster,
 )
+from ray.exceptions import RpcError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 from ray.util.state import get_actor, list_tasks
@@ -1654,6 +1656,298 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     # Assert no task events for the JobSupervisor are exported.
     for t in list_tasks():
         assert "JobSupervisor" not in t.name
+
+
+def test_is_transient_rpc_error():
+    """Only gRPC codes meaning "the RPC never got through" are treated as transient."""
+    from ray.dashboard.modules.job.job_manager import _is_transient_rpc_error
+
+    assert _is_transient_rpc_error(
+        RpcError("RPC error: CANCELLED", rpc_code=grpc.StatusCode.CANCELLED.value[0])
+    )
+    assert _is_transient_rpc_error(
+        RpcError(
+            "RPC error: UNAVAILABLE", rpc_code=grpc.StatusCode.UNAVAILABLE.value[0]
+        )
+    )
+    # A permanent gRPC failure, a missing status code, and a non-RPC exception all
+    # carry information about the callee, so they must not be retried blindly.
+    assert not _is_transient_rpc_error(
+        RpcError("RPC error: INTERNAL", rpc_code=grpc.StatusCode.INTERNAL.value[0])
+    )
+    assert not _is_transient_rpc_error(RpcError("RPC error"))
+    assert not _is_transient_rpc_error(
+        RuntimeError("task was cancelled before it started running")
+    )
+
+
+def _cancelled_rpc_error() -> RpcError:
+    """The error an in-flight RPC fails with while the GCS restarts under it."""
+    return RpcError("RPC error: CANCELLED", rpc_code=grpc.StatusCode.CANCELLED.value[0])
+
+
+def _patch_failing_ping(should_fail):
+    """Make the monitor's ping of the `JobSupervisor` fail transiently.
+
+    `_monitor_job_internal` is the only code under test that passes a bare
+    `ObjectRef` to `ray.get`, so keying off that shape fails the ping and nothing
+    else.
+    """
+    original_get = ray.get
+
+    def maybe_failing_get(object_refs, *args, **kwargs):
+        if isinstance(object_refs, ray.ObjectRef) and should_fail():
+            raise _cancelled_rpc_error()
+        return original_get(object_refs, *args, **kwargs)
+
+    return patch.object(ray, "get", maybe_failing_get)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fail_every_read",
+    [False, True],
+    ids=["in_flight_rpc_dropped", "gcs_unreachable"],
+)
+async def test_job_monitor_survives_transient_rpc_errors(job_manager, fail_every_read):
+    """The monitor must keep monitoring a running job when its RPCs fail transiently.
+
+    This reproduces the GCS failover failure mode: while the GCS restarts, RPCs
+    issued from the monitoring loop fail with CANCELLED even though the driver and
+    the JobSupervisor are both still alive.
+
+    Both parametrizations must be tolerated:
+    - `in_flight_rpc_dropped`: only some reads fail, which is what a single dropped
+      in-flight RPC looks like and what was seen in production.
+    - `gcs_unreachable`: every read fails for as long as the outage lasts. The
+      monitor must not issue any further RPC of its own here, because an exception
+      escaping the loop would leave the job running with no monitor at all.
+    """
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    original_get_status = job_manager._job_info_client.get_status
+    state = {"calls": 0, "raised": 0}
+
+    async def flaky_get_status(*args, **kwargs):
+        state["calls"] += 1
+        if not fail_every_read and state["calls"] % 2 == 0:
+            # Let every other read through, which is what a single dropped in-flight
+            # RPC looks like: the monitor's next read of the same value succeeds.
+            return await original_get_status(*args, **kwargs)
+        state["raised"] += 1
+        raise _cancelled_rpc_error()
+
+    with patch.object(job_manager._job_info_client, "get_status", flaky_get_status):
+        # The monitor has to survive repeated transient errors. If it instead treats
+        # them as "the supervisor is gone", it marks the job FAILED and exits on the
+        # very first one, so the count never gets here.
+        await async_wait_for_condition(lambda: state["raised"] >= 3)
+
+    # The monitor is still registered, i.e. its coroutine neither returned nor died.
+    assert job_id in job_manager.monitored_jobs
+    assert await job_manager.get_job_status(job_id) == JobStatus.RUNNING
+
+    job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_monitor_fails_job_when_pings_keep_failing(job_manager):
+    """Once the retry window is exhausted the job must converge, not linger.
+
+    A monitor that retried forever would leave a job that can never reach a terminal
+    state, so a `JobSupervisor` that stays unreachable for the whole window has to be
+    treated as gone: the job is failed and the supervisor killed, exactly as an
+    unrecognized exception did before.
+    """
+    from ray.dashboard.modules.job import job_manager as job_manager_module
+
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    # A zero-length window means the first failed ping is already past the deadline,
+    # so the monitor has to draw its conclusion immediately.
+    no_window = patch.object(job_manager_module, "_GCS_RECONNECT_TIMEOUT_S", 0)
+    with no_window, _patch_failing_ping(lambda: True):
+        await async_wait_for_condition(
+            check_job_failed,
+            job_manager=job_manager,
+            job_id=job_id,
+            expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+        )
+
+    data = await job_manager.get_job_info(job_id)
+    assert "RPC error: CANCELLED" in data.message
+
+
+@pytest.mark.asyncio
+async def test_job_monitor_does_not_fail_job_after_gcs_comes_back(job_manager):
+    """A GCS outage must not spend the window that a failed ping is measured against.
+
+    While the GCS is unreachable the monitor never gets as far as asking the
+    `JobSupervisor` anything, so those iterations carry no evidence about it. If they
+    counted, an outage longer than the window would leave it already exhausted, and
+    the first dropped ping after the GCS came back would fail a perfectly healthy job
+    and kill its live supervisor.
+    """
+    from ray.dashboard.modules.job import job_manager as job_manager_module
+
+    window = 1
+    outage_s = 1.5 * window
+
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    original_get_status = job_manager._job_info_client.get_status
+    outage_start = time.monotonic()
+    state = {"read_failures": 0, "pings": 0, "ping_failures": 0}
+
+    def gcs_unreachable():
+        return time.monotonic() - outage_start < outage_s
+
+    async def flaky_get_status(*args, **kwargs):
+        if gcs_unreachable():
+            state["read_failures"] += 1
+            raise _cancelled_rpc_error()
+        return await original_get_status(*args, **kwargs)
+
+    def should_fail_ping():
+        state["pings"] += 1
+        # Exactly one ping is dropped, and only once the GCS answers again -- by
+        # which point the outage has already lasted longer than the whole window.
+        if state["ping_failures"] or gcs_unreachable():
+            return False
+        state["ping_failures"] += 1
+        return True
+
+    short_window = patch.object(job_manager_module, "_GCS_RECONNECT_TIMEOUT_S", window)
+    fail_reads = patch.object(
+        job_manager._job_info_client, "get_status", flaky_get_status
+    )
+    with short_window, fail_reads, _patch_failing_ping(should_fail_ping):
+        await async_wait_for_condition(lambda: state["ping_failures"] == 1)
+        pings_before = state["pings"]
+        # The supervisor answers again right after the dropped ping, so the monitor
+        # has to still be there to hear it. One that had counted the outage against
+        # the window would have failed the job and stopped pinging instead.
+        await async_wait_for_condition(lambda: state["pings"] >= pings_before + 3)
+
+    assert state["read_failures"] > 0
+    assert job_id in job_manager.monitored_jobs
+    assert await job_manager.get_job_status(job_id) == JobStatus.RUNNING
+
+    job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_monitor_retries_failing_job_while_gcs_unreachable(job_manager):
+    """Failing a job needs the GCS, so an unreachable GCS can only delay it.
+
+    Both halves of the conclusion -- writing the terminal status and killing the
+    supervisor -- go through the GCS, so a monitor that has decided the supervisor is
+    gone can act only once the GCS answers. Until then it has to keep retrying: if
+    the failing read escaped instead, the job would be left running with no monitor,
+    no terminal status and a live supervisor, which is the outcome the window exists
+    to prevent.
+    """
+    from ray.dashboard.modules.job import job_manager as job_manager_module
+
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    original_get_status = job_manager._job_info_client.get_status
+    state = {"converging": False, "reads_while_converging": 0}
+
+    async def flaky_get_status(*args, **kwargs):
+        if not state["converging"]:
+            # The read at the top of the loop keeps working, so the monitor gets as
+            # far as pinging the supervisor.
+            return await original_get_status(*args, **kwargs)
+        # This is the read the monitor makes on its way to failing the job.
+        state["converging"] = False
+        state["reads_while_converging"] += 1
+        raise _cancelled_rpc_error()
+
+    def should_fail_ping():
+        state["converging"] = True
+        return True
+
+    # A zero-length window makes every failed ping conclusive right away, so every
+    # iteration reaches the failure path and finds the GCS unreachable there.
+    no_window = patch.object(job_manager_module, "_GCS_RECONNECT_TIMEOUT_S", 0)
+    fail_reads = patch.object(
+        job_manager._job_info_client, "get_status", flaky_get_status
+    )
+    with no_window, fail_reads, _patch_failing_ping(should_fail_ping):
+        await async_wait_for_condition(lambda: state["reads_while_converging"] >= 3)
+        # The monitor is still registered, i.e. the failing read neither ended its
+        # coroutine nor killed it.
+        assert job_id in job_manager.monitored_jobs
+
+    # Nothing was recorded while the GCS was unreachable, and the supervisor answers
+    # as soon as pings get through again, so the job just carries on.
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+    job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_monitor_keeps_monitoring_while_gcs_stays_unreachable(job_manager):
+    """Transient errors that aren't from a ping must never fail the job on their own.
+
+    They mean the monitor couldn't reach the GCS, not that the supervisor is gone, so
+    even with a zero-length window they may only be retried -- and retried without
+    issuing more RPCs of the monitor's own, since an exception escaping the loop would
+    leave the job running with no monitor at all.
+    """
+    from ray.dashboard.modules.job import job_manager as job_manager_module
+
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    state = {"raised": 0}
+
+    async def unreachable_get_status(*args, **kwargs):
+        state["raised"] += 1
+        raise _cancelled_rpc_error()
+
+    no_window = patch.object(job_manager_module, "_GCS_RECONNECT_TIMEOUT_S", 0)
+    fail_reads = patch.object(
+        job_manager._job_info_client, "get_status", unreachable_get_status
+    )
+    with no_window, fail_reads:
+        await async_wait_for_condition(lambda: state["raised"] >= 3)
+        # The monitor is still registered, i.e. its coroutine neither returned nor
+        # died on the unguarded status read.
+        assert job_id in job_manager.monitored_jobs
+
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+    job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
 
 
 if __name__ == "__main__":
