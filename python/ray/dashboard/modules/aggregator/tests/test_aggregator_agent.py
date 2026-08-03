@@ -1294,7 +1294,7 @@ def _get_dashboard_head_events_from_httpserver(httpserver):
         {
             "env_vars": {
                 # Enable both publishers
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
+                "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
@@ -1357,7 +1357,7 @@ def test_aggregator_agent_publish_to_both_dashboard_head_and_http(
                 # Disable the external HTTP publisher to test filtering in isolation
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "False",
                 # Enable the dashboard-head publisher
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
+                "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
             },
         },
     ],

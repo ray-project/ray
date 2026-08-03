@@ -13,6 +13,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
 )
+from ray.dashboard.consts import RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD
 from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -67,10 +68,10 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
 )
-# flag to enable publishing task events to the dashboard head
-PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD", False
-)
+# flag to enable publishing task events to the dashboard head from aggregator agent.
+# the TaskEventsHead module gates its own loading
+# on the same flag, so publishing and ingestion are switched on together.
+PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
 # will be converted to camel case.
