@@ -1029,24 +1029,6 @@ RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
 # deployment's graceful_shutdown_timeout_s.
 RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S = 5
 
-# Extra time added to the controller's graceful-shutdown budget for non-replica
-# teardown (proxy drain, checkpoint deletion) that serve.shutdown() waits on.
-RAY_SERVE_SHUTDOWN_OVERHEAD_MARGIN_S = get_env_float_non_negative(
-    "RAY_SERVE_SHUTDOWN_OVERHEAD_MARGIN_S", 10.0
-)
-
-# Slack on top of the controller's reported shutdown budget before serve.shutdown()
-# treats the controller as wedged and force-kills it.
-RAY_SERVE_SHUTDOWN_BACKSTOP_S = get_env_float_non_negative(
-    "RAY_SERVE_SHUTDOWN_BACKSTOP_S", 10.0
-)
-
-# Wait used when the controller can't report its shutdown budget (e.g. wedged
-# before it can answer), so a slow-but-healthy teardown still finishes.
-RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S = get_env_float_non_negative(
-    "RAY_SERVE_SHUTDOWN_BUDGET_FALLBACK_S", 60.0
-)
-
 # HTTP request timeout
 SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 

@@ -34,7 +34,7 @@ CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
     ray.shutdown()
 
 
@@ -276,7 +276,7 @@ def test_llm_serve_data_parallelism_cleanup():
     master_keys = _internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX)
     assert len(master_keys) > 0
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_llm_serve_data_parallelism_declarative():
