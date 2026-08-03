@@ -10,8 +10,8 @@ from ray.experimental.sandbox.config import (
 def test_default_sandbox_config():
     config = SandboxConfig()
     assert config.image == "python:3.10-slim"
-    assert config.cpu == 1.0
-    assert config.memory == "1Gi"
+    assert config.cpu == 0.0
+    assert config.memory == 0
     assert config.work_dir == "/workspace"
     assert config.ttl_seconds == 3600
     assert config.runsc_path == "runsc"

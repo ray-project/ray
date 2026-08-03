@@ -32,8 +32,8 @@ class Sandbox:
     def __init__(
         self,
         image: str = "python:3.10-slim",
-        cpu: float = 1.0,
-        memory: Union[str, int, float] = "1Gi",
+        cpu: float = 0.0,
+        memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
         work_dir: str = "/workspace",
         ttl_seconds: Optional[int] = 3600,
@@ -45,21 +45,6 @@ class Sandbox:
         resources: Optional[Dict[str, float]] = None,
         **kwargs,
     ):
-        if "config" in kwargs and kwargs["config"] is not None:
-            cfg = kwargs.pop("config")
-            image = cfg.image
-            cpu = cfg.cpu
-            memory = cfg.memory
-            env = cfg.env
-            work_dir = cfg.work_dir
-            ttl_seconds = cfg.ttl_seconds
-            labels = cfg.labels
-            timeout_seconds = cfg.timeout_seconds
-            runsc_path = cfg.runsc_path
-            rootless = cfg.rootless
-            network = cfg.network
-            resources = cfg.resources
-
         runsc_path_override = kwargs.pop("runsc_path_override", None)
         if runsc_path_override is None and runsc_path != "runsc":
             runsc_path_override = runsc_path
@@ -88,10 +73,10 @@ class Sandbox:
         # Translate resources assigned to this Ray actor into runtime config resources
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
-            if "CPU" in assigned:
+            if "CPU" in assigned and assigned["CPU"] > 0:
                 config.cpu = float(assigned["CPU"])
 
-            if "memory" in assigned:
+            if "memory" in assigned and assigned["memory"] > 0:
                 config.memory = int(assigned["memory"])
 
             custom_resources = {}
@@ -100,6 +85,7 @@ class Sandbox:
                     k not in ("CPU", "memory")
                     and not k.startswith("node:")
                     and k != "object_store_memory"
+                    and v > 0
                 ):
                     custom_resources[k] = float(v)
 

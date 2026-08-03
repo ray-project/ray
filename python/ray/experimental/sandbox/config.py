@@ -64,8 +64,8 @@ class SandboxConfig:
     """
 
     image: str = "python:3.10-slim"
-    cpu: float = 1.0
-    memory: Union[str, int, float] = "1Gi"
+    cpu: float = 0.0
+    memory: Union[str, int, float] = 0
     env: Dict[str, str] = field(default_factory=dict)
     work_dir: str = "/workspace"
     ttl_seconds: Optional[int] = 3600

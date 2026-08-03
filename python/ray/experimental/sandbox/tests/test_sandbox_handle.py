@@ -35,10 +35,7 @@ def test_sandbox_actor_wrapper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    rt = SandboxRuntime(runsc_path_override="/bin/sh")
-    config = SandboxConfig(work_dir="/workspace", runsc_path="/bin/sh")
-
-    actor = Sandbox.remote(runtime=rt, config=config)
+    actor = Sandbox.remote(work_dir="/workspace", runsc_path_override="/bin/sh")
     instance_id = ray.get(actor.get_instance_id.remote())
     assert instance_id.startswith("ray-sb-gvisor-")
 
@@ -151,8 +148,9 @@ def test_sandbox_actor_resource_translation():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    config = SandboxConfig(work_dir="/workspace", runsc_path="/bin/sh", cpu=1.0)
-    actor = Sandbox.options(num_cpus=2.0).remote(config=config)
+    actor = Sandbox.options(num_cpus=2.0).remote(
+        cpu=2.0, work_dir="/workspace", runsc_path_override="/bin/sh"
+    )
 
     ret_config = ray.get(actor.get_config.remote())
     assert ret_config.cpu == 2.0
