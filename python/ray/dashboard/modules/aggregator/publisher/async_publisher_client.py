@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -397,12 +398,19 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
                 self._session = aiohttp.ClientSession(timeout=self._timeout)
             # Propagate the auth token so the POST passes the dashboard's auth middleware.
             headers = get_auth_headers_if_auth_enabled({})
-            async with self._session.post(
-                endpoint,
-                data=serialized_request,
-                headers=headers,
-            ) as resp:
-                resp.raise_for_status()
+            try:
+                async with self._session.post(
+                    endpoint,
+                    data=serialized_request,
+                    headers=headers,
+                ) as resp:
+                    resp.raise_for_status()
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
+                # Couldn't reach the endpoint; the dashboard head may have restarted at a
+                # new address. Drop the cached endpoint so the next publish re-resolves it
+                # from InternalKV.
+                self._endpoint = None
+                raise
             return PublishStats(
                 is_publish_successful=True,
                 num_events_published=len(filtered_events),
