@@ -361,8 +361,4 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "w", encoding="utf-8") as f:
             f.write(config_json_str)
 
-        print(
-            f"OCI bundle config.json for sandbox at {config_json_path}:\n{config_json_str}"
-        )
-
         return config_json_path

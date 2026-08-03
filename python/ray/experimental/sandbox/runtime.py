@@ -1,10 +1,8 @@
 import asyncio
 import os
-from abc import ABC
 from typing import Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
-    BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
@@ -12,17 +10,18 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 
 
-class SandboxRuntime(ABC):
-    """Low-level interface for managing local sandbox runtime environments.
+class SandboxRuntime:
+    """Low-level interface for managing local gVisor sandbox runtime environments.
 
     Args:
-        backend: Optional BaseSandboxBackend instance. If None, defaults to GVisorSandboxBackend.
+        runsc_path_override: Optional path override for the gVisor runsc binary.
     """
 
-    def __init__(self, backend: Optional[BaseSandboxBackend] = None):
-        if backend is None:
-            backend = GVisorSandboxBackend()
-        self._backend = backend
+    def __init__(
+        self,
+        runsc_path_override: Optional[str] = None,
+    ):
+        self._backend = GVisorSandboxBackend(runsc_path_override=runsc_path_override)
 
     def create(self, config: Optional[SandboxConfig] = None, **kwargs) -> str:
         """Provision the sandbox instance and return unique instance ID."""
@@ -111,12 +110,3 @@ class SandboxRuntime(ABC):
     async def delete_async(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance asynchronously."""
         await asyncio.to_thread(self.delete, instance_id)
-
-
-class GVisorSandboxRuntime(SandboxRuntime):
-    """gVisor sandbox runtime environment implementation."""
-
-    def __init__(self, runsc_path_override: Optional[str] = None):
-        super().__init__(
-            backend=GVisorSandboxBackend(runsc_path_override=runsc_path_override)
-        )

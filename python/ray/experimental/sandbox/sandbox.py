@@ -6,7 +6,7 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.config import SandboxConfig
-from ray.experimental.sandbox.runtime import GVisorSandboxRuntime, SandboxRuntime
+from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 @ray.remote
@@ -14,21 +14,17 @@ class Sandbox:
     """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.
 
     Args:
-        runtime: Optional SandboxRuntime instance. If None, defaults to GVisorSandboxRuntime.
         config: Optional SandboxConfig instance.
         **kwargs: Additional parameters passed to SandboxConfig or runtime.
     """
 
     def __init__(
         self,
-        runtime: Optional[SandboxRuntime] = None,
         config: Optional[SandboxConfig] = None,
         **kwargs,
     ):
         runsc_path_override = kwargs.pop("runsc_path_override", None)
-        if runtime is None:
-            runtime = GVisorSandboxRuntime(runsc_path_override=runsc_path_override)
-        self.runtime = runtime
+        self.runtime = SandboxRuntime(runsc_path_override=runsc_path_override)
 
         if config is None:
             config = SandboxConfig(**kwargs)
