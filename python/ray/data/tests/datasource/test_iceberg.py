@@ -230,11 +230,9 @@ def _iceberg_scan_row_count(**scan_kwargs) -> int:
     return table.scan(**scan_kwargs).to_arrow().num_rows
 
 
-# Every entry builds a Dataset whose row count is unambiguous, so ``count()`` can
-# be checked against the rows the same query actually yields. ``count()`` has two
-# strategies -- read the count from plan metadata, or project to zero columns and
-# count what comes back -- and these cases cover both, including the cases that
-# defeat the metadata short-circuit.
+# ``count()`` has two strategies -- read the count from plan metadata, or project
+# to zero columns and count what comes back. These cases cover both, including
+# the ones that defeat the metadata short-circuit.
 _COUNT_CASES = {
     "plain": lambda: read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -288,8 +286,8 @@ _COUNT_CASES = {
 def test_count_matches_rows_actually_produced(case):
     """``count()`` must agree with the number of rows the query yields.
 
-    A projection or a pushed-down filter must not change the answer: the count is
-    a property of the query, not of how much of it was pushed into the reader.
+    The count is a property of the query, not of how much of it was pushed into
+    the reader.
     """
     make_ds = _COUNT_CASES[case]
     expected = len(make_ds().take_all())
@@ -304,8 +302,7 @@ def test_empty_projection_preserves_row_count():
     """Selecting zero columns must yield N rows of no columns, not zero rows.
 
     ``Dataset.count()`` projects to zero columns to avoid reading column data, so
-    an empty projection that drops rows silently corrupts every count built that
-    way.
+    an empty projection that drops rows corrupts every count built that way.
     """
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -344,11 +341,10 @@ def test_empty_projection_preserves_row_count():
 def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
     """Read-task metadata must never claim a row count the read does not deliver.
 
-    ``Dataset.count()`` returns this number directly when the plan has nothing
-    that could change the row count, so an overcount here reaches the user as
-    the answer. ``None`` means "unknown" and makes ``count()`` do the read, so it
-    is always safe -- but it also gives up a free count, hence
-    ``count_must_be_exact`` pinning the cases where the shortcut is sound.
+    ``Dataset.count()`` returns this number directly when nothing in the plan can
+    change the row count, so an overcount reaches the user as the answer. ``None``
+    is always safe but gives up a free count, hence ``count_must_be_exact``
+    pinning the cases where the shortcut is sound.
     """
     kwargs = {} if row_filter is None else {"row_filter": row_filter}
     iceberg_ds = IcebergDatasource(
@@ -377,9 +373,9 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
 def test_reported_num_rows_is_unknown_when_scan_stops_early():
     """A ``limit`` makes the read stop early, so no manifest count describes it.
 
-    The manifests still say how many rows each surviving file holds, and the
-    filter may well be fully resolved, so the exactness test would otherwise pass
-    and report the full total for a read that returns ``limit`` rows.
+    The manifests still say how many rows each file holds and the filter may be
+    fully resolved, so the exactness test would otherwise pass and report the
+    full total for a read that returns ``limit`` rows.
     """
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -406,11 +402,10 @@ def test_reported_num_rows_is_unknown_when_scan_stops_early():
 def test_empty_projection_respects_pinned_snapshot_schema():
     """The stand-in column must exist in the snapshot being read.
 
-    An empty projection reads one cheap column and slices it away. Choosing that
-    column from the table's *current* schema breaks a read pinned to an older
-    snapshot: a column added since does not exist there, and PyIceberg raises
-    ``ValueError: Could not find column``. So ``count()`` on a historical
-    snapshot would fail outright rather than count its rows.
+    An empty projection reads one cheap column and slices it away. Choosing it
+    from the table's *current* schema breaks a read pinned to an older snapshot:
+    a column added since is absent there, PyIceberg raises ``ValueError: Could
+    not find column``, and ``count()`` fails instead of counting.
     """
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS.copy())
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
@@ -431,7 +426,7 @@ def test_empty_projection_respects_pinned_snapshot_schema():
         snapshot_id=old_snapshot_id,
     )
     assert (
-        iceberg_ds._get_sentinel_field() != "col_d"
+        iceberg_ds._get_cheapest_sentinel_field() != "col_d"
     ), "the stand-in column must come from the pinned snapshot's schema"
 
     read_tasks = iceberg_ds.apply_projection({}).get_read_tasks(2)
@@ -456,17 +451,15 @@ def test_empty_projection_respects_pinned_snapshot_schema():
 def test_pushdown_does_not_inherit_stale_plan_files(push_down):
     """A pushdown clone must re-plan its scan, not inherit the cache.
 
-    ``apply_predicate`` and ``apply_projection`` shallow-copy the datasource, so
-    a plan-file cache populated beforehand -- by ``estimate_inmemory_data_size``,
-    say, which Ray calls to autodetect parallelism -- would be shared with the
-    clone. Those tasks were planned without the predicate, so every residual is
-    ``AlwaysTrue`` and ``get_read_tasks`` would report the unfiltered manifest
-    total: exactly the overcount this file's other tests pin against.
+    ``apply_predicate`` and ``apply_projection`` shallow-copy the datasource, so a
+    cache populated beforehand -- by ``estimate_inmemory_data_size``, say, which
+    Ray calls to autodetect parallelism -- is shared with the clone. Those tasks
+    were planned without the predicate, so every residual is ``AlwaysTrue`` and
+    ``get_read_tasks`` would report the unfiltered manifest total.
 
-    Reading the cache twice also has to keep working. ``DataScan.plan_files`` is
-    annotated ``Iterable[FileScanTask]``, so a future PyIceberg returning a
-    generator would otherwise leave the second read empty -- silently yielding
-    zero read tasks and an empty dataset.
+    Reading the cache twice also has to keep working: ``plan_files`` is annotated
+    ``Iterable``, so a future PyIceberg returning a generator would otherwise
+    leave the second read empty -- zero read tasks, empty dataset.
     """
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -500,11 +493,10 @@ def test_pushdown_does_not_inherit_stale_plan_files(push_down):
 def test_read_iceberg_does_not_mutate_caller_kwargs():
     """The caller's dicts belong to the caller.
 
-    Both dicts were stored by reference. ``catalog_kwargs`` is then
-    ``pop("name")``-ed, so the caller loses the catalog name and a second read of
-    the same table raises ``NoSuchTableError``. ``scan_kwargs`` has
-    ``snapshot_id`` written into it, which fails silently instead: a later read
-    reusing the dict inherits the pin and returns rows from a stale snapshot.
+    Both were stored by reference. ``catalog_kwargs`` is then ``pop("name")``-ed,
+    so a second read of the same table raises ``NoSuchTableError``.
+    ``scan_kwargs`` gets ``snapshot_id`` written into it, which fails silently
+    instead: a later read reusing the dict inherits the pin and returns stale rows.
     """
     catalog_kwargs = _CATALOG_KWARGS.copy()
     scan_kwargs = {}

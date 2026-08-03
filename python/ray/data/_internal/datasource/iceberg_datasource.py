@@ -86,12 +86,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Approximate width, in bytes, of the Iceberg primitive types that are cheap to
-# read. Used to choose a stand-in column for an empty projection, see
-# ``IcebergDatasource._get_sentinel_field``. Keys are Iceberg type names as
-# returned by ``str(field_type)``. Types missing from this map -- strings,
-# binary, decimals and nested types -- have unbounded width, and are only used
-# as a sentinel if the table has nothing cheaper to offer.
+# Approximate width in bytes of each Iceberg primitive type, keyed by
+# ``str(field_type)``. Used to pick the cheapest stand-in column for an empty
+# projection, see ``IcebergDatasource._get_cheapest_sentinel_field``. Types
+# absent here -- strings, binary, decimals, nested -- are unbounded, so they
+# lose to any type listed.
 _SENTINEL_FIELD_WIDTHS = {
     "boolean": 1,
     "int": 4,
@@ -280,12 +279,8 @@ def _get_read_task(
 
     for table in _generate_tables():
         if drop_all_columns:
-            # ``schema`` holds a sentinel column the caller never asked for, see
-            # ``IcebergDatasource._get_sentinel_field``. Hand it to Ray's
-            # zero-column projection helper, which slices every column away
-            # (preserving the row count, unlike rebuilding a table from zero
-            # columns) and appends the ``__bsp_stub`` placeholder that keeps the
-            # count alive through downstream ``pa.concat_tables`` calls.
+            # We over-read one column so the row count survives; drop it here.
+            # See ``IcebergDatasource._get_cheapest_sentinel_field``.
             table = BlockAccessor.for_block(table).select([])
         yield table
 
@@ -329,10 +324,9 @@ class IcebergDatasource(Datasource):
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
 
-        # Copy both dicts: below we pop ``name`` out of the catalog kwargs and
-        # write ``snapshot_id`` into the scan kwargs. Doing that in place would
-        # mutate dicts the caller still holds, so a second read reusing the same
-        # dict would fail to find its catalog or silently inherit a snapshot ID.
+        # Copy both dicts: we pop ``name`` from the catalog kwargs and write
+        # ``snapshot_id`` into the scan kwargs, and doing that in place would
+        # break a second read that reuses the caller's dict.
         self._scan_kwargs = dict(scan_kwargs) if scan_kwargs is not None else {}
         self._catalog_kwargs = (
             dict(catalog_kwargs) if catalog_kwargs is not None else {}
@@ -382,9 +376,8 @@ class IcebergDatasource(Datasource):
         # Calculate and cache the plan_files if they don't already exist
         if self._plan_files is None:
             data_scan = self._get_data_scan()
-            # ``DataScan.plan_files`` is annotated ``Iterable[FileScanTask]``.
-            # PyIceberg returns a list today, but callers here iterate the cache
-            # more than once, so materialize it rather than depend on that.
+            # Annotated ``Iterable[FileScanTask]``; a list today, but this cache
+            # is iterated more than once, so don't depend on that.
             self._plan_files = list(data_scan.plan_files())
 
         return self._plan_files
@@ -392,11 +385,10 @@ class IcebergDatasource(Datasource):
     def apply_predicate(self, predicate_expr: Expr) -> "IcebergDatasource":
         """Push a predicate down, discarding plan files planned without it.
 
-        The base implementation shallow-copies, which would leave the clone
-        sharing a plan-file cache computed before this predicate existed. Those
-        tasks carry ``AlwaysTrue`` residuals -- nothing was filtered at plan
-        time -- which ``get_read_tasks`` would read as "the filter is fully
-        resolved" and report an unfiltered row count for a filtered read.
+        The base implementation shallow-copies, so the clone would inherit a
+        cache planned before this predicate existed: all-``AlwaysTrue``
+        residuals, which ``get_read_tasks`` turns into an unfiltered row count
+        for a filtered read.
         """
         return self._invalidate_plan_files(super().apply_predicate(predicate_expr))
 
@@ -406,15 +398,13 @@ class IcebergDatasource(Datasource):
         """Push a projection down, discarding plan files planned without it.
 
         The projected columns are part of the scan, so a cache built for a
-        different projection does not belong to the clone. See
-        ``apply_predicate``.
+        different projection does not belong to the clone. See ``apply_predicate``.
         """
         return self._invalidate_plan_files(super().apply_projection(projection_map))
 
-    def _invalidate_plan_files(self, clone: "Datasource") -> "Datasource":
+    def _invalidate_plan_files(self, clone: "IcebergDatasource") -> "IcebergDatasource":
         """Drop ``clone``'s inherited plan-file cache, so it re-plans its scan."""
-        # A datasource returns ``self`` to signal "no pushdown applied", in which
-        # case there is no clone and the cache is still valid for this scan.
+        # ``self`` signals "no pushdown applied": no clone, cache still valid.
         if clone is not self:
             clone._plan_files = None
         return clone
@@ -438,24 +428,20 @@ class IcebergDatasource(Datasource):
 
         return combined_filter
 
-    def _get_sentinel_field(self) -> str:
+    def _get_cheapest_sentinel_field(self) -> str:
         """Return the cheapest column to read in place of an empty projection.
 
-        PyIceberg builds its output by reconstructing a table against the
-        projected schema, and a table reconstructed from zero columns reports
-        zero rows however many rows the scan actually matched. So an empty
-        projection -- which ``Dataset.count()`` legitimately requests, since it
-        needs a row count but no values -- would silently count zero rows. We
-        read a single column instead and slice it away in ``_get_read_task``,
-        which preserves the row count. Picking the narrowest column keeps the
-        wasted I/O small: reading a string column here instead of a boolean one
-        can cost several orders of magnitude more bytes.
+        PyIceberg reconstructs its output against the projected schema, and a
+        table reconstructed from zero columns reports zero rows however many the
+        scan matched -- so an empty projection, which ``Dataset.count()``
+        legitimately requests, would silently count zero. Read one column
+        instead and slice it away in ``_get_read_task``, which preserves the
+        count. Pick the narrowest: a string column can cost orders of magnitude
+        more bytes than a boolean one.
 
-        The column is chosen from the schema the scan will actually read, not
-        from ``self.table.schema()``. Those differ when ``snapshot_id`` pins a
-        historical snapshot: after a column is added, the current schema holds
-        names that do not exist in the pinned snapshot, and selecting one raises
-        ``ValueError: Could not find column``.
+        The column comes from the schema the scan reads, not
+        ``self.table.schema()``, which with ``snapshot_id`` pinned can name
+        columns the snapshot lacks -- ``ValueError: Could not find column``.
         """
         fields = self._get_scan_schema().fields
         if not fields:
@@ -475,11 +461,9 @@ class IcebergDatasource(Datasource):
     def _get_scan_schema(self) -> "Schema":
         """Return the full schema this scan reads against.
 
-        Delegates snapshot resolution to PyIceberg -- ``DataScan.projection()``
-        returns the pinned snapshot's schema rather than the table's current one,
-        and returns it whole when every field is selected -- so that we agree
-        with the scan built in ``_get_data_scan``. Builds a scan but does not
-        plan it, which touches no data files.
+        ``DataScan.projection()`` resolves the pinned snapshot's schema itself,
+        and returns it whole when every field is selected, so this agrees with
+        ``_get_data_scan`` by construction. Building a scan reads no data files.
         """
         return self.table.scan(
             row_filter=self._get_combined_filter(),
@@ -500,7 +484,7 @@ class IcebergDatasource(Datasource):
         if data_columns is None:
             selected_fields = ("*",)
         elif not data_columns:
-            selected_fields = (self._get_sentinel_field(),)
+            selected_fields = (self._get_cheapest_sentinel_field(),)
         else:
             selected_fields = tuple(data_columns)
 
@@ -577,10 +561,10 @@ class IcebergDatasource(Datasource):
         # Get the arrow schema, to set in the metadata
         pya_schema = pyi_pa_io.schema_to_pyarrow(projected_schema)
 
-        # An empty projection is read as a single sentinel column, see
-        # ``_get_sentinel_field``, which the read tasks then replace with Ray's
-        # ``__bsp_stub`` placeholder. Declare that placeholder so the reported
-        # schema matches the blocks; it is hidden from the user-visible schema.
+        # An empty projection is read as one sentinel column, see
+        # ``_get_cheapest_sentinel_field``, which the read tasks replace with Ray's
+        # ``__bsp_stub``. Declare the placeholder so the reported schema matches
+        # the blocks; it is hidden from the user-visible schema.
         drop_all_columns = self._is_empty_projection()
         if drop_all_columns:
             pya_schema = pa.schema(
@@ -607,24 +591,13 @@ class IcebergDatasource(Datasource):
         case_sensitive = self._scan_kwargs.get("case_sensitive", True)
         limit = self._scan_kwargs.get("limit")
 
-        # Whether the manifests' ``record_count`` is still an exact row count.
-        # It is written when the data is written, so it only holds if every row
-        # of every surviving file matches the filter. PyIceberg reports whatever
-        # is left of the filter after partition pruning as
-        # ``FileScanTask.residual``: ``AlwaysTrue`` means pruning resolved the
-        # filter completely (e.g. a filter on a partition column dropped whole
-        # files), so the counts still hold. Anything else has to be evaluated row
-        # by row, and the counts would over-report. Old PyIceberg versions do not
-        # populate ``residual``, in which case we cannot prove anything and fall
-        # back to reporting an unknown row count.
-        #
-        # This is deliberately the same test PyIceberg's own ``DataScan.count()``
-        # applies, so the two agree on when a manifest count still holds.
-        #
-        # A ``limit`` makes the read stop early, so no manifest arithmetic
-        # describes what comes back and the count cannot be exact. (It is handed
-        # to each read task, so the rows returned depend on how files were
-        # chunked -- another reason not to try to predict it.)
+        # Manifests record how many rows each file holds, which is only still an
+        # exact count if every surviving row matches the filter. PyIceberg puts
+        # whatever the filter leaves after file pruning in
+        # ``FileScanTask.residual``, so ``AlwaysTrue`` means nothing is left to
+        # check and the counts hold. Same test PyIceberg's own
+        # ``DataScan.count()`` uses. A ``limit`` stops the read early, so no
+        # count taken from the manifests describes what comes back.
         counts_are_exact = limit is None and (
             isinstance(row_filter, AlwaysTrue)
             or all(
@@ -662,13 +635,16 @@ class IcebergDatasource(Datasource):
                 for delete in unique_deletes
                 if delete.content == DataFileContent.POSITION_DELETES
             )
-            metadata = BlockMetadata(
-                num_rows=(
+            # ``None`` means "unknown", which makes ``Dataset.count()`` do the
+            # read instead of trusting these manifest counts.
+            num_rows = None
+            if counts_are_exact:
+                num_rows = (
                     sum(task.file.record_count for task in chunk_tasks)
                     - position_delete_count
-                    if counts_are_exact
-                    else None
-                ),
+                )
+            metadata = BlockMetadata(
+                num_rows=num_rows,
                 size_bytes=sum(task.file.file_size_in_bytes for task in chunk_tasks),
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
