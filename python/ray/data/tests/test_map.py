@@ -55,7 +55,7 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
         ), caplog.text
 
 
-def test_ray_remote_args_fn_deprecation_warning():
+def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
     ds = ray.data.range(1)
 
     def ray_remote_args_fn():
