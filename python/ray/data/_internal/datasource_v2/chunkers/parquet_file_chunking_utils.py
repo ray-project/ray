@@ -3,9 +3,29 @@
 Maps ``ParquetRowGroupChunkMetadata`` (the explicit surviving row groups a bin
 assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading.
 """
-from typing import Iterable, List, Tuple
+from typing import Callable, Iterable, List, Tuple, TypeVar
 
 import pyarrow.dataset as pds
+
+from ray._common.retry import call_with_retry
+
+R = TypeVar("R")
+
+
+def _with_io_retry(f: Callable[[], R], description: str) -> R:
+    """Run ``f``, retrying the transient IO errors configured on the context.
+
+    ``ParquetFileFragment.subset`` and ``.metadata`` both open the file to read
+    its footer, so on remote storage they fail with the same transient errors
+    (S3 timeouts, throttling) the rest of the read path already retries.
+    """
+    from ray.data.context import DataContext
+
+    return call_with_retry(
+        f,
+        description=description,
+        match=DataContext.get_current().retried_io_errors,
+    )
 
 
 def _fragments_from_row_group_ids(
@@ -31,12 +51,21 @@ def _fragments_from_row_group_ids(
     ids = sorted(row_group_ids)
     if not ids:
         return []
-    if not per_row_group_offsets:
-        return [(fragment.subset(row_group_ids=ids), 0)]
 
-    metadata = fragment.metadata
+    def _subset(rg_ids: List[int]) -> pds.ParquetFileFragment:
+        return _with_io_retry(
+            lambda: fragment.subset(row_group_ids=rg_ids),
+            f"subset row groups {rg_ids} of {fragment.path}",
+        )
+
+    if not per_row_group_offsets:
+        return [(_subset(ids), 0)]
+
+    metadata = _with_io_retry(
+        lambda: fragment.metadata, f"read Parquet footer for {fragment.path}"
+    )
     # Cumulative pre-filter row offset at the start of each physical row group.
     prefix = [0] * (metadata.num_row_groups + 1)
     for i in range(metadata.num_row_groups):
         prefix[i + 1] = prefix[i] + metadata.row_group(i).num_rows
-    return [(fragment.subset(row_group_ids=[rg_id]), prefix[rg_id]) for rg_id in ids]
+    return [(_subset([rg_id]), prefix[rg_id]) for rg_id in ids]
