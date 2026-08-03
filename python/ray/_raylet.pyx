@@ -4923,6 +4923,9 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         # YieldCurrentFiber may resume a different task's fiber first. Restore
         # this fiber's exact bounds before Python code continues on it.
+        # Off-fiber is a silent no-op: async-actor creation tasks yield on the
+        # regular task-execution thread, where CPython's bounds are already
+        # correct.
         ReanchorStackProtectionAfterFiberYield()
         try:
             result = future.result()

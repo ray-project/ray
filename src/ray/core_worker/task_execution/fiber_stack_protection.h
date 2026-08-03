@@ -103,7 +103,19 @@ inline std::optional<ReanchorOutcome> TryReanchorStackProtection() {
       reinterpret_cast<SetStackProtectionFn>(
           dlsym(RTLD_DEFAULT, "PyUnstable_ThreadState_SetStackProtection"));
   if (set_stack_protection == nullptr) {
-    // CPython 3.14.0 and 3.14.1 do not export the API yet.
+    // CPython 3.14.0 and 3.14.1 predate the API. Say so once: otherwise the
+    // only symptom is unbounded memory growth in async actors, with nothing
+    // in the logs to point at the cause.
+    static bool warned_missing_api = false;
+    if (!warned_missing_api) {
+      warned_missing_api = true;
+      RAY_LOG(WARNING)
+          << "PyUnstable_ThreadState_SetStackProtection is not available in "
+          << "this interpreter (Python " << PY_VERSION
+          << "). Async actor tasks will leak memory on Python 3.14; upgrade "
+          << "to CPython 3.14.2 or later. See "
+          << "https://github.com/ray-project/ray/issues/63290";
+    }
     return std::nullopt;
   }
 
