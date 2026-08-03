@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Optional
+
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -6,6 +8,31 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Download
 from ray.data._internal.logical.rules.operator_fusion import are_remote_args_compatible
+
+if TYPE_CHECKING:
+    import pyarrow.fs
+
+
+def _are_filesystems_compatible(
+    fs1: Optional["pyarrow.fs.FileSystem"],
+    fs2: Optional["pyarrow.fs.FileSystem"],
+) -> bool:
+    """Returns whether two ``Download`` operators can share one filesystem.
+
+    A ``None`` filesystem means "infer it from the URI scheme at execution time",
+    which isn't interchangeable with an explicitly supplied filesystem. So the two
+    are only compatible when both are ``None`` or both compare equal.
+    """
+    if fs1 is None or fs2 is None:
+        return fs1 is None and fs2 is None
+    if fs1 is fs2:
+        return True
+    try:
+        return bool(fs1 == fs2)
+    except Exception:
+        # Filesystems aren't required to implement comparison. Stay conservative
+        # and leave the operators unfused rather than risk dropping one.
+        return False
 
 
 class CombineDownloads(Rule):
@@ -16,7 +43,7 @@ class CombineDownloads(Rule):
     fragmented resource allocation.
 
     This rule only combines operators if they have identical resource requirements
-    (`ray_remote_args`).
+    (`ray_remote_args`) and read through the same `filesystem`.
 
     Example:
 
@@ -57,6 +84,11 @@ class CombineDownloads(Rule):
                 ):
                     return op
 
+                # Only combine if both read through the same filesystem, since the
+                # merged operator can carry just one.
+                if not _are_filesystems_compatible(input_op.filesystem, op.filesystem):
+                    return op
+
                 # Combine the two Download operators
                 combined_uri_columns = input_op.uri_column_names + op.uri_column_names
                 combined_output_columns = (
@@ -66,7 +98,16 @@ class CombineDownloads(Rule):
                 return Download(
                     uri_column_names=combined_uri_columns,
                     output_bytes_column_names=combined_output_columns,
-                    ray_remote_args=op.ray_remote_args,
+                    # Take the upstream operator's args, matching `FuseOperators`.
+                    # `are_remote_args_compatible` lets the upstream operator carry
+                    # inheritable args (`scheduling_strategy`, `label_selector`) that
+                    # the downstream one omits, but not the reverse -- so upstream is
+                    # the superset here. Using the downstream args instead would
+                    # silently drop those settings.
+                    ray_remote_args=input_op.ray_remote_args,
+                    # Guaranteed equal to `op.filesystem` by the check above; take
+                    # the upstream one for consistency with `ray_remote_args`.
+                    filesystem=input_op.filesystem,
                     input_dependencies=[input_op.input_dependencies[0]],
                 )
 
