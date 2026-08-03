@@ -381,11 +381,17 @@ class DashboardHead:
             assert subprocess_module_handle.process is not None
             pid = subprocess_module_handle.process.pid
             live_pids.add(pid)
-            proc = self._get_subprocess_module_proc(pid)
-            if proc is not None:
+            try:
                 self._record_cpu_mem_metrics_for_proc(
-                    proc, subprocess_module_handle.module_cls.__name__
+                    self._get_subprocess_module_proc(pid),
+                    subprocess_module_handle.module_cls.__name__,
                 )
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # The module may have exited between a health check and this
+                # cycle, either before its handle is built or before it is read.
+                # Skip it rather than abandoning the remaining modules, the
+                # stale-handle cleanup below, and the event loop metrics.
+                continue
         # Drop the handles of modules that exited or restarted under a new pid.
         for stale_pid in self._subprocess_module_procs.keys() - live_pids:
             del self._subprocess_module_procs[stale_pid]
@@ -403,26 +409,22 @@ class DashboardHead:
             )
             self._event_loop_lag_s_max = None
 
-    def _get_subprocess_module_proc(self, pid: int) -> Optional[psutil.Process]:
+    def _get_subprocess_module_proc(self, pid: int) -> psutil.Process:
         """Return the cached psutil.Process for pid, creating it if needed.
 
         Reusing the handle is what gives cpu_percent() a baseline to measure
         against. See the comment on self._subprocess_module_procs.
 
-        Returns None if the process is gone or inaccessible, so that one module
-        exiting mid-cycle does not cost the remaining modules their metrics.
+        Raises psutil.NoSuchProcess or psutil.AccessDenied if the module's
+        process is gone or inaccessible. Callers recording one module at a time
+        handle that per module.
         """
         proc = self._subprocess_module_procs.get(pid)
         # is_running() is False once the process is gone, and also once the pid
         # has been reused by an unrelated process, in which case the cached
         # handle's baseline no longer describes the process being measured.
         if proc is None or not proc.is_running():
-            try:
-                proc = psutil.Process(pid)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                # A module can exit between a health check and this cycle.
-                self._subprocess_module_procs.pop(pid, None)
-                return None
+            proc = psutil.Process(pid)
             self._subprocess_module_procs[pid] = proc
         return proc
 

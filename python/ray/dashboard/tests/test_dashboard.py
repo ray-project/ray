@@ -1720,13 +1720,6 @@ def _busy_process():
         process.wait()
 
 
-def _reaped_process():
-    """A process that has already exited and been reaped, so its pid is gone."""
-    process = subprocess.Popen([sys.executable, "-c", "pass"])
-    process.wait()
-    return process
-
-
 def _fake_subprocess_module_handle(process, module_name="DataHead"):
     """Build a stand-in for SubprocessModuleHandle.
 
@@ -1889,21 +1882,64 @@ async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.asyncio
-async def test_exited_subprocess_module_does_not_hide_other_modules(tmpdir):
+@pytest.mark.parametrize("recorded_while_alive", [False, True])
+async def test_exited_subprocess_module_does_not_hide_other_modules(
+    tmpdir, recorded_while_alive
+):
     """A module that has exited must not cost the other modules their metrics.
 
-    A module can exit between a health check and the next record cycle, which
-    makes `psutil.Process(pid)` raise `NoSuchProcess`. Recording has to carry on
-    with the remaining modules instead of abandoning the cycle.
+    A module can exit between a health check and the next record cycle, making
+    psutil raise `NoSuchProcess`. Recording has to carry on with the remaining
+    modules instead of abandoning the cycle. `recorded_while_alive` covers both
+    a module that was never recorded and one whose handle is already cached.
     """
     head = _make_dashboard_head_for_metrics(tmpdir)
     with _busy_process() as live_process:
-        # The exited module is recorded first, so an unhandled NoSuchProcess
+        exiting_process = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+        # The exiting module is recorded first, so an unhandled psutil error
         # would abandon the cycle before reaching the live one.
         handles = [
-            _fake_subprocess_module_handle(_reaped_process(), "ExitedHead"),
+            _fake_subprocess_module_handle(exiting_process, "ExitedHead"),
             _fake_subprocess_module_handle(live_process, "DataHead"),
         ]
+        try:
+            if recorded_while_alive:
+                await _record_metrics_once(head, handles)
+        finally:
+            exiting_process.kill()
+            exiting_process.wait()
+
+        assert await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_dying_mid_read_does_not_hide_other_modules(
+    tmpdir, monkeypatch
+):
+    """A module dying while its metrics are read must not hide the others.
+
+    A cached handle can pass the liveness check and then have its process exit
+    before the attributes are read, which makes `as_dict` raise. That window is
+    too small to hit reliably, so `as_dict` is patched to raise for one module.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    with _busy_process() as dying_process, _busy_process() as live_process:
+        handles = [
+            _fake_subprocess_module_handle(dying_process, "DyingHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+        real_as_dict = psutil.Process.as_dict
+
+        def as_dict(self, *args, **kwargs):
+            if self.pid == dying_process.pid:
+                raise psutil.NoSuchProcess(self.pid)
+            return real_as_dict(self, *args, **kwargs)
+
+        monkeypatch.setattr(psutil.Process, "as_dict", as_dict)
 
         assert await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
 
