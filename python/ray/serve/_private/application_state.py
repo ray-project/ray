@@ -760,6 +760,7 @@ class ApplicationState:
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=config.runtime_env,
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+                label_selector=_get_shared_build_app_label_selector(config),
             ).remote(
                 config.import_path,
                 config_version,
@@ -1577,6 +1578,36 @@ class ApplicationStateManager:
             CHECKPOINT_KEY,
             cloudpickle.dumps(application_state_info),
         )
+
+
+def _get_shared_build_app_label_selector(
+    config: ServeApplicationSchema,
+) -> Optional[Dict[str, str]]:
+    """Get the shared deployment label selector for the application build task.
+
+    The build task imports the application before Serve schedules its replicas.
+    If all nonempty selectors in the application config are equal and hard
+    constraints, schedule the build task on that node pool. Otherwise, leave
+    the build task unpinned.
+    """
+    shared_selector = None
+    for deployment in config.deployments:
+        if deployment.ray_actor_options is DEFAULT.VALUE:
+            continue
+
+        selector = deployment.ray_actor_options.label_selector
+        if not selector:
+            continue
+
+        if deployment.ray_actor_options.fallback_strategy:
+            return None
+
+        if shared_selector is not None and selector != shared_selector:
+            return None
+
+        shared_selector = selector
+
+    return shared_selector
 
 
 @ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
