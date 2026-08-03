@@ -189,6 +189,7 @@ class JobAgentSubmissionClient:
         async with self._session.get(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs",
             headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=None, sock_connect=30),
         ) as resp:
             if resp.status != 200:
                 await self._raise_error(resp)
