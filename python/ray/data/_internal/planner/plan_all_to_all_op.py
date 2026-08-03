@@ -251,10 +251,7 @@ def _plan_gpu_shuffle_aggregate(
             logical_op.aggs,
             fallback_reason,
         )
-        if data_context.use_hash_shuffle_v2:
-            return _plan_hash_shuffle_aggregate_v2(
-                data_context, logical_op, input_physical_op
-            )
+
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
     return GPUHashAggregateOperator(
@@ -302,18 +299,19 @@ def plan_all_to_all_op(
                 return _plan_gpu_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
+            elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+                return _plan_hash_shuffle_repartition_v2(
+                    data_context, op, input_physical_dag
+                )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-                if data_context.use_hash_shuffle_v2:
-                    return _plan_hash_shuffle_repartition_v2(
-                        data_context, op, input_physical_dag
-                    )
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
-                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE` or "
+                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE`, "
+                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE_V2` or "
                     f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
@@ -345,11 +343,9 @@ def plan_all_to_all_op(
     elif isinstance(op, Aggregate):
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
+        elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+            return _plan_hash_shuffle_aggregate_v2(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-            if data_context.use_hash_shuffle_v2:
-                return _plan_hash_shuffle_aggregate_v2(
-                    data_context, op, input_physical_dag
-                )
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
