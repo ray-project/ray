@@ -314,6 +314,33 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
+def test_read_parquet_v2_uses_footer_indexer_without_partitioner(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """With the footer indexer on, ``ListFiles`` carries no partitioner.
+
+    The indexer bin-packs read units itself, so ``override_num_blocks`` no
+    longer drives a partitioner bucket count for Parquet. The global
+    ``DataContext`` must still not be mutated.
+    """
+    from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+        FooterFileIndexer,
+    )
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+
+    restore_ctx.use_datasource_v2 = True
+    original = restore_ctx.read_op_min_num_blocks
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert isinstance(list_files_op.file_indexer, FooterFileIndexer)
+    assert list_files_op.file_partitioner is None
+    assert restore_ctx.read_op_min_num_blocks == original
+
+
 if __name__ == "__main__":
     import sys
 

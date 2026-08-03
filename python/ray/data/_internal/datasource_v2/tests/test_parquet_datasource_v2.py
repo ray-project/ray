@@ -14,6 +14,7 @@ import pytest
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ParquetFileChunker,
     ParquetFileChunkMetadata,
+    ParquetRowGroupChunkMetadata,
     WholeFileChunker,
     create_chunk_metadata,
 )
@@ -21,7 +22,13 @@ from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils impor
     _calculate_row_group_range,
     _fragments_from_chunk_metadata,
 )
+from ray.data._internal.datasource_v2.listing.file_indexer import (
+    NonSamplingFileIndexer,
+)
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+    FooterFileIndexer,
+)
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
@@ -419,3 +426,73 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
     tables = list(reader.read(manifest))
     # All sub-fragments are out-of-range -> 0 tables emitted.
     assert sum(t.num_rows for t in tables) == 0
+
+
+def test_datasource_uses_footer_indexer_when_flag_is_set(tmp_path, monkeypatch):
+    """The footer-based indexer is opt-in; the blind chunker stays the default."""
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
+    datasource = ParquetDatasourceV2([str(file_path)])
+
+    assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
+
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+    assert isinstance(datasource._get_file_indexer(), FooterFileIndexer)
+
+
+def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
+    table = pa.table({"id": list(range(num_rows))})
+    pq.write_table(table, path, row_group_size=row_group_size)
+    return table
+
+
+def _row_group_manifest(path, row_group_ids, num_rows):
+    """A one-row footer-path manifest selecting explicit row groups of a file."""
+    return FileManifest.construct_manifest(
+        [path],
+        [0],
+        [
+            create_chunk_metadata(
+                ParquetRowGroupChunkMetadata,
+                row_group_ids=tuple(row_group_ids),
+                num_rows=num_rows,
+                # Nominal projected uncompressed size (8-byte int64 ids); only
+                # used for footer-free batch sizing, not row selection.
+                uncompressed_size=num_rows * 8,
+            )
+        ],
+    )
+
+
+def test_parquet_file_reader_reads_selected_row_groups(tmp_path):
+    """The reader reads exactly the row groups named by the footer metadata."""
+    file_path = str(tmp_path / "data.parquet")
+    # 200 rows, 10 row groups of 20 rows each.
+    _write_multi_row_group_parquet(file_path, num_rows=200, row_group_size=20)
+
+    # Select row groups 0, 2, 5 -> rows [0,20) + [40,60) + [100,120).
+    manifest = _row_group_manifest(file_path, row_group_ids=[0, 2, 5], num_rows=60)
+    tables = list(ParquetFileReader().read(manifest))
+    rows = sorted(pa.concat_tables(tables).column("id").to_pylist())
+    expected = list(range(0, 20)) + list(range(40, 60)) + list(range(100, 120))
+    assert rows == sorted(expected)
+
+
+def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
+    """Row hashes stay unique across per-row-group sub-fragments of one file.
+
+    With ``include_row_hash`` the footer path fans one sub-fragment per row
+    group, each seeded with its cumulative file row offset, so hashes can't
+    collide across row groups that share ``fragment.path``.
+    """
+    file_path = str(tmp_path / "data.parquet")
+    expected_rows = 200
+    _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
+
+    manifest = _row_group_manifest(
+        file_path, row_group_ids=range(10), num_rows=expected_rows
+    )
+    reader = ParquetFileReader(include_row_hash=True)
+    hashes = pa.concat_tables(reader.read(manifest)).column("row_hash").to_pylist()
+    assert len(hashes) == expected_rows
+    assert len(set(hashes)) == expected_rows

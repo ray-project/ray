@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     check_for_legacy_tensor_type,
@@ -178,6 +179,25 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._shuffle
 
     def _get_file_indexer(self) -> FileIndexer:
+        # Opt-in footer-based indexing: reads each file's footer on a
+        # ``FooterReader`` actor pool and packs row groups with the online bin
+        # packer, so read units are row-group-accurate rather than size-estimated
+        # (and predicate / limit / projection push-down reach listing). Off by
+        # default while it is validated against release benchmarks; the flag and
+        # the blind chunker below both go away once it is the only path.
+        if env_bool("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", False):
+            from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+                FooterFileIndexer,
+            )
+
+            return FooterFileIndexer(
+                ignore_missing_paths=self._ignore_missing_paths,
+                coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+                split_coalesced=env_bool(
+                    "RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False
+                ),
+            )
+
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
