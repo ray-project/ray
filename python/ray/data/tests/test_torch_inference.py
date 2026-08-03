@@ -362,6 +362,176 @@ def test_replace_does_not_rewrap(ray_start_regular_shared_2_cpus):
     assert op2.fn is op.fn
 
 
+# ===== GPU end-to-end (runs in the GPU CI job; skipped without CUDA) =====
+
+GPU_FEATURES = 64
+GPU_BATCH_SIZE = 256
+GPU_NUM_BATCHES = 8
+GPU_NUM_ROWS = GPU_NUM_BATCHES * GPU_BATCH_SIZE
+
+
+def _make_gpu_source():
+    """Rows where every element of row `id` is `1 + id`, so per-row sums are
+    unique, nonzero integers (exact in fp32) — a zeroed, torn, or cross-batch
+    read after the device transfer changes the checksum."""
+
+    def to_x(batch):
+        ids = np.asarray(batch["id"], dtype=np.int64)
+        vals = (1.0 + ids).astype(np.float32)
+        return {"id": ids, "data": np.repeat(vals[:, None], GPU_FEATURES, axis=1)}
+
+    return (
+        ray.data.range(GPU_NUM_ROWS, override_num_blocks=GPU_NUM_BATCHES)
+        .map_batches(to_x, batch_size=GPU_BATCH_SIZE)
+        .materialize()
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_e2e_cuda(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    # NOTE: Defined inside the test so cloudpickle serializes it by value
+    # (module-level test classes aren't importable from Ray workers).
+    class Predictor(TorchInference):
+        def collate(self, input_batch):
+            # Only the model input takes the tensor path; `id` stays in
+            # `input_batch`. The `(tensors, other)` form threads per-batch
+            # side data (here, the batch's min id) to process_on_device.
+            return (
+                {"data": torch.from_numpy(input_batch["data"])},
+                {"min_id": int(input_batch["id"].min())},
+            )
+
+        def process_on_device(self, input_batch, collated_tensors, collated_other):
+            tensor = collated_tensors["data"]
+            # The managed flow must hand us device tensors, the untouched
+            # pre-collate batch, and collate's side data.
+            assert tensor.device.type == "cuda"
+            assert isinstance(input_batch["id"], np.ndarray)
+            assert collated_other == {"min_id": int(input_batch["id"].min())}
+            # Forward the side data on to finalize.
+            return (
+                {"rowsum": tensor.sum(dim=1), "double": tensor[:, 0] * 2.0},
+                collated_other,
+            )
+
+        def finalize(self, input_batch, output_tensors, output_other):
+            # process_on_device's side data arrives untouched.
+            assert output_other == {"min_id": int(input_batch["id"].min())}
+            return {
+                "id": input_batch["id"],
+                "rowsum": output_tensors["rowsum"].numpy(),
+                "double": output_tensors["double"].numpy(),
+            }
+
+    ds = _make_gpu_source().map_batches(
+        Predictor,
+        batch_size=GPU_BATCH_SIZE,
+        batch_format="numpy",
+        zero_copy_batch=True,
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_gpus=1,
+    )
+
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    ids = np.asarray([row["id"] for row in rows], dtype=np.int64)
+    rowsums = np.asarray([row["rowsum"] for row in rows])
+    doubles = np.asarray([row["double"] for row in rows])
+
+    # Exactly-once id coverage (passthrough via `input_batch` intact).
+    assert np.array_equal(ids, np.arange(GPU_NUM_ROWS, dtype=np.int64))
+    # Exact per-row checksums: the H2D delivered the right bytes.
+    assert np.array_equal(rowsums, (GPU_FEATURES * (1.0 + ids)).astype(np.float32))
+    # Compute results survive the D2H.
+    assert np.array_equal(doubles, (2.0 * (1.0 + ids)).astype(np.float32))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_e2e_cuda_default_collate_and_finalize(shutdown_only):
+    # Only `process_on_device` implemented: the default `get_device` (cuda),
+    # `collate` (numpy -> tensors), and `finalize` (tensors -> numpy) carry
+    # the batch through the managed flow. `fn_constructor_args` reach
+    # `initialize`.
+    ray.init(num_cpus=2, num_gpus=1)
+
+    class MinimalPredictor(TorchInference):
+        # pyrefly: ignore[bad-override]  # narrowing `*args/**kwargs` is the API.
+        def initialize(self, scale):
+            self.scale = scale
+
+        def process_on_device(self, input_batch, collated_tensors, collated_other):
+            return {
+                "id": collated_tensors["id"],
+                "rowsum": collated_tensors["data"].sum(dim=1) * self.scale,
+            }
+
+    ds = _make_gpu_source().map_batches(
+        MinimalPredictor,
+        batch_size=GPU_BATCH_SIZE,
+        batch_format="numpy",
+        compute=ray.data.ActorPoolStrategy(size=1),
+        fn_constructor_args=(2.0,),
+        num_gpus=1,
+    )
+
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    ids = np.asarray([row["id"] for row in rows], dtype=np.int64)
+    rowsums = np.asarray([row["rowsum"] for row in rows])
+    assert np.array_equal(ids, np.arange(GPU_NUM_ROWS, dtype=np.int64))
+    assert np.array_equal(
+        rowsums, (2.0 * GPU_FEATURES * (1.0 + ids)).astype(np.float32)
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_collate_output_must_be_cpu(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    class GpuCollate(TorchInference):
+        def collate(self, input_batch):
+            return {"data": torch.from_numpy(input_batch["data"]).cuda()}
+
+        def process_on_device(self, input_batch, collated_tensors, collated_other):
+            return collated_tensors
+
+        def finalize(self, input_batch, output_tensors, output_other):
+            return {"data": output_tensors["data"].numpy()}
+
+    ds = _make_gpu_source().map_batches(
+        GpuCollate,
+        batch_size=GPU_BATCH_SIZE,
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_gpus=1,
+    )
+    with pytest.raises(Exception, match="must return CPU tensors"):
+        ds.take_all()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_process_output_must_be_on_device(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    class CpuProcess(TorchInference):
+        def collate(self, input_batch):
+            return {"data": torch.from_numpy(input_batch["data"])}
+
+        def process_on_device(self, input_batch, collated_tensors, collated_other):
+            return {"data": collated_tensors["data"].cpu()}
+
+        def finalize(self, input_batch, output_tensors, output_other):
+            return {"data": output_tensors["data"].numpy()}
+
+    ds = _make_gpu_source().map_batches(
+        CpuProcess,
+        batch_size=GPU_BATCH_SIZE,
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_gpus=1,
+    )
+    with pytest.raises(Exception, match="must return tensors on"):
+        ds.take_all()
+
+
 if __name__ == "__main__":
     import sys
 

@@ -1216,10 +1216,11 @@ py_test(
 
 py_test(
     name = "test_torch_inference",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_inference.py"],
     tags = [
         "exclusive",
+        "gpu",
         "team:data",
     ],
     deps = [
