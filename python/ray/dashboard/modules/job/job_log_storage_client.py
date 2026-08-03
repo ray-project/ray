@@ -1,5 +1,5 @@
 import os
-from typing import AsyncIterator, Iterator, List, Tuple
+from typing import AsyncIterator, Generator, List, Tuple
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
@@ -31,7 +31,7 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def get_log_chunks(self, job_id: str) -> Iterator[str]:
+    def get_log_chunks(self, job_id: str) -> Generator[str, None, None]:
         try:
             with open(
                 self.get_log_file_path(job_id),
