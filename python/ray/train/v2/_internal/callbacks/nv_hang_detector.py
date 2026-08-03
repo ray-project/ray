@@ -73,7 +73,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
-from ray.train.v2._internal.execution.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
 from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
@@ -113,14 +113,19 @@ class NCCLRankHang(Exception):
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
     """Parse an ``NCCL_RAS_ADDR`` value (``host:port``) into ``(host, port)``.
 
-    Handles bare hosts (default port), ``host:port``, and bracketed IPv6 such
-    as ``[::1]:28028``.
+    Handles ``host:port`` and bracketed IPv6 such as ``[::1]:28028``. The port
+    is mandatory: a bare host is rejected rather than silently defaulted, so a
+    misconfigured ``NCCL_RAS_ADDR`` surfaces instead of sending queries to a
+    port the listener may not be on.
 
     Args:
         addr: The ``NCCL_RAS_ADDR`` value to parse.
 
     Returns:
         Tuple of ``(host, port)``
+
+    Raises:
+        ValueError: If ``addr`` is not ``host:port`` or ``[ipv6]:port``.
     """
     addr = addr.strip()
     if addr.startswith("["):  # [ipv6](:port)?
@@ -520,8 +525,9 @@ def dump_flight_recorder() -> Tuple[bool, str]:
     except Exception as e:  # noqa: BLE001
         return False, f"torch unavailable: {e}"
 
-    # The symbol may live on either the public-ish distributed_c10d module or
-    # the C extension, depending on the torch version.
+    # depending on torch version, the symbol may live on either the public-ish
+    # distributed_c10d module or the C extension
+    failures: List[str] = []
     for name in ("_dump_nccl_trace_json", "_dump_fr_trace_json"):
         for module in (dist_c10d, c10d):
             fn = getattr(module, name, None)
@@ -534,8 +540,10 @@ def dump_flight_recorder() -> Tuple[bool, str]:
                     payload = payload.decode()
                 return True, payload
             except Exception as e:  # noqa: BLE001
-                return False, f"{name} failed: {e}"
+                failures.append(f"{module.__name__}.{name} failed: {e}")
 
+    if failures:
+        return False, "; ".join(failures)
     return False, "no flight-recorder JSON dump symbol found in this torch build"
 
 
@@ -941,11 +949,11 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
     ) -> Tuple[Dict[int, Exception], List[str]]:
         """Attribute a confirmed hang to the laggard / unresponsive ranks.
 
-        For each confirmed communicator, the ranks that launched the fewest of
-        the most-skewed collective (the stragglers every other rank is blocked
-        waiting on) and any ranks RAS marked unresponsive are named, with their
-        host / pid / cuda device so an operator can jump straight to the offending
-        process.
+        For each confirmed communicator, and for every collective whose counts
+        disagree, the ranks that launched the fewest of it (the stragglers every
+        other rank is blocked waiting on) and any ranks RAS marked unresponsive
+        are named, with their host / pid / cuda device so an operator can jump
+        straight to the offending process.
 
         RAS reports ranks by their *communicator-local* rank, which for a
         sub-communicator does not match the training world rank. Each culprit's
@@ -966,8 +974,7 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
         """
         # (host, pid) -> world rank; RAS may report the node IP or the hostname.
         world_rank_by_host_pid: Dict[Tuple[Any, Any], int] = {}
-        workers = self._worker_group.get_workers() if self._worker_group else []
-        for world_rank, worker in enumerate(workers):
+        for world_rank, worker in enumerate(self.current_workers()):
             metadata = worker.metadata
             world_rank_by_host_pid[(metadata.node_ip, metadata.pid)] = world_rank
             world_rank_by_host_pid[(metadata.hostname, metadata.pid)] = world_rank
@@ -1018,24 +1025,25 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
             info = report.comm_rank_info.get(comm, {})
             skews = report.comm_collective_skews.get(comm, {})
 
-            # The collective with the widest skew points at the stragglers.
-            if skews:
-                collective, spread = max(skews.items(), key=lambda kv: kv[1])
-                if spread > 0:
-                    per_rank = {
-                        rank: rank_counts.get(collective, 0)
-                        for rank, rank_counts in counts.items()
-                    }
-                    leader = max(per_rank.values())
-                    for rank, count in per_rank.items():
-                        if count < leader:
-                            add_culprit(
-                                comm,
-                                rank,
-                                info.get(rank),
-                                f"is behind by {leader - count} {collective} "
-                                "launch(es)",
-                            )
+            # Report every skewed collective points at stragglers (widest first)
+            for collective, spread in sorted(
+                skews.items(), key=lambda kv: (-kv[1], kv[0])
+            ):
+                if spread <= 0:
+                    break  # no more collectives should be skewed
+                per_rank = {
+                    rank: rank_counts.get(collective, 0)
+                    for rank, rank_counts in counts.items()
+                }
+                leader = max(per_rank.values())
+                for rank, count in per_rank.items():
+                    if count < leader:
+                        add_culprit(
+                            comm,
+                            rank,
+                            info.get(rank),
+                            f"is behind by {leader - count} {collective} launch(es)",
+                        )
 
             # Unresponsive ranks are culprits even at zero skew.
             for rank, missing in report.comm_missing_ranks.get(comm, {}).items():
@@ -1139,7 +1147,7 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
         """
         probes = []
         seen_nodes: Set[str] = set()
-        for worker in self._worker_group.get_workers():
+        for worker in self.current_workers():
             if worker.metadata.node_id not in seen_nodes:
                 seen_nodes.add(worker.metadata.node_id)
                 probes.append(worker)
@@ -1223,7 +1231,7 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
             The parsed report (``json``) / raw text (``text``), or ``None`` if no
             worker produced a usable result this poll.
         """
-        workers = list(self._worker_group.get_workers())
+        workers = self.current_workers()
         if max_workers is not None:
             workers = workers[:max_workers]
         if not workers:
@@ -1341,12 +1349,31 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
             )
         return None
 
+    def current_workers(self) -> List[Worker]:
+        """Snapshot the worker group's workers, tolerating a concurrent shutdown.
+
+        :meth:`before_worker_group_shutdown` clears ``_worker_group`` on the
+        controller thread while a RAS query or diagnostic dump may still be in
+        flight on the background executor (``Future.cancel`` is a no-op once the
+        task is running). Reading the reference once and degrading to an empty
+        list keeps those in-flight calls fail-soft instead of raising
+        ``AttributeError`` on a ``None`` group.
+
+        Returns:
+            The workers in the group, in global rank order, or ``[]`` if the
+            group has already been torn down.
+        """
+        worker_group = self._worker_group
+        if worker_group is None:
+            return []
+        return list(worker_group.get_workers())
+
     def collect_from_workers(
         self,
         worker_fn: Callable,
         *args: Any,
         timeout: float = _DIAGNOSTIC_DUMP_TIMEOUT_S,
-        workers: Optional[List] = None,
+        workers: Optional[List[Worker]] = None,
     ) -> Dict[int, Any]:
         """Run ``worker_fn`` on workers and collect results keyed by worker index.
 
@@ -1364,7 +1391,7 @@ class NvHangDetectorCallback(WorkerGroupCallback, ControllerCallback):
             ``{worker_index: worker_fn(...)}`` for the workers that responded.
         """
         if workers is None:
-            workers = list(self._worker_group.get_workers())
+            workers = self.current_workers()
         if not workers:
             return {}
 

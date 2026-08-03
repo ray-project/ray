@@ -1448,7 +1448,7 @@ def test_persist_hang_artifacts_writes_files(monkeypatch, tmp_path):
     callback.collect_nvidia_smi_per_node = lambda: {"10.0.0.1": "smi-output"}
     callback._flight_recorder_enabled = True
 
-    def fake_fanout(fn, *args, **kwargs):
+    def fake_collect(fn, *args, **kwargs):
         if fn is nv_hang_detector.dump_stack_trace:
             return {0: "stack-0", 1: "stack-1"}
         assert fn is nv_hang_detector.dump_flight_recorder
@@ -1460,7 +1460,7 @@ def test_persist_hang_artifacts_writes_files(monkeypatch, tmp_path):
             ),
         }
 
-    callback.fanout_collect = fake_fanout
+    callback.collect_from_workers = fake_collect
 
     folder = callback.save_diagnostic_artifacts("human readable ras report")
     base = dest / "nv_hang_detector_artifacts"
@@ -1501,18 +1501,18 @@ def test_nvidia_smi_collected_once_per_node(monkeypatch):
         make_worker("node-b", "10.0.0.2"),
     ]
 
-    fanned_out = []
+    collected_workers = []
 
-    def fake_fanout(fn, *args, workers=None, **kwargs):
-        fanned_out.extend(workers)
+    def fake_collect(fn, *args, workers=None, **kwargs):
+        collected_workers.extend(workers)
         return {i: f"smi-{i}" for i in range(len(workers))}
 
-    callback.fanout_collect = fake_fanout
+    callback.collect_from_workers = fake_collect
     assert callback.collect_nvidia_smi_per_node() == {
         "10.0.0.1": "smi-0",
         "10.0.0.2": "smi-1",
     }
-    assert len(fanned_out) == 2
+    assert len(collected_workers) == 2
 
 
 @pytest.mark.parametrize(
@@ -1552,6 +1552,47 @@ def test_dump_flight_recorder_fail_soft():
     ok, payload = nv_hang_detector.dump_flight_recorder()
     assert isinstance(ok, bool)
     assert isinstance(payload, str)
+
+
+def test_dump_flight_recorder_falls_back_past_a_raising_symbol(monkeypatch):
+    # A dump symbol that exists but raises must not end the search: the
+    # backend-agnostic `_dump_fr_trace_json` is still tried, so an unhealthy
+    # NCCL-specific dump can't cost us the flight recorder trace entirely.
+    dist_c10d = pytest.importorskip("torch.distributed.distributed_c10d")
+    c10d = pytest.importorskip("torch._C._distributed_c10d")
+
+    def boom():
+        raise RuntimeError("nccl dump exploded")
+
+    for module in (dist_c10d, c10d):
+        monkeypatch.setattr(module, "_dump_nccl_trace_json", boom, raising=False)
+        monkeypatch.setattr(
+            module, "_dump_fr_trace_json", lambda: b'{"entries": []}', raising=False
+        )
+
+    ok, payload = nv_hang_detector.dump_flight_recorder()
+    assert ok
+    # bytes payloads are decoded for the artifact file.
+    assert payload == '{"entries": []}'
+
+
+def test_dump_flight_recorder_reports_every_failure(monkeypatch):
+    # When every candidate symbol raises, the reason names them rather than
+    # claiming no dump symbol exists in this torch build.
+    dist_c10d = pytest.importorskip("torch.distributed.distributed_c10d")
+    c10d = pytest.importorskip("torch._C._distributed_c10d")
+
+    def boom():
+        raise RuntimeError("dump exploded")
+
+    for module in (dist_c10d, c10d):
+        for name in ("_dump_nccl_trace_json", "_dump_fr_trace_json"):
+            monkeypatch.setattr(module, name, boom, raising=False)
+
+    ok, reason = nv_hang_detector.dump_flight_recorder()
+    assert not ok
+    assert "_dump_nccl_trace_json failed: dump exploded" in reason
+    assert "_dump_fr_trace_json failed: dump exploded" in reason
 
 
 def test_dump_nvidia_smi_fail_soft():
