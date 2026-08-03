@@ -128,38 +128,47 @@ class IResourceScheduler(ABC):
 
 def _compute_min_resource_demand(
     requests: List["ResourceRequest"],
-) -> Dict[str, float]:
-    """Compute the minimum demand for each resource key across all requests.
+) -> List[Dict[str, float]]:
+    """Compute unique resource shapes from all requests for feasibility checks.
 
-    For each resource dimension, this returns the smallest non-zero value
-    requested by any single request. Used for quick feasibility pre-checks.
+    Returns a deduplicated list of resource bundles (shapes). Each shape is a
+    dict mapping resource names to their required amounts. Used by
+    _can_fit_any_request to perform per-shape AND checks.
     """
-    min_demand = {}
+    seen = set()
+    shapes = []
     for r in requests:
-        for k, v in r.resources_bundle.items():
-            if v > 0:
-                if k not in min_demand or v < min_demand[k]:
-                    min_demand[k] = v
-    return min_demand
+        bundle = {k: v for k, v in r.resources_bundle.items() if v > 0}
+        if not bundle:
+            continue
+        key = frozenset(bundle.items())
+        if key not in seen:
+            seen.add(key)
+            shapes.append(bundle)
+    return shapes
 
 
 def _can_fit_any_request(
     available: Dict[str, float],
-    min_resource_demand: Dict[str, float],
+    min_resource_demand: List[Dict[str, float]],
 ) -> bool:
     """Quick pre-check: can this node possibly fit any pending request?
 
-    Returns False only when the node definitely cannot schedule any request,
-    i.e., every resource dimension is below the minimum demand. This is a
-    conservative check (no false negatives): if it returns True, the node
-    may or may not actually fit a request (try_schedule decides precisely).
+    Returns False only when the node definitely cannot schedule any request.
+    For each unique request shape, checks that ALL resource dimensions are
+    satisfied simultaneously (AND within a shape, OR across shapes).
 
-    Runs in O(D) where D is the number of resource dimensions (typically 2-4).
+    This is a conservative check (no false negatives): it ignores placement
+    constraints and labels, so if it returns True the node may or may not
+    actually fit a request (try_schedule decides precisely).
+
+    Runs in O(S * D) where S is the number of unique shapes (typically small)
+    and D is the number of resource dimensions per shape (typically 2-4).
     """
     if not min_resource_demand:
         return True
-    for k, min_v in min_resource_demand.items():
-        if available.get(k, 0.0) >= min_v:
+    for shape in min_resource_demand:
+        if all(available.get(k, 0.0) >= v for k, v in shape.items()):
             return True
     return False
 

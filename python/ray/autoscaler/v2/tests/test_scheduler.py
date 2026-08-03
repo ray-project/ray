@@ -3638,6 +3638,52 @@ class TestSchedulerPerformanceOptimizations:
         # Existing nodes can handle all requests (5 nodes × 10 CPU ÷ 2 CPU = 25 slots).
         assert to_launch == {}
 
+    def test_quick_reject_cpu_exhausted_but_memory_available(self):
+        """Nodes with CPU exhausted but memory available should be skipped."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # CPU is fully used but memory is abundant.
+        instances = []
+        for i in range(50):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        # All requests need both CPU and memory.
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})]
+            * 10,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # 50 nodes have CPU=0, no request (needing CPU=0.2) can fit.
+        # 10 requests * 0.2 CPU, each new node has 1 CPU -> need 2 nodes.
+        assert to_launch == {"type_1": 2}
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
