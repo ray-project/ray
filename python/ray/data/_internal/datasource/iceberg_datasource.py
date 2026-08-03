@@ -21,6 +21,7 @@ from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
     DownloadExpr,
+    Expr,
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
@@ -381,9 +382,42 @@ class IcebergDatasource(Datasource):
         # Calculate and cache the plan_files if they don't already exist
         if self._plan_files is None:
             data_scan = self._get_data_scan()
-            self._plan_files = data_scan.plan_files()
+            # ``DataScan.plan_files`` is annotated ``Iterable[FileScanTask]``.
+            # PyIceberg returns a list today, but callers here iterate the cache
+            # more than once, so materialize it rather than depend on that.
+            self._plan_files = list(data_scan.plan_files())
 
         return self._plan_files
+
+    def apply_predicate(self, predicate_expr: Expr) -> "IcebergDatasource":
+        """Push a predicate down, discarding plan files planned without it.
+
+        The base implementation shallow-copies, which would leave the clone
+        sharing a plan-file cache computed before this predicate existed. Those
+        tasks carry ``AlwaysTrue`` residuals -- nothing was filtered at plan
+        time -- which ``get_read_tasks`` would read as "the filter is fully
+        resolved" and report an unfiltered row count for a filtered read.
+        """
+        return self._invalidate_plan_files(super().apply_predicate(predicate_expr))
+
+    def apply_projection(
+        self, projection_map: Optional[Dict[str, str]]
+    ) -> "IcebergDatasource":
+        """Push a projection down, discarding plan files planned without it.
+
+        The projected columns are part of the scan, so a cache built for a
+        different projection does not belong to the clone. See
+        ``apply_predicate``.
+        """
+        return self._invalidate_plan_files(super().apply_projection(projection_map))
+
+    def _invalidate_plan_files(self, clone: "Datasource") -> "Datasource":
+        """Drop ``clone``'s inherited plan-file cache, so it re-plans its scan."""
+        # A datasource returns ``self`` to signal "no pushdown applied", in which
+        # case there is no clone and the cache is still valid for this scan.
+        if clone is not self:
+            clone._plan_files = None
+        return clone
 
     def _get_combined_filter(self) -> "BooleanExpression":
         """Get the combined filter including both row_filter and pushed-down predicates."""
@@ -514,7 +548,7 @@ class IcebergDatasource(Datasource):
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
         # Get the plan files in this query
-        plan_files = list(self.plan_files)
+        plan_files = self.plan_files
 
         # Get the projected schema for this scan, given all the row filters,
         # snapshot ID, etc.

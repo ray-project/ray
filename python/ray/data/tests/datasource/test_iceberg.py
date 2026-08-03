@@ -374,6 +374,60 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.parametrize(
+    "push_down",
+    [
+        lambda ds: ds.apply_predicate(col("col_a") < 10),
+        lambda ds: ds.apply_predicate(col("col_a") < 10).apply_projection(
+            {"col_b": "col_b"}
+        ),
+    ],
+    ids=["predicate", "predicate_then_projection"],
+)
+def test_pushdown_does_not_inherit_stale_plan_files(push_down):
+    """A pushdown clone must re-plan its scan, not inherit the cache.
+
+    ``apply_predicate`` and ``apply_projection`` shallow-copy the datasource, so
+    a plan-file cache populated beforehand -- by ``estimate_inmemory_data_size``,
+    say, which Ray calls to autodetect parallelism -- would be shared with the
+    clone. Those tasks were planned without the predicate, so every residual is
+    ``AlwaysTrue`` and ``get_read_tasks`` would report the unfiltered manifest
+    total: exactly the overcount this file's other tests pin against.
+
+    Reading the cache twice also has to keep working. ``DataScan.plan_files`` is
+    annotated ``Iterable[FileScanTask]``, so a future PyIceberg returning a
+    generator would otherwise leave the second read empty -- silently yielding
+    zero read tasks and an empty dataset.
+    """
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    # Warm the cache before pushdown, and read it twice.
+    assert iceberg_ds.estimate_inmemory_data_size() > 0
+    assert iceberg_ds.estimate_inmemory_data_size() > 0, "cache must be re-readable"
+    unfiltered_files = len(iceberg_ds.plan_files)
+    assert unfiltered_files > 0, "fixture should plan at least one file"
+
+    filtered_ds = push_down(iceberg_ds)
+    read_tasks = filtered_ds.get_read_tasks(2)
+    assert read_tasks, "pushdown must not leave the clone with an exhausted cache"
+
+    claimed = [read_task.metadata.num_rows for read_task in read_tasks]
+    actual = sum(block.num_rows for read_task in read_tasks for block in read_task())
+
+    assert actual == 10, f"filter should match 10 of the fixture's rows, got {actual}"
+    if all(count is not None for count in claimed):
+        assert (
+            sum(claimed) == actual
+        ), "reported row count came from plan files that predate the predicate"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 def test_read_iceberg_does_not_mutate_caller_kwargs():
     """The caller's dicts belong to the caller.
 
