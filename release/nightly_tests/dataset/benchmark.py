@@ -120,6 +120,56 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     }
 
 
+def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
+    """Per-operator time / output-bytes / decode-USS, for merging into a result dict.
+
+    Surfaces numbers that otherwise live only on the Prometheus dashboard, not in the
+    release log or databricks: each operator's wall time, output size/rows, and
+    ``average_max_uss_per_task`` (per-task peak USS from ``MemoryProfiler``; Linux-only,
+    ``None`` on macOS). This isolates the read operator's cost from downstream compute
+    and exposes the decode-memory metric that the aggregate object-store peak cannot
+    see. Best-effort: returns a partial/empty dict rather than failing the benchmark.
+
+    A ``read_*`` top-level convenience is filled from the first ``Read*`` operator so the
+    "parquet part" (read wall time + output bytes + decode USS) is a first-class field.
+    """
+    from ray.data._internal.stats import DatasetStatsSummary
+
+    def _sum(stat) -> Any:
+        return stat.sum if stat is not None else None
+
+    out: Dict[str, Any] = {"operators_detail": []}
+    try:
+        summary = ds.get_stats_summary(detail=True)
+        for node in DatasetStatsSummary._collect_dataset_stats_summaries(summary):
+            extra = getattr(node, "extra_metrics", {}) or {}
+            uss = extra.get("average_max_uss_per_task")
+            for op in node.operators_stats or []:
+                out["operators_detail"].append(
+                    {
+                        "operator_name": op.operator_name,
+                        "wall_time_s": _sum(op.wall_time),
+                        "cpu_time_s": _sum(op.cpu_time),
+                        "udf_time_s": _sum(op.udf_time),
+                        "output_num_rows": _sum(op.output_num_rows),
+                        "output_size_bytes": _sum(op.output_size_bytes),
+                        "avg_max_uss_per_task_bytes": uss,
+                    }
+                )
+        for entry in out["operators_detail"]:
+            if "Read" in (entry["operator_name"] or ""):
+                out["read_operator_name"] = entry["operator_name"]
+                out["read_wall_time_s"] = entry["wall_time_s"]
+                out["read_output_size_bytes"] = entry["output_size_bytes"]
+                out["read_avg_max_uss_per_task_bytes"] = entry[
+                    "avg_max_uss_per_task_bytes"
+                ]
+                break
+    except Exception:
+        logger.warning("collect_operator_metrics failed", exc_info=True)
+    return out
+
+
 class RuntimeEnvSetupTracker:
     """Collects runtime environment creation times across the cluster.
 
