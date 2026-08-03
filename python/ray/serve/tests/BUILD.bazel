@@ -160,6 +160,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_dependency_ordered_shutdown.py",
         "test_deployment_scheduler.py",
     ],
     tags = [
