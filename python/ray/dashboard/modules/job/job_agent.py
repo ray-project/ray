@@ -1,17 +1,17 @@
+import asyncio
 import dataclasses
 import json
 import logging
 import traceback
 
 import aiohttp
-from aiohttp.web import Request, Response
+from aiohttp.web import Request, Response, StreamResponse
 
 import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
-    JobLogsResponse,
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -22,6 +22,10 @@ from ray.dashboard.modules.job.utils import find_job_by_ids, parse_and_validate_
 
 routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
+
+
+def _encode_log_chunk(chunk: str) -> bytes:
+    return json.dumps(chunk)[1:-1].encode()
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule):
@@ -140,7 +144,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions()
-    async def get_job_logs(self, req: Request) -> Response:
+    async def get_job_logs(self, req: Request) -> StreamResponse:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_client,
@@ -159,12 +163,34 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        resp = JobLogsResponse(
-            logs=self.get_job_manager().get_job_logs(job.submission_id)
-        )
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
+        log_chunks = self.get_job_manager().get_job_log_chunks(job.submission_id)
+        try:
+            first_chunk = next(log_chunks)
+        except StopIteration:
+            first_chunk = None
+
+        response = StreamResponse()
+        response.content_type = "application/json"
+        response.charset = "utf-8"
+        await response.prepare(req)
+
+        try:
+            await response.write(b'{"logs":"')
+            if first_chunk is not None:
+                await response.write(_encode_log_chunk(first_chunk))
+            for chunk in log_chunks:
+                await response.write(_encode_log_chunk(chunk))
+            await response.write(b'"}')
+        except asyncio.CancelledError:
+            response.force_close()
+            raise
+        except Exception:
+            logger.exception("Error while streaming job logs")
+            response.force_close()
+            return response
+
+        await response.write_eof()
+        return response
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions()
