@@ -140,7 +140,12 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 from ray.util.debug import log_once
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -198,6 +203,17 @@ IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
 EXPRESSION_API_GROUP = "Expressions"
+
+
+def _warn_on_ray_remote_args_fn(
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+) -> None:
+    if ray_remote_args_fn is not None:
+        warnings.warn(
+            "`ray_remote_args_fn` is deprecated and will be removed in Ray 2.64.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
 
 @PublicAPI
@@ -457,7 +473,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -474,6 +491,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each row.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -735,7 +754,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -773,6 +793,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
@@ -786,7 +808,7 @@ class Dataset:
         if isinstance(batch_size, int) and batch_size < 1:
             raise ValueError("Batch size can't be negative or 0")
 
-        return self._map_batches_without_batch_size_validation(
+        return self.map_batches_internal(
             fn,
             batch_size=batch_size,
             compute=compute,
@@ -805,26 +827,28 @@ class Dataset:
             **ray_remote_args,
         )
 
-    def _map_batches_without_batch_size_validation(
+    @DeveloperAPI
+    def map_batches_internal(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["auto"]],
-        compute: Optional[ComputeStrategy],
-        batch_format: Optional[str],
-        zero_copy_batch: bool,
-        fn_args: Optional[Iterable[Any]],
-        fn_kwargs: Optional[Dict[str, Any]],
-        fn_constructor_args: Optional[Iterable[Any]],
-        fn_constructor_kwargs: Optional[Dict[str, Any]],
-        num_cpus: Optional[float],
-        num_gpus: Optional[float],
-        memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
-        udf_modifying_row_count: bool,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        batch_size: Union[int, None, Literal["auto"]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
+        """Apply a function to batches without public ``map_batches`` validation."""
         # NOTE: The `map_groups` implementation calls `map_batches` with
         # `batch_size=None`. The issue is that if you request GPUs with
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
@@ -1507,7 +1531,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1522,6 +1547,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing the flattened results of applying the function to each row.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -1640,7 +1667,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1648,6 +1676,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing only the rows that satisfy the predicate.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         # Ensure exactly one of fn or expr is provided
         provided_params = sum([fn is not None, expr is not None])
         if provided_params != 1:
