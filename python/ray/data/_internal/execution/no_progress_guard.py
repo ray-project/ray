@@ -21,9 +21,9 @@ class NoProgressGuard:
     Progress is the sum of ``num_outputs_taken`` across the topology, which
     ticks whenever data moves anywhere in the pipeline.
 
-    Barrier operators are a known gap: a hash shuffle, join or aggregate takes
-    no outputs while it finalizes, and its finalize metrics aren't reachable
-    from ``op.metrics``, so a large one looks stalled for most of its run.
+    Hash-based operators keep their finalize phase in a separate metrics object
+    exposed through ``extra_metrics``, so that phase is counted too. Without it
+    a large shuffle, join or aggregate looks stalled for most of its run.
 
     Progress also freezes when the consumer is the bottleneck, since a slow
     loop between iterations backpressures every operator upstream. Failing
@@ -120,7 +120,17 @@ class NoProgressGuard:
             raise ExecutionTimeoutError(self._error_message())
 
     def _total_progress_count(self) -> int:
-        return sum(op.metrics.num_outputs_taken for op in self._topology)
+        total = 0
+        for op in self._topology:
+            metrics = op.metrics
+            total += metrics.num_outputs_taken
+            # A hash shuffle, join or aggregate reports its finalize phase
+            # under `extra_metrics`; `metrics` itself only covers the shuffle
+            # phase, and would look frozen for as long as finalizing runs.
+            for extra in metrics.extra_metrics.values():
+                if isinstance(extra, dict) and "num_outputs_taken" in extra:
+                    total += extra["num_outputs_taken"]
+        return total
 
     def _error_message(self) -> str:
         lines = [

@@ -359,10 +359,10 @@ Time spent waiting on a slow consumer doesn't count against this, so a Dataset
 iterated by a slow training loop is never failed no matter how long each step
 takes.
 
-Hash-based operators are a known exception. A large :meth:`~ray.data.Dataset.groupby`,
-join, or aggregate produces no output while it finalizes, and that phase can run
-past the timeout on a healthy job. Raise or disable the timeout for those
-workloads.
+Time an operator spends between outputs also doesn't count, as long as it keeps
+reporting progress. A :meth:`~ray.data.Dataset.groupby`, join, or aggregate goes
+quiet while it finalizes, but that phase reports separately, so only a gap much
+longer than the whole finalize would trip the timeout.
 
 If a UDF is legitimately slower than the timeout, raise it or turn it off:
 

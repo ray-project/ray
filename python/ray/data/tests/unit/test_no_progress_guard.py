@@ -16,11 +16,13 @@ class _FakeOperator:
         num_tasks_finished: int = 0,
         num_active_tasks: int = 0,
         completed: bool = False,
+        extra_metrics: dict = None,
     ):
         self.name = name
         self.metrics = SimpleNamespace(
             num_outputs_taken=num_outputs_taken,
             num_tasks_finished=num_tasks_finished,
+            extra_metrics=extra_metrics or {},
         )
         self._num_active_tasks = num_active_tasks
         self._completed = completed
@@ -132,6 +134,23 @@ def test_clock_resumes_after_consumer_catches_up():
 
     clock.advance(100.0)
     with pytest.raises(ExecutionTimeoutError):
+        guard.check(consumer_ready=True)
+
+
+def test_finalize_phase_counts_as_progress():
+    """A hash operator emits from its finalize phase, not from `metrics`.
+
+    Regression test: counting only `metrics.num_outputs_taken` made a large
+    groupby, join or aggregate look stalled for most of its run.
+    """
+    op = _FakeOperator("HashAggregate", extra_metrics={"finalize": {}})
+    guard, clock = _make_guard([op], timeout_s=100.0)
+
+    for _ in range(5):
+        clock.advance(99.0)
+        op.metrics.extra_metrics["finalize"]["num_outputs_taken"] = (
+            op.metrics.extra_metrics["finalize"].get("num_outputs_taken", 0) + 1
+        )
         guard.check(consumer_ready=True)
 
 
