@@ -315,6 +315,9 @@ class DashboardHead:
             ]
 
         for cls in subprocess_cls_list:
+            if not cls.is_enabled():
+                logger.info(f"Skipping {SubprocessModule.__name__}: {cls} (disabled).")
+                continue
             logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
             handle = SubprocessModuleHandle(loop, cls, config)
             handles.append(handle)

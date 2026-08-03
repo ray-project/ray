@@ -8,7 +8,9 @@ import aiohttp.web
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioJobSubscriber, GcsAioWorkerDeltaSubscriber
+from ray._private.ray_constants import env_bool
 from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
+from ray.dashboard.consts import RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
@@ -38,6 +40,12 @@ class TaskEventsHead(SubprocessModule):
         self._dead_workers = collections.deque()
         self._finished_jobs = collections.deque()
         self._background_tasks: Set[asyncio.Task] = set()
+
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """Only load while the "task events out of GCS" migration is enabled; otherwise
+        the module (and its GCS pubsub subscriptions) shouldn't run at all."""
+        return env_bool(RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME, False)
 
     @property
     def num_events_received(self) -> int:
