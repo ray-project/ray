@@ -15,7 +15,7 @@ import pytest
 from transformers import AutoTokenizer
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
     TokenizeError,
     Tokenizer,
 )
