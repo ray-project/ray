@@ -98,12 +98,11 @@ class SubprocessModuleHandle:
     # `forkserver` is POSIX-only, so Windows keeps using `spawn`. Set
     # RAY_DASHBOARD_SUBPROCESS_START_METHOD=spawn to opt back out.
     #
-    # The branches pass literals to get_context() so it returns a concrete context
-    # type; forwarding a runtime string widens the result to BaseContext, which does
-    # not expose Process.
-    mp_context: Union[
-        multiprocessing.context.SpawnContext, multiprocessing.context.ForkServerContext
-    ]
+    # The branches pass literals to get_context() so it returns a concrete context type;
+    # forwarding a runtime string widens the result to BaseContext, which does not
+    # expose Process. Do not annotate this with multiprocessing.context.ForkServerContext
+    # -- CPython only defines that class on POSIX, and a class-body annotation is
+    # evaluated at import time, so naming it raises AttributeError on Windows.
     if sys.platform == "win32" or (
         os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD") == "spawn"
     ):
@@ -120,9 +119,11 @@ class SubprocessModuleHandle:
         importable in a bare interpreter -- an ImportError in the forkserver breaks
         every module, not just one.
         """
-        if not isinstance(cls.mp_context, multiprocessing.context.ForkServerContext):
-            return
-        cls.mp_context.set_forkserver_preload(module_names)
+        # getattr rather than isinstance: only the forkserver context defines this, and
+        # naming its class is not portable to Windows.
+        set_preload = getattr(cls.mp_context, "set_forkserver_preload", None)
+        if set_preload is not None:
+            set_preload(module_names)
 
     def __init__(
         self,
