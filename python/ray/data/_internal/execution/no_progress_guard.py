@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Optional
+from typing import Callable
 
 from ray.data._internal.execution.streaming_executor_state import (
     WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
@@ -18,13 +18,12 @@ DEFAULT_MAX_STALL_INTERVAL_S = 10 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
 class NoProgressGuard:
     """Fails an execution that stops making progress.
 
-    Progress is ``num_outputs_taken`` plus successfully finished tasks, summed
-    across the topology, so it ticks whenever data moves anywhere in the
-    pipeline or any task completes. Outputs alone aren't enough: a barrier
-    operator can spend a long stretch finishing tasks before it emits anything,
-    and that is work, not a stall. Failed tasks don't count, so a job stuck
-    retrying the same failure is still caught. A hung UDF or an unschedulable
-    cluster moves neither counter.
+    Progress is the sum of ``num_outputs_taken`` across the topology, which
+    ticks whenever data moves anywhere in the pipeline.
+
+    Barrier operators are a known gap: a hash shuffle, join or aggregate takes
+    no outputs while it finalizes, and its finalize metrics aren't reachable
+    from ``op.metrics``, so a large one looks stalled for most of its run.
 
     Progress also freezes when the consumer is the bottleneck, since a slow
     loop between iterations backpressures every operator upstream. Failing
@@ -39,6 +38,7 @@ class NoProgressGuard:
     blocking call never reaches a check, so it never fires at all.
 
     Args:
+        topology: The topology being executed, read for progress counters.
         timeout_s: Seconds without progress before failing. Negative disables
             the guard.
         clock: Monotonic time source, injectable for testing.
@@ -52,6 +52,7 @@ class NoProgressGuard:
 
     def __init__(
         self,
+        topology: Topology,
         timeout_s: float,
         *,
         clock: Callable[[], float] = time.monotonic,
@@ -64,25 +65,23 @@ class NoProgressGuard:
                 "soon as it started."
             )
 
+        self._topology = topology
         self._timeout_s = timeout_s
         self._clock = clock
         self._max_stall_interval_s = max_stall_interval_s
 
-        # Set on the first check, so the clock starts with the scheduling loop
-        # rather than with whatever setup happens before it.
-        self._last_check_time: Optional[float] = None
-        self._last_progress_count = 0
+        self._last_check_time = clock()
+        self._last_progress_count = self._total_progress_count()
         self._stalled_s = 0.0
 
     @property
     def enabled(self) -> bool:
         return self._timeout_s > 0
 
-    def check(self, topology: Topology, consumer_idling: bool) -> None:
+    def check(self, consumer_idling: bool) -> None:
         """Record progress since the last call, and fail if there was none.
 
         Args:
-            topology: The topology being executed, read for progress counters.
             consumer_idling: Whether the executor's output queue is empty. When
                 False the caller is the bottleneck, so the stall clock resets.
         """
@@ -90,7 +89,7 @@ class NoProgressGuard:
             return
 
         current_time = self._clock()
-        current_progress_count = self._total_progress_count(topology)
+        current_progress_count = self._total_progress_count()
 
         if self._last_check_time is None:
             self._last_check_time = current_time
@@ -117,25 +116,20 @@ class NoProgressGuard:
         # interval counting for something.
         self._stalled_s += min(interval, self._max_stall_interval_s)
         if self._stalled_s >= self._timeout_s:
-            raise ExecutionTimeoutError(self._error_message(topology))
+            raise ExecutionTimeoutError(self._error_message())
 
-    def _total_progress_count(self, topology: Topology) -> int:
-        return sum(
-            op.metrics.num_outputs_taken
-            + op.metrics.num_tasks_finished
-            - op.metrics.num_tasks_failed
-            for op in topology
-        )
+    def _total_progress_count(self) -> int:
+        return sum(op.metrics.num_outputs_taken for op in self._topology)
 
-    def _error_message(self, topology: Topology) -> str:
+    def _error_message(self) -> str:
         lines = [
             f"Dataset execution made no progress for at least "
             f"{self._stalled_s:.0f}s of scheduling time (timeout: "
-            f"{self._timeout_s:.0f}s). No operator finished a task or produced "
-            f"an output in that window."
+            f"{self._timeout_s:.0f}s). No operator produced or consumed an output "
+            f"in that window."
         ]
 
-        stalled = [op for op in topology if not op.has_completed()]
+        stalled = [op for op in self._topology if not op.has_completed()]
         if stalled:
             lines.append("Operators still running:")
             for op in stalled:

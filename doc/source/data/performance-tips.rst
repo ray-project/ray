@@ -352,12 +352,17 @@ Failing executions that stop making progress
 An execution can stall indefinitely: a UDF blocked on an external call, a lost
 task, or a cluster that can no longer schedule work after preemption. To keep
 these from holding resources forever, Ray Data fails an execution that goes 30
-minutes without any operator finishing a task or producing an output, raising
+minutes without any operator producing or consuming an output, raising
 ``ExecutionTimeoutError`` with the names of the stalled operators.
 
 Time spent waiting on a slow consumer doesn't count against this, so a Dataset
 iterated by a slow training loop is never failed no matter how long each step
 takes.
+
+Hash-based operators are a known exception. A large :meth:`~ray.data.Dataset.groupby`,
+join, or aggregate produces no output while it finalizes, and that phase can run
+past the timeout on a healthy job. Raise or disable the timeout for those
+workloads.
 
 If a UDF is legitimately slower than the timeout, raise it or turn it off:
 

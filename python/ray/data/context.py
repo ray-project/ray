@@ -612,8 +612,7 @@ class DataContext:
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
-            go without any operator finishing a task or producing an output before
-            it fails
+            go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Time spent waiting on a slow consumer doesn't
             count, so a dataset iterated by a slow loop is never failed. Set to a
             negative value to disable.
