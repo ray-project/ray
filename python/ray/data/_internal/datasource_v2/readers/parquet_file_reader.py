@@ -620,11 +620,23 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # meaningful bytes per round-trip. Tunable via env var for
         # workloads that need a different point on the latency/memory-
         # peak curve.
+        scan_opts: Dict[str, Any] = {
+            "use_buffered_stream": True,
+            "buffer_size": _PARQUET_FRAGMENT_BUFFER_SIZE,
+        }
+        # ``page_checksum_verification`` is a *scan* option, not a format option.
+        # ``_make_format`` sets it on the format's ``default_fragment_scan_options``,
+        # but the explicit ``fragment_scan_options`` we hand the scanner below
+        # overrides that default — so an explicit request would be silently
+        # dropped (pyarrow's default is ``False``, i.e. no verification). Thread
+        # it through here so ``page_checksum_verification=True`` is actually
+        # honored on the PyArrow read path (matching the arrow-rs crate, which
+        # always verifies).
+        pcv = self._parquet_format_kwargs.get("page_checksum_verification")
+        if pcv is not None:
+            scan_opts["page_checksum_verification"] = pcv
         kwargs: dict = {
-            "fragment_scan_options": pds.ParquetFragmentScanOptions(
-                use_buffered_stream=True,
-                buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
-            ),
+            "fragment_scan_options": pds.ParquetFragmentScanOptions(**scan_opts),
             "fragment_readahead": 1,
         }
         return kwargs
