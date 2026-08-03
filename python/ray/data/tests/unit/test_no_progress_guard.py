@@ -64,11 +64,11 @@ def test_raises_once_timeout_elapses_without_progress():
     guard, clock = _make_guard([op], timeout_s=100.0)
 
     clock.advance(99.0)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
     clock.advance(1.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
 
 def test_progress_resets_the_clock():
@@ -78,14 +78,14 @@ def test_progress_resets_the_clock():
     for _ in range(5):
         clock.advance(99.0)
         op.metrics.num_outputs_taken += 1
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
     # 495s elapsed overall without ever tripping the 100s timeout, because each
     # output restarted the stall clock. The clock restarted at the last check,
     # so a full `timeout_s` has to pass from there to trip it.
     clock.advance(100.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
 
 def test_progress_by_any_operator_counts():
@@ -96,7 +96,7 @@ def test_progress_by_any_operator_counts():
     for _ in range(5):
         clock.advance(99.0)
         moving.metrics.num_outputs_taken += 1
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
 
 def test_busy_consumer_never_times_out():
@@ -106,7 +106,7 @@ def test_busy_consumer_never_times_out():
 
     for _ in range(100):
         clock.advance(1000.0)
-        guard.check(consumer_idling=False)
+        guard.check(consumer_ready=False)
 
 
 def test_clock_resumes_after_consumer_catches_up():
@@ -120,19 +120,19 @@ def test_clock_resumes_after_consumer_catches_up():
     guard, clock = _make_guard([op], timeout_s=100.0)
 
     clock.advance(99.0)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
-    # Consumer is busy for far longer than the timeout.
+    # Consumer is the bottleneck for far longer than the timeout.
     clock.advance(1000.0)
-    guard.check(consumer_idling=False)
+    guard.check(consumer_ready=False)
 
     # It catches up: the clock restarted, so this is not yet a stall.
     clock.advance(99.0)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
     clock.advance(100.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
 
 def test_blocking_step_is_not_a_stall():
@@ -147,12 +147,12 @@ def test_blocking_step_is_not_a_stall():
 
     # `bulk_fn` blocks the loop well past the timeout, then returns.
     clock.advance(1000.0)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
     # The next step drains its output, which is the progress the guard wanted.
     clock.advance(0.1)
     op.metrics.num_outputs_taken += 1
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
 
 def test_stall_accumulates_across_steps():
@@ -163,11 +163,11 @@ def test_stall_accumulates_across_steps():
     # builds up across many short steps rather than one long gap.
     for _ in range(3):
         clock.advance(0.25)
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
     clock.advance(0.25)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
 
 def test_zero_timeout_is_rejected():
@@ -183,7 +183,7 @@ def test_disabled(timeout_s):
 
     assert not guard.enabled
     clock.advance(10**6)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
 
 def test_error_message_names_stalled_operators():
@@ -197,11 +197,11 @@ def test_error_message_names_stalled_operators():
     guard, clock = _make_guard([stalled, completed], timeout_s=1800.0)
 
     clock.advance(1000.0)
-    guard.check(consumer_idling=True)
+    guard.check(consumer_ready=True)
 
     clock.advance(832.0)
     with pytest.raises(ExecutionTimeoutError) as exc_info:
-        guard.check(consumer_idling=True)
+        guard.check(consumer_ready=True)
 
     message = str(exc_info.value)
     assert (

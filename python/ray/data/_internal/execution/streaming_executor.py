@@ -595,7 +595,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if should_continue:
             # Skipped once the execution is done, so a final step that completes
             # the topology can't be flagged as a stall.
-            self._no_progress_guard.check(consumer_idling=self._consumer_idling())
+            self._no_progress_guard.check(
+                consumer_ready=(self._consumer_idling() and self._consumer_waiting())
+            )
         return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
@@ -612,6 +614,11 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _consumer_waiting(self) -> bool:
+        """Returns whether a consumer is blocked in `get_output_blocking`."""
+        _, state = self._output_node
+        return state.num_waiting_consumers > 0
 
     def _export_operator_schema(self, op: PhysicalOperator) -> None:
         schema = self._op_schema.get(op)

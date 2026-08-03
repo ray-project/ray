@@ -28,7 +28,7 @@ class NoProgressGuard:
     Progress also freezes when the consumer is the bottleneck, since a slow
     loop between iterations backpressures every operator upstream. Failing
     those executions would be worse than the hang this guards against, so the
-    stall clock advances only while the consumer is idling.
+    stall clock advances only while the pipeline is the one holding things up.
 
     The clock measures time the scheduling loop spent spinning rather than
     wall-clock time, so an operator that blocks the loop for a long stretch of
@@ -78,12 +78,13 @@ class NoProgressGuard:
     def enabled(self) -> bool:
         return self._timeout_s > 0
 
-    def check(self, consumer_idling: bool) -> None:
+    def check(self, consumer_ready: bool) -> None:
         """Record progress since the last call, and fail if there was none.
 
         Args:
-            consumer_idling: Whether the executor's output queue is empty. When
-                False the caller is the bottleneck, so the stall clock resets.
+            consumer_ready: Whether a consumer is blocked on an empty output
+                queue. When False the caller is the bottleneck, so the stall
+                clock resets.
         """
         if not self.enabled:
             return
@@ -103,7 +104,7 @@ class NoProgressGuard:
         # Both conditions must reset the clock. Resetting only on progress
         # would let elapsed time accumulate while a slow consumer holds the
         # pipeline back, then fail the moment it catches up.
-        if new_progress or not consumer_idling:
+        if new_progress or not consumer_ready:
             self._last_progress_count = current_progress_count
             self._stalled_s = 0.0
             return
