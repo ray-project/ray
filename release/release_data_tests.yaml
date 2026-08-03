@@ -216,6 +216,15 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -227,6 +236,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -245,6 +263,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -270,6 +297,15 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -281,6 +317,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -299,6 +344,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -325,6 +379,15 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -336,6 +399,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle
@@ -354,6 +426,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle_v2
@@ -379,6 +460,15 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -390,6 +480,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle
@@ -415,8 +514,18 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
           inline: "_noinline"
           inline_bytes: 0
+
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -466,6 +575,15 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -477,6 +595,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -495,6 +622,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -520,6 +656,15 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -531,6 +676,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -549,6 +703,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -575,6 +738,15 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -586,6 +758,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle
@@ -604,6 +785,15 @@
           columns: "column08 column13 column14"   # 84 groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column08 column13 column14"   # 84 groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle_v2
@@ -629,6 +819,15 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -640,6 +839,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle
@@ -658,6 +866,15 @@
           columns: "column02 column14"  # 7M groups
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          columns: "column02 column14"  # 7M groups
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle_v2
@@ -743,6 +960,13 @@
           join_type: inner
           batch: ""
           run_env: ""
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: inner
+          batch: ""
+          run_env: ""
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -757,6 +981,13 @@
           join_type: inner
           batch: "_hash_shuffle_v2_128mb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: inner
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -771,6 +1002,13 @@
           join_type: inner
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: inner
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -780,6 +1018,13 @@
           run_env: ""
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: left_outer
+          batch: ""
+          run_env: ""
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: left_outer
@@ -794,6 +1039,13 @@
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: left_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: left_outer
@@ -813,6 +1065,13 @@
           join_type: left_outer
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: left_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -822,6 +1081,13 @@
           run_env: ""
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: right_outer
+          batch: ""
+          run_env: ""
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: right_outer
@@ -836,6 +1102,13 @@
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: right_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: right_outer
@@ -855,6 +1128,13 @@
           join_type: right_outer
           batch: "_hash_shuffle_v2_1gb"
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: right_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -864,6 +1144,13 @@
           run_env: ""
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: full_outer
+          batch: ""
+          run_env: ""
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: full_outer
@@ -878,6 +1165,13 @@
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: full_outer
+          batch: "_hash_shuffle_v2_128mb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=134217728"
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: full_outer
@@ -892,6 +1186,13 @@
           run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
           inline: ""
           inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: full_outer
+          batch: "_hash_shuffle_v2_1gb"
+          run_env: "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2 RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES=1073741824"
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           dataset: sf1000
           join_type: full_outer
@@ -1783,6 +2084,13 @@
           shuffle_strategy: hash_shuffle
           batch: ""
           batch_bytes: 134217728
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -1792,6 +2100,13 @@
           batch_bytes: 134217728
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -1806,6 +2121,13 @@
           batch_bytes: 1073741824
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           shuffle_strategy: hash_shuffle_v2
@@ -1826,6 +2148,13 @@
           shuffle_strategy: hash_shuffle
           batch: ""
           batch_bytes: 134217728
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -1835,6 +2164,13 @@
           batch_bytes: 134217728
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           shuffle_strategy: hash_shuffle_v2
@@ -1990,6 +2326,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2001,6 +2346,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2019,6 +2373,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2045,6 +2408,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2056,6 +2428,15 @@
           sf: 100
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           frequency: manual
@@ -2185,6 +2566,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2196,6 +2586,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2214,6 +2613,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2240,6 +2648,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2251,6 +2668,15 @@
           sf: 100
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           frequency: manual
@@ -2322,6 +2748,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2333,6 +2768,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2351,6 +2795,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2377,6 +2830,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2388,6 +2850,15 @@
           sf: 100
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           frequency: manual
@@ -2491,6 +2962,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2502,6 +2982,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2520,6 +3009,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2546,6 +3044,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2557,6 +3064,15 @@
           sf: 100
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           frequency: manual
@@ -2612,6 +3128,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2623,6 +3148,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_128mb"
+          batch_bytes: 134217728
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2641,6 +3175,15 @@
           sf: 1000
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+          shuffle_strategy: hash_shuffle_v2
+          batch: "_1gb"
+          batch_bytes: 1073741824
+          sf: 1000
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -2667,6 +3210,15 @@
           batch: ""
           batch_bytes: 134217728
           sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -2678,6 +3230,15 @@
           sf: 100
           inline: ""
           inline_bytes: 102400
+      - with:
+          scaling: autoscaling
+          frequency: manual
+          shuffle_strategy: hash_shuffle_v2
+          batch: ""
+          batch_bytes: 134217728
+          sf: 100
+          inline: "_inline8kb"
+          inline_bytes: 8192
       - with:
           scaling: autoscaling
           frequency: manual
