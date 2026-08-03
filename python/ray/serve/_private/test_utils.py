@@ -765,6 +765,11 @@ class MockReplicaActorWrapper:
         return {"CPU": 0.1}
 
     @property
+    def actor_label_selector(self) -> Optional[Dict[str, str]]:
+        # Only used to print a warning.
+        return None
+
+    @property
     def available_resources(self) -> Dict[str, float]:
         # Only used to print a warning.
         return {}

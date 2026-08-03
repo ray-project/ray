@@ -743,6 +743,7 @@ class ActorReplicaWrapper:
         self._unrecoverable: bool = False
 
         self._actor_resources: Dict[str, float] = None
+        self._actor_label_selector: Optional[Dict[str, str]] = None
         # If the replica is being started, this will be the true version
         # If the replica is being recovered, this will be the target
         # version, which may be inconsistent with the actual replica
@@ -1068,6 +1069,9 @@ class ActorReplicaWrapper:
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
+        self._actor_label_selector = (
+            deployment_info.replica_config.ray_actor_options or {}
+        ).get("label_selector")
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
@@ -1506,6 +1510,10 @@ class ActorReplicaWrapper:
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
         return self._actor_resources
+
+    @property
+    def actor_label_selector(self) -> Optional[Dict[str, str]]:
+        return self._actor_label_selector
 
     @property
     def available_resources(self) -> Dict[str, float]:
@@ -2139,6 +2147,11 @@ class DeploymentReplica:
         # Use .model_copy(update=...) instead of .model_dump() + reconstruction
         # to avoid full Pydantic serialization and validation on every update.
         self._actor_details = self._actor_details.model_copy(update=kwargs)
+
+    @property
+    def actor_label_selector(self) -> Optional[Dict[str, str]]:
+        """The node label selector this replica must be scheduled against."""
+        return self._actor.actor_label_selector
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -5098,14 +5111,26 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
+                # A replica can also be unschedulable because no node satisfies its
+                # label selector, in which case the resources above look plentiful
+                # and point the reader in the wrong direction. Surface the selector
+                # so that case is diagnosable.
+                label_selector = pending_allocation[0].actor_label_selector
+                label_selector_message = (
+                    f"Required node label selector: {json.dumps(label_selector)}. "
+                    if label_selector
+                    else ""
+                )
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
                     f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
-                    "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed. "
+                    "This may be due to waiting for the cluster to auto-scale, for a "
+                    "runtime environment to be installed, or for a node matching the "
+                    "replica's label selector to become available. "
                     f"Resources required for each replica: {required}, "
                     f"total resources available: {available}. "
+                    f"{label_selector_message}"
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)
