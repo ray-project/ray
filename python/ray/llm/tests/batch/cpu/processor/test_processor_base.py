@@ -1,4 +1,5 @@
 import sys
+import warnings
 from typing import Any, AsyncIterator, Dict, List, Type
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_empty_processor():
@@ -159,6 +161,23 @@ class DummyStage(StatefulStage):
 
 class DummyProcessorConfig(ProcessorConfig):
     pass
+
+
+def test_does_not_emit_ray_remote_args_fn_deprecation_warning():
+    processor = Processor(
+        config=ProcessorConfig(batch_size=64),
+        stages=[
+            DummyStage(
+                map_batches_kwargs={
+                    "concurrency": 1,
+                    "ray_remote_args_fn": lambda: {},
+                }
+            )
+        ],
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        processor(ray.data.range(1))
 
 
 def test_builder():
