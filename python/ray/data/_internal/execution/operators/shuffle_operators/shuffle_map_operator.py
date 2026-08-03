@@ -83,6 +83,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
+        peak_memory_multiplier: Multiplier applied to a task's input bytes to
+            derive its memory request.
         name: Display name shown in progress bars and logs.
     """
 
@@ -100,6 +102,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
     ):
         super().__init__(
@@ -115,6 +118,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
         self._pre_map_merge_threshold: int = pre_map_merge_threshold
@@ -222,7 +226,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+            resources["memory"] = estimated_bytes * self._peak_memory_multiplier
 
         ray_options: Dict[str, Any] = {
             **resources,
@@ -435,7 +439,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
-        memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
+        memory = int(avg_input * self._peak_memory_multiplier) if avg_input else 0
         return ExecutionResources(
             cpu=self._shuffle_map_task_num_cpus,
             memory=memory,
