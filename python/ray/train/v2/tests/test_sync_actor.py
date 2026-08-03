@@ -43,6 +43,88 @@ def test_broadcast_from_rank_0(world_size):
     assert ray.get(sync_actor.get_reduced_data.remote()) is None
 
 
+@pytest.mark.parametrize("world_size", [1, 4, 10])
+def test_collective_all_gather(world_size):
+    """Every rank receives every rank's value, ordered by world rank."""
+    sync_actor = SynchronizationActor.remote()
+    values = [f"rank-{rank}" for rank in range(world_size)]
+    remote_tasks = [
+        sync_actor.collective_all_gather.remote(
+            world_rank=rank,
+            world_size=world_size,
+            data=value,
+            caller_method_name="collective_all_gather",
+        )
+        for rank, value in enumerate(values)
+    ]
+
+    assert ray.get(remote_tasks) == [values] * world_size
+    # State is fully released once everyone has left.
+    assert ray.get(sync_actor.get_counter.remote()) == 0
+    assert ray.get(sync_actor.get_world_size.remote()) == 0
+    assert ray.get(sync_actor.get_reduced_data.remote()) is None
+
+
+def test_collective_all_gather_preserves_none():
+    """A rank contributing None is distinguishable from a missing contribution."""
+    sync_actor = SynchronizationActor.remote()
+    remote_tasks = [
+        sync_actor.collective_all_gather.remote(
+            world_rank=rank,
+            world_size=3,
+            data=None if rank != 1 else "only-rank-1",
+            caller_method_name="collective_all_gather",
+        )
+        for rank in range(3)
+    ]
+    assert ray.get(remote_tasks) == [[None, "only-rank-1", None]] * 3
+
+
+@pytest.mark.parametrize("world_size", [2, 4])
+def test_fast_worker_cannot_join_the_collective_it_just_left(world_size):
+    """Alternating collective kinds across rounds must not interfere.
+
+    ``get_preemption_info()`` (all_gather) and ``report()`` (broadcast) alternate
+    every training step, and ``_clear_states`` only releases the previous round's
+    world size and reduce op once the *last* worker has drained. This guards the
+    window in between: each rank issues its second call as soon as its first
+    returns, so the fastest rank runs ahead while its peers are still leaving.
+
+    This documents required behavior rather than a fixed bug -- the window was
+    not reachable in testing, because the returning worker's next RPC round trip
+    is far slower than a waiting worker's resumption.
+    """
+    sync_actor = SynchronizationActor.remote()
+    for round_index in range(10):
+        pending = {
+            sync_actor.collective_all_gather.remote(
+                world_rank=rank,
+                world_size=world_size,
+                data=f"round{round_index}-gather-{rank}",
+                caller_method_name="ray.train.get_preemption_info",
+            ): rank
+            for rank in range(world_size)
+        }
+        expected_gather = [f"round{round_index}-gather-{r}" for r in range(world_size)]
+        second_round = []
+        # As each rank returns, it immediately runs ahead into the next
+        # collective while its peers are still draining.
+        while pending:
+            done, _ = ray.wait(list(pending), num_returns=1, timeout=30)
+            assert done, "collective did not make progress"
+            rank = pending.pop(done[0])
+            assert ray.get(done[0]) == expected_gather
+            second_round.append(
+                sync_actor.broadcast_from_rank_zero.remote(
+                    world_rank=rank,
+                    world_size=world_size,
+                    data=f"round{round_index}-broadcast",
+                    caller_method_name="ray.train.report",
+                )
+            )
+        assert ray.get(second_round) == [f"round{round_index}-broadcast"] * world_size
+
+
 def test_hang_with_timeout():
     """The test checks if the workers are blocked and hang when the world size
     is greater than the number of workers. The workers should block and hang
@@ -131,6 +213,66 @@ def test_world_size_mismatch():
     )
     with pytest.raises(ValueError, match="same world size"):
         ray.get(mismatch_task)
+
+
+def test_collective_operation_mismatch():
+    """Ranks disagreeing on the collective kind within one round is an error."""
+    sync_actor = SynchronizationActor.remote()
+    waiting_task = sync_actor.collective_all_gather.remote(
+        world_rank=0,
+        world_size=2,
+        data="data-0",
+        caller_method_name="collective_all_gather",
+    )
+    # Give rank 0 time to join so rank 1 validates against it.
+    ray.wait([waiting_task], timeout=2)
+
+    mismatch_task = sync_actor.broadcast_from_rank_zero.remote(
+        world_rank=1,
+        world_size=2,
+        data="data-1",
+        caller_method_name="broadcast_from_rank_zero",
+    )
+    with pytest.raises(RayTaskError, match="same collective operation"):
+        ray.get(mismatch_task)
+
+    ray.get(sync_actor.reset.remote())
+    with pytest.raises(RayTaskError):
+        ray.get(waiting_task)
+
+
+def test_reset_releases_state_for_dead_workers():
+    """reset() must leave the barrier immediately usable.
+
+    It is called when workers have died, so it cannot wait for the current
+    callers to leave -- they never will.
+    """
+    sync_actor = SynchronizationActor.remote()
+    stuck = sync_actor.collective_all_gather.remote(
+        world_rank=0,
+        world_size=2,
+        data="doomed",
+        caller_method_name="collective_all_gather",
+    )
+    ray.wait([stuck], timeout=2)
+    ray.get(sync_actor.reset.remote())
+    with pytest.raises(RayTaskError):
+        ray.get(stuck)
+
+    assert ray.get(sync_actor.get_counter.remote()) == 0
+    assert ray.get(sync_actor.get_world_size.remote()) == 0
+
+    # A fresh collective at a different world size must work right away.
+    tasks = [
+        sync_actor.broadcast_from_rank_zero.remote(
+            world_rank=rank,
+            world_size=3,
+            data="after-reset",
+            caller_method_name="broadcast_from_rank_zero",
+        )
+        for rank in range(3)
+    ]
+    assert ray.get(tasks) == ["after-reset"] * 3
 
 
 def test_reset():
