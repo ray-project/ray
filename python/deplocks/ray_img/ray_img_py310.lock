@@ -652,7 +652,6 @@ filelock==3.29.0 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   python-discovery
     #   ray
     #   virtualenv
 frozenlist==1.8.0 \
@@ -1761,7 +1760,6 @@ platformdirs==4.9.6 \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   python-discovery
     #   textual
     #   virtualenv
 prometheus-client==0.25.0 \
@@ -2167,12 +2165,6 @@ python-dateutil==2.9.0.post0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   celery
     #   pandas
-python-discovery==1.2.2 \
-    --hash=sha256:876e9c57139eb757cb5878cbdd9ae5379e5d96266c99ef731119e04fffe533bb \
-    --hash=sha256:e1ae95d9af875e78f15e19aed0c6137ab1bb49c200f21f5061786490c9585c7a
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   virtualenv
 python-dotenv==1.2.2 \
     --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
     --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
@@ -2532,7 +2524,6 @@ typing-extensions==4.15.0 \
     #   taskiq
     #   textual
     #   typing-inspection
-    #   virtualenv
 typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
@@ -2632,9 +2623,9 @@ vine==5.1.0 \
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4 \
-    --hash=sha256:29d21e941795206138d0f22f4e45ff7050e5da6c6472299fb7103318763861ac \
-    --hash=sha256:b294ef68192638004d72524ce7ef303e9d0cf5a44c95ce2e54a7500a6381cada
+virtualenv==20.29.1 \
+    --hash=sha256:4e4cb403c0b0da39e13b46b1b2476e505cb0046b25f242bee80f62bf990b2779 \
+    --hash=sha256:b8b8970138d32fb606192cb97f6cd4bb644fa486be9308fb9b63f81091b5dc35
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ray

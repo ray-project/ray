@@ -1397,7 +1397,6 @@ filelock==3.29.0 \
     #   -r python/requirements.txt
     #   datasets
     #   huggingface-hub
-    #   python-discovery
     #   torch
     #   virtualenv
     #   vllm
@@ -3833,7 +3832,6 @@ platformdirs==4.9.6 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   jupyter-core
-    #   python-discovery
     #   textual
     #   virtualenv
 pluggy==1.6.0 \
@@ -4674,12 +4672,6 @@ python-dateutil==2.9.0.post0 \
     #   jupyter-client
     #   openlineage-python
     #   pandas
-python-discovery==1.2.2 \
-    --hash=sha256:876e9c57139eb757cb5878cbdd9ae5379e5d96266c99ef731119e04fffe533bb \
-    --hash=sha256:e1ae95d9af875e78f15e19aed0c6137ab1bb49c200f21f5061786490c9585c7a
-    # via
-    #   -c python/deplocks/llm/ray_test_py312_cpu.lock
-    #   virtualenv
 python-dotenv==1.2.2 \
     --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
     --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
@@ -6295,9 +6287,9 @@ vine==5.1.0 \
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4 \
-    --hash=sha256:29d21e941795206138d0f22f4e45ff7050e5da6c6472299fb7103318763861ac \
-    --hash=sha256:b294ef68192638004d72524ce7ef303e9d0cf5a44c95ce2e54a7500a6381cada
+virtualenv==20.29.1 \
+    --hash=sha256:4e4cb403c0b0da39e13b46b1b2476e505cb0046b25f242bee80f62bf990b2779 \
+    --hash=sha256:b8b8970138d32fb606192cb97f6cd4bb644fa486be9308fb9b63f81091b5dc35
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
