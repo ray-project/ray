@@ -2362,7 +2362,7 @@ toolz==1.1.0
     #   dask
     #   distributed
     #   partd
-torch==2.9.0
+torch==2.12.1+cpu
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
