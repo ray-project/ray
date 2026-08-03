@@ -248,11 +248,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_backpressure_guard = OutputBackpressureGuard(
             self._topology, self._resource_manager
         )
-        # Starts its clock here, so the window before the first output counts.
-        self._no_progress_guard = NoProgressGuard(
-            self._topology, self._data_context.execution_no_progress_timeout_s
-        )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -292,6 +287,11 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         for callback in self._callbacks:
             callback.before_execution_starts(self)
+
+        # The stall clock starts upon construction.
+        self._no_progress_guard = NoProgressGuard(
+            self._topology, self._data_context.execution_no_progress_timeout_s
+        )
 
         self.start()
         self._execution_started = True

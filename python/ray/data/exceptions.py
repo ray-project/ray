@@ -35,7 +35,7 @@ class SystemException(Exception):
 
 
 @DeveloperAPI
-class ExecutionTimeoutError(TimeoutError, SystemException):
+class ExecutionTimeoutError(TimeoutError):
     """Represents an Exception raised when a Ray Data execution has made no
     progress for `DataContext.execution_no_progress_timeout_s` seconds while
     the consumer was waiting on the pipeline.
@@ -100,8 +100,9 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 )
 
             if is_actionable_exception:
-                # The driver-side propagation frames add nothing for a user-code
-                # error — the real failure is the worker traceback in ``str(e)``.
+                # The driver-side propagation frames add nothing here: for a
+                # user-code error the real failure is the worker traceback in
+                # ``str(e)``, and for a timeout the message is self-contained.
                 # Keep them off stdout always (``hide=True`` filters the console
                 # handler only; the file handler still writes the record). The
                 # flag controls only what reaches the log file.

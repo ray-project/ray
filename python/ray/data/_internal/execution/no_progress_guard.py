@@ -18,8 +18,8 @@ class NoProgressGuard:
 
     Args:
         topology: The topology being executed, read for progress counters.
-        timeout_s: Seconds without progress before failing. Non-positive
-            disables the guard.
+        timeout_s: Seconds without progress before failing. Negative disables
+            the guard.
         clock: Monotonic time source, injectable for testing.
     """
 
@@ -39,7 +39,7 @@ class NoProgressGuard:
 
     @property
     def enabled(self) -> bool:
-        return self._timeout_s > 0
+        return self._timeout_s >= 0
 
     def check(self, consumer_idling: bool) -> None:
         """Record progress since the last call, and fail if there was none.
