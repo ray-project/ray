@@ -19,7 +19,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
-from ray.experimental.sandbox.runtime import GVisorSandboxRuntime, SandboxRuntime
+from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox, SandboxHandle
 
 
@@ -36,7 +36,6 @@ def create(
     Returns:
         A SandboxHandle instance.
     """
-    runsc_path_override = kwargs.pop("runsc_path_override", None)
     if config is None:
         config = SandboxConfig(**kwargs)
     elif kwargs:
@@ -50,8 +49,7 @@ def create(
     if config.resources:
         actor_opts["resources"] = config.resources
 
-    runtime = GVisorSandboxRuntime(runsc_path_override=runsc_path_override)
-    actor_handle = Sandbox.options(**actor_opts).remote(runtime=runtime, config=config)
+    actor_handle = Sandbox.options(**actor_opts).remote(config=config)
     return SandboxHandle(actor_handle=actor_handle)
 
 
@@ -69,7 +67,6 @@ __all__ = [
     "SandboxHandle",
     "Sandbox",
     "SandboxRuntime",
-    "GVisorSandboxRuntime",
     "BaseSandboxBackend",
     "GVisorSandboxBackend",
     "SandboxConfig",
