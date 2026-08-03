@@ -2066,17 +2066,54 @@
     timeout: 5400
     script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q17.py --sf 100
 
-- name: "tpch_q18_{{scaling}}_{{shuffle_strategy}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one pins a bin budget, and a matrix cannot vary
+# ``byod.runtime_env`` per setup value. The rendered test names are unchanged.
+- name: "tpch_q18_fixed_size_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q18.py --sf 100
+
+- name: "tpch_q18_autoscaling_{{shuffle_strategy}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB, half the default, matching the q17 autoscaling pin. Smaller
+        # bins mean more and smaller read tasks, which both give the autoscaler
+        # demand to act on earlier and cut the peak block size feeding the
+        # shuffle.
+        #
+        # hash_shuffle_v2 has failed two builds running -- in #102732 the
+        # workload completed in 2075.9s and was then failed by
+        # RAYTEST_FAIL_ON_SPILLING on 4.62 GiB spilled against a 17.75 GiB
+        # object-store peak (61.6% utilization). That is spill under moderate
+        # pressure, not a cluster out of memory, which is the shape a smaller
+        # bin budget is most likely to help. Its sibling
+        # tpch_q21_autoscaling_hash_shuffle_v2 fails the same way and is left
+        # at the default for now as a control.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
