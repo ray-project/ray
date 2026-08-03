@@ -154,6 +154,28 @@ def test_finalize_phase_counts_as_progress():
         guard.check(consumer_ready=True)
 
 
+def test_running_finalize_is_not_a_stall():
+    """A finalize phase in flight isn't a stall, even with no output yet.
+
+    Regression test: those phases only report once a whole partition lands, and
+    that gap grows with the data, so a large groupby would eventually trip.
+    """
+    op = _FakeOperator(
+        "HashAggregate", extra_metrics={"finalize": {"num_tasks_running": 1}}
+    )
+    guard, clock = _make_guard([op], timeout_s=100.0)
+
+    for _ in range(5):
+        clock.advance(1000.0)
+        guard.check(consumer_ready=True)
+
+    # It finishes, and now silence really is a stall.
+    op.metrics.extra_metrics["finalize"]["num_tasks_running"] = 0
+    clock.advance(100.0)
+    with pytest.raises(ExecutionTimeoutError):
+        guard.check(consumer_ready=True)
+
+
 def test_blocking_step_is_not_a_stall():
     """A scheduling step that blocks on real work must not count as a stall.
 

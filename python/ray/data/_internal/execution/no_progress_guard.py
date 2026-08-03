@@ -22,8 +22,11 @@ class NoProgressGuard:
     ticks whenever data moves anywhere in the pipeline.
 
     Hash-based operators keep their finalize phase in a separate metrics object
-    exposed through ``extra_metrics``, so that phase is counted too. Without it
-    a large shuffle, join or aggregate looks stalled for most of its run.
+    exposed through ``extra_metrics``, so that phase is counted too. Even then
+    it only reports once a whole partition lands, and the gap in between grows
+    with the data, so the clock also pauses while one of those phases has a
+    task in flight. That gives up detecting a hang inside a finalize, which no
+    counter here could distinguish from work anyway.
 
     Progress also freezes when the consumer is the bottleneck, since a slow
     loop between iterations backpressures every operator upstream. Failing
@@ -101,10 +104,10 @@ class NoProgressGuard:
         self._last_check_time = current_time
 
         new_progress = current_progress_count > self._last_progress_count
-        # Both conditions must reset the clock. Resetting only on progress
-        # would let elapsed time accumulate while a slow consumer holds the
-        # pipeline back, then fail the moment it catches up.
-        if new_progress or not consumer_ready:
+        # Every one of these resets the clock. Resetting only on progress would
+        # let elapsed time accumulate while something else held the pipeline
+        # back, then fail the moment it caught up.
+        if new_progress or not consumer_ready or self._barrier_work_in_flight():
             self._last_progress_count = current_progress_count
             self._stalled_s = 0.0
             return
@@ -118,6 +121,20 @@ class NoProgressGuard:
         self._stalled_s += min(interval, self._max_stall_interval_s)
         if self._stalled_s >= self._timeout_s:
             raise ExecutionTimeoutError(self._error_message())
+
+    def _barrier_work_in_flight(self) -> bool:
+        """Whether a phase reported under ``extra_metrics`` has a task running.
+
+        Those phases only report once a whole partition completes, so between
+        two reports they're indistinguishable from a stall on the counters
+        alone.
+        """
+        return any(
+            extra.get("num_tasks_running", 0) > 0
+            for op in self._topology
+            for extra in op.metrics.extra_metrics.values()
+            if isinstance(extra, dict)
+        )
 
     def _total_progress_count(self) -> int:
         total = 0
