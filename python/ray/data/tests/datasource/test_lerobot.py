@@ -1280,6 +1280,32 @@ def test_delta_tensor_type_preserves_hf_array_dimensions():
     assert tensor_type.ndim == 3
 
 
+def test_nested_list_column_to_numpy_rejects_null_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0], None]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="cannot contain null lists"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
+def test_nested_list_column_to_numpy_rejects_ragged_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0]], [[3.0, 4.0], [5.0, 6.0]]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="must have one uniform shape"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
 def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no_video):
     """Tabular windows: ``action`` gathers [t, t+1] and ``state`` gathers
     [t-1, t], each clamped to the anchor's episode with an is_pad mask."""

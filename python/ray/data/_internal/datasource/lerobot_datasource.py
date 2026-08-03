@@ -170,12 +170,16 @@ def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
             # every row's length to Python is prohibitively expensive for the
             # large action/state columns found in real LeRobot datasets.
             unique_lengths = set(pc.unique(pc.list_value_length(values)).to_pylist())
-        if len(unique_lengths) != 1 or None in unique_lengths:
+        if None in unique_lengths:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} cannot contain null lists."
+            )
+        if len(unique_lengths) != 1:
             raise ValueError(
                 f"Windowed LeRobot feature {name!r} must have one uniform "
                 f"shape, but found list lengths {unique_lengths}."
             )
-        shape.append(unique_lengths.pop())
+        shape.append(next(iter(unique_lengths)))
         values = values.flatten()
 
     return values.to_numpy(zero_copy_only=False).reshape(shape)
