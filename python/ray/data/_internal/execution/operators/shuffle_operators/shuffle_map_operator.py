@@ -78,8 +78,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         block_transformer: Optional transform applied to each non-empty input
             block before partitioning (e.g. map-side partial aggregation).
             May change the block schema.
-        pre_map_merge_threshold: Byte threshold per node at which buffered
-            blocks are merged into a single map task.  Set to 0 to disable.
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
@@ -87,7 +85,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     """
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -97,7 +94,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         num_partitions: int,
         partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
-        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ShuffleMap",
@@ -117,7 +113,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
 
         # -- Pre-map merge ---------------------------------------------------
-        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        # Buffered blocks are coalesced per node into a single map task once
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[
             str, List[ObjectRef[Block]]
         ] = defaultdict(list)
@@ -162,7 +160,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._pre_map_merge_threshold > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -177,10 +175,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._pre_map_merge_threshold
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
