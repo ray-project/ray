@@ -149,9 +149,16 @@ async def test_handle_can_health_check(default_module_config):
     subprocess_handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
     subprocess_handle.start_module()
     subprocess_handle.wait_for_module_ready()
-    response = await subprocess_handle._health_check()
-    assert response.status == 200
-    assert response.body == b"success"
+    try:
+        assert (
+            subprocess_handle.http_client_session.connector
+            is not subprocess_handle.stream_http_client_session.connector
+        )
+        response = await subprocess_handle._health_check()
+        assert response.status == 200
+        assert response.body == b"success"
+    finally:
+        await subprocess_handle.destroy_module()
 
 
 @pytest.mark.asyncio
@@ -164,11 +171,13 @@ async def test_destroy_module_cleans_up_resources(default_module_config, monkeyp
     parent_conn = _DummyConn()
     process = _DummyProcess(alive=True)
     http_session = _DummySession()
+    stream_http_session = _DummySession()
     health_task = asyncio.create_task(asyncio.sleep(1000))
 
     handle.parent_conn = parent_conn
     handle.process = process
     handle.http_client_session = http_session
+    handle.stream_http_client_session = stream_http_session
     handle.health_check_task = health_task
 
     await handle.destroy_module()
@@ -183,9 +192,11 @@ async def test_destroy_module_cleans_up_resources(default_module_config, monkeyp
     assert not process.kill_called
     assert handle.process is None
 
-    # HTTP client session is closed and cleared.
+    # HTTP client sessions are closed and cleared.
     assert http_session.closed
     assert handle.http_client_session is None
+    assert stream_http_session.closed
+    assert handle.stream_http_client_session is None
 
     # Health check task is cancelled and cleared.
     # Note: destroy_module() may call cancel() without awaiting the task, so the
