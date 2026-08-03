@@ -871,6 +871,54 @@ fn window_rows_for(rgm: &parquet::file::metadata::RowGroupMetaData, fetch_window
     (((fetch_window_mb as f64) * 1024.0 * 1024.0) / comp_bpr).max(1.0) as usize
 }
 
+/// Largest single data page, in rows, across the projected columns of row group
+/// `rg` (from the offset index). This is the floor a fetch window must not go
+/// below: a `RowSelection` can only skip whole *pages*, never rows within a page,
+/// so a window narrower than a column's page forces every window overlapping that
+/// page to decode the whole page — re-decoding the row group once per window (the
+/// wide/short-row-group pathology: few rows → one page/column → N-way re-decode).
+///
+/// Returns the row group's total row count when there is no offset index (windowing
+/// can't skip pages without it anyway) or the index is empty — either way the
+/// caller then collapses to a single window (no split), which is correct.
+fn max_page_rows(md: &parquet::file::metadata::ParquetMetaData, rg: usize) -> usize {
+    let num_rows = md.row_group(rg).num_rows().max(0);
+    let rg_oi = match md.offset_index().and_then(|oi| oi.get(rg)) {
+        Some(rg_oi) if !rg_oi.is_empty() => rg_oi,
+        _ => return num_rows as usize,
+    };
+    let mut max_rows: i64 = 0;
+    for col in rg_oi {
+        let locs = col.page_locations();
+        for (i, loc) in locs.iter().enumerate() {
+            let end = locs
+                .get(i + 1)
+                .map(|next| next.first_row_index)
+                .unwrap_or(num_rows);
+            max_rows = max_rows.max(end - loc.first_row_index);
+        }
+    }
+    if max_rows <= 0 {
+        num_rows as usize
+    } else {
+        max_rows as usize
+    }
+}
+
+/// The row step a fetch window should advance by, given the byte-budget
+/// `window_rows` (0 = no cap) and the coarsest column's `max_page_rows`. Clamping
+/// the window up to at least one full page means each page is decoded by ~one
+/// window instead of every overlapping window; a group whose largest page spans
+/// the whole range (wide/short) collapses to `len` (a single window == parity with
+/// no windowing), while a tall multi-page group still splits and keeps the
+/// bounded-working-set win. Pure so it is unit-tested without a Parquet fixture.
+fn effective_window_step(window_rows: usize, max_page_rows: usize, len: usize) -> usize {
+    if window_rows == 0 {
+        return len.max(1);
+    }
+    window_rows.max(max_page_rows).max(1)
+}
+
 /// Spawn a background task that fetches + decodes ONE fetch window — rows
 /// `[w, w+wlen)` within row group `rg` — streaming its batches into a bounded
 /// channel, and return the receiver. Building the stream is cheap (metadata is
@@ -960,11 +1008,11 @@ async fn drive_unit(
         );
         let window_rows = window_rows_for(rgm, fetch_window_mb);
         let end = start + len;
-        let step = if window_rows == 0 {
-            len.max(1)
-        } else {
-            window_rows.max(1)
-        };
+        // Never window below the coarsest column's largest page (see max_page_rows):
+        // a sub-page window re-decodes that page in every window it overlaps. This
+        // collapses wide/short row groups (one page per column) to a single window
+        // — parity with no windowing — while tall multi-page groups still split.
+        let step = effective_window_step(window_rows, max_page_rows(meta.metadata(), rg), len);
         let mut w = start;
         while w < end {
             let wlen = step.min(end - w);
@@ -1364,6 +1412,34 @@ mod tests {
             None,
             ConvertedType::INT_16
         )));
+    }
+
+    #[test]
+    fn window_step_clamps_up_to_a_full_page() {
+        // The wide/short pathology: byte budget wants a 40-row window but the
+        // (single) page spans all 200 rows -> clamp up to 200 so the whole range
+        // is one window (no per-window re-decode of that page).
+        assert_eq!(effective_window_step(40, 200, 200), 200);
+        // step >= len => the caller emits exactly one window (parity, no split).
+        assert!(effective_window_step(40, 200, 200) >= 200);
+    }
+
+    #[test]
+    fn window_step_keeps_splitting_a_tall_group() {
+        // Tall multi-page group: window (4096 rows) already spans several 512-row
+        // pages, so it is left as-is and the range still splits into windows.
+        assert_eq!(effective_window_step(4096, 512, 1_000_000), 4096);
+        // A window smaller than the page still gets clamped up to the page, so a
+        // page is never split across windows (bounds boundary re-decode to O(1)).
+        assert_eq!(effective_window_step(256, 512, 1_000_000), 512);
+    }
+
+    #[test]
+    fn window_step_zero_means_whole_range() {
+        // fetch_window_mb == 0 -> window_rows == 0 -> one window over the range,
+        // regardless of page size.
+        assert_eq!(effective_window_step(0, 512, 8192), 8192);
+        assert_eq!(effective_window_step(0, 0, 1), 1);
     }
 
     #[test]
