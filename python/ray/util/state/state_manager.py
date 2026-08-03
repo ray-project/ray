@@ -245,7 +245,7 @@ class StateDataSourceClient:
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
         request = self._build_task_events_request(limit, filters, exclude_driver)
-        if ray_constants.RAY_task_events_read_from_dashboard_head:
+        if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
             return await self._get_task_events_from_dashboard_head(request, timeout)
         return await self._get_task_events_from_gcs(request, timeout)
 
