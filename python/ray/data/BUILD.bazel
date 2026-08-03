@@ -1625,20 +1625,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ranker",
-    size = "small",
-    srcs = ["tests/test_ranker.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_raydp",
     size = "medium",
     srcs = ["tests/datasource/test_raydp.py"],
@@ -2249,6 +2235,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/datasource/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta_catalog_e2e",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta_catalog_e2e.py"],
     tags = [
         "exclusive",
         "team:data",
