@@ -38,6 +38,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
 
 
@@ -112,8 +113,6 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
-
-DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -229,6 +228,15 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "UNAVAILABLE",
     "DEADLINE_EXCEEDED",
 )
+
+DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS = env_integer("RAY_DATA_DELTA_COMMIT_MAX_ATTEMPTS", 5)
+DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_DELTA_COMMIT_RETRY_MAX_BACKOFF_S", 16
+)
+# Reuses the same transient-error substring set already proven for Iceberg's
+# catalog operations -- both are HTTP/RPC calls to a metadata service, so the
+# same class of transient failures (rate limiting, connection resets) applies.
+DEFAULT_DELTA_COMMIT_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
 
 DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
 DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
@@ -375,6 +383,36 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+
+
+@DeveloperAPI
+@dataclass
+class DeltaConfig:
+    """Configuration for the ``write_delta`` prototype's commit/retry behavior.
+
+    Args:
+        commit_max_attempts: Maximum number of retry attempts for the driver's
+            Delta commit operations (existence check, create table, write
+            transaction). Defaults to 5.
+        commit_retry_max_backoff_s: Maximum backoff time in seconds between
+            commit retry attempts. Uses exponential backoff with jitter.
+            Defaults to 16.
+        commit_retried_errors: A list of substrings of error messages that
+            should trigger a retry of a commit operation, in addition to
+            authentication errors (which are always retried when
+            ``credential_refresh_enabled`` is set).
+        credential_refresh_enabled: Whether an authentication error (expired
+            or invalid cloud/catalog credentials) triggers a credential
+            refresh before the next retry attempt, on both the driver and
+            workers. Defaults to ``True``.
+    """
+
+    commit_max_attempts: int = DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS
+    commit_retry_max_backoff_s: int = DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S
+    commit_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_DELTA_COMMIT_RETRIED_ERRORS)
+    )
+    credential_refresh_enabled: bool = True
 
 
 @DeveloperAPI
@@ -644,6 +682,9 @@ class DataContext:
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
+        delta_config: Configuration for the ``write_delta`` prototype's
+            commit/retry behavior, including credential-refresh-on-auth-error.
+            See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         hash_shuffle_compression: Codec used to compress hash-shuffle
@@ -785,10 +826,6 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # Whether to use task-based hash-shuffle v2 operators. When False, fall back
-    # to the legacy actor-based operators for joins, repartition, and aggregation.
-    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
-
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -878,6 +915,7 @@ class DataContext:
     )
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
+    delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
