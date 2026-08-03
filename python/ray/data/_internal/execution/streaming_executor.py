@@ -139,7 +139,12 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
-        self._no_progress_guard: Optional[NoProgressGuard] = None
+        # Its stall clock starts on the first check, i.e. with the scheduling
+        # loop, so constructing it here doesn't charge setup against the
+        # timeout.
+        self._no_progress_guard = NoProgressGuard(
+            self._data_context.execution_no_progress_timeout_s
+        )
 
         self._dataset_id = dataset_id
         # Set by IssueDetectionExecutionCallback when issue detection is registered;
@@ -287,11 +292,6 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         for callback in self._callbacks:
             callback.before_execution_starts(self)
-
-        # The stall clock starts upon construction.
-        self._no_progress_guard = NoProgressGuard(
-            self._topology, self._data_context.execution_no_progress_timeout_s
-        )
 
         self.start()
         self._execution_started = True
@@ -594,7 +594,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if should_continue:
             # Skipped once the execution is done, so a final step that completes
             # the topology can't be flagged as a stall.
-            self._no_progress_guard.check(consumer_idling=self._consumer_idling())
+            self._no_progress_guard.check(
+                topology, consumer_idling=self._consumer_idling()
+            )
         return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
