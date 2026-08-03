@@ -1296,6 +1296,54 @@ def test_extension_types_native_parity(tmp_path, restore_ctx):
         pq.write_table(pa.table({"u": union_array}), str(tmp_path / "union.parquet"))
 
 
+def test_cloudpickle_tensor_metadata_native_parity(tmp_path, monkeypatch):
+    """A Ray tensor column serialized with the legacy *cloudpickle* format (files
+    written by Ray 2.49-2.54) stores non-UTF8 bytes in the parquet ``ARROW:schema``
+    field metadata, which arrow-rs's IPC verifier rejects — the crate used to
+    crash (``Unable to get root as message stored in ARROW:schema: Utf8Error``).
+
+    The crate now retries the footer load with the embedded arrow schema skipped
+    (decoding the parquet *storage* type), and the reader reconstructs the
+    extension from the file's own pyarrow-read footer schema. So the file decodes
+    NATIVELY and byte-identically to PyArrow instead of crashing or silently
+    falling back. Regression test for the release ``wide_schema_pipeline_tensors``
+    failure (Bug 2)."""
+    import ray.data._internal.tensor_extensions.arrow as tx
+    from ray.data.extensions import ArrowTensorArray
+
+    # Write with the legacy cloudpickle serialization → binary metadata value.
+    monkeypatch.setattr(
+        tx,
+        "ARROW_EXTENSION_SERIALIZATION_FORMAT",
+        tx._SerializationFormat.CLOUDPICKLE,
+    )
+    n = 200
+    tens = ArrowTensorArray.from_numpy(
+        np.arange(4 * n, dtype=np.float32).reshape(n, 2, 2)
+    )
+    path = tmp_path / "cp_tensor.parquet"
+    pq.write_table(
+        pa.table({"id": pa.array(np.arange(n, dtype=np.int64)), "t": tens}),
+        str(path),
+        write_page_index=True,
+        row_group_size=50,
+    )
+    # Reading the cloudpickle-serialized extension back requires the opt-in
+    # autoload (set before any pyarrow read below, which reconstructs the type).
+    monkeypatch.setattr(tx, "_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", True)
+
+    # Confirm the footer really carries the ``ARROW:schema`` metadata whose
+    # (cloudpickle) value isn't valid UTF-8 — the case the crate used to crash on.
+    kv = pq.read_metadata(str(path)).metadata or {}
+    assert b"ARROW:schema" in kv
+
+    rs, pa_tbl, native_decodes = _read_both_in_process([path], monkeypatch)
+    # The crate actually decoded it (didn't fall back to PyArrow).
+    assert native_decodes > 0
+    assert rs.equals(pa_tbl)
+    assert isinstance(rs.schema.field("t").type, pa.ExtensionType)
+
+
 def test_arrow_rs_supported_gate(tmp_path):
     """Unit-check the fallback gate: local flat AND struct/list = supported;
     empty projection / unknown-not-on-disk column (no unified schema to
@@ -1338,9 +1386,18 @@ def test_arrow_rs_supported_gate(tmp_path):
     # missing column; with no unified schema to null-fill from → fall back.
     assert reader._arrow_rs_supported(nested_frag, ["v.item"]) is False
 
-    # Unknown filesystem (neither local nor S3) → fall back.
-    reader_no_fs = ArrowRsParquetFileReader(filesystem=None)
-    assert reader_no_fs._arrow_rs_supported(flat_frag, None) is False
+    # ``filesystem=None`` is the default local filesystem → supported
+    # (see ``_filesystem_supported``). A genuinely foreign filesystem (neither
+    # local nor S3, e.g. a ``SubTreeFileSystem``) → fall back.
+    from pyarrow.fs import SubTreeFileSystem
+
+    reader_default_fs = ArrowRsParquetFileReader(filesystem=None)
+    assert reader_default_fs._arrow_rs_supported(flat_frag, None) is True
+
+    reader_foreign_fs = ArrowRsParquetFileReader(
+        filesystem=SubTreeFileSystem(str(tmp_path), LocalFileSystem())
+    )
+    assert reader_foreign_fs._arrow_rs_supported(flat_frag, None) is False
 
 
 # ---------------------------------------------------------------------------

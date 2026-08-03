@@ -600,6 +600,28 @@ def _apply_column_alignment(
     return table
 
 
+def _reconcile_to_expected(table: pa.Table, expected_schema: pa.Schema) -> pa.Table:
+    """Cast any decoded column whose type differs from ``expected_schema`` to the
+    expected type. Used by the per-fragment path (:meth:`_iter_native_tables`
+    with ``expected_schema``), where the crate may hand back a parquet *storage*
+    type for an extension column whose non-UTF8 embedded metadata it had to skip
+    — this restores the extension type the base pyarrow scanner would produce.
+    The per-fragment gate already withholds every other kind of drift, so the
+    only divergence reaching here is a safe storage → extension wrap (a lossy
+    cast would raise, exactly as pyarrow's own scanner cast does)."""
+    for name in table.column_names:
+        exp_idx = expected_schema.get_field_index(name)
+        if exp_idx == -1:
+            continue
+        exp_type = expected_schema.field(exp_idx).type
+        col_idx = table.schema.get_field_index(name)
+        if table.schema.field(col_idx).type != exp_type:
+            table = table.set_column(
+                col_idx, pa.field(name, exp_type), table.column(col_idx).cast(exp_type)
+            )
+    return table
+
+
 class _NativeParquetFragment(NamedTuple):
     """A native (pyarrow-free) unit of work for one file's row-group slice.
 
@@ -762,15 +784,38 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 # a violation raises pyarrow's usual thrift OSError.
                 pq.ParquetFile(source, **limits)
 
+    def _read_pyarrow_footer_schema(self, path: str) -> Optional[pa.Schema]:
+        """Read a file's footer schema via pyarrow, which parses binary field
+        metadata that arrow-rs's IPC verifier rejects. Used only to recover the
+        Arrow *logical* schema — including reconstructed extension types like
+        Ray's cloudpickle-serialized tensor type — when the crate had to skip the
+        embedded arrow schema (:meth:`_read_native_metadata`). Footer-only (a few
+        KB); ``None`` on failure so the caller falls the file back to pyarrow."""
+        import pyarrow.parquet as pq
+
+        try:
+            return pq.read_schema(path, filesystem=self._filesystem)
+        except Exception as e:  # noqa: BLE001 - any footer failure => fallback
+            logger.debug("pyarrow footer schema read failed for %s: %s", path, e)
+            return None
+
     def _read_native_metadata(
         self, path: str
-    ) -> Optional[Tuple[pa.Schema, List[int], List[str]]]:
+    ) -> Optional[Tuple[pa.Schema, List[int], List[str], Optional[pa.Schema]]]:
         """Read one file's footer via the crate: ``(arrow schema, per-row-group
-        row counts, int96 root columns)``, or ``None`` if the native footer read
-        fails (caller then falls the whole split back to pyarrow). Does *not*
-        swallow a missing extension — :meth:`_import_extension` raises that
-        loudly. The int96 list lets :meth:`_plan_column_alignment` realign the
-        crate's decoded unit for those columns to what PyArrow produces."""
+        row counts, int96 root columns, extension-target schema)``, or ``None``
+        if the native footer read fails (caller then falls the whole split back
+        to pyarrow). Does *not* swallow a missing extension —
+        :meth:`_import_extension` raises that loudly. The int96 list lets
+        :meth:`_plan_column_alignment` realign the crate's decoded unit for those
+        columns to what PyArrow produces.
+
+        The 4th element is a per-file *target* schema, non-``None`` only when the
+        crate reports it had to skip the embedded arrow schema (non-UTF8 field
+        metadata, e.g. Ray's cloudpickle tensor type): then the crate decodes the
+        parquet *storage* types, and this pyarrow-read footer schema carries the
+        reconstructed extension types the base path would produce, so
+        :meth:`_plan_column_alignment` can cast storage → extension per file."""
         # Surfaces a missing extension loudly (import inside the crate call);
         # any *footer-read* failure below becomes a whole-split pyarrow fallback.
         self._import_extension()
@@ -780,7 +825,22 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         except Exception as e:  # noqa: BLE001 - any footer failure => fallback
             logger.debug("arrow-rs native metadata read failed for %s: %s", path, e)
             return None
-        return pa.schema(md), list(md.row_group_num_rows), list(md.int96_columns)
+
+        target_override: Optional[pa.Schema] = None
+        if getattr(md, "arrow_schema_skipped", False):
+            # The crate skipped a non-UTF8 embedded arrow schema; recover the
+            # logical (extension-typed) schema via pyarrow so the decode can be
+            # realigned to it. If pyarrow can't read the footer either, fall the
+            # whole split back rather than emit storage-typed columns.
+            target_override = self._read_pyarrow_footer_schema(path)
+            if target_override is None:
+                return None
+        return (
+            pa.schema(md),
+            list(md.row_group_num_rows),
+            list(md.int96_columns),
+            target_override,
+        )
 
     def _plan_native_read(
         self, manifest: "FileManifest"
@@ -804,7 +864,9 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         # raise (parity-of-error), before any native work happens.
         self._verify_footer_limits(unique_paths)
 
-        native_md: Dict[str, Tuple[pa.Schema, List[int], List[str]]] = {}
+        native_md: Dict[
+            str, Tuple[pa.Schema, List[int], List[str], Optional[pa.Schema]]
+        ] = {}
         for path in unique_paths:
             md = self._read_native_metadata(path)
             if md is None:
@@ -823,7 +885,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             on_disk_names = set(self._file_dataset_schema.names)
         else:
             on_disk_names = set()
-            for schema, _, _ in native_md.values():
+            for schema, _, _, _ in native_md.values():
                 on_disk_names.update(schema.names)
         columns_to_read_from_file, columns_to_synthesize = self._split_columns(
             on_disk_names
@@ -868,8 +930,10 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         # Per-file verdict: native decode (with an optional post-decode
         # alignment plan) vs pyarrow fallback.
         alignment_by_path: Dict[str, Optional[_ColumnAlignment]] = {}
-        for path, (schema, _, int96_cols) in native_md.items():
-            alignment = self._plan_column_alignment(schema, read_columns, int96_cols)
+        for path, (schema, _, int96_cols, target_override) in native_md.items():
+            alignment = self._plan_column_alignment(
+                schema, read_columns, int96_cols, target_schema=target_override
+            )
             if alignment is not None:
                 alignment_by_path[path] = None if alignment.is_noop else alignment
         native_paths = set(alignment_by_path)
@@ -1177,6 +1241,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         physical_schema: pa.Schema,
         read_columns: Optional[List[str]],
         int96_columns: Optional[List[str]] = None,
+        target_schema: Optional[pa.Schema] = None,
     ) -> Optional[_ColumnAlignment]:
         """Per-file half of the support gate, upgraded from a yes/no verdict to
         a *plan*: how to make this file's native decode match what the pyarrow
@@ -1208,7 +1273,15 @@ class ArrowRsParquetFileReader(ParquetFileReader):
           the unified type (the scanner's implicit cast under a pinned
           schema); extension-typed drift stays on PyArrow.
         """
-        unified_schema = self._file_dataset_schema
+        # ``target_schema`` overrides the reader-wide pin for this one file. It's
+        # supplied when the crate skipped the embedded arrow schema (non-UTF8
+        # extension metadata): the file's own pyarrow-read footer schema carries
+        # the reconstructed extension types the decode must be realigned to,
+        # even though the reader-wide pin (``_file_dataset_schema``) is ``None``
+        # for extension-bearing reads.
+        unified_schema = (
+            target_schema if target_schema is not None else self._file_dataset_schema
+        )
         int96 = set(int96_columns or ())
         # The expected output columns: the explicit read set when projected;
         # otherwise the *unified* schema's columns (the scanner outputs the
@@ -1284,13 +1357,27 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                     unified_type = unified_schema.field(unified_idx).type
                     if unified_type != target:
                         # Per-file drift vs the pinned unified schema: the
-                        # scanner casts implicitly; mirror it. Extension-typed
-                        # drift (e.g. per-file tensor shapes) must not be cast.
-                        if _is_extension_type(unified_type) or _is_extension_type(
+                        # scanner casts implicitly; mirror it.
+                        if _is_extension_type(unified_type) and not _is_extension_type(
                             target
                         ):
+                            # The crate decoded the parquet *storage* type because
+                            # the embedded arrow schema was skipped (non-UTF8
+                            # extension metadata, e.g. Ray's cloudpickle tensor
+                            # type). Reconstruct the extension by casting storage
+                            # -> extension: pyarrow does the offset-width change
+                            # and the extension wrap in one cast, matching what
+                            # the base scanner reconstructs from the same footer
+                            # (verified byte-identical).
+                            target = unified_type
+                        elif _is_extension_type(unified_type) or _is_extension_type(
+                            target
+                        ):
+                            # extension<->extension drift (e.g. per-file tensor
+                            # shapes) isn't a safe cast — fall back.
                             return None
-                        target = unified_type
+                        else:
+                            target = unified_type
 
             if target != field_type:
                 casts.append((name, target, allow_time_truncate))
@@ -1420,7 +1507,16 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             if fragment.row_groups is not None
             else None
         )
-        yield from self._iter_native_tables(fragment.path, row_groups, scanner_kwargs)
+        # The gate admits this fragment as a byte-identical native decode, but the
+        # crate may still return a storage type for an extension column whose
+        # binary metadata it had to skip. Reconcile to the fragment's own arrow
+        # (post-coercion) schema so that legacy path can't silently emit storage.
+        yield from self._iter_native_tables(
+            fragment.path,
+            row_groups,
+            scanner_kwargs,
+            expected_schema=fragment.physical_schema,
+        )
 
     def _iter_native_tables(
         self,
@@ -1428,6 +1524,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         row_groups: Optional[List[int]],
         scanner_kwargs: dict,
         alignment: Optional[_ColumnAlignment] = None,
+        expected_schema: Optional[pa.Schema] = None,
     ) -> "Iterator[pa.Table]":
         """Decode ``row_groups`` of ``path`` via the native crate and yield
         ``pa.Table`` batches, applying the file's :class:`_ColumnAlignment`
@@ -1515,6 +1612,8 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         for batch in record_batch_reader:
             table = pa.Table.from_batches([batch], schema=record_batch_reader.schema)
             table = _apply_column_alignment(table, alignment)
+            if expected_schema is not None:
+                table = _reconcile_to_expected(table, expected_schema)
             # Same opt-in gate as the pyarrow path: unpickling an
             # ArrowPythonObjectType column executes arbitrary code, so serving
             # one requires the explicit env opt-in. raise_on_pickle_object_columns

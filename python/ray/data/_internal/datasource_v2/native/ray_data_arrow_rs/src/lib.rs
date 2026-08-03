@@ -378,6 +378,13 @@ struct ParquetFileMetadata {
     // gate must fall it back. INT96 columns that come out as ns already match.
     #[pyo3(get)]
     int96_columns: Vec<String>,
+    // True when the embedded Arrow schema (`ARROW:schema` footer metadata) could
+    // not be parsed and was skipped (see `load_meta_local`), so `schema` here is
+    // the parquet-inferred *storage* schema rather than the Arrow logical schema.
+    // The Python reader reconstructs any lost extension types (e.g. Ray's
+    // cloudpickle-serialized tensor type) from the file's own footer schema.
+    #[pyo3(get)]
+    arrow_schema_skipped: bool,
 }
 
 #[pymethods]
@@ -413,9 +420,66 @@ fn reader_options(page_index: PageIndexPolicy) -> ArrowReaderOptions {
     ArrowReaderOptions::new().with_page_index_policy(page_index)
 }
 
+/// arrow-rs's IPC verifier rejects an embedded `ARROW:schema` footer whose field
+/// `custom_metadata` values aren't valid UTF-8. Ray files written by 2.49-2.54
+/// store the tensor extension type's metadata as a cloudpickle blob (binary), so
+/// `ArrowReaderMetadata::load` fails parsing that embedded schema
+/// (`Unable to get root as message stored in ARROW:schema: Utf8Error`). Detect
+/// exactly that failure so the loaders below can retry with the embedded arrow
+/// schema skipped — decoding the parquet-inferred storage types instead — after
+/// which the Python reader re-applies the extension type from the pinned dataset
+/// schema (a `list<..>`→`extension<..>` cast). Any other load error propagates.
+fn is_embedded_arrow_schema_error<E: std::fmt::Display>(e: &E) -> bool {
+    e.to_string().contains("ARROW:schema")
+}
+
+/// Load footer metadata for a local file, retrying with the embedded arrow schema
+/// skipped when (and only when) it fails to parse (see
+/// [`is_embedded_arrow_schema_error`]). Files whose footer parses normally are
+/// untouched, so INT96 hints and valid embedded schemas behave exactly as before.
+/// The returned bool is `true` when the retry fired (embedded arrow schema
+/// skipped → the reported schema is the parquet-inferred storage type), which the
+/// Python reader uses to reconstruct the extension type from the pinned schema.
+fn load_meta_local(
+    file: &File,
+    page_index: PageIndexPolicy,
+) -> Result<(ArrowReaderMetadata, bool), ParquetError> {
+    match ArrowReaderMetadata::load(file, reader_options(page_index)) {
+        Err(e) if is_embedded_arrow_schema_error(&e) => ArrowReaderMetadata::load(
+            file,
+            reader_options(page_index).with_skip_arrow_metadata(true),
+        )
+        .map(|m| (m, true)),
+        other => other.map(|m| (m, false)),
+    }
+}
+
+/// S3 counterpart of [`load_meta_local`]: same targeted retry (and same
+/// skipped-bool contract), building a fresh `ParquetObjectReader` for the second
+/// attempt so no half-consumed reader state carries over.
+async fn load_meta_s3(
+    store: Arc<dyn ObjectStore>,
+    path: ObjPath,
+    page_index: PageIndexPolicy,
+) -> Result<(ArrowReaderMetadata, bool), ParquetError> {
+    let mut probe = ParquetObjectReader::new(store.clone(), path.clone());
+    match ArrowReaderMetadata::load_async(&mut probe, reader_options(page_index)).await {
+        Err(e) if is_embedded_arrow_schema_error(&e) => {
+            let mut retry = ParquetObjectReader::new(store, path);
+            ArrowReaderMetadata::load_async(
+                &mut retry,
+                reader_options(page_index).with_skip_arrow_metadata(true),
+            )
+            .await
+            .map(|m| (m, true))
+        }
+        other => other.map(|m| (m, false)),
+    }
+}
+
 /// Pull the fields Python needs out of an already-loaded `ArrowReaderMetadata`.
 /// Local and S3 both funnel through here so the shape is identical.
-fn build_file_metadata(meta: &ArrowReaderMetadata) -> ParquetFileMetadata {
+fn build_file_metadata(meta: &ArrowReaderMetadata, arrow_schema_skipped: bool) -> ParquetFileMetadata {
     let md = meta.metadata();
     let n = md.num_row_groups();
     let mut row_group_num_rows = Vec::with_capacity(n);
@@ -450,6 +514,7 @@ fn build_file_metadata(meta: &ArrowReaderMetadata) -> ParquetFileMetadata {
         row_group_byte_sizes,
         row_group_compressed_sizes,
         int96_columns: int96_roots.into_iter().collect(),
+        arrow_schema_skipped,
     }
 }
 
@@ -664,8 +729,7 @@ fn open_local_reader(
     } else {
         PageIndexPolicy::Skip
     };
-    let opts = reader_options(policy);
-    let meta = ArrowReaderMetadata::load(&File::open(&path)?, opts)?;
+    let (meta, _skipped) = load_meta_local(&File::open(&path)?, policy)?;
     let mask = projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
     let selected: Vec<usize> = match row_groups {
         Some(v) => v,
@@ -1064,9 +1128,9 @@ fn read_row_groups_s3(
     let (meta, mask, schema) = py
         .allow_threads(|| {
             rt.block_on(async {
-                let opts = reader_options(PageIndexPolicy::Optional);
-                let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
-                let meta = ArrowReaderMetadata::load_async(&mut probe, opts).await?;
+                let (meta, _skipped) =
+                    load_meta_s3(store.clone(), obj_path.clone(), PageIndexPolicy::Optional)
+                        .await?;
                 let mask =
                     projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
                 let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
@@ -1166,13 +1230,10 @@ fn read_row_groups_s3(
 #[pyfunction]
 fn read_metadata(py: Python<'_>, path: String) -> PyResult<ParquetFileMetadata> {
     // Blocking footer read; release the GIL for sibling Python threads.
-    let meta = py
-        .allow_threads(|| {
-            let opts = reader_options(PageIndexPolicy::Skip);
-            ArrowReaderMetadata::load(&File::open(&path)?, opts)
-        })
+    let (meta, skipped) = py
+        .allow_threads(|| load_meta_local(&File::open(&path)?, PageIndexPolicy::Skip))
         .map_err(to_py)?;
-    Ok(build_file_metadata(&meta))
+    Ok(build_file_metadata(&meta, skipped))
 }
 
 /// S3 counterpart of [`read_metadata`]: one async footer fetch via `object_store`,
@@ -1210,16 +1271,16 @@ fn read_metadata_s3(
     let obj_path = ObjPath::from(key);
     let rt = shared_runtime();
     // Blocking async footer fetch; release the GIL for sibling Python threads.
-    let meta = py
+    let (meta, skipped) = py
         .allow_threads(|| {
-            rt.block_on(async {
-                let opts = reader_options(PageIndexPolicy::Skip);
-                let mut probe = ParquetObjectReader::new(store.clone(), obj_path.clone());
-                ArrowReaderMetadata::load_async(&mut probe, opts).await
-            })
+            rt.block_on(load_meta_s3(
+                store.clone(),
+                obj_path.clone(),
+                PageIndexPolicy::Skip,
+            ))
         })
         .map_err(to_py)?;
-    Ok(build_file_metadata(&meta))
+    Ok(build_file_metadata(&meta, skipped))
 }
 
 /// Return the row-group ids of `path` that survive `predicate_json`'s statistics
@@ -1235,11 +1296,8 @@ fn select_row_groups(
     predicate_json: Option<String>,
 ) -> PyResult<Vec<usize>> {
     // Blocking footer read; release the GIL for sibling Python threads.
-    let meta = py
-        .allow_threads(|| {
-            let opts = reader_options(PageIndexPolicy::Skip);
-            ArrowReaderMetadata::load(&File::open(&path)?, opts)
-        })
+    let (meta, _skipped) = py
+        .allow_threads(|| load_meta_local(&File::open(&path)?, PageIndexPolicy::Skip))
         .map_err(to_py)?;
     let all: Vec<usize> = (0..meta.metadata().num_row_groups()).collect();
     Ok(apply_predicate(&meta, all, &predicate_json))
