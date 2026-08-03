@@ -53,7 +53,7 @@ def start_ray_serve(
     app = build_llm_deployment(llm_config, name_prefix="LLM:")
     serve.run(app, blocking=False)
     yield app
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
 
 
 def wait_for_deployment_status(

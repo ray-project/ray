@@ -164,7 +164,7 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -190,7 +190,7 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -230,7 +230,7 @@ def test_embedding_model(model_name):
     assert len(embedding) > 0
     assert all(isinstance(x, float) for x in embedding)
 
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -270,7 +270,7 @@ def test_score_model(model_name):
         assert "score" in item
         assert isinstance(item["score"], float)
 
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -333,7 +333,7 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
     assert len(data["data"]) == 1
     validate_item(data["data"][0])
 
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -366,7 +366,7 @@ def remote_model_app(request):
     yield app
 
     # Cleanup
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 
@@ -439,7 +439,7 @@ def test_nested_engine_kwargs_structured_outputs():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     time.sleep(1)
 
 

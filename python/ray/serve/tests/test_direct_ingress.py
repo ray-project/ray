@@ -127,7 +127,7 @@ def _shared_serve_instance():
     )
     yield _get_global_client()
     # Cleanup after all tests in this module complete
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown()
     ray.shutdown()
 
     # Restore original env var value

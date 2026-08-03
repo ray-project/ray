@@ -102,7 +102,7 @@ class TestKvEvents:
         """Deploy two direct-streaming LLMServer replicas with KV events on."""
         if not ray.is_initialized():
             ray.init(address="auto")
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -144,7 +144,7 @@ class TestKvEvents:
             app = build_openai_app({"llm_configs": [llm_config]})
             handle = serve.run(app, name=APP_NAME)
         yield handle
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
     async def _discover_replicas(self, handle):
         """Map each replica's full id to its backend HTTP endpoint."""
@@ -307,7 +307,7 @@ class TestKvScoring:
         and enables engine KV events."""
         if not ray.is_initialized():
             ray.init(address="auto")
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
@@ -338,7 +338,7 @@ class TestKvScoring:
         app = build_openai_app({"llm_configs": [llm_config]})
         handle = serve.run(app, name="kv_scoring_gpu_test")
         yield handle
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)
@@ -375,7 +375,7 @@ class TestFastokens:
     def fastokens_handle(self):
         if not ray.is_initialized():
             ray.init(address="auto")
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
         llm_config = LLMConfig(
             model_loading_config=dict(
@@ -393,7 +393,7 @@ class TestFastokens:
             name="fastokens_test",
         )
         yield
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
     @pytest.mark.timeout(600)
     @pytest.mark.parametrize(

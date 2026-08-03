@@ -18,7 +18,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
 from ray.cluster_utils import AutoscalingCluster, Cluster
-from ray.serve._private.constants import RAY_SERVE_ENABLE_DIRECT_INGRESS
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
     TEST_METRICS_EXPORT_PORT,
@@ -49,10 +48,6 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
 
 
-def _shutdown_serve():
-    serve.shutdown(_timeout_s=60 if RAY_SERVE_ENABLE_DIRECT_INGRESS else 30)
-
-
 @pytest.fixture(autouse=True)
 def _clear_stale_ray_address():
     # Serve CI runs several test targets per container sharing /tmp/ray; a target
@@ -64,11 +59,11 @@ def _clear_stale_ray_address():
 
 @pytest.fixture
 def ray_shutdown():
-    _shutdown_serve()
+    serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
     yield
-    _shutdown_serve()
+    serve.shutdown()
     if ray.is_initialized():
         ray.shutdown()
 
@@ -77,7 +72,7 @@ def ray_shutdown():
 def ray_cluster():
     cluster = Cluster()
     yield cluster
-    _shutdown_serve()
+    serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
@@ -90,7 +85,7 @@ def ray_autoscaling_cluster(request):
     cluster = AutoscalingCluster(**params)
     cluster.start()
     yield
-    _shutdown_serve()
+    serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
@@ -178,7 +173,7 @@ def _shared_serve_instance():
     yield _get_global_client()
     # Shutdown Serve and Ray when the session ends so that proxy actors
     # (e.g. HAProxyManager) run their shutdown logic and stop subprocesses.
-    _shutdown_serve()
+    serve.shutdown()
 
 
 @pytest_asyncio.fixture
@@ -233,7 +228,7 @@ def ray_start_stop():
     )
     ray.init("auto")
     yield
-    _shutdown_serve()
+    serve.shutdown()
     ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
@@ -301,7 +296,7 @@ def ray_instance(
         },
     )
 
-    _shutdown_serve()
+    serve.shutdown()
     ray.shutdown()
 
     os.environ.clear()
@@ -331,7 +326,7 @@ def manage_ray_with_telemetry(monkeypatch):
         yield storage
 
         # Call Python API shutdown() methods to clear global variable state
-        _shutdown_serve()
+        serve.shutdown()
         ray.shutdown()
 
         # Reset global state (any keys that may have been set and cached while the
@@ -423,7 +418,7 @@ def metrics_start_shutdown(request):
             ),
         )
     finally:
-        _shutdown_serve()
+        serve.shutdown()
         ray.shutdown()
         reset_ray_address()
 
@@ -470,6 +465,6 @@ def serve_instance_with_labeled_nodes():
 
     yield _get_global_client(), node_1_id, node_2_id, cluster
 
-    _shutdown_serve()
+    serve.shutdown()
     ray.shutdown()
     cluster.shutdown()

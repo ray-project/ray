@@ -53,7 +53,7 @@ class TestLifecycleTracking:
         introspection ingress."""
         if not ray.is_initialized():
             ray.init(address="auto")
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
         # Built before patch_ingress; see build_kv_config.
         llm_config = build_kv_config(
@@ -65,7 +65,7 @@ class TestLifecycleTracking:
         with patch_ingress():
             handle = serve.run(build_kv_app(llm_config), name=APP_NAME)
         yield handle
-        serve.shutdown(_timeout_s=60)
+        serve.shutdown()
 
     async def _backend_endpoint(self, handle):
         """Poll for the replica's backend HTTP (host, port); it is reported
