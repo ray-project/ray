@@ -14,6 +14,7 @@ from ray.core.generated.platform_event_pb2 import Source
 from ray.dashboard.modules.platform_events.providers.k8s_provider import (
     KUBERAY_LABEL_KEY_CLUSTER,
     MAX_NON_CLUSTER_POD_CACHE,
+    ApiException,
     KubernetesEventProvider,
 )
 
@@ -326,8 +327,6 @@ def test_resolve_cluster_pod_cold_miss_not_matching_label_caches_negative():
 
 
 def test_resolve_cluster_pod_deleted_pod_counts_as_not_member():
-    from kubernetes.client.rest import ApiException
-
     provider = KubernetesEventProvider(lambda e: None)
     provider._cluster_name = "my-cluster"
     provider._namespace = "ns"

@@ -15,6 +15,9 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    try_take_chunked_tensor,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 try:
@@ -190,7 +193,23 @@ def _try_normalize_take_indices(
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
     row_count: int,
 ) -> Optional[np.ndarray]:
-    """Return native int64 indices suitable for the tensor fast path."""
+    """Normalize supported row indices for the chunked tensor fast path.
+
+    Normalization converts a one-dimensional Python list, NumPy integer array,
+    or PyArrow integer array to a native-endian ``np.int64`` array. To preserve
+    the behavior and exception types of the existing Arrow take path, this
+    helper rejects nulls, masks, negative or out-of-range values, non-integer
+    values, non-native byte order, multidimensional arrays, and chunked Arrow
+    arrays instead of interpreting or validating them differently.
+
+    Args:
+        indices: Row indices accepted by ``take_table``.
+        row_count: Number of rows in the source table.
+
+    Returns:
+        Normalized indices when the input satisfies the fast-path contract.
+        Otherwise, ``None`` and the caller must preserve the standard fallback.
+    """
     if isinstance(indices, (np.ma.MaskedArray, pyarrow.ChunkedArray)):
         return None
 
@@ -273,19 +292,11 @@ def take_table(
         ):
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
 
-        take_chunked_tensor = None
-        if normalized_indices is not None:
-            from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-                try_take_chunked_tensor,
-            )
-
-            take_chunked_tensor = try_take_chunked_tensor
-
         new_cols = []
         for col in table.columns:
             if _is_pa_extension_type(col.type) and col.num_chunks > 1:
-                if take_chunked_tensor is not None:
-                    taken = take_chunked_tensor(col, normalized_indices)
+                if normalized_indices is not None:
+                    taken = try_take_chunked_tensor(col, normalized_indices)
                     if taken is not None:
                         new_cols.append(taken)
                         continue

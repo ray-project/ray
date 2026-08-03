@@ -1,13 +1,20 @@
 import warnings
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTakePlan,
+    try_prepare_chunked_tensor_take,
+    try_take_prepared_chunked_tensor,
+)
 from ray.data._internal.util import get_total_obj_store_mem_on_node
+from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
@@ -23,11 +30,19 @@ SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
 SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 
-def _prepare_local_shuffle_arrow_table(table, *, max_output_rows: int):
-    """Combine ordinary columns and prepare eligible tensor source chunks."""
-    import pyarrow as pa
+def _prepare_local_shuffle_arrow_table(
+    table: pa.Table, *, max_output_rows: int
+) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTakePlan]]:
+    """Prepare an Arrow table for repeated local-shuffle row takes.
 
-    from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+    Args:
+        table: Arrow shuffle buffer to prepare.
+        max_output_rows: Maximum rows produced by one take.
+
+    Returns:
+        A table with unsupported multi-chunk columns combined and a mapping of
+        column positions to reusable tensor take plans.
+    """
 
     if not any(
         column.num_chunks > 1 and _is_pa_extension_type(column.type)
@@ -37,10 +52,6 @@ def _prepare_local_shuffle_arrow_table(table, *, max_output_rows: int):
             transform_pyarrow.try_combine_chunked_columns(table, 1),
             {},
         )
-
-    from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-        try_prepare_chunked_tensor_take,
-    )
 
     prepared_plans = {}
     for index, column in enumerate(table.columns):
@@ -65,13 +76,22 @@ def _prepare_local_shuffle_arrow_table(table, *, max_output_rows: int):
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_plans
 
 
-def _take_prepared_arrow_table(table, indices: np.ndarray, prepared_plans):
-    """Take one batch while reusing validated tensor source metadata."""
-    import pyarrow as pa
+def _take_prepared_arrow_table(
+    table: pa.Table,
+    indices: np.ndarray,
+    prepared_plans: Dict[int, PreparedChunkedTensorTakePlan],
+) -> Optional[pa.Table]:
+    """Take one batch while reusing validated tensor source metadata.
 
-    from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-        try_take_prepared_chunked_tensor,
-    )
+    Args:
+        table: Prepared Arrow shuffle buffer.
+        indices: Normalized row indices for this batch.
+        prepared_plans: Mapping of column positions to tensor take plans.
+
+    Returns:
+        The selected table, or ``None`` if a prepared tensor take is no longer
+        eligible and the caller must use the standard block take path.
+    """
 
     columns = []
     for index, column in enumerate(table.columns):

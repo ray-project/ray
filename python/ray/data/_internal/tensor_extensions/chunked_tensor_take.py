@@ -1,11 +1,15 @@
 import math
 from itertools import chain
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
 
 import numpy as np
 import pyarrow as pa
 
 from ray._common.utils import env_bool
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorType,
+    ArrowTensorTypeV2,
+)
 
 ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE",
@@ -50,17 +54,25 @@ class PreparedChunkedTensorTakePlan(NamedTuple):
 
 
 def _try_get_chunked_tensor_take_plan(
-    tensor_type,
+    tensor_type: Any,
     *,
     input_rows: int,
     output_rows: int,
     chunk_count: int,
-) -> _ChunkedTensorTakePlan | None:
+) -> Optional[_ChunkedTensorTakePlan]:
     """Plan an eligible take using the same policy as the runtime fast path.
 
-    The returned scratch estimate covers only simultaneously allocated per-subbatch
-    gather and index buffers. Final output, Arrow offsets, and chunk-view metadata
-    remain the caller's responsibility.
+    Args:
+        tensor_type: Ray Arrow tensor extension type to inspect.
+        input_rows: Number of rows in the source column.
+        output_rows: Maximum number of rows in one take.
+        chunk_count: Number of source chunks.
+
+    Returns:
+        A runtime plan when the input is eligible. Otherwise, ``None``. The
+        scratch estimate covers only simultaneously allocated per-subbatch
+        gather and index buffers; it excludes final output, Arrow offsets, and
+        chunk-view metadata.
     """
     layout = _try_get_tensor_layout(tensor_type)
     if layout is None or input_rows < 0 or output_rows < 0 or chunk_count <= 1:
@@ -87,8 +99,17 @@ def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
     *,
     max_output_rows: int,
-) -> PreparedChunkedTensorTakePlan | None:
-    """Validate and prepare one immutable chunked tensor source for repeated takes."""
+) -> Optional[PreparedChunkedTensorTakePlan]:
+    """Prepare an immutable chunked tensor source for repeated row takes.
+
+    Args:
+        column: Source chunked tensor column.
+        max_output_rows: Maximum number of rows in any subsequent take.
+
+    Returns:
+        Validated source metadata when the fast path supports the column.
+        Otherwise, ``None`` so the caller can use the standard Arrow fallback.
+    """
     if not ENABLE_CHUNKED_TENSOR_TAKE:
         return None
 
@@ -145,8 +166,18 @@ def try_prepare_chunked_tensor_take(
 def try_take_prepared_chunked_tensor(
     plan: PreparedChunkedTensorTakePlan,
     normalized_indices: np.ndarray,
-) -> pa.Array | None:
-    """Take rows using source validation cached in a prepared plan."""
+) -> Optional[pa.Array]:
+    """Take rows using source validation cached in a prepared plan.
+
+    Args:
+        plan: Previously validated source metadata.
+        normalized_indices: One-dimensional, native-endian ``np.int64`` row
+            indices.
+
+    Returns:
+        A single tensor extension array, or ``None`` when the indices violate
+        the prepared plan's contract.
+    """
     if (
         not _is_normalized_indices(normalized_indices)
         or len(normalized_indices) > plan.max_output_rows
@@ -179,15 +210,22 @@ def try_take_prepared_chunked_tensor(
 def try_take_chunked_tensor(
     column: pa.ChunkedArray,
     normalized_indices: np.ndarray,
-) -> pa.Array | None:
+) -> Optional[pa.Array]:
     """Take rows from an eligible Ray tensor column without concatenating chunks.
 
-    The fast path supports non-null, numeric, fixed-shape Ray V1/V2 tensor columns
-    with multiple chunks and already-normalized int64 indices. Every chunk must
-    expose a validated zero-copy NumPy view. The function preallocates only the
-    final output, gathers from source chunks in bounded subbatches, and wraps the
-    result with the original extension type. ``None`` means the caller must use
-    Ray's native column fallback; unexpected allocation or internal errors propagate.
+    Args:
+        column: Source chunked tensor column.
+        normalized_indices: One-dimensional, native-endian ``np.int64`` row
+            indices.
+
+    Returns:
+        A single tensor extension array when the fast path supports the input.
+        Otherwise, ``None`` so the caller can use Ray's standard column path.
+
+    The fast path supports non-null, numeric, fixed-shape Ray V1/V2 tensor
+    columns. It gathers from validated zero-copy chunk views into one output
+    buffer in bounded subbatches. Unexpected allocation and internal errors
+    propagate.
     """
     if not _is_normalized_indices(normalized_indices):
         return None
@@ -195,16 +233,27 @@ def try_take_chunked_tensor(
         column,
         max_output_rows=len(normalized_indices),
     )
-    if plan is None:
-        return None
-    return try_take_prepared_chunked_tensor(plan, normalized_indices)
+    return (
+        try_take_prepared_chunked_tensor(plan, normalized_indices)
+        if plan is not None
+        else None
+    )
 
 
 def _tensor_take_subbatch_rows(total_rows: int, tensor_row_bytes: int) -> int:
     """Choose the largest gather subbatch that fits the scratch-byte budget.
 
-    The estimate covers selected tensor payload plus temporary index/grouping arrays.
-    It intentionally excludes the required final output and its Arrow offsets.
+    Args:
+        total_rows: Number of output rows.
+        tensor_row_bytes: Tensor payload bytes per row.
+
+    Returns:
+        The maximum rows to gather at once. The estimate covers the selected
+        payload and temporary index/grouping arrays, but excludes final output
+        and Arrow offsets.
+
+    Raises:
+        ValueError: If ``tensor_row_bytes`` is not positive for nonempty output.
     """
     if total_rows <= 0:
         return 0
@@ -222,11 +271,6 @@ def _try_get_tensor_layout(tensor_type):
     unsupported scalar types or shapes keeps the fast path independent of object
     conversion and variable-shape tensor semantics.
     """
-    from ray.data._internal.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowTensorTypeV2,
-    )
-
     if not isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
         return None
 

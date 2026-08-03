@@ -6,7 +6,11 @@ import pyarrow as pa
 import pytest
 
 from ray.data._internal import batcher as batcher_module
-from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition, take_table
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    _try_normalize_take_indices,
+    hash_partition,
+    take_table,
+)
 from ray.data._internal.batcher import (
     ShufflingBatcher,
     _prepare_local_shuffle_arrow_table,
@@ -378,6 +382,45 @@ def test_take_table_matches_single_chunk_tensor(indices):
 
 
 @pytest.mark.parametrize(
+    "indices,expected",
+    [
+        ([4, 0, 2], [4, 0, 2]),
+        (np.array([4, 0, 2], dtype=np.int32), [4, 0, 2]),
+        (np.array([4, 0, 2], dtype=np.uint64), [4, 0, 2]),
+        (pa.array([4, 0, 2], type=pa.int16()), [4, 0, 2]),
+    ],
+)
+def test_normalize_take_indices(indices, expected):
+    normalized = _try_normalize_take_indices(indices, row_count=5)
+
+    assert normalized is not None
+    assert normalized.dtype == np.dtype(np.int64)
+    assert normalized.dtype.isnative
+    np.testing.assert_array_equal(normalized, expected)
+
+
+@pytest.mark.parametrize(
+    "indices",
+    [
+        np.ma.array([0, 1], mask=[False, True]),
+        pa.chunked_array([[0], [1]]),
+        pa.array([0, None], type=pa.int64()),
+        np.array([-1], dtype=np.int64),
+        np.array([5], dtype=np.int64),
+        np.array([1.0], dtype=np.float64),
+        np.array([True], dtype=np.bool_),
+        np.array([[0, 1]], dtype=np.int64),
+        np.array([0, 1], dtype=">i8"),
+        [],
+        [0, None],
+        [True, 1],
+    ],
+)
+def test_normalize_take_indices_rejects_fallback_inputs(indices):
+    assert _try_normalize_take_indices(indices, row_count=5) is None
+
+
+@pytest.mark.parametrize(
     "indices",
     [
         np.array([3, -1], dtype=np.int64),
@@ -519,7 +562,7 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
 
     with monkeypatch.context() as plain_context:
         plain_context.setattr(
-            chunked_tensor_take,
+            batcher_module,
             "try_prepare_chunked_tensor_take",
             fail_plain_tensor_prepare,
         )
@@ -551,7 +594,7 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
     indices = np.arange(10, dtype=np.int64)
 
     monkeypatch.setattr(
-        chunked_tensor_take,
+        batcher_module,
         "try_take_prepared_chunked_tensor",
         lambda *args, **kwargs: None,
     )
@@ -560,9 +603,7 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
     def raise_take(*args, **kwargs):
         raise RuntimeError("injected take failure")
 
-    monkeypatch.setattr(
-        chunked_tensor_take, "try_take_prepared_chunked_tensor", raise_take
-    )
+    monkeypatch.setattr(batcher_module, "try_take_prepared_chunked_tensor", raise_take)
     with pytest.raises(RuntimeError, match="injected take failure"):
         _take_prepared_arrow_table(prepared_table, indices, plans)
 
