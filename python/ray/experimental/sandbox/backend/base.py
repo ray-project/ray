@@ -33,6 +33,15 @@ class ExecResult:
     duration_seconds: float
     truncated: bool = False
 
+    @property
+    def duration_ms(self) -> float:
+        """Execution duration in milliseconds."""
+        return self.duration_seconds * 1000.0
+
+
+# Alias for ExecResult
+ExecutionResult = ExecResult
+
 
 class BaseSandboxBackend(ABC):
     """Abstract Base Class defining the contract for Sandbox Backends."""

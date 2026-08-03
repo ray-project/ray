@@ -7,7 +7,6 @@ import time
 import uuid
 from typing import Dict, List, Optional, Union
 
-import ray
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -28,20 +27,7 @@ logger = logging.getLogger(__name__)
 _RUNSC_ROOT = "/tmp/runsc"
 
 
-def _call_actor(func, *args, **kwargs):
-    try:
-        return ray.get(func.remote(*args, **kwargs))
-    except ray.exceptions.RayTaskError as e:
-        if (
-            hasattr(e, "cause")
-            and e.cause is not None
-            and isinstance(e.cause, Exception)
-        ):
-            raise e.cause from None
-        raise e
-
-
-class _LocalGVisorSandboxBackend:
+class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
     def __init__(self, runsc_path_override: Optional[str] = None):
@@ -380,138 +366,3 @@ class _LocalGVisorSandboxBackend:
         )
 
         return config_json_path
-
-
-@ray.remote
-class _SandboxActor:
-    """Ray actor serving as the placement unit and execution proxy for a gVisor sandbox instance."""
-
-    def __init__(
-        self, config: SandboxConfig, runsc_path_override: Optional[str] = None
-    ):
-        self._local_backend = _LocalGVisorSandboxBackend(
-            runsc_path_override=runsc_path_override
-        )
-        self._sandbox_id = self._local_backend.create_sandbox(config)
-
-    def get_sandbox_id(self) -> str:
-        return self._sandbox_id
-
-    def exec_command(
-        self,
-        command: Union[str, List[str]],
-        timeout: Optional[float] = None,
-        cwd: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None,
-    ) -> ExecResult:
-        return self._local_backend.exec_command(
-            self._sandbox_id, command, timeout=timeout, cwd=cwd, env=env
-        )
-
-    def write_file(self, path: str, content: Union[str, bytes]) -> None:
-        self._local_backend.write_file(self._sandbox_id, path, content)
-
-    def read_file(self, path: str) -> bytes:
-        return self._local_backend.read_file(self._sandbox_id, path)
-
-    def get_status(self) -> SandboxStatus:
-        return self._local_backend.get_status(self._sandbox_id)
-
-    def delete_sandbox(self) -> None:
-        self._local_backend.delete_sandbox(self._sandbox_id)
-
-
-class GVisorSandboxBackend(BaseSandboxBackend):
-    """gVisor sandbox backend that schedules a Ray actor as the placement unit of the sandbox.
-
-    The Ray actor runs on a cluster node matching the resource requirements specified in SandboxConfig,
-    creates the underlying gVisor container via runsc, and proxies execution and file commands.
-    """
-
-    def __init__(self, runsc_path_override: Optional[str] = None):
-        self._runsc_path_override = runsc_path_override
-        self._sandbox_actors: Dict[str, ray.actor.ActorHandle] = {}
-
-    def create_sandbox(self, config: SandboxConfig) -> str:
-        """Schedule a Ray actor as the placement unit and initialize gVisor sandbox inside it."""
-        if not ray.is_initialized():
-            ray.init(ignore_reinit_error=True)
-
-        actor_opts = {}
-        if config.cpu is not None and config.cpu > 0:
-            actor_opts["num_cpus"] = config.cpu
-
-        parsed_mem = parse_memory_bytes(config.memory)
-        if parsed_mem is not None and parsed_mem > 0:
-            actor_opts["memory"] = parsed_mem
-
-        if config.resources:
-            actor_opts["resources"] = config.resources
-
-        actor = _SandboxActor.options(**actor_opts).remote(
-            config=config,
-            runsc_path_override=self._runsc_path_override,
-        )
-
-        try:
-            sandbox_id = _call_actor(actor.get_sandbox_id)
-        except Exception:
-            ray.kill(actor)
-            raise
-
-        self._sandbox_actors[sandbox_id] = actor
-        return sandbox_id
-
-    def delete_sandbox(self, sandbox_id: str) -> None:
-        """Terminate the sandbox inside the placement actor and terminate the actor."""
-        actor = self._get_actor_or_raise(sandbox_id)
-        try:
-            _call_actor(actor.delete_sandbox)
-        finally:
-            ray.kill(actor)
-            self._sandbox_actors.pop(sandbox_id, None)
-
-    def exec_command(
-        self,
-        sandbox_id: str,
-        command: Union[str, List[str]],
-        timeout: Optional[float] = None,
-        cwd: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None,
-    ) -> ExecResult:
-        """Execute a command remotely via the sandbox placement actor."""
-        actor = self._get_actor_or_raise(sandbox_id)
-        return _call_actor(
-            actor.exec_command,
-            command,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-        )
-
-    def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
-    ) -> None:
-        """Write content to a file inside the sandbox remotely via the actor."""
-        actor = self._get_actor_or_raise(sandbox_id)
-        _call_actor(actor.write_file, path, content)
-
-    def read_file(self, sandbox_id: str, path: str) -> bytes:
-        """Read content from a file inside the sandbox remotely via the actor."""
-        actor = self._get_actor_or_raise(sandbox_id)
-        return _call_actor(actor.read_file, path)
-
-    def get_status(self, sandbox_id: str) -> SandboxStatus:
-        """Query the operational status of the sandbox via the actor."""
-        actor = self._sandbox_actors.get(sandbox_id)
-        if actor is None:
-            return SandboxStatus.TERMINATED
-        try:
-            return _call_actor(actor.get_status)
-        except Exception:
-            return SandboxStatus.TERMINATED
-
-    def _get_actor_or_raise(self, sandbox_id: str) -> ray.actor.ActorHandle:
-        if sandbox_id not in self._sandbox_actors:
-            raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
-        return self._sandbox_actors[sandbox_id]
