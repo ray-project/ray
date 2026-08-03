@@ -14,7 +14,7 @@ from ray.data._internal.utils.torch_inference import (
     is_torch_inference_instance,
     make_torch_inference_callable,
 )
-from ray.data._internal.utils.torch_utils import find_tensor_off_device
+from ray.data._internal.utils.torch_utils import find_first_tensor_not_on_device
 from ray.data.tests.conftest import *  # noqa
 from ray.data.util.torch_inference import TorchInference
 from ray.tests.conftest import *  # noqa
@@ -213,12 +213,12 @@ def test_wrapper_rejects_non_cuda_device():
 # ===== Tensor helpers =====
 
 
-def test_find_tensor_off_device():
+def test_find_first_tensor_not_on_device():
     t_cpu = torch.zeros(2)
-    assert find_tensor_off_device({"a": t_cpu}, torch.device("cpu")) is None
-    assert find_tensor_off_device({"a": t_cpu}, torch.device("cuda")) is t_cpu
+    assert find_first_tensor_not_on_device({"a": t_cpu}, torch.device("cpu")) is None
+    assert find_first_tensor_not_on_device({"a": t_cpu}, torch.device("cuda")) is t_cpu
     # Nested containers are searched; index-less specs match any index.
-    assert find_tensor_off_device([(t_cpu,)], torch.device("cuda:1")) is t_cpu
+    assert find_first_tensor_not_on_device([(t_cpu,)], torch.device("cuda:1")) is t_cpu
 
 
 # ===== map_batches validation =====

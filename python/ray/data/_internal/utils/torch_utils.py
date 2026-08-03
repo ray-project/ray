@@ -62,7 +62,7 @@ def _iter_tensors(batch: TensorBatchType):
             yield from _iter_tensors(value)
 
 
-def find_tensor_off_device(
+def find_first_tensor_not_on_device(
     batch: TensorBatchType, device: torch.device
 ) -> Optional[torch.Tensor]:
     """Return the first tensor in ``batch`` not on ``device``, else None.

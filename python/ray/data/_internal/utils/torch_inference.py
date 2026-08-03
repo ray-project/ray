@@ -22,6 +22,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    Union,
 )
 
 from ray.data.util.torch_inference import TorchInference
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
     from ray.data.collate_fn import TensorBatchType
 
 logger = logging.getLogger(__name__)
+
+# The host side of the managed transfers: `collate` outputs must live here,
+# and `process_on_device` outputs are moved back here before `finalize`.
+_CPU_DEVICE = "cpu"
 
 # Methods a `TorchInference` subclass may override; validated (e.g. must
 # not be async) before wrapping.
@@ -112,7 +117,9 @@ def validate_torch_inference_op(
         )
 
 
-def split_batch_and_other(ret: Any) -> "Tuple[Any, Any]":
+def split_batch_and_other(
+    ret: Union["TensorBatchType", Tuple["TensorBatchType", Any]],
+) -> Tuple["TensorBatchType", Any]:
     """Split a ``collate``/``process_on_device`` return into
     ``(tensors, other)``.
 
@@ -149,9 +156,9 @@ def _validate_no_tensors_off_device(
 ) -> None:
     """Raise if any tensor in ``batch`` is not on ``device``; ``requirement``
     is the caller's message prefix (what must hold, and why)."""
-    from ray.data._internal.utils.torch_utils import find_tensor_off_device
+    from ray.data._internal.utils.torch_utils import find_first_tensor_not_on_device
 
-    off_device = find_tensor_off_device(batch, device)
+    off_device = find_first_tensor_not_on_device(batch, device)
     if off_device is not None:
         raise ValueError(f"{requirement}; found a tensor on `{off_device.device}`.")
 
@@ -171,7 +178,7 @@ def validate_collated_batch(collated: Any, user_cls: Type[TorchInference]) -> No
         )
     _validate_no_tensors_off_device(
         collated,
-        torch.device("cpu"),
+        torch.device(_CPU_DEVICE),
         f"`{user_cls.__name__}.collate` must return CPU tensors (Ray "
         "manages the transfer to the device)",
     )
@@ -243,7 +250,7 @@ def make_torch_inference_callable(user_cls: Type[TorchInference]) -> "CallableCl
             )
             validate_processed_batch(out, self._ti_device, user_cls)
 
-            cpu_out = move_tensors_to_device(out, "cpu", non_blocking=False)
+            cpu_out = move_tensors_to_device(out, _CPU_DEVICE, non_blocking=False)
 
             return self._ti_user.finalize(input_batch, cpu_out, output_other)
 

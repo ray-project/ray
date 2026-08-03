@@ -12,16 +12,16 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TorchInference:
-    """Base class for Torch batch inference with
+    """Base class for PyTorch batch inference with
     :meth:`~ray.data.Dataset.map_batches`.
 
     Subclass this and implement :meth:`process_on_device`. For every batch,
     Ray Data runs:
 
-    1. :meth:`collate` — convert the batch into CPU tensors.
+    1. :meth:`collate` — convert the batch into CPU torch tensors.
     2. Ray Data moves the tensors to the :meth:`get_device` device.
-    3. :meth:`process_on_device` — compute on the device tensors.
-    4. Ray Data moves the resulting tensors back to the CPU.
+    3. :meth:`process_on_device` — compute on the device torch tensors.
+    4. Ray Data moves the resulting torch tensors back to the CPU.
     5. :meth:`finalize` — convert them into the output batch.
 
     Override :meth:`collate`, :meth:`finalize`, or :meth:`get_device` only if
