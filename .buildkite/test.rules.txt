@@ -320,6 +320,17 @@ doc/source/ray-observability/
 @ core_doc
 ;
 
+# doc/external/ holds a vendored PyTorch tutorial and the test that guards it
+# against upstream drift. The same cross-team miss applies: `test_external_hashes`
+# in doc/BUILD.bazel is tagged `team:ml`, so the core step would filter it out.
+# Route the whole directory rather than the test file alone, because the tutorial
+# script is the test's `data` and editing it is what the hash check exists to
+# catch. Without this rule both files fall through to the `doc/*.py` catch-all
+# below, since `*` in these patterns crosses `/`.
+doc/external/
+@ ml_doc
+;
+
 # Any remaining executable doc asset (cluster/, ray-contribute/, other
 # unowned doc dirs, and any example BUILD.bazel outside the library dirs
 # above) falls to the core docs example step as the catch-all owner.

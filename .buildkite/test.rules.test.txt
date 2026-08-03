@@ -100,6 +100,10 @@ doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
 doc/source/ray-core/examples/highly_parallel.ipynb: doc
+# doc/external/ is the same team:ml case: the hash-guard test and the vendored
+# tutorial it covers both route to the step that owns the target.
+doc/external/test_hashes.py: ml_doc
+doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
