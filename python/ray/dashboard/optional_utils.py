@@ -27,7 +27,11 @@ from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray.dashboard.routes import method_route_table_factory, rest_response
+from ray.dashboard.routes import (
+    is_response_started,
+    method_route_table_factory,
+    rest_response,
+)
 from ray.dashboard.utils import (
     DashboardAgentModule,
     DashboardHeadModule,
@@ -240,8 +244,7 @@ def init_ray_and_catch_exceptions() -> Callable:
                         raise e from None
                 return await f(self, *args, **kwargs)
             except Exception as e:
-                request = args[-1]
-                if request.writer.output_size > 0:
+                if is_response_started(args[-1]):
                     raise
                 logger.exception(f"Unexpected error in handler: {e}")
                 return Response(

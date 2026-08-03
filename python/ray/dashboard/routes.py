@@ -14,6 +14,11 @@ from ray.dashboard.utils import CustomEncoder, HTTPStatusCode, to_google_style
 logger = logging.getLogger(__name__)
 
 
+def is_response_started(request: aiohttp.web.Request) -> bool:
+    """Return whether response bytes have been sent when no response object is held."""
+    return request.writer.output_size > 0
+
+
 class BaseRouteTable(abc.ABC):
     """A base class to bind http route to a target instance. Subclass should implement
     the _register_route method. It should define how the handler interacts with
@@ -142,6 +147,8 @@ def method_route_table_factory():
                         req = args[-1]
                         return await handler(bind_info.instance, req)
                     except Exception:
+                        if is_response_started(args[-1]):
+                            raise
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
                             status_code=HTTPStatusCode.INTERNAL_ERROR,
