@@ -117,6 +117,9 @@ class TaskEventsHead(SubprocessModule):
         #   cache before this fetch completes.
         # TODO(karticam): avoid this extra round-trip by letting the worker-death
         #   subscription request the fields we need (e.g. exit info) in the notification.
+        #   PR #64887 moves worker events to one-event framework. If we migrate worker
+        #   events to dashboard head too, we can use that instead of pubsub, and we will
+        #   also have full worker table data available to avoid the extra RPC.
         worker_table_data, _ = await asyncio.gather(
             self._get_worker_info(worker_id),
             asyncio.sleep(_MARK_FAILED_ON_WORKER_DEAD_DELAY_S),
