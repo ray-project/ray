@@ -1314,7 +1314,7 @@ def _get_dashboard_head_events_from_httpserver(httpserver):
         {
             "env_vars": {
                 # Enable both publishers
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD": "True",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                 # TODO(karticam): assumes the aggregator receives only the injected event;
@@ -1380,7 +1380,7 @@ def test_aggregator_agent_publish_to_both_dashboard_head_and_http(
                 # Disable the external HTTP publisher to test filtering in isolation
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "False",
                 # Enable the dashboard-head publisher
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD": "True",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD": "True",
             },
         },
     ],
@@ -1405,7 +1405,7 @@ def test_aggregator_agent_dashboard_head_filtering_driver_job_events(
         fake_timestamp[0], unique_task_name
     )
 
-    # DRIVER_JOB_LIFECYCLE_EVENT is not in GCS_EXPOSABLE_EVENT_TYPES, so the dashboard-head
+    # DRIVER_JOB_LIFECYCLE_EVENT is not in TASK_EVENT_TYPES, so the dashboard-head
     # publisher must filter it out.
     driver_job_event = RayEvent(
         event_id=b"driver_job_1",
@@ -1537,7 +1537,7 @@ def test_aggregator_agent_gcs_filtering_driver_job_events(
         fake_timestamp[0], unique_task_name
     )
 
-    # This event should be filtered out (DRIVER_JOB_LIFECYCLE_EVENT is NOT in GCS_EXPOSABLE_EVENT_TYPES)
+    # This event should be filtered out (DRIVER_JOB_LIFECYCLE_EVENT is NOT in TASK_EVENT_TYPES)
     driver_job_event = RayEvent(
         event_id=b"driver_job_1",
         source_type=RayEvent.SourceType.CORE_WORKER,
