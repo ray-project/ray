@@ -181,15 +181,15 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             for chunk in log_chunks:
                 await response.write(_encode_log_chunk(chunk))
             await response.write(b'"}')
+            await response.write_eof()
         except asyncio.CancelledError:
             response.force_close()
             raise
         except Exception:
             logger.exception("Error while streaming job logs")
             response.force_close()
-            return response
+            raise
 
-        await response.write_eof()
         return response
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs/tail")

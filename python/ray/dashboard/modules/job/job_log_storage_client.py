@@ -21,14 +21,24 @@ class JobLogStorageClient:
 
     def get_logs(self, job_id: str) -> str:
         try:
-            with open(self.get_log_file_path(job_id), "r") as f:
+            with open(
+                self.get_log_file_path(job_id),
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as f:
                 return f.read()
         except FileNotFoundError:
             return ""
 
     def get_log_chunks(self, job_id: str) -> Iterator[str]:
         try:
-            with open(self.get_log_file_path(job_id), "r") as f:
+            with open(
+                self.get_log_file_path(job_id),
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as f:
                 while chunk := f.read(JOB_LOG_CHUNK_SIZE):
                     yield chunk
         except FileNotFoundError:

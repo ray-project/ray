@@ -580,6 +580,7 @@ class JobHead(SubprocessModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
+        response = None
         try:
             job_agent_client = self.get_job_driver_agent_client(job)
             if not job_agent_client:
@@ -596,22 +597,22 @@ class JobHead(SubprocessModule):
                 response.charset = "utf-8"
                 await response.prepare(req)
 
-                try:
-                    async for chunk in agent_response.content.iter_chunked(
-                        JOB_LOG_CHUNK_SIZE
-                    ):
-                        await response.write(chunk)
-                except asyncio.CancelledError:
-                    response.force_close()
-                    raise
-                except Exception:
-                    logger.exception("Error while streaming job logs")
-                    response.force_close()
-                    return response
-
+                async for chunk in agent_response.content.iter_chunked(
+                    JOB_LOG_CHUNK_SIZE
+                ):
+                    await response.write(chunk)
                 await response.write_eof()
                 return response
+        except asyncio.CancelledError:
+            if response is not None:
+                response.force_close()
+            raise
         except Exception:
+            if req.writer.output_size > 0:
+                logger.exception("Error while streaming job logs")
+                if response is not None:
+                    response.force_close()
+                raise
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,

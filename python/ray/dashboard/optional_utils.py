@@ -240,6 +240,9 @@ def init_ray_and_catch_exceptions() -> Callable:
                         raise e from None
                 return await f(self, *args, **kwargs)
             except Exception as e:
+                request = args[-1]
+                if request.writer.output_size > 0:
+                    raise
                 logger.exception(f"Unexpected error in handler: {e}")
                 return Response(
                     text=traceback.format_exc(),
