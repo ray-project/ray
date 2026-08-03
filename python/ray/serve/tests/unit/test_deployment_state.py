@@ -4325,6 +4325,39 @@ def test_actor_label_selector_is_exposed():
     ]
 
 
+def test_actor_fallback_strategy_with_multiple_options():
+    """All fallback options are reported, not just the first.
+
+    Each option is tried in turn, so a still pending replica means every one of
+    them failed to match.
+    """
+    fallbacks = [
+        {"label_selector": {"enterprise-tier": "in(gold-1,gold-2)"}},
+        {
+            "label_selector": {
+                "enterprise-tier": "in(silver-1)",
+                "service-type": "in(all)",
+            }
+        },
+        {"label_selector": {"enterprise-tier": "basic"}},
+    ]
+
+    class FakeActor:
+        actor_resources = {"CPU": 1.0}
+        placement_group_bundles = None
+        available_resources = {"CPU": 800.0}
+        actor_label_selector = {"enterprise-tier": "in(plus-1)"}
+        actor_fallback_strategy = fallbacks
+
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
+    replica._actor = FakeActor()
+
+    # The whole list is reported, so every option stays visible in the message.
+    assert replica.actor_fallback_strategy == fallbacks
+    assert len(replica.actor_fallback_strategy) == 3
+
+
 def test_actor_label_selector_is_none_when_unset():
     """Deployments without a label selector report None, so the message omits it."""
 
