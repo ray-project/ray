@@ -8,6 +8,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from aiohttp.web import Application, StreamResponse
 
 from ray.dashboard.optional_utils import init_ray_and_catch_exceptions
+from ray.dashboard.routes import method_route_table_factory
 from ray.dashboard.utils import close_logger_file_descriptor
 
 
@@ -27,12 +28,16 @@ def test_close_logger_file_descriptor():
 
 
 @pytest.mark.asyncio
-async def test_init_ray_decorator_does_not_replace_started_response():
+async def test_route_wrappers_do_not_replace_started_response():
+    routes = method_route_table_factory()
+
     class Handler:
+        @routes.get("/before")
         @init_ray_and_catch_exceptions()
         async def fail_before_prepare(self, request):
             raise RuntimeError("test error")
 
+        @routes.get("/after")
         @init_ray_and_catch_exceptions()
         async def fail_after_prepare(self, request):
             response = StreamResponse()
@@ -43,8 +48,8 @@ async def test_init_ray_decorator_does_not_replace_started_response():
 
     app = Application()
     handler = Handler()
-    app.router.add_get("/before", handler.fail_before_prepare)
-    app.router.add_get("/after", handler.fail_after_prepare)
+    routes.bind(handler)
+    app.add_routes(routes.bound_routes())
 
     with patch("ray.dashboard.optional_utils.ray.is_initialized", return_value=True):
         async with TestClient(TestServer(app)) as client:

@@ -608,10 +608,9 @@ class JobHead(SubprocessModule):
                 response.force_close()
             raise
         except Exception:
-            if req.writer.output_size > 0:
+            if response is not None and response.prepared:
                 logger.exception("Error while streaming job logs")
-                if response is not None:
-                    response.force_close()
+                response.force_close()
                 raise
             return Response(
                 text=traceback.format_exc(),
