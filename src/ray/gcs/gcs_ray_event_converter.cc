@@ -158,6 +158,30 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_actor_repr_name()) {
     task_state_update->set_actor_repr_name(event.actor_repr_name());
   }
+  if (event.has_task_log_info()) {
+    const rpc::events::TaskLifecycleEvent::TaskLogInfo &src = event.task_log_info();
+    rpc::TaskLogInfo *dst = task_state_update->mutable_task_log_info();
+    if (src.has_stdout_file()) {
+      dst->set_stdout_file(src.stdout_file());
+    }
+    if (src.has_stderr_file()) {
+      dst->set_stderr_file(src.stderr_file());
+    }
+    // The offsets narrow to int32 because that is the width TaskLogInfo has always
+    // used on this side.
+    if (src.has_stdout_start()) {
+      dst->set_stdout_start(static_cast<int32_t>(src.stdout_start()));
+    }
+    if (src.has_stdout_end()) {
+      dst->set_stdout_end(static_cast<int32_t>(src.stdout_end()));
+    }
+    if (src.has_stderr_start()) {
+      dst->set_stderr_start(static_cast<int32_t>(src.stderr_start()));
+    }
+    if (src.has_stderr_end()) {
+      dst->set_stderr_end(static_cast<int32_t>(src.stderr_end()));
+    }
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
