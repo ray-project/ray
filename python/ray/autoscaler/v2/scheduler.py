@@ -126,10 +126,10 @@ class IResourceScheduler(ABC):
         pass
 
 
-def _compute_min_resource_demand(
+def _collect_unique_resource_shapes(
     requests: List["ResourceRequest"],
 ) -> List[Dict[str, float]]:
-    """Compute unique resource shapes from all requests for feasibility checks.
+    """Collect unique resource shapes from all requests for feasibility checks.
 
     Returns a deduplicated list of resource bundles (shapes). Each shape is a
     dict mapping resource names to their required amounts. Used by
@@ -150,7 +150,7 @@ def _compute_min_resource_demand(
 
 def _can_fit_any_request(
     available: Dict[str, float],
-    min_resource_demand: List[Dict[str, float]],
+    resource_shapes: List[Dict[str, float]],
 ) -> bool:
     """Quick pre-check: can this node possibly fit any pending request?
 
@@ -165,9 +165,9 @@ def _can_fit_any_request(
     Runs in O(S * D) where S is the number of unique shapes (typically small)
     and D is the number of resource dimensions per shape (typically 2-4).
     """
-    if not min_resource_demand:
+    if not resource_shapes:
         return True
-    for shape in min_resource_demand:
+    for shape in resource_shapes:
         if all(available.get(k, 0.0) >= v for k, v in shape.items()):
             return True
     return False
@@ -1740,9 +1740,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests_to_sched, key=_sort_resource_request, reverse=True
         )
 
-        # Precompute the minimum resource demand across all requests for quick
-        # feasibility pre-checks.
-        min_resource_demand = _compute_min_resource_demand(requests_to_sched)
+        # Precompute unique resource shapes from all requests for quick
+        # feasibility pre-checks (AND within each shape, OR across shapes).
+        resource_shapes = _collect_unique_resource_shapes(requests_to_sched)
 
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
@@ -1773,7 +1773,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node.im_instance_status == Instance.RAY_RUNNING
                 and not _can_fit_any_request(
                     node.get_available_resources(resource_request_source),
-                    min_resource_demand,
+                    resource_shapes,
                 )
             ):
                 exhausted_nodes.append(node)
