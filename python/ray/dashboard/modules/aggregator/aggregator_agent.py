@@ -22,6 +22,7 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     AsyncGCSTaskEventsPublisherClient,
     AsyncHttpPublisherClient,
 )
+from ray.dashboard.modules.aggregator.publisher.configs import TASK_EVENT_TYPES
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventPublisher,
@@ -66,9 +67,9 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
 )
-# flag to enable publishing events to the dashboard head
-PUBLISH_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", False
+# flag to enable publishing task events to the dashboard head
+PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD", False
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
@@ -166,7 +167,7 @@ class AggregatorAgent(
             logger.info("Publishing events to GCS is disabled")
             self._gcs_publisher = NoopPublisher()
 
-        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
+        if PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD:
             logger.info("Publishing events to the dashboard head is enabled")
             self._event_processing_enabled = True
             self._dashboard_head_publisher = RayEventPublisher(
@@ -174,6 +175,8 @@ class AggregatorAgent(
                 publish_client=AsyncDashboardHeadPublisherClient(
                     gcs_client=self._dashboard_agent.gcs_client,
                     executor=self._executor,
+                    endpoint_path="/api/task_events",
+                    exposable_event_types=TASK_EVENT_TYPES,
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
@@ -217,7 +220,7 @@ class AggregatorAgent(
 
         if PUBLISH_EVENTS_TO_GCS:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
-        if PUBLISH_EVENTS_TO_DASHBOARD_HEAD:
+        if PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD:
             self._dashboard_head_task_metadata_buffer.merge(
                 events_data.task_events_metadata
             )

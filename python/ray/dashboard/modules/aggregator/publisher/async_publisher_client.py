@@ -21,9 +21,9 @@ from ray.core.generated import (
 )
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.aggregator.publisher.configs import (
-    GCS_EXPOSABLE_EVENT_TYPES,
     HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
+    TASK_EVENT_TYPES,
 )
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
         self._executor = executor
         self._timeout_s = timeout_s
 
-        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
+        self._exposable_event_types_list = TASK_EVENT_TYPES
 
     async def publish(
         self,
@@ -297,28 +297,35 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
 
 
 class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
-    """Client for publishing ray task event batches to the dashboard head over HTTP."""
+    """Client for publishing ray event batches to the dashboard head over HTTP.
+
+    The destination endpoint path and the set of event types this client may publish are
+    supplied by the caller, so the same client can serve any dashboard-head ingestion
+    endpoint."""
 
     def __init__(
         self,
         gcs_client: GcsClient,
         executor: ThreadPoolExecutor,
+        endpoint_path: str,
+        exposable_event_types: List[str],
         timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
         self._gcs_client = gcs_client
         self._executor = executor
+        self._endpoint_path = endpoint_path
         self._timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._session = None
         # Resolved lazily from InternalKV on first publish and cached.
         self._endpoint = None
 
-        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
+        self._exposable_event_types_list = exposable_event_types
 
     async def _get_endpoint(self) -> Optional[str]:
-        """Lazily resolve and cache the dashboard head's task-events endpoint from
-        InternalKV. Returns None if the head has not registered its address yet, so the
-        caller can retry later."""
+        """Lazily resolve and cache the dashboard head's endpoint from InternalKV.
+        Returns None if the head has not registered its address yet, so the caller can
+        retry later."""
         if self._endpoint:
             return self._endpoint
         address = await self._gcs_client.async_internal_kv_get(
@@ -331,7 +338,7 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
         address = address.decode()
         if not address.startswith(("http://", "https://")):
             address = f"http://{address}"
-        self._endpoint = f"{address}/api/task_events"
+        self._endpoint = f"{address}{self._endpoint_path}"
         return self._endpoint
 
     async def publish(
