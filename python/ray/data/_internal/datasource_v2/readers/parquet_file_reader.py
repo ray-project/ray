@@ -52,6 +52,12 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
     "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
 )
 
+# Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
+# (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
+# Parquet scan issues against S3, especially for row-group-scoped fragments.
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 128)
+
 
 def _estimate_batch_size_from_metadata(
     fragment: pds.ParquetFileFragment,
@@ -245,6 +251,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
+        # Size Arrow's process-wide IO/CPU pools for the read task so a Parquet
+        # scan can issue many concurrent column/range fetches against S3 instead
+        # of being capped at Arrow's small default.
+        if _READER_IO_THREAD_COUNT > 0:
+            pa.set_io_thread_count(_READER_IO_THREAD_COUNT)
+        if _READER_CPU_COUNT > 0:
+            pa.set_cpu_count(_READER_CPU_COUNT)
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:
