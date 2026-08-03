@@ -622,7 +622,7 @@ def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
     monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
     monkeypatch.setenv(
-        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_DASHBOARD_HEAD", "1"
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD", "1"
     )
     monkeypatch.setenv("RAY_task_events_read_from_dashboard_head", "1")
 
