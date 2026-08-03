@@ -18,10 +18,14 @@ def validate_path(path: str) -> None:
 
 
 def validate_uri(uri: str):
-    try:
-        from ray._common.runtime_env_uri import parse_uri
-        from ray._private.runtime_env.protocol import Protocol
+    from ray._common.runtime_env_uri import parse_uri
+    from ray._private.runtime_env.packaging import is_local_dir_uri_or_raise
+    from ray._private.runtime_env.protocol import Protocol
 
+    if is_local_dir_uri_or_raise(uri):
+        return
+
+    try:
         protocol, path = parse_uri(uri)
     except ValueError:
         raise ValueError(

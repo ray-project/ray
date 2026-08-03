@@ -1,11 +1,14 @@
 import enum
 import hashlib
+import os
 import pathlib
 import urllib.parse
 from typing import Tuple
 from urllib.parse import urlparse
 
 _REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
+
+_WIN32 = os.name == "nt"
 
 
 class Protocol(enum.Enum):
@@ -31,6 +34,8 @@ class Protocol(enum.Enum):
     ABFSS = "abfss"
     # File storage path, assumes everything packed in one zip file.
     FILE = "file"
+    # A directory that is already present on every node. Assumes absolute path.
+    LOCAL = "local"
 
     @classmethod
     def remote_protocols(cls):
@@ -69,6 +74,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     >>> parse_uri("https://test.com/file.whl")
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
+    >>> parse_uri("local:///path/in/image")
+    (<Protocol.LOCAL: 'local'>, '/path/in/image')
+
     """
     if _is_path(pkg_uri):
         raise ValueError(f"Expected URI but received path {pkg_uri}")
@@ -81,6 +89,25 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f'Invalid protocol for runtime_env URI "{pkg_uri}". '
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
+
+    if protocol == Protocol.LOCAL:
+        # There is no package to name: the directory is used in place, so return
+        # the absolute path itself.
+        path = uri.path
+        if _WIN32:
+            # A drive path arrives as "/C:/app" from "local:///C:/app".
+            if len(path) > 2 and path[1].isalpha() and path[2] == ":":
+                path = path[1:]
+            is_absolute = pathlib.PureWindowsPath(path).is_absolute()
+        else:
+            is_absolute = path.startswith("/")
+        if uri.netloc or not is_absolute:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be '
+                "absolute. Use three slashes, e.g. local:///path/in/image "
+                "(local:///C:/path/in/image on Windows)."
+            )
+        return (protocol, path)
 
     if protocol in Protocol.remote_protocols():
         if uri.path.endswith(".whl"):
