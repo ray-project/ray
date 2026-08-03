@@ -35,12 +35,6 @@ constexpr int kObjectIdIndexSize = 32;
 static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
               "ObjectID prefix not a multiple of bytes");
 
-/// Raylet exit code on plasma store socket error.
-constexpr int kRayletStoreErrorExitCode = 100;
-
-/// Prefix for the object table keys in redis.
-constexpr char kObjectTablePrefix[] = "ObjectTable";
-
 constexpr char kClusterIdKey[] = "ray_cluster_id";
 constexpr char kAuthTokenKey[] = "authorization";
 constexpr char kBearerPrefix[] = "Bearer ";
@@ -49,10 +43,6 @@ constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
 constexpr char kNodeManagerPortPlaceholder[] = "RAY_NODE_MANAGER_PORT_PLACEHOLDER";
-
-/// Public DNS address which is is used to connect and get local IP.
-constexpr char kPublicDNSServerIp[] = "8.8.8.8";
-constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
