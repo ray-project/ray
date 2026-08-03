@@ -33,7 +33,10 @@ class NoProgressGuard:
 
     The clock measures time the scheduling loop spent spinning rather than
     wall-clock time, so an operator that blocks the loop for a long stretch of
-    real work doesn't count against the timeout.
+    real work doesn't count against the timeout. Two consequences: where a step
+    itself outlasts ``max_stall_interval_s``, the timeout fires late by roughly
+    ``step_duration / max_stall_interval_s``; and a loop wedged inside a
+    blocking call never reaches a check, so it never fires at all.
 
     Args:
         timeout_s: Seconds without progress before failing. Negative disables
