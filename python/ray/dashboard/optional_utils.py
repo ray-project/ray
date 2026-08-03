@@ -244,7 +244,7 @@ def init_ray_and_catch_exceptions() -> Callable:
                         raise e from None
                 return await f(self, *args, **kwargs)
             except Exception as e:
-                if is_response_started(args[-1]):
+                if is_response_started(args[-1] if args else None):
                     raise
                 logger.exception(f"Unexpected error in handler: {e}")
                 return Response(
