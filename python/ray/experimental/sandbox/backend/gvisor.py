@@ -23,6 +23,10 @@ from ray.experimental.sandbox.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# Directory where runsc keeps container state. Every runsc invocation for a
+# sandbox must agree on this, otherwise the container cannot be looked up.
+_RUNSC_ROOT = "/tmp/runsc"
+
 
 def _call_actor(func, *args, **kwargs):
     try:
@@ -78,9 +82,7 @@ class _LocalGVisorSandboxBackend:
                 cpu=config.cpu,
                 memory=config.memory,
             )
-            run_args = [runsc_path]
-            if config.rootless:
-                run_args.append("--rootless")
+            run_args = self._runsc_base_args(runsc_path, config)
             if config.network:
                 run_args.extend(["--network", config.network])
             run_args.extend(["run", "--bundle", root_dir, sandbox_id])
@@ -117,9 +119,7 @@ class _LocalGVisorSandboxBackend:
             proc = meta.get("proc")
 
             if self._runsc_path_override is None:
-                kill_args = [runsc_path]
-                if config.rootless:
-                    kill_args.append("--rootless")
+                kill_args = self._runsc_base_args(runsc_path, config)
                 kill_args.extend(["kill", sandbox_id, "SIGKILL"])
                 subprocess.run(kill_args, capture_output=True)
 
@@ -130,9 +130,7 @@ class _LocalGVisorSandboxBackend:
                     except subprocess.TimeoutExpired:
                         proc.kill()
 
-                del_args = [runsc_path]
-                if config.rootless:
-                    del_args.append("--rootless")
+                del_args = self._runsc_base_args(runsc_path, config)
                 del_args.extend(["delete", sandbox_id])
                 subprocess.run(del_args, capture_output=True)
 
@@ -203,9 +201,7 @@ class _LocalGVisorSandboxBackend:
 
         wrapped_cmd = f"({cmd_str}) > '{container_out}' 2> '{container_err}'"
 
-        runsc_args = [runsc_path]
-        if config.rootless:
-            runsc_args.append("--rootless")
+        runsc_args = self._runsc_base_args(runsc_path, config)
         runsc_args.extend(["exec", "-cwd", raw_cwd])
         if env:
             for k, v in env.items():
@@ -289,6 +285,14 @@ class _LocalGVisorSandboxBackend:
         if meta and os.path.exists(meta["root_dir"]):
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
+
+    def _runsc_base_args(self, runsc_path: str, config: SandboxConfig) -> List[str]:
+        """Build the runsc global flags shared by run/exec/kill/delete."""
+        args = [runsc_path]
+        if config.rootless:
+            args.append("--rootless")
+        args.extend(["--root", _RUNSC_ROOT])
+        return args
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")
