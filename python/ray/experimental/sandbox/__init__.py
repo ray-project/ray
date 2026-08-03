@@ -11,6 +11,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     GVisorSandboxConfig,
     SandboxConfig,
+    parse_memory_bytes,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -36,6 +37,7 @@ def create(
     Returns:
         A SandboxHandle instance.
     """
+    runsc_path_override = kwargs.pop("runsc_path_override", None)
     if config is None:
         config = SandboxConfig(**kwargs)
     elif kwargs:
@@ -43,9 +45,16 @@ def create(
             if hasattr(config, k):
                 setattr(config, k, v)
 
+    if runsc_path_override:
+        config.runsc_path = runsc_path_override
+
     actor_opts = {}
     if config.cpu is not None and config.cpu > 0:
         actor_opts["num_cpus"] = config.cpu
+    if config.memory is not None:
+        parsed_mem = parse_memory_bytes(config.memory)
+        if parsed_mem is not None and parsed_mem > 0:
+            actor_opts["memory"] = parsed_mem
     if config.resources:
         actor_opts["resources"] = config.resources
 
