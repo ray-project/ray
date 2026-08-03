@@ -157,7 +157,7 @@ class TaskEventStorage:
         self._gc_policy = gc_policy or FinishedTaskActorTaskGcPolicy()
         # One insertion-ordered map per priority tier; oldest key first.
         self._tiers: List[Dict[TaskAttempt, gcs_pb2.TaskEvents]] = [
-            {} for _ in range(self._gc_policy.MAX_PRIORITY)
+            {} for _ in range(self._gc_policy.max_priority)
         ]
         # Primary index: task attempt -> which tier holds it.
         self._primary_index: Dict[TaskAttempt, int] = {}
@@ -339,7 +339,7 @@ class TaskEventStorage:
         del self._tiers[tier][attempt]
 
     def _evict_task_event(self) -> None:
-        for tier in range(self._gc_policy.MAX_PRIORITY):
+        for tier in range(self._gc_policy.max_priority):
             if self._tiers[tier]:
                 # The first key is the oldest (least recently inserted) in this tier.
                 oldest = next(iter(self._tiers[tier]))
