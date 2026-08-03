@@ -89,6 +89,13 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data);
 
  private:
+  /**
+   * @brief Reads one worker's record from the worker table, logging on failure.
+   *
+   * @param worker_id The worker to look up.
+   * @param callback Invoked with the record, or std::nullopt if absent or the
+   * read failed.
+   */
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
 

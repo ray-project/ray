@@ -120,6 +120,34 @@ TEST_F(GcsWorkerManagerTest, TestWorkerLifecycleEventEmittedForWorker) {
   ASSERT_EQ(events[1]->GetEventType(), rpc::events::RayEvent::WORKER_LIFECYCLE_EVENT);
 }
 
+TEST_F(GcsWorkerManagerTest, TestRetriedAddWorkerInfoDoesNotDuplicateEvents) {
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+
+  rpc::WorkerTableData worker = GenWorkerTableData(1234);
+  worker.set_worker_type(rpc::WorkerType::WORKER);
+
+  // Register the same worker twice, simulating a retried AddWorkerInfo RPC
+  // (e.g. the first reply was lost and the retryable gRPC client resent it).
+  for (int i = 0; i < 2; i++) {
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    GetWorkerManager()->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  // Only the first registration emits events; the retry is deduped against the
+  // existing worker table record.
+  auto events = FlushRecordedEvents();
+  ASSERT_EQ(events.size(), 2);
+  ASSERT_EQ(events[0]->GetEventType(), rpc::events::RayEvent::WORKER_DEFINITION_EVENT);
+  ASSERT_EQ(events[1]->GetEventType(), rpc::events::RayEvent::WORKER_LIFECYCLE_EVENT);
+}
+
 TEST_F(GcsWorkerManagerTest, TestDriverDoesNotEmitWorkerLifecycleEvent) {
   RayConfig::instance().initialize(R"({"enable_ray_event": true})");
 

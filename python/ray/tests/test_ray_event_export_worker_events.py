@@ -6,10 +6,7 @@ import pytest
 
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-    wait_until_grpc_channel_ready,
-)
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +30,8 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
         pytest.param(
             preserve_proto_field_name,
             {
+                # pin the cpu count so the worker pool stays small and predictable
+                "num_cpus": 1,
                 "env_vars": {
                     "RAY_enable_ray_event": "1",
                     "RAY_ray_events_report_interval_ms": 100,
@@ -63,10 +62,8 @@ def get_and_validate_events(httpserver, validation_func):
         return False
 
 
-def run_driver_script_and_wait_for_events(script, httpserver, cluster, validation_func):
+def run_driver_script_and_wait_for_events(script, httpserver, validation_func):
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    node_ids = [node.node_id for node in cluster.list_all_nodes()]
-    assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
     run_string_as_driver_nonblocking(script)
     wait_for_condition(lambda: get_and_validate_events(httpserver, validation_func))
 
@@ -162,10 +159,21 @@ class TestWorkerLifecycleEvents:
                 saw_killed_dead
             ), "no DEAD worker transition with INTENDED_SYSTEM_EXIT (ray.kill)"
 
+            # the worker_id of every lifecycle event must match a definition event
+            definition_worker_ids = {
+                e[k["wde"]][k["worker_id"]] for e in definition_events
+            }
+            lifecycle_worker_ids = {
+                e[k["wle"]][k["worker_id"]] for e in lifecycle_events
+            }
+            assert lifecycle_worker_ids <= definition_worker_ids, (
+                "lifecycle events without a matching definition event: "
+                f"{lifecycle_worker_ids - definition_worker_ids}"
+            )
+
         run_driver_script_and_wait_for_events(
             script,
             httpserver,
-            ray_start_cluster_head_with_env_vars,
             validate_events,
         )
 

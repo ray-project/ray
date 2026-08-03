@@ -437,34 +437,6 @@ def wait_for_dashboard_agent_available(cluster):
     )
 
 
-def wait_until_grpc_channel_ready(
-    gcs_address: str, node_ids: List[str], timeout: int = 5
-) -> bool:
-    """Wait until each node's dashboard-agent gRPC channel is ready.
-
-    Used by the event-export tests to ensure the aggregator agent is reachable
-    before driving events through it.
-    """
-    import grpc
-
-    gcs_client = GcsClient(address=gcs_address)
-
-    wait_for_condition(
-        lambda: all(
-            get_dashboard_agent_address(gcs_client, node_id) is not None
-            for node_id in node_ids
-        )
-    )
-    targets = [get_dashboard_agent_address(gcs_client, node_id) for node_id in node_ids]
-    for target in targets:
-        channel = grpc.insecure_channel(target)
-        try:
-            grpc.channel_ready_future(channel).result(timeout=timeout)
-        except grpc.FutureTimeoutError:
-            return False
-    return True
-
-
 def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
     """Wait for the aggregator agent to be ready by checking socket connectivity."""
     gcs_client = GcsClient(address=address)

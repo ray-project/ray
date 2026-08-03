@@ -225,21 +225,30 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG).WithField(worker_id) << "Adding worker ";
 
-  auto on_done =
-      [this, worker_id, worker_data, reply, send_reply_callback](const Status &status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to add worker information, "
-                         << worker_data->DebugString();
-        } else {
-          // Only record the lifecycle event once the registration is persisted, so the
-          // event never races ahead of the worker table (matches the death path).
-          RecordWorkerLifecycleEvent(*worker_data);
-        }
-        RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      };
-
-  gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data, {on_done, io_context_});
+  GetWorkerInfo(worker_id,
+                {[this, worker_id, worker_data, reply, send_reply_callback](
+                     const std::optional<rpc::WorkerTableData> &result) {
+                   // dedup guards for RPC retries
+                   const bool is_duplicate_registration = result.has_value();
+                   auto on_done = [this,
+                                   worker_id,
+                                   worker_data,
+                                   reply,
+                                   is_duplicate_registration,
+                                   send_reply_callback](const Status &status) {
+                     if (!status.ok()) {
+                       RAY_LOG(ERROR) << "Failed to add worker information, "
+                                      << worker_data->DebugString();
+                     } else if (!is_duplicate_registration) {
+                       RecordWorkerLifecycleEvent(*worker_data);
+                     }
+                     RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
+                     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+                   };
+                   gcs_table_storage_.WorkerTable().Put(
+                       worker_id, *worker_data, {std::move(on_done), io_context_});
+                 },
+                 io_context_});
 }
 
 void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
@@ -426,12 +435,6 @@ void GcsWorkerManager::RecordWorkerLifecycleEvent(const rpc::WorkerTableData &da
     return;
   }
   std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-  // Emit the static identity once, at worker registration. This function is only
-  // reached from the registration path (alive) and the death path (dead), so
-  // is_alive() reliably distinguishes them and the definition event is emitted
-  // exactly once. There is no "update while alive" caller that would re-emit it.
-  // The dynamic ALIVE/DEAD transitions are carried by the lifecycle event and
-  // correlated back to the definition event by worker_id.
   if (data.is_alive()) {
     events.push_back(
         std::make_unique<observability::RayWorkerDefinitionEvent>(data, session_name_));
