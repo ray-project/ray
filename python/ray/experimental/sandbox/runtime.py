@@ -26,8 +26,8 @@ class SandboxRuntime:
     def create(
         self,
         image: str = "python:3.10-slim",
-        cpu: float = 1.0,
-        memory: Union[str, int, float] = "1Gi",
+        cpu: float = 0.0,
+        memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
         work_dir: str = "/workspace",
         ttl_seconds: Optional[int] = 3600,

@@ -22,8 +22,8 @@ from ray.experimental.sandbox.sandbox import Sandbox, SandboxHandle
 
 def create(
     image: str = "python:3.10-slim",
-    cpu: float = 1.0,
-    memory: Union[str, int, float] = "1Gi",
+    cpu: float = 0.0,
+    memory: Union[str, int, float] = 0,
     env: Optional[Dict[str, str]] = None,
     work_dir: str = "/workspace",
     ttl_seconds: Optional[int] = 3600,
@@ -55,21 +55,6 @@ def create(
     Returns:
         A SandboxHandle instance.
     """
-    if "config" in kwargs and kwargs["config"] is not None:
-        cfg = kwargs.pop("config")
-        image = cfg.image
-        cpu = cfg.cpu
-        memory = cfg.memory
-        env = cfg.env
-        work_dir = cfg.work_dir
-        ttl_seconds = cfg.ttl_seconds
-        labels = cfg.labels
-        timeout_seconds = cfg.timeout_seconds
-        runsc_path = cfg.runsc_path
-        rootless = cfg.rootless
-        network = cfg.network
-        resources = cfg.resources
-
     runsc_path_override = kwargs.pop("runsc_path_override", None)
     if runsc_path_override:
         runsc_path = runsc_path_override
@@ -104,8 +89,8 @@ def create(
 
 async def create_async(
     image: str = "python:3.10-slim",
-    cpu: float = 1.0,
-    memory: Union[str, int, float] = "1Gi",
+    cpu: float = 0.0,
+    memory: Union[str, int, float] = 0,
     env: Optional[Dict[str, str]] = None,
     work_dir: str = "/workspace",
     ttl_seconds: Optional[int] = 3600,
