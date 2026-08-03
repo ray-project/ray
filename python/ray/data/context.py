@@ -114,6 +114,10 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
 
+DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
+    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -697,6 +701,16 @@ class DataContext:
             ``ray.get()`` each hash-shuffle reduce task to fetch a batch of
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
+        shuffle_input_batch_bytes: Target batch size in bytes for coalescing
+            shuffle input blocks before partitioning. Currently only applies
+            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
+            strategies ignore it. Input blocks are buffered per node and
+            processed as a batch once this size is reached; remaining
+            buffered blocks are flushed when input is exhausted. Lower values
+            increase shuffle parallelism (useful for CPU-intensive shuffles)
+            at the cost of more, smaller intermediate shard objects. Set to
+            ``0`` to disable batching, processing each input bundle
+            individually. Defaults to 1GiB.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -797,6 +811,11 @@ class DataContext:
     # Timeout (seconds) for each reduce-task shard ray.get(); a stalled fetch is
     # logged and fails with GetTimeoutError. <= 0 disables.
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
+
+    # Target batch size (bytes) for coalescing shuffle input blocks before
+    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # node until this size is reached. 0 disables batching.
+    shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
 
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
