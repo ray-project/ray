@@ -251,11 +251,11 @@ def test_shuffle_input_batch_bytes_controls_map_task_batching(
     )
     op.start(ExecutionOptions(), noop_counter())
 
-    with patch.object(op, "_submit_shuffle_map_task") as submit:
-        for bundle in make_ref_bundles([[0], [1]]):
-            op._add_input_inner(bundle, 0)
-        op.all_inputs_done()
-    assert submit.call_count == expected_num_tasks
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
 
 
 def test_shuffle_map_task_uses_operator_name():
