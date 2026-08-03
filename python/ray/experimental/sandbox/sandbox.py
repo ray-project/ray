@@ -14,26 +14,74 @@ class Sandbox:
     """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.
 
     Args:
-        config: Optional SandboxConfig instance.
-        **kwargs: Additional parameters passed to SandboxConfig or runtime.
+        image: Container image for the sandbox environment.
+        cpu: Number of CPU cores allocated to the sandbox.
+        memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
+        env: Environment variables to inject into the sandbox.
+        work_dir: Default working directory inside the sandbox.
+        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        labels: Optional key-value metadata labels for tracking.
+        timeout_seconds: Timeout in seconds for sandbox creation.
+        runsc_path: Path to the gVisor `runsc` executable.
+        rootless: If True, run gVisor in rootless mode.
+        network: Network mode for runsc.
+        resources: Custom logical resource requirements.
+        **kwargs: Additional parameters passed to runtime.
     """
 
     def __init__(
         self,
-        config: Optional[SandboxConfig] = None,
+        image: str = "python:3.10-slim",
+        cpu: float = 1.0,
+        memory: Union[str, int, float] = "1Gi",
+        env: Optional[Dict[str, str]] = None,
+        work_dir: str = "/workspace",
+        ttl_seconds: Optional[int] = 3600,
+        labels: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 30.0,
+        runsc_path: str = "runsc",
+        rootless: bool = True,
+        network: str = "none",
+        resources: Optional[Dict[str, float]] = None,
         **kwargs,
     ):
+        if "config" in kwargs and kwargs["config"] is not None:
+            cfg = kwargs.pop("config")
+            image = cfg.image
+            cpu = cfg.cpu
+            memory = cfg.memory
+            env = cfg.env
+            work_dir = cfg.work_dir
+            ttl_seconds = cfg.ttl_seconds
+            labels = cfg.labels
+            timeout_seconds = cfg.timeout_seconds
+            runsc_path = cfg.runsc_path
+            rootless = cfg.rootless
+            network = cfg.network
+            resources = cfg.resources
+
         runsc_path_override = kwargs.pop("runsc_path_override", None)
+        if runsc_path_override is None and runsc_path != "runsc":
+            runsc_path_override = runsc_path
 
-        if config is None:
-            config = SandboxConfig(**kwargs)
-        elif kwargs:
-            for k, v in kwargs.items():
-                if hasattr(config, k):
-                    setattr(config, k, v)
+        env = env or {}
+        labels = labels or {}
+        resources = resources or {}
 
-        if runsc_path_override is None and config.runsc_path != "runsc":
-            runsc_path_override = config.runsc_path
+        config = SandboxConfig(
+            image=image,
+            cpu=cpu,
+            memory=memory,
+            env=env,
+            work_dir=work_dir,
+            ttl_seconds=ttl_seconds,
+            labels=labels,
+            timeout_seconds=timeout_seconds,
+            runsc_path=runsc_path,
+            rootless=rootless,
+            network=network,
+            resources=resources,
+        )
 
         self.runtime = SandboxRuntime(runsc_path_override=runsc_path_override)
 

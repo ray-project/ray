@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Dict, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -8,11 +8,7 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import (
-    GVisorSandboxConfig,
-    SandboxConfig,
-    parse_memory_bytes,
-)
+from ray.experimental.sandbox.config import parse_memory_bytes
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -25,49 +21,119 @@ from ray.experimental.sandbox.sandbox import Sandbox, SandboxHandle
 
 
 def create(
-    config: Optional[SandboxConfig] = None,
+    image: str = "python:3.10-slim",
+    cpu: float = 1.0,
+    memory: Union[str, int, float] = "1Gi",
+    env: Optional[Dict[str, str]] = None,
+    work_dir: str = "/workspace",
+    ttl_seconds: Optional[int] = 3600,
+    labels: Optional[Dict[str, str]] = None,
+    timeout_seconds: float = 30.0,
+    runsc_path: str = "runsc",
+    rootless: bool = True,
+    network: str = "none",
+    resources: Optional[Dict[str, float]] = None,
     **kwargs,
 ) -> SandboxHandle:
     """Create a sandbox environment.
 
     Args:
-        config: Optional SandboxConfig instance.
-        **kwargs: Fields corresponding to SandboxConfig parameters or backend overrides.
+        image: Container image for the sandbox environment.
+        cpu: Number of CPU cores allocated to the sandbox.
+        memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
+        env: Environment variables to inject into the sandbox.
+        work_dir: Default working directory inside the sandbox.
+        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        labels: Optional key-value metadata labels for tracking.
+        timeout_seconds: Timeout in seconds for sandbox creation.
+        runsc_path: Path to the gVisor `runsc` executable.
+        rootless: If True, run gVisor in rootless mode.
+        network: Network mode for runsc.
+        resources: Custom logical resource requirements.
+        **kwargs: Additional options.
 
     Returns:
         A SandboxHandle instance.
     """
-    runsc_path_override = kwargs.pop("runsc_path_override", None)
-    if config is None:
-        config = SandboxConfig(**kwargs)
-    elif kwargs:
-        for k, v in kwargs.items():
-            if hasattr(config, k):
-                setattr(config, k, v)
+    if "config" in kwargs and kwargs["config"] is not None:
+        cfg = kwargs.pop("config")
+        image = cfg.image
+        cpu = cfg.cpu
+        memory = cfg.memory
+        env = cfg.env
+        work_dir = cfg.work_dir
+        ttl_seconds = cfg.ttl_seconds
+        labels = cfg.labels
+        timeout_seconds = cfg.timeout_seconds
+        runsc_path = cfg.runsc_path
+        rootless = cfg.rootless
+        network = cfg.network
+        resources = cfg.resources
 
+    runsc_path_override = kwargs.pop("runsc_path_override", None)
     if runsc_path_override:
-        config.runsc_path = runsc_path_override
+        runsc_path = runsc_path_override
 
     actor_opts = {}
-    if config.cpu is not None and config.cpu > 0:
-        actor_opts["num_cpus"] = config.cpu
-    if config.memory is not None:
-        parsed_mem = parse_memory_bytes(config.memory)
+    if cpu is not None and cpu > 0:
+        actor_opts["num_cpus"] = cpu
+    if memory is not None:
+        parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
-    if config.resources:
-        actor_opts["resources"] = config.resources
+    if resources:
+        actor_opts["resources"] = resources
 
-    actor_handle = Sandbox.options(**actor_opts).remote(config=config)
+    actor_handle = Sandbox.options(**actor_opts).remote(
+        image=image,
+        cpu=cpu,
+        memory=memory,
+        env=env,
+        work_dir=work_dir,
+        ttl_seconds=ttl_seconds,
+        labels=labels,
+        timeout_seconds=timeout_seconds,
+        runsc_path=runsc_path,
+        rootless=rootless,
+        network=network,
+        resources=resources,
+        **kwargs,
+    )
     return SandboxHandle(actor_handle=actor_handle)
 
 
 async def create_async(
-    config: Optional[SandboxConfig] = None,
+    image: str = "python:3.10-slim",
+    cpu: float = 1.0,
+    memory: Union[str, int, float] = "1Gi",
+    env: Optional[Dict[str, str]] = None,
+    work_dir: str = "/workspace",
+    ttl_seconds: Optional[int] = 3600,
+    labels: Optional[Dict[str, str]] = None,
+    timeout_seconds: float = 30.0,
+    runsc_path: str = "runsc",
+    rootless: bool = True,
+    network: str = "none",
+    resources: Optional[Dict[str, float]] = None,
     **kwargs,
 ) -> SandboxHandle:
     """Create a sandbox environment asynchronously."""
-    return await asyncio.to_thread(create, config=config, **kwargs)
+    return await asyncio.to_thread(
+        create,
+        image=image,
+        cpu=cpu,
+        memory=memory,
+        env=env,
+        work_dir=work_dir,
+        ttl_seconds=ttl_seconds,
+        labels=labels,
+        timeout_seconds=timeout_seconds,
+        runsc_path=runsc_path,
+        rootless=rootless,
+        network=network,
+        resources=resources,
+        **kwargs,
+    )
 
 
 __all__ = [
@@ -78,8 +144,6 @@ __all__ = [
     "SandboxRuntime",
     "BaseSandboxBackend",
     "GVisorSandboxBackend",
-    "SandboxConfig",
-    "GVisorSandboxConfig",
     "ExecResult",
     "ExecutionResult",
     "SandboxStatus",
