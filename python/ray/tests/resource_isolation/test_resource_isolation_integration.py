@@ -87,6 +87,12 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
 
+# Starting the subprocess modules with the `forkserver` start method puts two extra
+# helper processes under the dashboard head: the forkserver itself, and multiprocessing's
+# resource_tracker (which forkserver.ensure_running() starts). Both are descendants of
+# the dashboard and so are moved into the system cgroup along with the modules.
+_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = 2
+
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
 _EXPECTED_SYSTEM_PROCESSES_RAY_START = [
@@ -538,7 +544,9 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     assert_system_processes_are_in_system_cgroup(
         node_id,
         resource_isolation_config,
-        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START) + len(_EXPECTED_DASHBOARD_MODULES),
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
+        + len(_EXPECTED_DASHBOARD_MODULES)
+        + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
@@ -607,7 +615,9 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     assert_system_processes_are_in_system_cgroup(
         node_id,
         resource_isolation_config,
-        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT) + len(_EXPECTED_DASHBOARD_MODULES),
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
+        + len(_EXPECTED_DASHBOARD_MODULES)
+        + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
