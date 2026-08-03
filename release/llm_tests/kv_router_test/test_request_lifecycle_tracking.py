@@ -41,6 +41,22 @@ def num_prompt_blocks(token_ids):
     return len(compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE))
 
 
+def tokenize_chat(endpoint):
+    """The engine's exact token ids for the chat-templated prompt."""
+    host, port = endpoint
+    resp = requests.post(
+        f"http://{host}:{port}/tokenize",
+        json={
+            "model": MODEL_ID,
+            "messages": [{"role": "user", "content": PROMPT_TEXT}],
+            "add_generation_prompt": True,
+        },
+        timeout=60,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["tokens"]
+
+
 class TestLifecycleTracking:
     """The KVTokenTracker books request lifecycle events through the LLMRouter's
     ``on_lifecycle_events`` handle method; the test ``LLMRouter`` subclass
@@ -59,6 +75,7 @@ class TestLifecycleTracking:
         llm_config = build_kv_config(
             request_router_class=_TestKVAwareRouter,
             kv_events_port_base=21600,
+            decode_progress=True,
         )
         # Swap the ingress for the introspection LLMRouter so booked lifecycle
         # events and the tracker's state are reachable over the deployment handle.
@@ -106,6 +123,26 @@ class TestLifecycleTracking:
             for active in await router.broadcast(
                 "get_worker_active_requests", worker_id
             ).results_async()
+        )
+        prompt_token_ids = tokenize_chat((host, port))
+        await router.select_worker.remote(
+            LIFECYCLE_REQUEST_ID,
+            prompt_token_ids,
+            [worker_id],
+            MAX_TOKENS,
+        )
+
+        async def reservation_converged():
+            per_replica = await router.broadcast(
+                "get_lifecycle_snapshot", LIFECYCLE_REQUEST_ID, worker_id
+            ).results_async()
+            return len(per_replica) == len(replica_ids) and all(
+                reading["lifecycle"] is not None and reading["active_requests"] == 1
+                for reading in per_replica
+            )
+
+        await async_wait_for_condition(
+            reservation_converged, timeout=30, retry_interval_ms=100
         )
 
         # X-Request-Id pins the engine request id; include_usage returns the
@@ -225,23 +262,17 @@ class TestLifecycleTracking:
         ]
         for events in per_replica_events:
             names = [name for name, _ in events]
-            assert names[0] == "on_request_added"
-            assert names[1] == "on_prefill_complete"
+            assert names[0] == "on_prefill_complete"
             assert names[-1] == "on_request_completed"
-            assert names[2:-1] == ["on_decode_progress"] * (len(names) - 3)
+            assert names[1:-1] == ["on_decode_progress"] * (len(names) - 2)
 
-            added_args = events[0][1]
-            assert added_args[1] == worker_id
-            assert len(added_args[2]) == usage["prompt_tokens"]  # token ids booked
-            assert added_args[3] == MAX_TOKENS  # client max_tokens drives decode decay
             decode_counts = [
                 args[1] for name, args in events if name == "on_decode_progress"
             ]
             assert decode_counts == sorted(set(decode_counts))  # strictly increasing
             assert decode_counts[-1] == usage["completion_tokens"]
 
-        # Identical on every replica.
-        prompt_token_ids = per_replica_events[0][0][1][2]
+        assert len(prompt_token_ids) == usage["prompt_tokens"]  # token ids booked
 
         # The engine indexed the prompt's KV blocks; they show as cache overlap
         # on the worker (the prefix the next overlapping request would reuse).
@@ -278,10 +309,17 @@ class TestLifecycleTracking:
 
         assert all(active == 0 for active in await worker_active_requests())
 
-        await router.broadcast(
-            "on_request_added", "probe", worker_id, list(range(64)), 32
-        ).results_async()
-        assert all(active == 1 for active in await worker_active_requests())
+        await router.select_worker.remote("probe", list(range(64)), [worker_id], 32)
+
+        async def reservation_converged():
+            active_requests = await worker_active_requests()
+            return len(active_requests) == num_ingress_replicas and all(
+                active == 1 for active in active_requests
+            )
+
+        await async_wait_for_condition(
+            reservation_converged, timeout=30, retry_interval_ms=100
+        )
 
         await router.broadcast("on_request_completed", "probe").results_async()
 

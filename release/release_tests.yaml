@@ -4867,6 +4867,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
         - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
@@ -4876,7 +4877,29 @@
 
   run:
     timeout: 3600
-    script: pytest -vs .
+    script: pytest -vs . --ignore=test_token_channel_cross_node.py
+
+- name: llm_serve_kv_router_cross_node
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_2x_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_token_channel_cross_node.py
 
 - name: llm_serve_kv_router_multiple_ingress_router
   frequency: manual
@@ -4891,6 +4914,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
         - RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE=2
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
