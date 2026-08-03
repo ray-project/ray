@@ -542,11 +542,17 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+    # An indexer that already emits bin-packed read units (e.g. the footer-based
+    # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
+    partitioner = (
+        None
+        if indexer.yields_read_units
+        else RoundRobinPartitioner(
+            in_memory_size_estimator=datasource.get_size_estimator(),
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
