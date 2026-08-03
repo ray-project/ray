@@ -4309,6 +4309,7 @@ def test_actor_label_selector_is_exposed():
         placement_group_bundles = None
         available_resources = {"CPU": 800.0}
         actor_label_selector = {"enterprise-tier": "in(plus-1,plus-2,plus-3)"}
+        actor_fallback_strategy = [{"label_selector": {"enterprise-tier": "basic"}}]
 
     replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
     replica = DeploymentReplica(replica_id, None)
@@ -4317,6 +4318,11 @@ def test_actor_label_selector_is_exposed():
     assert replica.actor_label_selector == {
         "enterprise-tier": "in(plus-1,plus-2,plus-3)"
     }
+    # Fallbacks are only tried when the selector above matches nothing, so a still
+    # pending replica means these did not match either.
+    assert replica.actor_fallback_strategy == [
+        {"label_selector": {"enterprise-tier": "basic"}}
+    ]
 
 
 def test_actor_label_selector_is_none_when_unset():
@@ -4327,12 +4333,14 @@ def test_actor_label_selector_is_none_when_unset():
         placement_group_bundles = None
         available_resources = {}
         actor_label_selector = None
+        actor_fallback_strategy = None
 
     replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
     replica = DeploymentReplica(replica_id, None)
     replica._actor = FakeActor()
 
     assert replica.actor_label_selector is None
+    assert replica.actor_fallback_strategy is None
 
 
 class TestActorReplicaWrapper:

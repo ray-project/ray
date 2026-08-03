@@ -770,6 +770,11 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def actor_fallback_strategy(self) -> Optional[List[Dict[str, Any]]]:
+        # Only used to print a warning.
+        return None
+
+    @property
     def available_resources(self) -> Dict[str, float]:
         # Only used to print a warning.
         return {}

@@ -744,6 +744,7 @@ class ActorReplicaWrapper:
 
         self._actor_resources: Dict[str, float] = None
         self._actor_label_selector: Optional[Dict[str, str]] = None
+        self._actor_fallback_strategy: Optional[List[Dict[str, Any]]] = None
         # If the replica is being started, this will be the true version
         # If the replica is being recovered, this will be the target
         # version, which may be inconsistent with the actual replica
@@ -1069,9 +1070,9 @@ class ActorReplicaWrapper:
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
-        self._actor_label_selector = (
-            deployment_info.replica_config.ray_actor_options or {}
-        ).get("label_selector")
+        _ray_actor_options = deployment_info.replica_config.ray_actor_options or {}
+        self._actor_label_selector = _ray_actor_options.get("label_selector")
+        self._actor_fallback_strategy = _ray_actor_options.get("fallback_strategy")
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
@@ -1514,6 +1515,10 @@ class ActorReplicaWrapper:
     @property
     def actor_label_selector(self) -> Optional[Dict[str, str]]:
         return self._actor_label_selector
+
+    @property
+    def actor_fallback_strategy(self) -> Optional[List[Dict[str, Any]]]:
+        return self._actor_fallback_strategy
 
     @property
     def available_resources(self) -> Dict[str, float]:
@@ -2152,6 +2157,11 @@ class DeploymentReplica:
     def actor_label_selector(self) -> Optional[Dict[str, str]]:
         """The node label selector this replica must be scheduled against."""
         return self._actor.actor_label_selector
+
+    @property
+    def actor_fallback_strategy(self) -> Optional[List[Dict[str, Any]]]:
+        """The fallback options tried when the label selector matches no node."""
+        return self._actor.actor_fallback_strategy
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -5121,6 +5131,14 @@ class DeploymentState:
                     if label_selector
                     else ""
                 )
+                # Fallbacks are tried when the selector above matches no node, so if
+                # the replica is still pending they did not match either.
+                fallback_strategy = pending_allocation[0].actor_fallback_strategy
+                if fallback_strategy:
+                    label_selector_message += (
+                        "Fallback options also unmatched: "
+                        f"{json.dumps(fallback_strategy)}. "
+                    )
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
