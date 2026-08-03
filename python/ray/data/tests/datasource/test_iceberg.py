@@ -374,6 +374,75 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+def test_reported_num_rows_is_unknown_when_scan_stops_early():
+    """A ``limit`` makes the read stop early, so no manifest count describes it.
+
+    The manifests still say how many rows each surviving file holds, and the
+    filter may well be fully resolved, so the exactness test would otherwise pass
+    and report the full total for a read that returns ``limit`` rows.
+    """
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        # No row filter, so residuals are all ``AlwaysTrue``: the limit is the
+        # only reason the count cannot be trusted.
+        scan_kwargs={"limit": 5},
+    )
+    read_tasks = iceberg_ds.get_read_tasks(1)
+
+    claimed = [read_task.metadata.num_rows for read_task in read_tasks]
+    actual = sum(block.num_rows for read_task in read_tasks for block in read_task())
+
+    assert actual == 5, f"limit should cap a single task at 5 rows, got {actual}"
+    assert all(
+        count is None for count in claimed
+    ), f"row counts cannot be exact under a limit, got {claimed}"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_empty_projection_respects_pinned_snapshot_schema():
+    """The stand-in column must exist in the snapshot being read.
+
+    An empty projection reads one cheap column and slices it away. Choosing that
+    column from the table's *current* schema breaks a read pinned to an older
+    snapshot: a column added since does not exist there, and PyIceberg raises
+    ``ValueError: Could not find column``. So ``count()`` on a historical
+    snapshot would fail outright rather than count its rows.
+    """
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS.copy())
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    old_snapshot_id = table.current_snapshot().snapshot_id
+    expected_rows = 101  # the fixture appends 120 rows, then deletes col_a >= 101
+
+    # Evolve the schema by adding a boolean, which is the *cheapest* column in
+    # the table and so the one the sentinel picks -- and which does not exist in
+    # the snapshot above.
+    with table.update_schema() as update:
+        update.add_column("col_d", pyi_types.BooleanType())
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    assert "col_d" in table.schema().column_names, "schema evolution should apply"
+
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        snapshot_id=old_snapshot_id,
+    )
+    assert (
+        iceberg_ds._get_sentinel_field() != "col_d"
+    ), "the stand-in column must come from the pinned snapshot's schema"
+
+    read_tasks = iceberg_ds.apply_projection({}).get_read_tasks(2)
+    actual = sum(block.num_rows for read_task in read_tasks for block in read_task())
+    assert actual == expected_rows
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 @pytest.mark.parametrize(
     "push_down",
     [

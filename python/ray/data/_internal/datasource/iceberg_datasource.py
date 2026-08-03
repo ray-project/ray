@@ -450,8 +450,14 @@ class IcebergDatasource(Datasource):
         which preserves the row count. Picking the narrowest column keeps the
         wasted I/O small: reading a string column here instead of a boolean one
         can cost several orders of magnitude more bytes.
+
+        The column is chosen from the schema the scan will actually read, not
+        from ``self.table.schema()``. Those differ when ``snapshot_id`` pins a
+        historical snapshot: after a column is added, the current schema holds
+        names that do not exist in the pinned snapshot, and selecting one raises
+        ``ValueError: Could not find column``.
         """
-        fields = self.table.schema().fields
+        fields = self._get_scan_schema().fields
         if not fields:
             raise ValueError(
                 f"Cannot read table '{self.table_identifier}': it has no columns."
@@ -465,6 +471,21 @@ class IcebergDatasource(Datasource):
             ),
         )
         return cheapest_field.name
+
+    def _get_scan_schema(self) -> "Schema":
+        """Return the full schema this scan reads against.
+
+        Delegates snapshot resolution to PyIceberg -- ``DataScan.projection()``
+        returns the pinned snapshot's schema rather than the table's current one,
+        and returns it whole when every field is selected -- so that we agree
+        with the scan built in ``_get_data_scan``. Builds a scan but does not
+        plan it, which touches no data files.
+        """
+        return self.table.scan(
+            row_filter=self._get_combined_filter(),
+            selected_fields=("*",),
+            **self._scan_kwargs,
+        ).projection()
 
     def _is_empty_projection(self) -> bool:
         """Whether the pushed-down projection selects no columns at all."""
@@ -599,9 +620,17 @@ class IcebergDatasource(Datasource):
         #
         # This is deliberately the same test PyIceberg's own ``DataScan.count()``
         # applies, so the two agree on when a manifest count still holds.
-        counts_are_exact = isinstance(row_filter, AlwaysTrue) or all(
-            isinstance(getattr(task, "residual", None), AlwaysTrue)
-            for task in plan_files
+        #
+        # A ``limit`` makes the read stop early, so no manifest arithmetic
+        # describes what comes back and the count cannot be exact. (It is handed
+        # to each read task, so the rows returned depend on how files were
+        # chunked -- another reason not to try to predict it.)
+        counts_are_exact = limit is None and (
+            isinstance(row_filter, AlwaysTrue)
+            or all(
+                isinstance(getattr(task, "residual", None), AlwaysTrue)
+                for task in plan_files
+            )
         )
 
         get_read_task = partial(
