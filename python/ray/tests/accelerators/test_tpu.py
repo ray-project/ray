@@ -43,16 +43,144 @@ def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
-    mock_list.return_value = [f"{i}" for i in range(4)]
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
+    # Four VFIO groups. Each group is backed by a single Google TPU PCI device
+    # (vendor 0x1ae0) at /sys/kernel/iommu_groups/<n>/devices/<bdf>/vendor.
+    listdir_results = {"/dev/vfio": [f"{i}" for i in range(4)]}
+    listdir_results.update(
+        {f"/sys/kernel/iommu_groups/{i}/devices": [f"0000:00:0{i}.0"] for i in range(4)}
+    )
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x1ae0\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
 @patch("os.listdir")
-def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
-    mock_list.side_effect = FileNotFoundError
+def test_autodetect_num_tpus_vfio_ignores_non_tpu_vendor(mock_list, mock_glob):
+    # NVIDIA BlueField-3's SoC Management Interface is bound to vfio-pci by
+    # RShim and surfaces as /dev/vfio/96. The underlying device is vendor
+    # 0x15b3 (Mellanox), not Google (0x1ae0). Ray must NOT count it as a TPU,
+    # otherwise NVIDIA GPUs on the same node would fail to register.
     mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "96"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x15b3\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_mixed_groups(mock_list, mock_glob):
+    # Two VFIO groups: one is a Google TPU (vendor 0x1ae0), the other is the
+    # BlueField-3 SoC (vendor 0x15b3). Only the TPU-backed group is counted.
+    mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "10", "96"],
+        "/sys/kernel/iommu_groups/10/devices": ["0000:01:00.0"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+    vendor_results = {
+        "/sys/kernel/iommu_groups/10/devices/0000:01:00.0/vendor": "0x1ae0\n",
+        "/sys/kernel/iommu_groups/96/devices/0016:03:00.2/vendor": "0x15b3\n",
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    def fake_open(path, *args, **kwargs):
+        try:
+            return mock.mock_open(read_data=vendor_results[path])()
+        except KeyError:
+            raise AssertionError(f"unexpected open: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch("builtins.open", side_effect=fake_open):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_sysfs_error_fails_closed(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            return ["vfio", "96"]
+        if path == "/sys/kernel/iommu_groups/96/devices":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("os.listdir", return_value=["0000:c2:00.0"])
+def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
+    open_mock = mock.mock_open()
+    open_mock.return_value.__enter__.return_value.read.side_effect = UnicodeDecodeError(
+        "ascii", b"\xff", 0, 1, "invalid byte"
+    )
+    with patch("builtins.open", open_mock):
+        assert tpu._is_vfio_group_a_tpu(96) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_without_devices(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
