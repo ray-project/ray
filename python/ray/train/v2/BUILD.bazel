@@ -481,9 +481,9 @@ py_test(
 )
 
 py_test(
-    name = "test_nccl_ras_callback",
+    name = "test_nv_hang_detector_callback",
     size = "small",
-    srcs = ["tests/test_nccl_ras_callback.py"],
+    srcs = ["tests/test_nv_hang_detector_callback.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -497,9 +497,9 @@ py_test(
 )
 
 py_test(
-    name = "test_nccl_ras_hang_detection",
+    name = "test_nv_hang_detector_detection",
     size = "large",
-    srcs = ["tests/test_nccl_ras_hang_detection.py"],
+    srcs = ["tests/test_nv_hang_detector_detection.py"],
     env = {
         "NCCL_RAS_ENABLE": "1",
         "RAY_TRAIN_V2_ENABLED": "1",
