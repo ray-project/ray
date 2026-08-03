@@ -75,7 +75,7 @@ def metrics_start_shutdown(request):
             ),
         )
     finally:
-        serve.shutdown()
+        serve.shutdown(_timeout_s=60)
         ray.shutdown()
         reset_ray_address()
 

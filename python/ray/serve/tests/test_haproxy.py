@@ -146,7 +146,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
         return len(actors) == 0
 
     wait_for_condition(check_alive)
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
     wait_for_condition(check_dead)
 
 
@@ -221,7 +221,7 @@ def test_haproxy_subprocess_killed_on_manager_shutdown(ray_shutdown):
         lambda: len(get_haproxy_pids()) == 1, timeout=10, retry_interval_ms=100
     )
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
     wait_for_condition(
         lambda: len(get_haproxy_pids()) == 0, timeout=10, retry_interval_ms=100
@@ -450,7 +450,7 @@ async def test_drain_and_undrain_haproxy_manager(
     request_thread.join(timeout=5)
 
     # Clean up serve.
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_failure(ray_shutdown):
@@ -487,7 +487,7 @@ def test_haproxy_failure(ray_shutdown):
         return len(proxies) == 1 and proxies[0].actor_id != proxy_actor_id
 
     wait_for_condition(check_new_proxy, timeout=45)
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_get_target_groups(shutdown_ray):
@@ -531,7 +531,7 @@ def test_haproxy_get_target_groups(shutdown_ray):
     )
     wait_for_condition(has_n_targets, route_prefix="/test2", n=2)
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 @pytest.mark.asyncio
@@ -566,7 +566,7 @@ async def test_haproxy_update_target_groups(ray_shutdown):
     assert httpx.get("http://localhost:8000/test").text == "hello1"
     assert httpx.get("http://localhost:8000/test2").text == "hello1"
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 @pytest.mark.asyncio
@@ -610,7 +610,7 @@ async def test_haproxy_update_draining_health_checks(ray_shutdown):
     )
     assert not await proxy_actor._is_draining.remote()
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_http_options(ray_shutdown):
@@ -634,7 +634,7 @@ def test_haproxy_http_options(ray_shutdown):
     with pytest.raises(httpx.ConnectError):
         _ = httpx.get(url.replace(":8001", ":8000")).status_code
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 @pytest.mark.parametrize(
@@ -662,7 +662,7 @@ def test_session_id_header_forwarded_through_haproxy(ray_shutdown, header_key):
     assert resp.status_code == 200
     assert resp.text == session_id
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_metrics(ray_shutdown):
@@ -705,7 +705,7 @@ def test_haproxy_metrics(ray_shutdown):
         print("Final /metrics output:\n" + last_metrics[0])
         raise
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_safe_name():
@@ -792,7 +792,7 @@ def test_haproxy_manager_ready_with_application(ray_shutdown):
 
     wait_for_condition(lambda: httpx.get("http://localhost:8000/test").text == "hello")
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_504_error_translated_to_500(ray_shutdown, monkeypatch):
@@ -973,7 +973,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         resp = httpx.get(f"http://localhost:8000{route}")
         assert resp.status_code == 200 and resp.text == "hello"
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
@@ -1009,7 +1009,7 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
         lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200
     )
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_fallback_proxy_starts_with_native_proxy_on_head_node(
@@ -1061,7 +1061,7 @@ def test_fallback_proxy_starts_with_native_proxy_on_head_node(
 
     wait_for_condition(check_proxies, timeout=30)
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
@@ -1133,7 +1133,7 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
     )
     assert response.text == "hello from scale-to-zero"
 
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
 
 
 def test_default_host_is_all_interfaces(ray_shutdown):

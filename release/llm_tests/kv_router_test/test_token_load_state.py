@@ -77,7 +77,7 @@ def _restart_serve(ingress_replicas_per_node):
     The controller reads RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE from its
     own environment at creation.
     """
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
     serve.start(
         controller_options={
             "runtime_env": {
@@ -145,7 +145,7 @@ class TestIngressSynchronization:
         with patch_ingress():
             handle = serve.run(build_kv_app(llm_config), name=APP_NAME)
         yield handle
-        serve.shutdown()
+        serve.shutdown(_timeout_s=60)
 
     @pytest.mark.asyncio
     async def test_booked_load(self, ingress_replicas_per_node, deployed_handle):

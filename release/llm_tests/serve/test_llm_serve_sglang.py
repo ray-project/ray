@@ -37,7 +37,7 @@ def _shutdown_and_wait_for_gpu_clear(baseline_mb: float) -> None:
 
     See wait_for_gpu_memory_to_clear for why the wait is needed.
     """
-    serve.shutdown()
+    serve.shutdown(_timeout_s=60)
     wait_for_gpu_memory_to_clear(baseline_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB)
 
 
