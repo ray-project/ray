@@ -557,6 +557,7 @@
       inline_bytes: []
       sf: []
       columns: []
+      partitions: []
     adjustments:
       # -- fixed_size @ SF1000: v1 / v2 128MiB / v2 1GiB --
       - with:
@@ -566,6 +567,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -575,6 +577,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -584,6 +587,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -593,6 +597,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -602,6 +607,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -611,6 +617,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -620,6 +627,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -629,6 +637,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -638,6 +647,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -647,6 +657,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -656,6 +667,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -665,6 +677,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -674,6 +687,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -683,6 +697,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -692,6 +707,7 @@
           batch_bytes: 134217728
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -701,6 +717,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -710,6 +727,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -719,6 +737,7 @@
           batch_bytes: 1073741824
           sf: 1000
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
       # -- autoscaling @ SF100 (original coverage) --
@@ -729,6 +748,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -738,6 +758,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -747,6 +768,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -756,6 +778,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -765,6 +788,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -774,6 +798,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -783,6 +808,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: ""
           inline_bytes: 102400
       - with:
@@ -792,6 +818,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -801,6 +828,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column08 column13 column14"   # 84 groups
+          partitions: 1000
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -810,6 +838,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -819,6 +848,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -828,6 +858,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -837,6 +868,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -846,6 +878,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -855,6 +888,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
       - with:
@@ -864,6 +898,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: ""
           inline_bytes: 102400
       - with:
@@ -873,6 +908,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_inline8kb"
           inline_bytes: 8192
       - with:
@@ -882,6 +918,7 @@
           batch_bytes: 134217728
           sf: 100
           columns: "column02 column14"  # 7M groups
+          partitions: 500
           inline: "_noinline"
           inline_bytes: 0
 
@@ -901,7 +938,7 @@
     script: >
       RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES={{batch_bytes}}
       python groupby_benchmark.py --sf {{sf}} --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions {{partitions}}
 
 ###############
 # Join tests
