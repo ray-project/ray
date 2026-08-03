@@ -23,14 +23,37 @@ class SandboxRuntime:
     ):
         self._backend = GVisorSandboxBackend(runsc_path_override=runsc_path_override)
 
-    def create(self, config: Optional[SandboxConfig] = None, **kwargs) -> str:
+    def create(
+        self,
+        image: str = "python:3.10-slim",
+        cpu: float = 1.0,
+        memory: Union[str, int, float] = "1Gi",
+        env: Optional[Dict[str, str]] = None,
+        work_dir: str = "/workspace",
+        ttl_seconds: Optional[int] = 3600,
+        labels: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 30.0,
+        runsc_path: str = "runsc",
+        rootless: bool = True,
+        network: str = "none",
+        resources: Optional[Dict[str, float]] = None,
+        **kwargs,
+    ) -> str:
         """Provision the sandbox instance and return unique instance ID."""
-        if config is None:
-            config = SandboxConfig(**kwargs)
-        elif kwargs:
-            for k, v in kwargs.items():
-                if hasattr(config, k):
-                    setattr(config, k, v)
+        config = SandboxConfig(
+            image=image,
+            cpu=cpu,
+            memory=memory,
+            env=env or {},
+            work_dir=work_dir,
+            ttl_seconds=ttl_seconds,
+            labels=labels or {},
+            timeout_seconds=timeout_seconds,
+            runsc_path=runsc_path,
+            rootless=rootless,
+            network=network,
+            resources=resources or {},
+        )
         return self._backend.create_sandbox(config)
 
     def exec(
