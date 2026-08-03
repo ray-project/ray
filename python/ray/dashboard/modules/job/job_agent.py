@@ -163,18 +163,19 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
+        response = None
         log_chunks = self.get_job_manager().get_job_log_chunks(job.submission_id)
         try:
-            first_chunk = next(log_chunks)
-        except StopIteration:
-            first_chunk = None
+            try:
+                first_chunk = next(log_chunks)
+            except StopIteration:
+                first_chunk = None
 
-        response = StreamResponse()
-        response.content_type = "application/json"
-        response.charset = "utf-8"
-        await response.prepare(req)
+            response = StreamResponse()
+            response.content_type = "application/json"
+            response.charset = "utf-8"
+            await response.prepare(req)
 
-        try:
             await response.write(b'{"logs":"')
             if first_chunk is not None:
                 await response.write(_encode_log_chunk(first_chunk))
@@ -182,15 +183,18 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 await response.write(_encode_log_chunk(chunk))
             await response.write(b'"}')
             await response.write_eof()
+            return response
         except asyncio.CancelledError:
-            response.force_close()
+            if response is not None and response.prepared:
+                response.force_close()
             raise
         except Exception:
-            logger.exception("Error while streaming job logs")
-            response.force_close()
+            if response is not None and response.prepared:
+                logger.exception("Error while streaming job logs")
+                response.force_close()
             raise
-
-        return response
+        finally:
+            log_chunks.close()
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs/tail")
     @optional_utils.init_ray_and_catch_exceptions()
