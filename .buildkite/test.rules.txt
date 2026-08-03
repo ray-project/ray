@@ -244,6 +244,25 @@ doc/requirements-doc.txt
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml
+# The three gallery configs are build inputs, not example inputs. They are
+# parsed by `custom_directives.py` (its `EXAMPLE_GALLERY_CONFIGS` names these
+# three) to generate the gallery pages; they contain no executable code and
+# cannot change what any
+# example does. They live under the per-library doc directories, so they are
+# routed here, ahead of those rules, to keep a gallery edit on the build.
+doc/source/data/examples.yml
+doc/source/serve/examples.yml
+doc/source/train/examples.yml
+# highly_parallel.ipynb is executed by no premerge step. Its `py_test` in
+# doc/BUILD.bazel carries a `highly_parallel` tag that the ml docs example
+# step excludes (`--except-tags ...,highly_parallel` in ml.rayci.yml), and
+# the notebook glob in doc/source/ray-core/examples/BUILD.bazel excludes it
+# as well: it needs a live multi-node cluster and belongs in a release test.
+# Routing it to `ml_doc` alongside its four siblings would start the whole ml
+# example suite while skipping the one file that changed. The documentation
+# build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
+# execution), which is the only validation premerge actually offers here.
+doc/source/ray-core/examples/highly_parallel.ipynb
 @ doc
 ;
 
@@ -279,15 +298,16 @@ doc/source/ray-air/
 @ ml_doc
 ;
 
-# These five notebooks live under ray-core/ but their targets in
+# These four notebooks live under ray-core/ but their targets in
 # doc/BUILD.bazel are tagged `team:ml`, and the team argument to
 # ci/ray_ci:test_in_docker filters targets by `team:<team>`
 # (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
 # them to core_doc would run a step that tests everything under ray-core/
 # except the file that changed. They route to ml_doc, the step that actually
-# owns the targets. Re-tagging the targets `team:core` in doc/BUILD.bazel would
-# be the alternative fix and would let these lines go away.
-doc/source/ray-core/examples/highly_parallel.ipynb
+# owns the targets, and carry no tag the step excludes. Re-tagging the targets
+# `team:core` in doc/BUILD.bazel would be the alternative fix and would let
+# these lines go away. Their fifth sibling, highly_parallel.ipynb, is routed to
+# `doc` above: no step executes it at all.
 doc/source/ray-core/examples/plot_hyperparameter.ipynb
 doc/source/ray-core/examples/batch_prediction.ipynb
 doc/source/ray-core/examples/plot_parameter_server.ipynb

@@ -93,10 +93,13 @@ doc/source/tune/examples/example.py: ml_doc
 doc/source/rllib/doc_code/example.py: rllib_doc
 doc/source/ray-core/examples/example.ipynb: core_doc
 doc/source/ray-observability/example.py: core_doc
-# The five ray-core notebooks whose targets are tagged team:ml route to ml_doc,
+# The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
-doc/source/ray-core/examples/highly_parallel.ipynb: ml_doc
+doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
 doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
+# highly_parallel.ipynb is the exception: the ml docs example step excludes its
+# tag, so no step runs it. It routes to the build instead.
+doc/source/ray-core/examples/highly_parallel.ipynb: doc
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
@@ -140,6 +143,14 @@ doc/source/api_autogen.py: doc
 doc/source/api_mock_imports.py: doc
 doc/source/template_collections.py: doc
 doc/source/preprocess_github_markdown.py: doc
+# Gallery configs are build inputs, not example inputs: they sit under the
+# per-library doc dirs but route to the build, not to that library's examples.
+doc/source/data/examples.yml: doc
+doc/source/serve/examples.yml: doc
+doc/source/train/examples.yml: doc
+# A sibling .yml under the same dir still routes to the library, so the gallery
+# rule is a targeted exception rather than a blanket .yml skip.
+doc/source/data/doc_code/some_config.yml: data_doc
 doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
