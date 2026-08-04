@@ -7,7 +7,7 @@ from PIL import Image
 
 import ray
 from ray.data.expressions import download
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -45,6 +45,11 @@ def benchmark_fn():
     ds = ds.map_batches(decode_images)
     for _ in ds.iter_internal_ref_bundles():
         pass
+
+    # Per-operator wall time + per-task USS/RSS (avg and worst task): separates
+    # the tiny metadata.parquet read from the download/decode maps, so a memory
+    # regression here can be attributed to the right operator.
+    return collect_operator_metrics(ds)
 
 
 if __name__ == "__main__":

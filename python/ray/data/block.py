@@ -216,6 +216,12 @@ class TaskExecWorkerStats:
     # or None if USS measurement is unavailable (e.g., non-Linux platforms).
     max_uss_bytes: Optional[int] = None
 
+    # Peak RSS (Resident Set Size) memory in bytes observed during the task,
+    # sampled by the same poll as ``max_uss_bytes`` (None off-Linux likewise).
+    # RSS counts shared pages (e.g. mapped object-store blocks) that USS
+    # excludes, so the pair separates private working set from OS footprint.
+    max_rss_bytes: Optional[int] = None
+
     # Operator-specific worker-reported stats: one CustomOpStats entry per
     # reporting transform (fused transforms each contribute one). Empty for
     # operators that do not report any extra stats.
