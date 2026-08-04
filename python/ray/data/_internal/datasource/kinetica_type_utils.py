@@ -648,13 +648,27 @@ def convert_arrow_batch_to_records(
                 else:
                     # value is not None here (handled by if block at line 569)
                     record[col_name] = str(value)
-            elif col_type in ("datetime", "timestamp"):
+            elif col_type == "datetime":
                 # Convert datetime to ISO format string (YYYY-MM-DDTHH:MM:SS.ffffff)
+                # Kinetica DATETIME is a STRING column with datetime property
                 if isinstance(value, datetime):
                     record[col_name] = value.isoformat()
                 else:
-                    # value is not None here (handled by if block at line 569)
+                    # value is not None here (handled by if block at line 604)
                     record[col_name] = str(value)
+            elif col_type == "timestamp":
+                # Convert datetime to epoch milliseconds (long integer)
+                # Kinetica TIMESTAMP is a LONG column with timestamp property
+                if isinstance(value, datetime):
+                    # Convert to epoch milliseconds
+                    record[col_name] = int(value.timestamp() * 1000)
+                elif isinstance(value, (int, float)):
+                    # Already numeric - assume it's already epoch ms or can be used as-is
+                    record[col_name] = int(value)
+                else:
+                    # value is not None here (handled by if block at line 604)
+                    # Try to convert string to int if possible
+                    record[col_name] = int(value)
             else:
                 # Handle any remaining date/time types that weren't detected
                 # by column properties

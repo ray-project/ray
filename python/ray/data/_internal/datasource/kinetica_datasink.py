@@ -215,7 +215,11 @@ class KineticaDatasink(Datasink):
                 primary_keys=self._table_settings.primary_keys,
                 shard_keys=self._table_settings.shard_keys,
             )
-            self._create_table(client, columns)
+            # Use fail_if_exists=True to enforce CREATE semantics: if another
+            # process creates the table between our check and this call, we
+            # should fail rather than silently use a potentially incompatible
+            # schema.
+            self._create_table(client, columns, fail_if_exists=True)
             self._column_defs = self._columns_to_dicts(columns)
 
         elif self._mode == KineticaSinkMode.OVERWRITE:
@@ -379,8 +383,18 @@ class KineticaDatasink(Datasink):
                 f"Failed to drop table '{self._table_name}' in OVERWRITE mode: {e}"
             ) from e
 
-    def _create_table(self, client, columns):
-        """Create the target table with the given column definitions."""
+    def _create_table(self, client, columns, *, fail_if_exists: bool = False):
+        """Create the target table with the given column definitions.
+
+        Args:
+            client: The GPUdb client instance.
+            columns: List of GPUdbRecordColumn definitions.
+            fail_if_exists: If True, raise an error if the table already exists.
+                This enforces CREATE mode semantics where concurrent creation
+                by another process should fail this operation. If False, the
+                operation succeeds even if the table exists (for APPEND/OVERWRITE
+                retry safety).
+        """
         from gpudb import GPUdbRecordType
 
         record_type = GPUdbRecordType(
@@ -388,11 +402,14 @@ class KineticaDatasink(Datasink):
             label=self._table_name,
         )
 
-        options = {
-            # Avoid error if table already exists (e.g., race condition
-            # or retry scenario). The table schema must still be compatible.
-            "no_error_if_exists": "true",
-        }
+        options = {}
+        if not fail_if_exists:
+            # For APPEND/OVERWRITE: avoid error if table already exists
+            # (e.g., retry scenario). The table schema must still be compatible.
+            options["no_error_if_exists"] = "true"
+        # For CREATE mode (fail_if_exists=True): don't set no_error_if_exists,
+        # so Kinetica will raise an error if a concurrent process created the
+        # table between our existence check and this create call.
 
         if self._table_settings.is_replicated:
             options["is_replicated"] = "true"
