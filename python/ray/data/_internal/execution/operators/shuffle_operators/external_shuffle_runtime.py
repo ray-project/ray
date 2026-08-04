@@ -17,6 +17,7 @@ from typing import (
     Iterable,
     List,
     Literal,
+    NamedTuple,
     Optional,
     Tuple,
     TypedDict,
@@ -85,8 +86,9 @@ def _encode_shard(
         if combine_native:
             try:
                 table = table.combine_chunks()
-            except Exception:
-                # a >2 GiB string column overflows native combine's int32 offsets
+            except pa.lib.ArrowInvalid:
+                # >2 GiB string offsets overflow int32 during native combine
+                # (esp. nested in struct/list); use the extension-safe path.
                 table = transform_pyarrow.combine_chunks(table)
         else:
             table = transform_pyarrow.combine_chunks(table)
@@ -141,6 +143,15 @@ class ShuffleHandle(TypedDict, total=False):
     node_id: str
     token: str
     schema: Optional["pa.Schema"]
+
+
+class _Endpoint(NamedTuple):
+    """A file server's Flight endpoint. ``host``/``port`` are where to connect;
+    ``incarnation`` identifies the server process so a restart is detectable."""
+
+    host: str
+    port: int
+    incarnation: str
 
 
 class ShuffleDiskError(RuntimeError):
@@ -198,24 +209,24 @@ def _build_range_index(index, num_partitions):
     empty partitions stay ``(0, 0)`` (``length == 0`` => the reducer skips them).
     """
     ranges = np.zeros((num_partitions, 2), dtype=np.int64)
-    for pid, frame_range in index.items():
-        ranges[pid] = frame_range[0]  # (offset, length); one frame per partition
+    for partition_id, frame_range in index.items():
+        ranges[partition_id] = frame_range[0]  # (offset, length); one frame per partition
     return ranges
 
 
 def _decoded_to_array(decoded, num_partitions):
-    """Dense per-partition decoded-byte counts (was a Dict[pid,int] in every
-    handle — a second O(partitions) bloat). One int64 array indexed by pid."""
+    """Dense per-partition decoded-byte counts (was a Dict[partition_id,int] in every
+    handle — a second O(partitions) bloat). One int64 array indexed by partition_id."""
     arr = np.zeros(num_partitions, dtype=np.int64)
-    for pid, nbytes in decoded.items():
-        arr[pid] = nbytes
+    for partition_id, nbytes in decoded.items():
+        arr[partition_id] = nbytes
     return arr
 
 
 class _PartitionWriter:
     """Per-partition shard buffer, sealed to disk one IPC frame per partition.
 
-    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s list;
+    ``add_shard(partition_id, shard)`` buffers a shard into partition ``partition_id``'s list;
     ``flush_all()`` concatenates each partition's shards, IPC-encodes them
     into one whole-frame, writes it to the output file, and records the
     (offset, length) range in ``index``.
@@ -248,8 +259,8 @@ class _PartitionWriter:
         # once on the first flush; every shard of this map shares one schema.
         self._combine_native_ok: Optional[bool] = None
 
-    def _flush(self, pid: int) -> None:
-        shards = self._staging.get(pid)
+    def _flush(self, partition_id: int) -> None:
+        shards = self._staging.get(partition_id)
         if not shards:
             return
         tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
@@ -262,31 +273,31 @@ class _PartitionWriter:
                 _is_pa_extension_type(f.type) for f in tbl.schema
             )
         # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
-        self._decoded_bytes_per_partition[pid] = tbl.nbytes
+        self._decoded_bytes_per_partition[partition_id] = tbl.nbytes
         buf = _encode_shard(  # whole-frame codec (see _encode_shard)
             tbl, self._compression, self._combine_native_ok
         )
         # Refuse frames the u64 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
-                f"map_{self._map_id}.shf partition {pid}: IPC frame is "
+                f"map_{self._map_id}.shf partition {partition_id}: IPC frame is "
                 f"{buf.size} bytes, exceeding the u64 wire-protocol "
                 f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
                 f"``num_partitions`` or reduce the upstream block size."
             )
         off = self._out_file.tell()
         self._out_file.write(memoryview(buf))
-        self._index.setdefault(pid, []).append((off, buf.size))
-        self._staging[pid] = []
+        self._index.setdefault(partition_id, []).append((off, buf.size))
+        self._staging[partition_id] = []
 
-    def add_shard(self, pid: int, shard: pa.Table) -> None:
+    def add_shard(self, partition_id: int, shard: pa.Table) -> None:
         if not shard.num_rows:
             return
-        self._staging.setdefault(pid, []).append(shard)
+        self._staging.setdefault(partition_id, []).append(shard)
 
     def flush_all(self) -> None:
-        for pid in list(self._staging.keys()):
-            self._flush(pid)
+        for partition_id in list(self._staging.keys()):
+            self._flush(partition_id)
 
     @property
     def index(self) -> Dict[int, List[Tuple[int, int]]]:
@@ -326,7 +337,9 @@ def _make_flight_server(host: str, base_dir: str, token: str):
             req = json.loads(action.body.to_pybytes())
             tok, sources = req["t"], req["s"]
             if tok != token:
-                raise ValueError("AUTH_FAIL")  # surfaces as FlightError client-side
+                # Typed Flight error → client receives FlightUnauthenticatedError
+                # (not a string-matched ArrowInvalid).
+                raise flight.FlightUnauthenticatedError("shuffle token mismatch")
             for path, ranges in sources:
                 fpath = os.path.join(base_dir, os.path.basename(path))
                 with open(fpath, "rb") as f:
@@ -393,9 +406,9 @@ class ShuffleFileServer:
             logger.error("ShuffleFileServer server loop returned; exiting actor")
         os._exit(1)
 
-    def endpoint(self) -> Tuple[str, int, str]:
+    def endpoint(self) -> _Endpoint:
         # (host, port) to connect; incarnation to detect a restart.
-        return (self._host, self._port, self._incarnation)
+        return _Endpoint(self._host, self._port, self._incarnation)
 
 
 @ray.remote(num_cpus=0)
@@ -416,7 +429,7 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
 # Process-global endpoint cache, reused across reducers running on the same
 # worker. Popped on fetch failure (re-resolved next call); the lock guards the
 # concurrent fetch threads.
-_ENDPOINT_CACHE: Dict[str, Tuple[str, int, str]] = {}
+_ENDPOINT_CACHE: Dict[str, _Endpoint] = {}
 _ENDPOINT_CACHE_LOCK = threading.Lock()
 
 # --------------------------------------------------------- fetch routing types
@@ -480,25 +493,26 @@ class _PwriteSink:
 
     def write(self, data: Union[bytes, bytearray, memoryview, "pa.Buffer"]) -> int:
         mv = memoryview(data)
-        total = 0
-        n_total = len(mv)
-        while total < n_total:
-            n = os.pwrite(self._fd, mv[total:], self._pos + total)
+        bytes_written = 0
+        nbytes = len(mv)
+        while bytes_written < nbytes:
+            n = os.pwrite(self._fd, mv[bytes_written:], self._pos + bytes_written)
             if n <= 0:
                 # POSIX pwrite of a nonzero buffer should return >0 or raise;
                 # 0 can happen on some FUSE / network filesystems and would
                 # spin this loop forever.
                 raise OSError(
                     f"pwrite returned {n} on fd {self._fd} "
-                    f"(offset={self._pos + total}, remaining={n_total - total})"
+                    f"(offset={self._pos + bytes_written}, "
+                    f"remaining={nbytes - bytes_written})"
                 )
-            total += n
-        self._pos += total
-        return total
+            bytes_written += n
+        self._pos += bytes_written
+        return bytes_written
 
 
 def _stream_members_flight(
-    endpoint: Tuple[str, int, str],
+    endpoint: _Endpoint,
     token: str,
     members: List[_FileRanges],
     max_bytes: int,
@@ -528,11 +542,9 @@ def _stream_members_flight(
                 # would spin forever); _prefetch_node_into classifies it as
                 # ShuffleDiskError.
                 raise
+            except flight.FlightUnauthenticatedError as e:
+                raise PermissionError(f"ShuffleFileServer auth failed: {e}") from e
             except Exception as e:
-                # pyarrow surfaces our server-side token check as ArrowInvalid
-                # (NOT a FlightError), so match on the message, not the type.
-                if "AUTH_FAIL" in str(e):
-                    raise PermissionError(f"ShuffleFileServer auth failed: {e}") from e
                 # Any other fetch failure (unavailable / timeout / server error):
                 # retryable transport fault. _prefetch_node_into re-resolves the
                 # endpoint and, if unchanged, escalates to a terminal
@@ -568,7 +580,7 @@ def _prefetch_node_into(
     """
     key = _file_server_name(shuffle_id, node_id)
 
-    def _resolve() -> Tuple[str, int, str]:
+    def _resolve() -> _Endpoint:
         # Endpoint cache avoids a blocking Ray RPC per fetch. On miss, ask
         # Ray for actor state and route by outcome (see docstring above).
         with _ENDPOINT_CACHE_LOCK:
@@ -640,7 +652,7 @@ def _prefetch_node_into(
                 _ENDPOINT_CACHE.pop(key, None)
             fresh = _resolve()
 
-            if fresh[2] != endpoint[2]:
+            if fresh.incarnation != endpoint.incarnation:
                 same_incarnation_retried = False
                 logger.warning(f"node {node_id}: file server restarted, retrying")
                 continue
