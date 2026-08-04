@@ -391,6 +391,17 @@ def test_requires_actor_reconfigure():
     v2 = DeploymentVersion("1", DeploymentConfig(num_replicas=2), {})
     assert not v1.requires_actor_reconfigure(v2)
 
+    # Backpressure response options require actor reconfigure, since the
+    # direct-ingress path reads them from the replica's local deployment
+    # config when rejecting requests.
+    v1 = DeploymentVersion("1", DeploymentConfig(backpressure_status_code=503), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(backpressure_status_code=429), {})
+    assert v1.requires_actor_reconfigure(v2)
+
+    v1 = DeploymentVersion("1", DeploymentConfig(backpressure_retry_after_s=None), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(backpressure_retry_after_s=5), {})
+    assert v1.requires_actor_reconfigure(v2)
+
 
 def test_requires_long_poll_broadcast():
     # If max concurrent queries is updated, it needs to be broadcasted

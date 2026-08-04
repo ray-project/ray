@@ -382,6 +382,9 @@ class TestBackpressureHTTPResponse:
         assert retry_after_headers(0.2) == [(b"retry-after", b"1")]
         assert retry_after_headers(7.5) == [(b"retry-after", b"8")]
         assert retry_after_headers(10) == [(b"retry-after", b"10")]
+        # Negative values can't come from config (validated >= 0), but the
+        # helper clamps at 0 so an invalid header is never sent on the wire.
+        assert retry_after_headers(-5) == [(b"retry-after", b"0")]
 
     def test_deployment_unavailable_error_stays_503_without_headers(self):
         exc = DeploymentUnavailableError(DeploymentID(name="d", app_name="app"))

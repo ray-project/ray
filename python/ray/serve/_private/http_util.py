@@ -970,11 +970,12 @@ def retry_after_headers(
 
     The header value must be a non-negative integer number of seconds
     (RFC 9110 `delay-seconds`), so the value is rounded up to avoid
-    suggesting a retry earlier than configured.
+    suggesting a retry earlier than configured, and clamped at 0 so an
+    invalid header is never emitted on the wire.
     """
     if retry_after_s is None:
         return None
-    return [(b"retry-after", str(math.ceil(retry_after_s)).encode())]
+    return [(b"retry-after", str(max(0, math.ceil(retry_after_s))).encode())]
 
 
 def send_http_response_on_exception(

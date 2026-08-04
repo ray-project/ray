@@ -177,13 +177,16 @@ class DeploymentConfig(BaseModel):
         default=-1,
         update_type=DeploymentOptionUpdateType.LightWeight,
     )
+    # NeedsActorReconfigure (not LightWeight): the direct-ingress path reads
+    # these from the replica actor's local deployment config, so runtime
+    # updates must trigger reconfigure() to reach it.
     backpressure_status_code: Literal[503, 429] = Field(
         default=503,
-        update_type=DeploymentOptionUpdateType.LightWeight,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
     backpressure_retry_after_s: Optional[NonNegativeFloat] = Field(
         default=None,
-        update_type=DeploymentOptionUpdateType.LightWeight,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
     user_config: Any = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
