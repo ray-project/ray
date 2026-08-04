@@ -21,6 +21,10 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    SortShuffleMapOp,
+)
+from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -131,6 +135,40 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),
         num_partitions=logical_op.num_outputs,
         should_sort=logical_op.sort,
+    )
+
+
+def _plan_sort_v2(
+    data_context: DataContext,
+    logical_op: Sort,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    sort_key = logical_op.sort_key
+    if sort_key.boundaries:
+        num_partitions = len(sort_key.boundaries) + 1
+    else:
+        num_partitions = (
+            logical_op.input_dependencies[0].estimated_num_outputs()
+            or data_context.default_hash_shuffle_parallelism
+        )
+
+    map_op = SortShuffleMapOp(
+        input_physical_op,
+        data_context,
+        num_partitions=num_partitions,
+        sort_key=sort_key,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"SortShuffleMap(partitions={num_partitions})",
+    )
+    return ShuffleReduceOp(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=make_sort_reduce_fn(sort_key, data_context),
+        disallow_block_splitting=True,
+        preserve_partition_order=True,
+        reduce_ray_remote_args=logical_op.ray_remote_args,
+        name=f"SortShuffleReduce(partitions={num_partitions})",
     )
 
 
@@ -331,6 +369,8 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Sort):
+        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+            return _plan_sort_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )

@@ -150,7 +150,20 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        # Upstream blocks can have compatible but non-identical schemas. For
+        # example, an aggregate block containing only null values can infer a
+        # null column while another block infers the finalized numeric type.
+        # Preserve the raw-concat fast path for identical schemas while allowing
+        # Ray's Arrow helper to promote compatible types when needed.
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
