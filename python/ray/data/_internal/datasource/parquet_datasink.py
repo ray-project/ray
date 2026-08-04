@@ -123,7 +123,11 @@ class ParquetDatasink(_FileDatasink):
 
         if self.partition_cols and self.min_rows_per_file is not None:
             raise ValueError(
-                "min_rows_per_file is not supported when partition_cols is set."
+                "min_rows_per_file isn't supported when partition_cols is non-empty, "
+                "because each block can be split across partition directories, "
+                "making the minimum unsatisfiable. To control file sizes, call "
+                "repartition(keys=partition_cols) before writing, or use "
+                "max_rows_per_file."
             )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:

@@ -4314,7 +4314,9 @@ class Dataset:
                 specified value, Ray Data writes the number of rows per block to each file.
                 The specified value is a hint, not a strict limit. Ray Data
                 might write more or fewer rows to each file. This option isn't
-                supported when ``partition_cols`` is set.
+                supported when non-empty ``partition_cols`` are specified; use
+                :meth:`~ray.data.Dataset.repartition` to control file sizes
+                instead.
             max_rows_per_file: [Experimental] The target maximum number of rows to write
                 to each file. If ``None``, Ray Data writes a system-chosen number of
                 rows to each file. If the number of rows per block is smaller than the

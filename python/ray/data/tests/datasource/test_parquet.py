@@ -1819,7 +1819,7 @@ def test_write_partition_cols_with_min_rows_per_file_raises(
 
     with pytest.raises(
         ValueError,
-        match="min_rows_per_file is not supported when partition_cols is set",
+        match="min_rows_per_file isn't supported when partition_cols is non-empty",
     ):
         ds.write_parquet(tmp_path, partition_cols=["id"], min_rows_per_file=5)
 
@@ -1833,7 +1833,7 @@ def test_write_partition_cols_with_num_rows_per_file_raises(
     with pytest.warns(DeprecationWarning, match="num_rows_per_file"):
         with pytest.raises(
             ValueError,
-            match="min_rows_per_file is not supported when partition_cols is set",
+            match="min_rows_per_file isn't supported when partition_cols is non-empty",
         ):
             ds.write_parquet(tmp_path, partition_cols=["id"], num_rows_per_file=5)
 
