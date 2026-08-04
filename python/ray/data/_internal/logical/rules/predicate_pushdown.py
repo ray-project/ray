@@ -286,11 +286,6 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
-            # The pushed (data-column) predicate reaches an upstream
-            # ``ListFiles`` -- letting a footer-based indexer skip row groups by
-            # their statistics -- via ``DeriveListFilesPushdown``, which reads it
-            # off the scanner once the plan is final. Nothing to mirror here.
-
             # Convertible conjuncts were pushed into the read. Re-apply any
             # residual (non-convertible) conjuncts as a Filter above it.
             if split.residual is None:

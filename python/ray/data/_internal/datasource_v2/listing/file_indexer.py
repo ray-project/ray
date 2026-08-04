@@ -35,8 +35,8 @@ class FileIndexer(ABC):
         ...
 
     @property
-    def yields_read_units(self) -> bool:
-        """Whether ``list_files`` already emits complete read units.
+    def produces_partitioned_manifests(self) -> bool:
+        """Whether ``list_files`` already produces partitioned manifests.
 
         ``False`` (default) means the indexer yields per-file / per-chunk
         manifests that still need size-balanced partitioning downstream. An

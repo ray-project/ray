@@ -546,7 +546,7 @@ def _read_datasource_v2(
     # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
     partitioner = (
         None
-        if indexer.yields_read_units
+        if indexer.produces_partitioned_manifests
         else RoundRobinPartitioner(
             in_memory_size_estimator=datasource.get_size_estimator(),
             min_bucket_size=min_bucket_size,

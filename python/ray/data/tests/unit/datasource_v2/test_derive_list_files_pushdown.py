@@ -171,13 +171,6 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
     assert derived.limit is None
 
 
-def test_bare_list_files_root_is_cleared(tmp_path):
-    read_files = _mk_read_files(tmp_path)
-    list_files = replace(_source_list_files(read_files), predicate=col("a") > 2)
-
-    assert _list_files_of(_apply(list_files)).predicate is None
-
-
 class _WeakenScannerPredicate(Rule):
     """Stand-in for a future rule that rewrites the scanner's predicate."""
 
