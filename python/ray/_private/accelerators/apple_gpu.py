@@ -74,19 +74,16 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        """Get visible GPU device IDs.
+        """Get the explicitly-restricted visible GPU device IDs, or None.
 
-        Apple Silicon has a single unified GPU, so the only visible id is ever "0".
-        Returns ["0"] on Apple Silicon, otherwise None. Like the node accelerator
-        count, this is a hardware property and does not depend on a framework being
-        installed.
+        Apple Silicon has no visible-devices env var (see
+        get_visible_accelerator_ids_env_var), so a process is never restricted to a
+        subset of devices. We therefore always return None ("no restriction"), exactly
+        as the NVIDIA manager does when CUDA_VISIBLE_DEVICES is unset. Returning a list
+        here (e.g. ["0"]) would incorrectly trigger id remapping and make
+        `ray.get_gpu_ids()` yield string ids like "0" instead of the int 0.
         """
-        try:
-            if AppleGPUAcceleratorManager._is_apple_silicon():
-                return ["0"]
-            return None
-        except Exception:
-            return None
+        return None
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(ids: List[str]) -> None:
