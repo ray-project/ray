@@ -433,7 +433,8 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Ensure client times out if the controller does not shutdown within timeout.
     timeout_s = 0.0
-    serve.shutdown(_timeout_s=timeout_s)
+    client = _get_global_client()
+    client.shutdown(timeout_s=timeout_s)
     assert (
         f"Controller failed to shut down within {timeout_s}s. "
         f"Check controller logs for more details." in warning_msg

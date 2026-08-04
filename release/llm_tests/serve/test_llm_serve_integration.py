@@ -11,12 +11,11 @@ from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
 from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
+
+from shutdown_utils import shutdown_serve_and_wait_for_controller
 
 # Pooling models (classify/reward) are only served through vLLM's native ASGI
 # app, which is used when direct streaming is enabled. The default OpenAiIngress
@@ -27,8 +26,6 @@ direct_streaming_only = pytest.mark.skipif(
     reason="Pooling/classify endpoints are only served in direct-streaming mode "
     "(RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1).",
 )
-
-_SHUTDOWN_TIMEOUT_S = 60 if RAY_SERVE_ENABLE_DIRECT_INGRESS else 30
 
 
 @pytest.mark.asyncio(scope="function")
@@ -169,7 +166,7 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -195,7 +192,7 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -235,7 +232,7 @@ def test_embedding_model(model_name):
     assert len(embedding) > 0
     assert all(isinstance(x, float) for x in embedding)
 
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -275,7 +272,7 @@ def test_score_model(model_name):
         assert "score" in item
         assert isinstance(item["score"], float)
 
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -338,7 +335,7 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
     assert len(data["data"]) == 1
     validate_item(data["data"][0])
 
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -371,7 +368,7 @@ def remote_model_app(request):
     yield app
 
     # Cleanup
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -444,7 +441,7 @@ def test_nested_engine_kwargs_structured_outputs():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
-    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 

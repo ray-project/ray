@@ -124,7 +124,7 @@ def start(
 
 
 @PublicAPI(stability="stable")
-def shutdown(*, _timeout_s: float = 30.0):
+def shutdown():
     """Completely shut down Serve on the cluster.
 
     Deletes all applications and shuts down Serve system actors.
@@ -151,7 +151,7 @@ def shutdown(*, _timeout_s: float = 30.0):
             )
             return
 
-    client.shutdown(timeout_s=_timeout_s)
+    client.shutdown()
     _disconnect()
 
 
