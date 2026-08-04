@@ -19,11 +19,16 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
     _encode_shard,
+    _Endpoint,
+    _ENDPOINT_CACHE,
+    _ENDPOINT_CACHE_LOCK,
+    _file_server_name,
     _FileRanges,
     _group_by_server,
     _make_flight_server,
     _NodeGroup,
     _PartitionWriter,
+    _prefetch_node_into,
     _PwriteSink,
     _read_ipc,
     _SourceRef,
@@ -112,7 +117,7 @@ def test_shuffle_file_server_lifecycle(ray_start_regular_shared_2_cpus, tmp_path
 
 # ------------------------------------------------ Arrow Flight fetch transport
 def test_flight_fetch_wire_format(tmp_path):
-    # do_action streams each range as [u32 len][frame bytes] into the sink,
+    # do_action streams each range as [u64 len][frame bytes] into the sink,
     # back-to-back, in request order.
     payload = b"HELLO_WORLD_" * 4  # 48 bytes
     (tmp_path / "s.bin").write_bytes(payload)
@@ -127,22 +132,43 @@ def test_flight_fetch_wire_format(tmp_path):
                 max_bytes=1 << 20,
                 sink=sink,
             )
-        # Record 1: u32(12) + payload[0:12]
-        assert struct.unpack(">I", os.pread(fd, 4, 0))[0] == 12
-        assert os.pread(fd, 12, 4) == payload[0:12]
-        # Record 2: u32(12) + payload[12:24] immediately after
-        assert struct.unpack(">I", os.pread(fd, 4, 16))[0] == 12
-        assert os.pread(fd, 12, 20) == payload[12:24]
+        # Record 1: u64(12) + payload[0:12]  (8-byte length prefix)
+        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 12
+        assert os.pread(fd, 12, 8) == payload[0:12]
+        # Record 2: u64(12) + payload[12:24] immediately after (at offset 8+12=20)
+        assert struct.unpack(">Q", os.pread(fd, 8, 20))[0] == 12
+        assert os.pread(fd, 12, 28) == payload[12:24]
     finally:
         os.close(fd)
 
 
-def test_flight_auth_fail_is_terminal(tmp_path):
-    # Wrong token -> server rejects -> PermissionError (terminal, not retryable).
+def test_flight_auth_fail(tmp_path):
+    # A wrong token is rejected at two layers, both asserted here:
+    #   (1) the server raises a typed FlightUnauthenticatedError (crosses the wire
+    #       as that type, not a string-matched ArrowInvalid), and
+    #   (2) the fetch client maps it to a terminal PermissionError.
+    import json
+
+    import pyarrow.flight as flight
+
     (tmp_path / "s.bin").write_bytes(b"x" * 16)
-    fd, sink = _open_sink(tmp_path)
-    try:
-        with _running_flight_server(tmp_path, "correct") as endpoint:
+    with _running_flight_server(tmp_path, "correct") as endpoint:
+        host, port, _incarnation = endpoint
+
+        # (1) raw Flight client sees the typed error on the wire.
+        client = flight.connect(f"grpc://{host}:{port}")
+        try:
+            body = json.dumps({"t": "wrong", "s": [["s.bin", [[0, 4]]]]}).encode(
+                "utf-8"
+            )
+            with pytest.raises(flight.FlightUnauthenticatedError):
+                list(client.do_action(flight.Action("fetch", body)))
+        finally:
+            client.close()
+
+        # (2) the fetch path maps that typed error to PermissionError.
+        fd, sink = _open_sink(tmp_path)
+        try:
             with pytest.raises(PermissionError):
                 _stream_members_flight(
                     endpoint,
@@ -151,8 +177,8 @@ def test_flight_auth_fail_is_terminal(tmp_path):
                     max_bytes=1 << 20,
                     sink=sink,
                 )
-    finally:
-        os.close(fd)
+        finally:
+            os.close(fd)
 
 
 def test_flight_unreachable_is_connection_error(tmp_path):
@@ -199,6 +225,41 @@ def test_flight_short_read_fails(tmp_path):
         os.close(fd)
 
 
+def test_prefetch_node_into(tmp_path):
+    # _prefetch_node_into resolves the file-server endpoint and streams every
+    # member's ranges into the sink over one Flight client. Seed the endpoint
+    # cache so _resolve returns without a Ray RPC (no Ray needed here), then
+    # assert the shard bytes land in the sink.
+    payload = b"SHARD_" * 8  # 48 bytes
+    (tmp_path / "s.bin").write_bytes(payload)
+    fd, sink = _open_sink(tmp_path)
+    shuffle_id, node_id = "sh", "n1"
+    key = _file_server_name(shuffle_id, node_id)
+    try:
+        with _running_flight_server(tmp_path, "tok") as (host, port, incarnation):
+            with _ENDPOINT_CACHE_LOCK:
+                _ENDPOINT_CACHE[key] = _Endpoint(host, port, incarnation)
+            try:
+                _prefetch_node_into(
+                    sink,
+                    shuffle_id,
+                    node_id,
+                    "tok",
+                    [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
+                    max_bytes_per_fetch=1 << 20,
+                )
+            finally:
+                with _ENDPOINT_CACHE_LOCK:
+                    _ENDPOINT_CACHE.pop(key, None)
+        # Two records back-to-back: [u64(24)][payload[:24]], [u64(24)][payload[24:]].
+        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 24
+        assert os.pread(fd, 24, 8) == payload[0:24]
+        assert struct.unpack(">Q", os.pread(fd, 8, 32))[0] == 24
+        assert os.pread(fd, 24, 40) == payload[24:48]
+    finally:
+        os.close(fd)
+
+
 # --------------------------- reducer helpers (no Ray and no sockets)
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,
@@ -239,14 +300,14 @@ def test_group_by_server():
 
 
 def test_compute_prefetch_layout():
-    # Each range contributes 4 (u32 len prefix) + range_length to the group's
+    # Each range contributes 8 (u64 len prefix) + range_length to the group's
     # size. base_offsets are the running cumulative sum.
     g0 = _NodeGroup(
         "sh",
         "n1",
         "tok",
         members=[
-            _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (4+10)*2 = 28
+            _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (8+10)*2 = 36
         ],
     )
     g1 = _NodeGroup(
@@ -254,13 +315,13 @@ def test_compute_prefetch_layout():
         "n2",
         "tok",
         members=[
-            _FileRanges(path="b", ranges=[(0, 100)]),  # 4+100 = 104
+            _FileRanges(path="b", ranges=[(0, 100)]),  # 8+100 = 108
         ],
     )
     total, base_offsets, sizes = _compute_prefetch_layout([g0, g1])
-    assert sizes == [28, 104]
-    assert base_offsets == [0, 28]
-    assert total == 132
+    assert sizes == [36, 108]
+    assert base_offsets == [0, 36]
+    assert total == 144
 
     # Empty layout.
     assert _compute_prefetch_layout([]) == (0, [], [])
