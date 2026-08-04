@@ -69,7 +69,7 @@ use parquet::file::metadata::RowGroupMetaData;
 use parquet::file::statistics::Statistics;
 use parquet::schema::types::ColumnDescriptor;
 
-use arrow::array::RecordBatch;
+use arrow::array::{ArrayRef, RecordBatch};
 use arrow::datatypes::SchemaRef;
 use arrow::error::ArrowError;
 use arrow::ffi::FFI_ArrowSchema;
@@ -294,6 +294,68 @@ fn projection_mask(
             ProjectionMask::roots(parquet_schema, indices)
         }
     }
+}
+
+/// Ordered leaf-column indices for a projection (flat schema: leaf index == root
+/// field index == column-chunk index). Mirrors `projection_mask`'s name matching so
+/// the two always agree on which columns are read.
+fn projected_leaf_indices(
+    parquet_schema: &parquet::schema::types::SchemaDescriptor,
+    columns: &Option<Vec<String>>,
+) -> Vec<usize> {
+    let root = parquet_schema.root_schema();
+    match columns {
+        None => (0..root.get_fields().len()).collect(),
+        Some(names) => root
+            .get_fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| names.iter().any(|n| n == f.name()))
+            .map(|(i, _)| i)
+            .collect(),
+    }
+}
+
+/// `(leaf index, compressed size)` for the projected columns of a row group, in
+/// ascending leaf order — the input to `partition_columns_by_budget`.
+fn projected_col_sizes(rgm: &RowGroupMetaData, leaves: &[usize]) -> Vec<(usize, u64)> {
+    leaves
+        .iter()
+        .map(|&i| (i, rgm.column(i).compressed_size().max(0) as u64))
+        .collect()
+}
+
+/// Partition projected columns into contiguous groups whose per-group compressed
+/// size stays under `budget_bytes`, so the S3 reader can fetch+decode ONE group at
+/// a time and hold only that group's compressed chunks resident — the wide-schema
+/// memory fix (the async reader's default `InMemoryRowGroup` otherwise fetches every
+/// projected column chunk for the row group up front). `cols` is `(leaf, size)` in
+/// ascending leaf order and groups preserve that order, so hstacking the groups
+/// reproduces file/schema column order. `budget_bytes == 0` (or ≤1 column) => a
+/// single group (disabled). A lone oversized column still gets its own group — a
+/// column can't be split below itself (that would be row-windowing, handled
+/// elsewhere).
+fn partition_columns_by_budget(cols: &[(usize, u64)], budget_bytes: u64) -> Vec<Vec<usize>> {
+    if budget_bytes == 0 || cols.len() <= 1 {
+        return vec![cols.iter().map(|(i, _)| *i).collect()];
+    }
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut cur: Vec<usize> = Vec::new();
+    let mut acc: u64 = 0;
+    for &(idx, sz) in cols {
+        // Start a new group when the current one is non-empty and adding this column
+        // would exceed the budget. A single column always fits (never split below 1).
+        if !cur.is_empty() && acc.saturating_add(sz) > budget_bytes {
+            groups.push(std::mem::take(&mut cur));
+            acc = 0;
+        }
+        cur.push(idx);
+        acc = acc.saturating_add(sz);
+    }
+    if !cur.is_empty() {
+        groups.push(cur);
+    }
+    groups
 }
 
 /// Probe the projected output schema with an empty (zero row group) reader, so
@@ -1071,6 +1133,114 @@ async fn drive_unit(
     }
 }
 
+/// Drive selected row groups for a WIDE projection by **column-windowing**: within
+/// each row group, read the projected columns in sequential groups (each under the
+/// compressed-byte budget), collect every group's batches, then hstack them
+/// position-wise into full-width batches sent in row order.
+///
+/// Why sequential groups: the async reader's `InMemoryRowGroup` fetches *every*
+/// projected column chunk for a row group into memory before decoding and holds them
+/// all resident. For a wide schema that whole-group compressed buffer is the entire
+/// S3 memory regression (PyArrow releases column chunks as it decodes; we didn't).
+/// Reading one column group at a time — dropping its stream before the next fetches —
+/// bounds resident compressed bytes to ~`budget` instead of the whole group. Peak =
+/// `budget` + the fully decoded row group, and the decoded row group is the output we
+/// must produce anyway (PyArrow holds it too), so this asymptotes to PyArrow parity.
+///
+/// Columns are independent, so unlike row-windowing this NEVER re-decodes a page.
+/// All groups read the same rows with the same `batch_size`, so their batches align
+/// 1:1 and hstack by position; ascending-leaf group order reproduces schema order.
+#[allow(clippy::too_many_arguments)]
+async fn drive_colwindowed(
+    store: Arc<dyn ObjectStore>,
+    path: ObjPath,
+    meta: ArrowReaderMetadata,
+    out_schema: SchemaRef,
+    leaves: Vec<usize>,
+    selected: Vec<usize>,
+    budget_bytes: u64,
+    batch_clamp: usize,
+    decode_budget: u64,
+    tx: mpsc::Sender<Result<RecordBatch, ArrowError>>,
+) {
+    // Send an error downstream and stop (mirrors spawn_window's error contract).
+    macro_rules! send_err {
+        ($e:expr) => {{
+            let _ = tx.send(Err(ArrowError::ExternalError(Box::new($e)))).await;
+            return;
+        }};
+    }
+    for rg in selected {
+        // --- sync prelude: partition columns + build masks (borrows `meta`, so it
+        // must finish before the first `.await`) ---
+        let (batch_rows, masks) = {
+            let rgm = meta.metadata().row_group(rg);
+            let batch_rows = byte_budget_rows(
+                rgm.total_byte_size(),
+                rgm.num_rows(),
+                batch_clamp,
+                decode_budget,
+            );
+            let groups =
+                partition_columns_by_budget(&projected_col_sizes(rgm, &leaves), budget_bytes);
+            let schema_descr = meta.metadata().file_metadata().schema_descr();
+            let masks: Vec<ProjectionMask> = groups
+                .into_iter()
+                .map(|g| ProjectionMask::roots(schema_descr, g))
+                .collect();
+            (batch_rows, masks)
+        };
+
+        // --- one sequential decode pass per column group ---
+        let mut group_batches: Vec<Vec<RecordBatch>> = Vec::with_capacity(masks.len());
+        for mask_g in masks {
+            let reader = ParquetObjectReader::new(store.clone(), path.clone());
+            let built = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
+                .with_row_groups(vec![rg])
+                .with_batch_size(batch_rows)
+                .with_projection(mask_g)
+                .build();
+            let mut stream = match built {
+                Ok(s) => s,
+                Err(e) => send_err!(e),
+            };
+            let mut batches = Vec::new();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(b) => batches.push(b),
+                    Err(e) => send_err!(e),
+                }
+            }
+            group_batches.push(batches);
+            // `stream` (and its InMemoryRowGroup) dropped here -> this group's
+            // compressed bytes are freed before the next group's fetch starts.
+        }
+
+        // --- hstack the row-aligned batches into full-width batches ---
+        let nbatches = group_batches.first().map(|g| g.len()).unwrap_or(0);
+        if group_batches.iter().any(|g| g.len() != nbatches) {
+            send_err!(ArrowError::ComputeError(format!(
+                "column-window batch-count mismatch in row group {rg}: {:?}",
+                group_batches.iter().map(|g| g.len()).collect::<Vec<_>>()
+            )));
+        }
+        for i in 0..nbatches {
+            let mut cols: Vec<ArrayRef> = Vec::with_capacity(out_schema.fields().len());
+            for g in &group_batches {
+                cols.extend(g[i].columns().iter().cloned());
+            }
+            match RecordBatch::try_new(out_schema.clone(), cols) {
+                Ok(b) => {
+                    if tx.send(Ok(b)).await.is_err() {
+                        return; // consumer dropped
+                    }
+                }
+                Err(e) => send_err!(e),
+            }
+        }
+    }
+}
+
 /// Build an S3 `ObjectStore` from the config recovered from the pyarrow
 /// `S3FileSystem` on the Python side (`fs.__reduce__()[1][0]`) so credentialed /
 /// custom-endpoint (MinIO, moto) / anonymous buckets all connect identically to
@@ -1123,7 +1293,7 @@ fn build_s3_store(
                     virtual_hosted_style=false, row_groups=None, columns=None,
                     batch_size=131072, decode_budget_bytes=2*1024*1024,
                     fetch_window_mb=16, k=1, split_threshold_bytes=134217728,
-                    prefetch_windows=2, predicate_json=None))]
+                    prefetch_windows=2, predicate_json=None, column_fetch_mb=256))]
 #[allow(clippy::too_many_arguments)]
 fn read_row_groups_s3(
     py: Python<'_>,
@@ -1150,6 +1320,9 @@ fn read_row_groups_s3(
     prefetch_windows: usize,
     // See `read_row_groups`: statistics row-group pruning only.
     predicate_json: Option<String>,
+    // Compressed-byte budget per column group for the wide-schema column-windowing
+    // path (0 disables it). See `drive_colwindowed`.
+    column_fetch_mb: u64,
 ) -> PyResult<ArrowStream> {
     let store = build_s3_store(
         &bucket,
@@ -1211,6 +1384,45 @@ fn read_row_groups_s3(
         && selected.len() == 1
         && meta.metadata().row_group(selected[0]).total_byte_size() as u64 >= split_threshold_bytes
         && meta.metadata().offset_index().is_some();
+
+    // Column-windowing (wide-schema S3 memory fix): if any selected group's projected
+    // columns exceed the compressed budget, read them in sequential column groups so
+    // only one group's compressed chunks are resident at a time. Only for the
+    // non-split path (K-split handles the lone-huge-*tall* group); narrow reads
+    // partition to a single group and fall through to the streaming path unchanged.
+    let leaves =
+        projected_leaf_indices(meta.metadata().file_metadata().schema_descr(), &columns);
+    let colwindow_budget = column_fetch_mb.saturating_mul(1024 * 1024);
+    let colwindow = !split
+        && colwindow_budget > 0
+        && selected.iter().any(|&rg| {
+            partition_columns_by_budget(
+                &projected_col_sizes(meta.metadata().row_group(rg), &leaves),
+                colwindow_budget,
+            )
+            .len()
+                > 1
+        });
+    if colwindow {
+        let (tx, rx) = mpsc::channel::<Result<RecordBatch, ArrowError>>(S3_CHANNEL_DEPTH);
+        rt.spawn(drive_colwindowed(
+            store.clone(),
+            obj_path.clone(),
+            meta.clone(),
+            schema.clone(),
+            leaves,
+            selected,
+            colwindow_budget,
+            batch_size,
+            decode_budget_bytes,
+            tx,
+        ));
+        return Ok(into_py_stream(Box::new(S3ChannelReader {
+            schema,
+            receivers: vec![rx],
+            cur: 0,
+        })));
+    }
 
     // Build the per-unit sub-range lists (each becomes one task + one channel,
     // drained in order).
@@ -1432,6 +1644,51 @@ mod tests {
         // A window smaller than the page still gets clamped up to the page, so a
         // page is never split across windows (bounds boundary re-decode to O(1)).
         assert_eq!(effective_window_step(256, 512, 1_000_000), 512);
+    }
+
+    #[test]
+    fn column_partition_splits_wide_group_under_budget() {
+        // 5 columns of 100 bytes each, budget 250 -> groups of [0,1],[2,3],[4].
+        let cols: Vec<(usize, u64)> = (0..5).map(|i| (i, 100)).collect();
+        assert_eq!(
+            partition_columns_by_budget(&cols, 250),
+            vec![vec![0, 1], vec![2, 3], vec![4]]
+        );
+        // Ascending leaf order is preserved within and across groups (so hstack
+        // reproduces schema order).
+        let flat: Vec<usize> = partition_columns_by_budget(&cols, 250)
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(flat, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn column_partition_disabled_or_narrow_is_one_group() {
+        let cols: Vec<(usize, u64)> = (0..5).map(|i| (i, 100)).collect();
+        // budget 0 disables -> single group.
+        assert_eq!(
+            partition_columns_by_budget(&cols, 0),
+            vec![vec![0, 1, 2, 3, 4]]
+        );
+        // budget larger than the total -> single group (narrow/small reads).
+        assert_eq!(
+            partition_columns_by_budget(&cols, 10_000),
+            vec![vec![0, 1, 2, 3, 4]]
+        );
+        // <=1 column -> single group regardless of budget.
+        assert_eq!(partition_columns_by_budget(&[(7, 999)], 1), vec![vec![7]]);
+    }
+
+    #[test]
+    fn column_partition_never_splits_below_one_column() {
+        // A single oversized column exceeds the budget but still gets its own group
+        // (can't split a column below itself). Neighbours don't merge into it.
+        let cols = vec![(0, 10), (1, 500), (2, 10)];
+        assert_eq!(
+            partition_columns_by_budget(&cols, 100),
+            vec![vec![0], vec![1], vec![2]]
+        );
     }
 
     #[test]
