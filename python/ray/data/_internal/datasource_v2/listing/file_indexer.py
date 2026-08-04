@@ -54,6 +54,24 @@ class FileIndexer(ABC):
         """
         ...
 
+    @abstractmethod
+    def list_file_infos(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable["FileInfo"]:
+        """List files as raw ``FileInfo``\\ s (path + on-disk size).
+
+        Unlike :meth:`list_files`, this yields the pre-chunk file stream. The
+        footer-based Parquet path consumes it directly -- it reads each file's
+        footer and bin-packs row groups itself, so it needs paths + sizes rather
+        than pre-chunked manifest rows.
+        """
+        ...
+
 
 @dataclass(frozen=True)
 class FileInfo:
@@ -147,15 +165,29 @@ class NonSamplingFileIndexer(FileIndexer):
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileManifest]:
-        file_info_iterator = (
-            self._get_file_info_iterator_threaded(paths, filesystem, preserve_order)
-            if self._num_workers > 1
-            else self._get_file_info_iterator_sequential(paths, filesystem)
+        # ``list_file_infos`` already skips zero-size files and applies pruners,
+        # so the manifest builder only has to chunk.
+        file_infos = self.list_file_infos(
+            paths,
+            filesystem=filesystem,
+            pruners=pruners,
+            preserve_order=preserve_order,
         )
+        yield from self._process_file_infos_to_manifests(file_infos)
 
-        yield from self._process_file_infos_to_manifests(
-            file_info_iterator, pruners or []
-        )
+    def _get_file_info_iterator(
+        self,
+        paths: "BlockColumn",
+        filesystem: "FileSystem",
+        preserve_order: bool,
+    ) -> Iterable[FileInfo]:
+        """Threaded (work-stealing) traversal when ``num_workers > 1``, else
+        sequential. Shared by :meth:`list_files` and :meth:`list_file_infos`."""
+        if self._num_workers > 1:
+            return self._get_file_info_iterator_threaded(
+                paths, filesystem, preserve_order
+            )
+        return self._get_file_info_iterator_sequential(paths, filesystem)
 
     def _get_file_info_iterator_sequential(
         self,
@@ -262,11 +294,41 @@ class NonSamplingFileIndexer(FileIndexer):
                 num_workers=num_workers,
             )
 
+    def list_file_infos(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable[FileInfo]:
+        """Yield pruned, non-empty ``FileInfo``\\ s (path + on-disk size).
+
+        The raw file-info stream that :meth:`list_files` chunks into manifests.
+        The footer-based Parquet path consumes this directly -- it reads each
+        file's footer and bin-packs row groups itself, so it needs paths + sizes
+        rather than pre-chunked manifest rows. Zero-size files are skipped and
+        ``pruners`` (file-extension / partition filters) are applied here, so
+        both listing paths share one filtering point.
+        """
+        pruners = pruners or []
+        file_info_iterator = self._get_file_info_iterator(
+            paths, filesystem, preserve_order
+        )
+        for file_info in file_info_iterator:
+            if file_info.size is None or file_info.size == 0:
+                logger.warning(f"Skipping zero-size file: {file_info.path!r}")
+                continue
+            if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                continue
+            yield file_info
+
     def _process_file_infos_to_manifests(
         self,
         file_infos: Iterable[FileInfo],
-        pruners: List[FilePruner],
     ) -> Iterable[FileManifest]:
+        # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
+        # by ``list_file_infos``; this method only chunks them into manifests.
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
@@ -274,14 +336,9 @@ class NonSamplingFileIndexer(FileIndexer):
         chunks_count = 0
 
         for file_info in file_infos:
+            # ``list_file_infos`` already dropped zero/None-size files.
+            assert file_info.size is not None
             path, file_size = file_info.path, file_info.size
-
-            if file_size is None or file_size == 0:
-                logger.warning(f"Skipping zero-size file: {path!r}")
-                continue
-
-            if not all(pruner.should_include(path) for pruner in pruners):
-                continue
 
             # Drive the chunker once per file; emit one manifest row per chunk.
             # ``chunk_metadata`` is ``None`` for whole-file chunks (default
