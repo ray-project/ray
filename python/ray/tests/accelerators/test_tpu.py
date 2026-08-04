@@ -104,9 +104,15 @@ def test_autodetect_num_tpus_vfio_mixed_groups(mock_list, mock_glob):
         "/sys/kernel/iommu_groups/10/devices": ["0000:01:00.0"],
         "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
     }
+    # Build keys with os.path.join so they match production path construction
+    # on both POSIX and Windows (where join inserts backslashes).
     vendor_results = {
-        "/sys/kernel/iommu_groups/10/devices/0000:01:00.0/vendor": "0x1ae0\n",
-        "/sys/kernel/iommu_groups/96/devices/0016:03:00.2/vendor": "0x15b3\n",
+        os.path.join(
+            "/sys/kernel/iommu_groups/10/devices", "0000:01:00.0", "vendor"
+        ): "0x1ae0\n",
+        os.path.join(
+            "/sys/kernel/iommu_groups/96/devices", "0016:03:00.2", "vendor"
+        ): "0x15b3\n",
     }
 
     def fake_listdir(path):
