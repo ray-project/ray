@@ -1584,15 +1584,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * owner dies. Covers both per-task BP (unblock ``WaitUntilObjectConsumed``)
    * and actor-wide BP (reclaim shared budget held by finished tasks).
    *
-   * The subscription is keyed by ``owner_worker_id`` so a worker death only
-   * fans out to the workers executing that owner's generator tasks, keeping
-   * the per-death publish cost proportional to the number of interested
-   * subscribers rather than the cluster's worker count. Called from
-   * ``RegisterGeneratorBackpressureState``; idempotent per owner (tracked in
-   * ``subscribed_bp_owners_``). The subscription is removed in
-   * ``HandleOwnerDied`` once the owner is dead. Must be called without
-   * holding ``mutex_``.
-   *
    * @param owner_worker_id The owner worker whose failure to watch.
    */
   void SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id);

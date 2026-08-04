@@ -777,11 +777,17 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 }
 
 void CoreWorker::SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id) {
-  {
-    absl::MutexLock lock(&mutex_);
-    if (!subscribed_bp_owners_.insert(owner_worker_id).second) {
-      return;
-    }
+  // The claim insert and the subscribe call happen under the same lock so
+  // they cannot interleave with HandleOwnerDied, which erases the claim and
+  // unsubscribes under mutex_ as well. Without this, a death sweep running
+  // between the insert and the subscribe could issue its unsubscribe first
+  // and tear down the watch this call is about to install (or leave an
+  // orphan watch whose claim is already gone). The accessor call only
+  // queues pubsub commands and never re-enters CoreWorker, so no callback
+  // can try to retake mutex_ from under us.
+  absl::MutexLock lock(&mutex_);
+  if (!subscribed_bp_owners_.insert(owner_worker_id).second) {
+    return;
   }
   // Watch for this owner's death so its streaming-generator tasks parked in
   // WaitUntilObjectConsumed / ReserveActorWideSlot get unblocked and finished
@@ -845,17 +851,6 @@ void CoreWorker::SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id) 
               }
             });
       });
-  // The claim insert above and the subscription install are not atomic:
-  // HandleOwnerDied may have erased the claim in between, and its
-  // unsubscribe could not see a subscription that was not installed yet.
-  // Re-check and drop the watch ourselves so it does not leak.
-  {
-    absl::MutexLock lock(&mutex_);
-    if (subscribed_bp_owners_.contains(owner_worker_id)) {
-      return;
-    }
-  }
-  gcs_client_->Workers().AsyncUnsubscribeFromWorkerFailure(owner_worker_id);
 }
 
 void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
@@ -865,7 +860,6 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
     std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
   };
   std::vector<DeadOwnerEntry> dead_entries;
-  bool was_subscribed = false;
   {
     absl::MutexLock lock(&mutex_);
     std::vector<ObjectID> to_erase;
@@ -881,13 +875,16 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
     for (const auto &generator_id : to_erase) {
       generator_backpressure_states_.erase(generator_id);
     }
-    was_subscribed = subscribed_bp_owners_.erase(dead_owner) > 0;
-  }
-  if (was_subscribed) {
-    // The owner is dead; its keyed subscription can never fire again. If a
-    // straggler task from this owner registers later, the resubscribe +
-    // liveness fetch in SubscribeToOwnerWorkerFailure re-detects the death.
-    gcs_client_->Workers().AsyncUnsubscribeFromWorkerFailure(dead_owner);
+    if (subscribed_bp_owners_.erase(dead_owner) > 0) {
+      // The owner is dead; its keyed subscription can never fire again.
+      // Unsubscribe under mutex_ so this cannot interleave with a straggler
+      // SubscribeToOwnerWorkerFailure (which subscribes under mutex_ as
+      // well): a late unsubscribe landing after a fresh subscribe would tear
+      // down the new watch while its claim remains, leaving the owner
+      // unwatched. If a straggler registers after this sweep, its liveness
+      // fetch re-detects the death.
+      gcs_client_->Workers().AsyncUnsubscribeFromWorkerFailure(dead_owner);
+    }
   }
   for (auto &entry : dead_entries) {
     // Permanently disable per-task backpressure so the task can drain to its

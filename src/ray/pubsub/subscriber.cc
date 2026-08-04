@@ -39,8 +39,7 @@ void SubscriberChannel::Subscribe(
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    // Last subscribe wins: with try_emplace, re-subscribing a key that is
-    // still locally registered would silently keep the stale callback.
+    // Last subscribe wins
     subscription_map_[publisher_id].per_entity_subscription.insert_or_assign(
         *key_id,
         SubscriptionInfo(std::move(subscription_callback),

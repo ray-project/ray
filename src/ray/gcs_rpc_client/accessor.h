@@ -436,7 +436,8 @@ class WorkerInfoAccessor {
   ///
   /// \param worker_id The worker whose failure to subscribe to.
   /// \param subscribe Callback that will be called when the worker fails.
-  /// \param done Callback that will be called when subscription is complete.
+  /// \param done Callback that will be called when subscription is complete. (is also
+  /// called during resubscribes)
   virtual void AsyncSubscribeToWorkerFailure(
       const WorkerID &worker_id,
       const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,

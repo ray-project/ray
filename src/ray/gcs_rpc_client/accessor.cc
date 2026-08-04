@@ -660,10 +660,7 @@ void WorkerInfoAccessor::AsyncResubscribe() {
     subscribe_operation_(nullptr);
   }
   // Replay under the lock so a concurrent AsyncUnsubscribeFromWorkerFailure
-  // cannot interleave: replaying a snapshotted operation after its entry was
-  // erased would re-subscribe a worker that was just unsubscribed, leaving a
-  // keyed watch nothing tears down. The operations only queue pubsub commands
-  // and do not retake per_worker_mutex_.
+  // cannot race
   absl::MutexLock lock(&per_worker_mutex_);
   for (const auto &[_, operation] : per_worker_subscribe_operations_) {
     // nullptr makes the operation fall back to its captured `done` callback,
