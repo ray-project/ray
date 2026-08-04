@@ -96,8 +96,7 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         # Sample actions from current policy for current observations
         action_dist_class = self.catalog.get_action_dist_cls(framework=self.framework)
         action_dist_curr = action_dist_class.from_logits(pi_out)
-        actions_curr = action_dist_curr.rsample()
-        logp_curr = action_dist_curr.logp(actions_curr)
+        actions_curr, logp_curr = action_dist_curr.rsample_and_logp()
 
         output["actions_curr"] = actions_curr
         output["logp_curr"] = logp_curr
@@ -128,8 +127,7 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
 
             # Sample actions for next state
             action_dist_next = action_dist_class.from_logits(pi_out_next)
-            actions_next = action_dist_next.rsample()
-            logp_next = action_dist_next.logp(actions_next)
+            actions_next, logp_next = action_dist_next.rsample_and_logp()
 
             output["actions_next"] = actions_next
             output["logp_next"] = logp_next

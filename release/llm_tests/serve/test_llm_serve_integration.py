@@ -443,5 +443,41 @@ def test_nested_engine_kwargs_structured_outputs():
     time.sleep(1)
 
 
+def test_chat_completion_with_default_chat_template_kwargs():
+    """Ensure mapping-valued vLLM frontend arguments remain dictionaries."""
+    model_name = "Qwen/Qwen3-0.6B"
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            default_chat_template_kwargs={
+                "enable_thinking": False,
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/chat/completions",
+        json={
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Reply with hello."}],
+            "max_tokens": 8,
+            "temperature": 0,
+        },
+        timeout=120,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["choices"][0]["message"]["content"]
+
+    serve.shutdown()
+    time.sleep(1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

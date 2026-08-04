@@ -60,6 +60,76 @@ def test_limit_pushdown_recreates_frozen_download():
     assert result.input_dependencies[0].input_dependencies[0] is input_op
 
 
+class _LimitRecordingScanner:
+    """Minimal ``SupportsLimitPushdown`` stand-in that records the pushed limit."""
+
+    def __init__(self, limit=None):
+        self.limit = limit
+
+    def push_limit(self, limit: int) -> "_LimitRecordingScanner":
+        return _LimitRecordingScanner(limit=limit)
+
+
+def _read_files_op(scanner):
+    import pyarrow as pa
+
+    from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+
+    list_files = ListFiles(
+        paths=["/does/not/matter"],
+        file_indexer=None,
+        filesystem=None,
+        source_paths=["/does/not/matter"],
+    )
+    return ReadFiles(
+        datasource_name="Test",
+        scanner=scanner,
+        schema=pa.schema([("a", pa.int64())]),
+        parallelism=1,
+        input_dependencies=[list_files],
+    )
+
+
+def test_limit_pushdown_into_adjacent_read_files():
+    """A ``Limit`` sitting directly on ``ReadFiles`` still pushes its limit in.
+
+    There are no num-rows-preserving ops to push through, so the rule used to
+    bail out and leave the read unbounded.
+    """
+    from ray.data._internal.datasource_v2.logical_optimizers import (
+        SupportsLimitPushdown,
+    )
+    from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+    SupportsLimitPushdown.register(_LimitRecordingScanner)
+    read_files = _read_files_op(_LimitRecordingScanner())
+    limit_op = Limit(10, input_dependencies=[read_files])
+
+    result = LimitPushdownRule()._push_limit_down(limit_op)
+
+    # ``Limit`` stays on top for exact enforcement...
+    assert isinstance(result, Limit)
+    assert result.limit == 10
+    # ...and the read below it now carries the limit.
+    new_read = result.input_dependencies[0]
+    assert isinstance(new_read, ReadFiles)
+    assert new_read.scanner.limit == 10
+    # The original op is untouched — the rule must not mutate in place.
+    assert read_files.scanner.limit is None
+
+
+def test_limit_pushdown_leaves_adjacent_read_files_alone_without_support():
+    """A scanner that can't take a limit means the plan is returned unchanged."""
+
+    class _NoLimitScanner:
+        pass
+
+    read_files = _read_files_op(_NoLimitScanner())
+    limit_op = Limit(10, input_dependencies=[read_files])
+
+    assert LimitPushdownRule()._push_limit_down(limit_op) is limit_op
+
+
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
     """Test basic Limit -> Limit fusion."""
     # Use override_num_blocks=1 for deterministic row ordering.

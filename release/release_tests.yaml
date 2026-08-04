@@ -201,6 +201,26 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_py314
+  python: "3.14"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
 - name: "hello_world_cu130_py{{python}}"
   python: "{{python}}"
   team: reef
@@ -2297,7 +2317,6 @@
     anyscale_sdk_2026: true
     byod:
       type: gpu
-      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
@@ -4848,6 +4867,7 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
         - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
@@ -4857,7 +4877,56 @@
 
   run:
     timeout: 3600
-    script: pytest -vs .
+    script: pytest -vs . --ignore=test_token_channel_cross_node.py
+
+- name: llm_serve_kv_router_cross_node
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_2x_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_token_channel_cross_node.py
+
+- name: llm_serve_kv_router_multiple_ingress_router
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+        - RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE=2
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3_kv_router.yaml --skip-hf-token true
 
 ##############
 # LLM Batch

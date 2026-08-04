@@ -774,16 +774,25 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
+}
 
-  if (options_.worker_type == WorkerType::WORKER) {
+void CoreWorker::SubscribeToOwnerWorkerFailures() {
+  std::call_once(subscribe_to_owner_worker_failures_flag_, [this]() {
     // Watch for owner-worker death so finished streaming-generator tasks with
-    // unconsumed objects don't leak their actor-wide BP slot
+    // unconsumed objects don't leak their actor-wide BP slot.
+    // Prefer weak_from_this over shared_from_this: we only need a weak
+    // capture (a strong one would cycle with gcs_client_), and
+    // shared_from_this can throw bad_weak_ptr.
+    std::weak_ptr<CoreWorker> weak_self = weak_from_this();
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        [this](const rpc::WorkerDeltaData &worker_failure_data) {
-          HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
+        [weak_self](const rpc::WorkerDeltaData &worker_failure_data) {
+          std::shared_ptr<CoreWorker> self = weak_self.lock();
+          if (self != nullptr) {
+            self->HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
+          }
         },
         nullptr);
-  }
+  });
 }
 
 void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
@@ -2272,6 +2281,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     // for local driver. But the current code all go through the gcs right now.
     auto status = actor_creator_->RegisterActor(task_spec);
     if (!status.ok()) {
+      task_manager_->FailPendingTask(
+          task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+      // Detached actor doesn't need ref counting.
+      if (!is_detached) {
+        RemoveActorHandleReference(actor_id);
+      }
       return status;
     }
     io_service_.post(
@@ -3372,17 +3387,23 @@ void CoreWorker::RegisterGeneratorBackpressureState(
     std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
     std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
     const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
-  // Only insert if not present. The report path also writes this entry (with
-  // the same values); leaving an existing entry untouched avoids racing with
-  // any in-progress mutation there.
-  auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
-  if (!inserted) {
-    return;
+  {
+    absl::MutexLock lock(&mutex_);
+    // Only insert if not present. The report path also writes this entry (with
+    // the same values); leaving an existing entry untouched avoids racing with
+    // any in-progress mutation there.
+    auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
+    if (inserted) {
+      it->second.waiter = std::move(waiter);
+      it->second.actor_metadata = std::move(actor_metadata);
+      it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    }
   }
-  it->second.waiter = std::move(waiter);
-  it->second.actor_metadata = std::move(actor_metadata);
-  it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  // Any BP registration (per-task or actor-wide) needs owner-death sweeps:
+  // running tasks parked in WaitUntilObjectConsumed / ReserveActorWideSlot
+  // would otherwise hang, and finished actor-wide tasks would leak shared
+  // budget. call_once inside makes this cheap after the first registration.
+  SubscribeToOwnerWorkerFailures();
 }
 
 void CoreWorker::MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id) {

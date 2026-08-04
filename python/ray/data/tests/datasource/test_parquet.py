@@ -93,6 +93,33 @@ def test_read_parquet_rejects_pickle_object_columns(
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_read_parquet_rejects_nested_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    # A pickled-object column nested inside a `list<...>` must trip the guard
+    # just like a top-level one; otherwise nesting bypasses the check.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
+    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
+    table = pa.table({"col": list_array})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def test_write_parquet_handles_per_block_column_reorder(
     ray_start_regular_shared, tmp_path
 ):
