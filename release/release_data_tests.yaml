@@ -216,6 +216,57 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
+- name: write_delta
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_deltalake.sh
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write-delta
+
+- name: write_delta_smoke
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_deltalake.sh
+    cluster_compute: fixed_size_1_cpu_compute.yaml
+  run:
+    timeout: 600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet --write-delta
+
+- name: write_delta_overwrite
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_deltalake.sh
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet --write-delta
+      --write-delta-mode overwrite
+
+- name: write_delta_partitioned
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_deltalake.sh
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write-delta
+      --write-delta-partition-by column08
+
 ###############
 # Iceberg tests
 ###############
