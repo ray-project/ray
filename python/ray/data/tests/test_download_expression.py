@@ -1,4 +1,5 @@
 import io
+from typing import List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -86,6 +87,86 @@ class TestDownloadExpressionFunctionality:
             assert result["metadata"] == f"metadata_{i}"
             assert result["index"] == i
             assert result["file_uri"] == f"local://{file_paths[i]}"
+
+    def test_download_expression_with_list_of_uris(self, tmp_path):
+        """Test download expression with a ``list[str]`` URI column.
+
+        Mirrors ``test_download_expression_with_local_files`` but each row holds
+        a list of URIs (e.g. the frames of one video). Exercises mixed-length
+        rows plus the three null/empty shapes that flatten/re-nest must keep
+        distinct:
+
+        * a null cell (whole list is ``None``) -> output cell is ``None``,
+        * an empty list ``[]`` -> output is ``[]``,
+        * a null inner element: an interleaved valid/nonexistent/valid row, where
+          the failed download stays ``None`` *in place* and its siblings keep
+          their bytes (a strip-and-shift bug would corrupt both).
+        """
+        # Each row is either None (a genuinely null cell) or a list of
+        # (filename, content) frames. ``content=None`` marks a URI we never write
+        # to disk, so its download must come back as None.
+        rows = [
+            [
+                ("r0_f0.bin", b"row0 frame0"),
+                ("r0_f1.bin", b"row0 frame1"),
+                ("r0_f2.bin", b"row0 frame2"),
+            ],  # length 3
+            [("r1_f0.bin", b"row1 frame0")],  # length 1
+            [("r2_f0.bin", b"row2 frame0"), ("r2_f1.bin", b"row2 frame1")],  # length 2
+            [],  # empty list
+            None,  # null cell
+            [
+                ("r5_f0.bin", b"row5 frame0"),
+                ("r5_missing.bin", None),  # never created -> download is None
+                ("r5_f2.bin", b"row5 frame2"),
+            ],  # interleaved valid / invalid / valid
+        ]
+
+        frame_uris: List[Optional[List[str]]] = []
+        expected_bytes: List[Optional[List[Optional[bytes]]]] = []
+        for row in rows:
+            if row is None:
+                frame_uris.append(None)
+                expected_bytes.append(None)
+                continue
+            uris = []
+            expected = []
+            for filename, content in row:
+                file_path = tmp_path / filename
+                if content is not None:
+                    file_path.write_bytes(content)
+                uris.append(f"local://{file_path}")
+                expected.append(content)
+            frame_uris.append(uris)
+            expected_bytes.append(expected)
+
+        table = pa.Table.from_arrays(
+            [
+                pa.array(frame_uris, type=pa.list_(pa.string())),
+                pa.array([f"id_{i}" for i in range(len(rows))]),
+            ],
+            names=["frame_uris", "row_id"],
+        )
+
+        ds = ray.data.from_arrow(table)
+        ds_with_downloads = ds.with_column("frames_bytes", download("frame_uris"))
+
+        results = sorted(ds_with_downloads.take_all(), key=lambda row: row["row_id"])
+        assert len(results) == len(rows)
+
+        for i, result in enumerate(results):
+            frames = result["frames_bytes"]
+            if expected_bytes[i] is None:
+                # A null cell in is a null cell out (distinct from empty list).
+                assert frames is None
+                assert result["frame_uris"] is None
+                continue
+            # One inner list of bytes per row, matching that row's length, order,
+            # and content (empty row -> [], failed URI -> None in place).
+            assert isinstance(frames, list)
+            assert frames == expected_bytes[i]
+            # The original list column round-trips unchanged.
+            assert result["frame_uris"] == frame_uris[i]
 
     def test_download_expression_empty_dataset(self):
         """Test download expression with empty dataset."""

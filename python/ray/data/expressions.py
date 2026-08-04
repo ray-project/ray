@@ -2123,27 +2123,39 @@ def download(
     """
     Create a download expression that downloads content from URIs.
 
-    This creates an expression that will download bytes from URIs stored in
-    a specified column. When evaluated, it will fetch the content from each URI
-    and return the downloaded bytes.
+    Each cell of the URI column may hold either a single URI string -- the
+    output is a ``binary`` column of downloaded bytes -- or a list of URI
+    strings (e.g. every frame of a video), in which case the output is a
+    ``list<binary>`` column holding one list of bytes per row, in URI order.
+    All URIs are fetched through the same shared connection pool. A failed
+    download becomes ``None`` in its slot; an empty list stays empty and a
+    null cell stays null.
 
     Args:
-        uri_column_name: The name of the column containing URIs to download from
+        uri_column_name: The name of the column containing URIs to download
+            from. Each cell may be a single URI or a list of URIs.
         filesystem: PyArrow filesystem to use for reading remote files.
             If None, the filesystem is auto-detected from the path scheme.
+
     Returns:
-        A DownloadExpr that will download content from the specified URI column
+        A DownloadExpr that downloads content from the specified URI column.
 
     Example:
         >>> from ray.data.expressions import download
         >>> import ray
-        >>> # Create dataset with URIs
+        >>> # One URI per row -> a ``binary`` column.
         >>> ds = ray.data.from_items([
         ...     {"uri": "s3://bucket/file1.jpg", "id": "1"},
         ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
         ... ])
-        >>> # Add downloaded bytes column
         >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
+        >>> # A list of URIs per row -> a ``list<binary>`` column.
+        >>> videos = ray.data.from_items([
+        ...     {"frames": ["s3://bucket/v0_f0.jpg", "s3://bucket/v0_f1.jpg"]}
+        ... ])
+        >>> videos_with_bytes = videos.with_column(
+        ...     "frame_bytes", download("frames")
+        ... )
     """
     return DownloadExpr(uri_column_name=uri_column_name, filesystem=filesystem)
 
