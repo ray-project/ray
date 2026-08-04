@@ -577,6 +577,10 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
     }
 )
 
+# Mirrors the `enable_ray_event` ray config; the C++ event recorder drops all
+# events unless this is on.
+RAY_ENABLE_RAY_EVENT = env_bool("RAY_enable_ray_event", False)
+
 
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
 # environment to all workers. Ray does this by setting the `py_executable` to the
