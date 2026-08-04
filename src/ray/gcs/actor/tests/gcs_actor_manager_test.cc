@@ -186,7 +186,10 @@ class GcsActorManagerTest : public ::testing::Test {
         fake_actor_by_state_gauge_,
         fake_gcs_actor_by_state_gauge_,
         observability_publisher_.get(),
-        clock_);
+        clock_,
+        [this](const NodeID &node_id, const WorkerID &worker_id) {
+          return dead_workers_.contains(worker_id) || dead_nodes_.contains(node_id);
+        });
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -227,7 +230,29 @@ class GcsActorManagerTest : public ::testing::Test {
                : nullptr;
   }
 
+  void ReportActorRefDeleted(const ActorID &actor_id) {
+    rpc::ReportActorRefDeletedRequest request;
+    request.set_actor_id(actor_id.Binary());
+    auto reply = std::make_shared<rpc::ReportActorRefDeletedReply>();
+    gcs_actor_manager_->HandleReportActorRefDeleted(
+        request, reply.get(), [reply](auto status, auto success, auto failure) {});
+  }
+
+  Status CallRegisterActor(const rpc::RegisterActorRequest &request) {
+    return gcs_actor_manager_->RegisterActor(request, [](const Status &) {});
+  }
+
+  bool IsActorRegistered(const ActorID &actor_id) const {
+    return gcs_actor_manager_->registered_actors_.contains(actor_id);
+  }
+
+  void KillOwnerWorker(const NodeID &node_id, const WorkerID &worker_id) {
+    dead_workers_.insert(worker_id);
+    gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  }
+
   void OnNodeDead(const NodeID &node_id) {
+    dead_nodes_.insert(node_id);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_node_id(node_id.Binary());
     gcs_actor_manager_->OnNodeDead(node_info, "127.0.0.1");
@@ -268,7 +293,10 @@ class GcsActorManagerTest : public ::testing::Test {
         fake_actor_by_state_gauge_,
         fake_gcs_actor_by_state_gauge_,
         observability_publisher_.get(),
-        clock_);
+        clock_,
+        [this](const NodeID &node_id, const WorkerID &worker_id) {
+          return dead_workers_.contains(worker_id) || dead_nodes_.contains(node_id);
+        });
   }
 
   size_t RegisteredActorCount(const gcs::GcsActorManager &actor_manager) const {
@@ -362,6 +390,11 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
+  // Worker and node deaths are owned by the worker and node managers in
+  // production; the fixture injects predicates over these sets so tests can mark
+  // an owner dead.
+  absl::flat_hash_set<WorkerID> dead_workers_;
+  absl::flat_hash_set<NodeID> dead_nodes_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
@@ -407,7 +440,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
-  ASSERT_TRUE(worker_client_->Reply());
+  // Registering an actor must not arm a poll on its owner; only Initialize does.
+  ASSERT_FALSE(worker_client_->Reply());
+  ReportActorRefDeleted(actor->GetActorID());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
@@ -496,7 +531,7 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
     io_service_.run_one();
     // Actor is killed.
-    ASSERT_TRUE(worker_client_->Reply());
+    ReportActorRefDeleted(actor->GetActorID());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
 
@@ -568,7 +603,7 @@ TEST_F(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter) {
     gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
     io_service_.run_one();
     // Actor is killed.
-    ASSERT_TRUE(worker_client_->Reply());
+    ReportActorRefDeleted(actor->GetActorID());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
   drain_io_context();
@@ -774,8 +809,6 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
       "worker process has died."));
   // No more actors to schedule.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
-
-  ASSERT_TRUE(worker_client_->Reply());
 }
 
 TEST_F(GcsActorManagerTest, TestNodeFailure) {
@@ -822,8 +855,6 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
       "node has died."));
   // No more actors to schedule.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
-
-  ASSERT_TRUE(worker_client_->Reply());
 }
 
 TEST_F(GcsActorManagerTest, TestActorReconstruction) {
@@ -890,8 +921,6 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
       "node has died."));
   // No more actors to schedule.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
-
-  ASSERT_TRUE(worker_client_->Reply());
 }
 
 TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
@@ -1109,8 +1138,6 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test"),
             actor->GetActorID());
 
-  // Detached actor has no reply of WaitForActorRefDeleted request.
-  ASSERT_FALSE(worker_client_->Reply());
   // Kill this detached actor
   rpc::KillActorViaGcsReply reply;
   rpc::KillActorViaGcsRequest request;
@@ -1271,8 +1298,8 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
-  ASSERT_TRUE(worker_client_->Reply());
+  // The owner reports that all references to the actor are deleted.
+  ReportActorRefDeleted(actor->GetActorID());
 
   // Check that the actor is in state `DEAD`.
   actor->UpdateAddress(RandomAddress());
@@ -2421,9 +2448,8 @@ TEST_F(GcsActorManagerTest, TestGetNamedActorOnDeletedActorRefReturnsNotFound) {
   // Actor should now be DEAD
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
-  // Simulate the reply of WaitForActorRefDeleted request to trigger actor ref deletion
-  ASSERT_TRUE(worker_client_->Reply())
-      << "Failed to notify the actor manager that the actor has been deleted.";
+  // The owner reports that all references (including lineage refs) are deleted.
+  ReportActorRefDeleted(actor->GetActorID());
   // Actor ref should be deleted and is no longer reconstructable
   drain_io_context();
 
@@ -2462,9 +2488,8 @@ TEST_F(GcsActorManagerTest, TestRegisterNamedActorOnDeletedActorRefCreatesNewAct
   // Actor should now be DEAD
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
-  // Simulate the reply of WaitForActorRefDeleted request to trigger actor ref deletion
-  ASSERT_TRUE(worker_client_->Reply())
-      << "Failed to notify the actor manager that the actor has been deleted.";
+  // The owner reports that all references (including lineage refs) are deleted.
+  ReportActorRefDeleted(actor->GetActorID());
   drain_io_context();
 
   rpc::RegisterActorRequest register_request =
@@ -2620,6 +2645,65 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
+
+  // Reloading an owned actor re-arms the owner poll, the only path that still
+  // uses it: the GCS may have missed events entirely while it was down, so it
+  // re-establishes the check by asking.
+  ASSERT_TRUE(worker_client_->Reply());
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestRegisterAfterOwnerDeathIsRejected) {
+  // A registration can reach the GCS *after* its owner's death was processed
+  // (the owner dies right after sending it, and the RPC is queued or retried).
+  // Owner-death cleanup only scans bookkeeping populated at registration, so
+  // accepting it would leave an actor nothing ever destroys.
+  const JobID job_id = JobID::FromInt(1);
+  auto request = GenRegisterActorRequest(job_id,
+                                         /*max_restarts=*/0,
+                                         /*detached=*/false,
+                                         /*name=*/"rejected_after_owner_death",
+                                         /*ray_namespace=*/"test_namespace");
+  const auto &owner_address = request.task_spec().caller_address();
+  const auto owner_node_id = NodeID::FromBinary(owner_address.node_id());
+  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  const auto actor_id =
+      ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+
+  KillOwnerWorker(owner_node_id, owner_worker_id);
+  drain_io_context();
+
+  auto status = CallRegisterActor(request);
+  ASSERT_TRUE(status.IsInvalid()) << status;
+  ASSERT_FALSE(IsActorRegistered(actor_id))
+      << "An actor whose owner already died must not be registered.";
+
+  // The node half of the predicate rejects too.
+  auto node_request = GenRegisterActorRequest(job_id, /*max_restarts=*/0);
+  OnNodeDead(NodeID::FromBinary(node_request.task_spec().caller_address().node_id()));
+  ASSERT_TRUE(CallRegisterActor(node_request).IsInvalid());
+
+  // Detached actors are rejected too: their creation task also comes from the
+  // dead caller, so exempting them would park an actor nothing ever creates.
+  auto detached_request = GenRegisterActorRequest(job_id,
+                                                  /*max_restarts=*/0,
+                                                  /*detached=*/true,
+                                                  /*name=*/"detached_rejected",
+                                                  /*ray_namespace=*/"test_namespace");
+  KillOwnerWorker(
+      NodeID::FromBinary(detached_request.task_spec().caller_address().node_id()),
+      WorkerID::FromBinary(detached_request.task_spec().caller_address().worker_id()));
+  drain_io_context();
+  ASSERT_TRUE(CallRegisterActor(detached_request).IsInvalid());
+
+  // The name must still be usable: a rejected registration that reserved it
+  // would make this second attempt fail with AlreadyExists.
+  auto retry = GenRegisterActorRequest(job_id,
+                                       /*max_restarts=*/0,
+                                       /*detached=*/false,
+                                       /*name=*/"rejected_after_owner_death",
+                                       /*ray_namespace=*/"test_namespace");
+  ASSERT_TRUE(CallRegisterActor(retry).ok());
 }
 
 }  // namespace gcs

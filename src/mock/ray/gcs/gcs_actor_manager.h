@@ -48,7 +48,8 @@ class MockGcsActorManager : public GcsActorManager {
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
             /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
             /*observability_publisher=*/FakeObsPublisher(),
-            /*clock=*/clock_) {}
+            /*clock=*/clock_,
+            /*is_owner_dead=*/[](const NodeID &, const WorkerID &) { return false; }) {}
 
   static pubsub::ObservabilityPublisher *FakeObsPublisher() {
     static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(

@@ -2196,9 +2196,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.allow_out_of_order_execution,
       root_detached_actor_id,
       actor_creation_options.actor_generator_backpressure_num_objects);
-  // Add the actor handle before we submit the actor creation task, since the
-  // actor handle must be in scope by the time the GCS sends the
-  // WaitForActorRefDeletedRequest.
+  // Add the actor handle before we submit the actor creation task, so the owner
+  // holds a reference before it arms the ref-deleted notification.
   RAY_CHECK(actor_manager_->EmplaceNewActorHandle(
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Attempt to emplace new actor handle for the actor being created with actor id: "
@@ -2264,6 +2263,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     io_service_.post(
         [this, task_spec = std::move(task_spec)]() {
           actor_creator_->AsyncRegisterActor(task_spec, [this, task_spec](Status status) {
+            if (!task_spec.IsDetachedActor()) {
+              // Armed once the registration has resolved, so a report cannot reach
+              // the GCS ahead of it. Armed on failure too: the status can come from
+              // the client (a shut down GCS connection fails queued requests), in
+              // which case the GCS may have registered the actor anyway.
+              actor_task_submitter_->NotifyGCSWhenActorRefDeleted(
+                  task_spec.ActorCreationId());
+            }
             if (!status.ok()) {
               RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
                   << "Failed to register actor. Error message: " << status;
@@ -2280,10 +2287,20 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     // functions like list actors these actors need to be there, especially
     // for local driver. But the current code all go through the gcs right now.
     auto status = actor_creator_->RegisterActor(task_spec);
+    // Detached actors are not ref counted. Armed even when the registration
+    // failed, for the reason above plus the client side deadline on this call: a
+    // timed out registration may still land later. For a failure the GCS itself
+    // produced, such as AlreadyExists, this costs one ignored report. For a
+    // timeout, the report can also be processed before the still-queued
+    // registration and be dropped, and the late registration then leaks until
+    // this worker exits. Arming is still strictly better: unarmed, every
+    // late-landing registration leaks, not just the overtaken ones.
+    if (!is_detached) {
+      actor_task_submitter_->NotifyGCSWhenActorRefDeleted(actor_id);
+    }
     if (!status.ok()) {
       task_manager_->FailPendingTask(
           task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
-      // Detached actor doesn't need ref counting.
       if (!is_detached) {
         RemoveActorHandleReference(actor_id);
       }

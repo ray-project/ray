@@ -124,6 +124,18 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
                                   int64_t timeout_ms = -1) override;
 
   /**
+    Report that all references to the actor (including lineage refs) have been
+    deleted, so the GCS can permanently destroy the actor.
+
+    @param actor_id The ID of the actor.
+    @param callback Callback that will be called after the operation completes.
+    @param timeout_ms RPC timeout in milliseconds. -1 means the default.
+   */
+  void AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                  const rpc::StatusCallback &callback,
+                                  int64_t timeout_ms = -1) override;
+
+  /**
     Register actor to GCS asynchronously.
 
     @param task_spec The specification for the actor creation task.

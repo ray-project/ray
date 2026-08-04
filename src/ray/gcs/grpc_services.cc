@@ -39,6 +39,8 @@ void ActorInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(ActorInfoGcsService, KillActorViaGcs, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       ActorInfoGcsService, ReportActorOutOfScope, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      ActorInfoGcsService, ReportActorRefDeleted, max_active_rpcs_per_handler_)
 }
 
 void NodeInfoGrpcService::InitServerCallFactories(

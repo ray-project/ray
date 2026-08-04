@@ -80,6 +80,15 @@ void GcsWorkerManager::HandleReportWorkerFailure(
          worker_failure_data->MergeFrom(request.worker_failure());
          worker_failure_data->set_is_alive(false);
 
+         // Index the death before the listeners below run: one of them calls
+         // GcsActorManager::OnWorkerDead, whose scan of this owner's actors is the
+         // last one guaranteed to happen. A registration arriving after that scan
+         // has to be able to see the death, which rules out waiting for the row to
+         // be persisted. Retention is still bookkept once the row is written.
+         if (!is_duplicate_death_report) {
+           dead_worker_ids_.insert(worker_id);
+         }
+
          for (auto &listener : worker_dead_listeners_) {
            listener(worker_failure_data);
          }
@@ -97,6 +106,12 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              RAY_LOG(ERROR).WithField(worker_id).WithField(node_id).WithField(
                  "worker_address", worker_ip_address)
                  << "Failed to report worker failure";
+             // The death index entry is kept even though the retention list will
+             // never evict it: the listeners above already acted on this death,
+             // so forgetting it would re-admit registrations from this dead
+             // owner. Table writes are assumed reliable elsewhere (the actor
+             // table put is RAY_CHECK_OK'd), so this retains at most one
+             // WorkerID per failed write.
            } else {
              if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
                ray_metric_unintentional_worker_failures_.Record(1);
@@ -348,6 +363,7 @@ void GcsWorkerManager::GetWorkerInfo(
 }
 
 void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   std::array<std::vector<std::pair<uint64_t, WorkerID>>, kNumDeadWorkerTiers>
       dead_workers_bucket;
   for (const auto &[worker_id, data] : gcs_init_data.Workers()) {
@@ -365,6 +381,7 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
         [](const auto &left, const auto &right) { return left.first < right.first; });
     for (const auto &entry : dead_workers_bucket[tier]) {
       dead_workers_by_tier_[tier].push_back(entry.second);
+      dead_worker_ids_.insert(entry.second);
     }
   }
   const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
@@ -387,6 +404,9 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
     }
   }
   if (!to_evict.empty()) {
+    for (const auto &evict_id : to_evict) {
+      dead_worker_ids_.erase(evict_id);
+    }
     gcs_table_storage_.WorkerTable().BatchDelete(to_evict,
                                                  {[](const auto &) {}, io_context_});
   }
@@ -394,6 +414,7 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
 
 void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id,
                                        rpc::WorkerExitType exit_type) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   dead_workers_by_tier_[DeadWorkerTier(exit_type)].push_back(worker_id);
   if (TotalDeadWorkers() <=
       RayConfig::instance().maximum_gcs_dead_worker_cached_count()) {
@@ -403,6 +424,7 @@ void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id,
     if (!tier.empty()) {
       const WorkerID evict_id = tier.front();
       tier.pop_front();
+      dead_worker_ids_.erase(evict_id);
       gcs_table_storage_.WorkerTable().Delete(evict_id,
                                               {[](const auto &) {}, io_context_});
       break;

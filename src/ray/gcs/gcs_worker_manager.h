@@ -18,12 +18,14 @@
 #include <deque>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
+#include "ray/util/thread_checker.h"
 
 namespace ray {
 namespace gcs {
@@ -65,6 +67,16 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       rpc::UpdateWorkerNumPausedThreadsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Returns true if the GCS has processed this worker's death. Bounded by
+  /// `maximum_gcs_dead_worker_cached_count`: an evicted (long dead) worker reads
+  /// as not dead, so callers must treat a hit as evidence of death and a miss as
+  /// no evidence either way. At capacity an intentional exit can be evicted right
+  /// away, so a miss does not mean the worker died long ago.
+  bool IsWorkerDead(const WorkerID &worker_id) const {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+    return dead_worker_ids_.contains(worker_id);
+  }
+
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<rpc::WorkerTableData>)> listener);
 
@@ -97,7 +109,7 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
   pubsub::GcsPublisher &gcs_publisher_;
-  UsageStatsClient *usage_stats_client_;
+  UsageStatsClient *usage_stats_client_ = nullptr;
 
   /// Only listens for unexpected worker deaths not expected like node death.
   std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
@@ -135,6 +147,21 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   /// Dead worker ids bucketed by retention priority tier; each tier is FIFO (oldest at
   /// front). Bounds retention in the worker table. Only accessed on io_context_.
   std::array<std::deque<WorkerID>, kNumDeadWorkerTiers> dead_workers_by_tier_;
+
+  /// Liveness index for the dead workers `dead_workers_by_tier_` retains. Inserted
+  /// as soon as the death is processed, which is earlier than the retention list is
+  /// updated, because the actor manager's admission check has to see the death on
+  /// the same io_context turn (see `HandleReportWorkerFailure`). Erased when the
+  /// retention list evicts the worker, or when the worker's row failed to be
+  /// written. It is a set over a multiset: a worker reported dead twice before its
+  /// row is written occupies two deque slots but one entry here, so evicting the
+  /// first slot drops the entry while the second still tracks the worker. That
+  /// direction is safe, since a miss is never taken as evidence of life.
+  absl::flat_hash_set<WorkerID> dead_worker_ids_;
+
+  // Makes sure the two unprotected dead-worker structures above are only
+  // accessed from io_context_'s thread.
+  ThreadChecker thread_checker_;
 };
 
 }  // namespace gcs

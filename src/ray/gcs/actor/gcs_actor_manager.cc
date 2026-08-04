@@ -237,7 +237,8 @@ GcsActorManager::GcsActorManager(
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge,
     pubsub::ObservabilityPublisher *observability_publisher,
-    ClockInterface &clock)
+    ClockInterface &clock,
+    std::function<bool(const NodeID &, const WorkerID &)> is_owner_dead)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -255,8 +256,10 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
       actor_by_state_gauge_(actor_by_state_gauge),
       gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge),
-      clock_(clock) {
+      clock_(clock),
+      is_owner_dead_(std::move(is_owner_dead)) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
+  RAY_CHECK(is_owner_dead_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
   // On change, only retract keys that dropped to zero (emit their final 0). Live
@@ -308,6 +311,40 @@ void GcsActorManager::HandleReportActorOutOfScope(
     RAY_LOG(INFO).WithField(actor_id) << "The out of scope actor is already dead";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   }
+}
+
+void GcsActorManager::HandleReportActorRefDeleted(
+    rpc::ReportActorRefDeletedRequest request,
+    rpc::ReportActorRefDeletedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto actor_id = ActorID::FromBinary(request.actor_id());
+  auto it = registered_actors_.find(actor_id);
+  if (it == registered_actors_.end()) {
+    // Never registered or already destroyed. This branch also consumes a report
+    // that outran its own still-queued registration (only reachable when a sync
+    // registration timed out client-side and released the handle); that
+    // registration then leaks until its owner exits (accepted, see the arming
+    // comment in CoreWorker::CreateActor).
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Ignoring a ref-deleted report for an actor that was never registered "
+           "or is already destroyed";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+  // Unlike the out-of-scope report, this needs no staleness guard: REF_DELETED
+  // is terminal, so the actor is erased here and any duplicate report lands in
+  // the branch above.
+  RAY_LOG(INFO).WithField(actor_id)
+      << "Actor has no references (including lineage refs), destroying actor";
+  int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
+  DestroyActor(
+      actor_id,
+      GenActorRefDeletedCause(&it->second->GetActorTableData()),
+      /*force_kill=*/false,
+      [reply, send_reply_callback]() {
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      },
+      timeout_ms);
 }
 
 void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
@@ -682,6 +719,26 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     return Status::OK();
   }
 
+  // Reject a registration whose owner is already known to be dead: the owner's
+  // death was processed before this (queued or retried) registration arrived, so
+  // the cleanup that destroys an owner's actors has already scanned past this one
+  // and nothing is guaranteed to look at it again. Detached actors are rejected
+  // too, since their creation task also comes from the dead caller. Rejecting
+  // instead of registering keeps the name free. Both death indexes are bounded,
+  // so this check is best-effort: a registration admitted after its owner's
+  // death was evicted is only reclaimed when a GCS restart re-arms the poll.
+  const auto &caller_address = request.task_spec().caller_address();
+  const auto owner_node_id = NodeID::FromBinary(caller_address.node_id());
+  const auto owner_worker_id = WorkerID::FromBinary(caller_address.worker_id());
+  if (is_owner_dead_(owner_node_id, owner_worker_id)) {
+    return Status::Invalid(absl::StrFormat(
+        "Actor %s was not registered: the GCS had already recorded the death of "
+        "its owner (worker %s on node %s).",
+        actor_id.Hex(),
+        owner_worker_id.Hex(),
+        owner_node_id.Hex()));
+  }
+
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
 
   // Use the namespace in task options by default. Otherwise use the
@@ -725,15 +782,12 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   registered_actors_.emplace(actor->GetActorID(), actor);
   function_manager_.AddJobReference(actor_id.JobId());
 
-  const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = NodeID::FromBinary(owner_address.node_id());
-  auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
+  RAY_CHECK(unresolved_actors_[owner_node_id][owner_worker_id]
+                .emplace(actor->GetActorID())
+                .second);
 
   if (!actor->IsDetached()) {
-    // This actor is owned. Send a long polling request to the actor's
-    // owner to determine when the actor should be removed.
-    PollOwnerForActorRefDeleted(actor);
+    AddActorToOwner(actor);
   } else {
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
@@ -931,24 +985,28 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
   return actors;
 }
 
+void GcsActorManager::AddActorToOwner(const std::shared_ptr<GcsActor> &actor) {
+  const auto &actor_id = actor->GetActorID();
+  const auto &owner_node_id = actor->GetOwnerNodeID();
+  const auto &owner_id = actor->GetOwnerID();
+  auto [it, inserted] = owners_[owner_node_id].try_emplace(owner_id);
+  if (inserted) {
+    RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
+                   << ", job id = " << actor_id.JobId();
+  }
+  it->second.insert(actor_id);
+}
+
 void GcsActorManager::PollOwnerForActorRefDeleted(
     const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
   const auto &owner_node_id = actor->GetOwnerNodeID();
   const auto &owner_id = actor->GetOwnerID();
-  auto &workers = owners_[owner_node_id];
-  auto it = workers.find(owner_id);
-  if (it == workers.end()) {
-    RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
-                   << ", job id = " << actor_id.JobId();
-    it = workers.emplace(owner_id, Owner(actor->GetOwnerAddress())).first;
-  }
-  it->second.children_actor_ids_.insert(actor_id);
 
   rpc::WaitForActorRefDeletedRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
-  auto client = worker_client_pool_.GetOrConnect(it->second.address_);
+  auto client = worker_client_pool_.GetOrConnect(actor->GetOwnerAddress());
   client->WaitForActorRefDeleted(
       std::move(wait_request),
       [this, owner_node_id, owner_id, actor_id](
@@ -1220,7 +1278,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     auto owner = it->second.find(worker_id);
     // Make a copy of the children actor IDs since we will delete from the
     // list.
-    const auto children_ids = owner->second.children_actor_ids_;
+    const auto children_ids = owner->second;
     for (const auto &child_id : children_ids) {
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActorTableData(child_id),
@@ -1294,7 +1352,7 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
     std::vector<std::pair<WorkerID, ActorID>> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
-      for (const auto &child_id : owner.second.children_actor_ids_) {
+      for (const auto &child_id : owner.second) {
         children_ids.emplace_back(owner.first, child_id);
       }
     }
@@ -1782,8 +1840,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
 
       if (!actor->IsDetached()) {
-        // This actor is owned. Send a long polling request to the actor's
-        // owner to determine when the actor should be removed.
+        AddActorToOwner(actor);
+        // The GCS may have missed events entirely while it was down, so
+        // re-establish the check by asking the owner rather than relying on a
+        // report it may already have delivered.
         PollOwnerForActorRefDeleted(actor);
       }
 
@@ -1869,9 +1929,8 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
   auto &node = owners_[owner_node_id];
   auto worker_it = node.find(owner_id);
   RAY_CHECK(worker_it != node.end());
-  auto &owner = worker_it->second;
-  RAY_CHECK(owner.children_actor_ids_.erase(actor_id));
-  if (owner.children_actor_ids_.empty()) {
+  RAY_CHECK(worker_it->second.erase(actor_id));
+  if (worker_it->second.empty()) {
     node.erase(worker_it);
     if (node.empty()) {
       owners_.erase(owner_node_id);

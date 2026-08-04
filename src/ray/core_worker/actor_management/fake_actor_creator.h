@@ -42,6 +42,14 @@ class FakeActorCreator : public ActorCreatorInterface {
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
                                   rpc::StatusCallback callback) override {}
 
+  void AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                  rpc::StatusCallback callback) override {
+    ref_deleted_reports.push_back(actor_id);
+    if (callback) {
+      callback(Status::OK());
+    }
+  }
+
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
@@ -57,6 +65,7 @@ class FakeActorCreator : public ActorCreatorInterface {
 
   std::list<rpc::StatusCallback> callbacks;
   bool actor_pending = false;
+  std::vector<ActorID> ref_deleted_reports;
 };
 
 }  // namespace core

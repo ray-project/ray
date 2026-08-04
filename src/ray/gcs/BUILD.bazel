@@ -189,6 +189,8 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/stats:stats_metric",
+        "//src/ray/util:thread_checker",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

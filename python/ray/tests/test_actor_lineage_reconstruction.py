@@ -34,6 +34,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
             {
                 "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction": failure,
                 "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope": failure,
+                "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorRefDeleted": failure,
             }
         ),
     )

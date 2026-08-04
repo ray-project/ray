@@ -211,8 +211,8 @@ void ActorManager::OnActorKilled(const ActorID &actor_id) {
 void ActorManager::WaitForActorRefDeleted(
     const ActorID &actor_id,
     std::function<void(const ActorID &)> actor_ref_deleted_callback) {
-  // GCS actor manager will wait until the actor has been created before polling the
-  // owner. This should avoid any asynchronous problems.
+  // The GCS only polls after a restart, for actors it reloaded from the table.
+  // New registrations rely on this worker reporting the deletion instead.
   auto callback =
       [actor_id, actor_ref_deleted_callback = std::move(actor_ref_deleted_callback)](
           const ObjectID &object_id) { actor_ref_deleted_callback(actor_id); };

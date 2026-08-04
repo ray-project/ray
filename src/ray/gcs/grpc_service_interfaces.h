@@ -74,6 +74,10 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
                                            ReportActorOutOfScopeReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportActorRefDeleted(ReportActorRefDeletedRequest request,
+                                           ReportActorRefDeletedReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 class NodeInfoGcsServiceHandler {

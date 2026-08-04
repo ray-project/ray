@@ -58,6 +58,14 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
                                   uint64_t,
                                   const rpc::StatusCallback &,
                                   int64_t = -1) override {}
+  void AsyncReportActorRefDeleted(const ActorID &actor_id,
+                                  const rpc::StatusCallback &callback,
+                                  int64_t = -1) override {
+    reported_ref_deleted_actor_ids_.push_back(actor_id);
+    if (callback) {
+      callback(Status::OK());
+    }
+  }
   void AsyncRegisterActor(const TaskSpecification &task_spec,
                           const rpc::StatusCallback &callback,
                           int64_t = -1) override {
@@ -135,6 +143,7 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
   rpc::ClientCallback<rpc::CreateActorReply> async_create_actor_callback_;
   rpc::StatusCallback async_register_actor_callback_;
   Status sync_register_actor_status_ = Status::OK();
+  std::vector<ActorID> reported_ref_deleted_actor_ids_;
 };
 
 }  // namespace gcs

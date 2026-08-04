@@ -175,6 +175,15 @@ message ReportActorOutOfScopeReply {
   GcsStatus status = 1;
 }
 
+message ReportActorRefDeletedRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+}
+
+message ReportActorRefDeletedReply {
+  GcsStatus status = 1;
+}
+
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
@@ -195,6 +204,9 @@ service ActorInfoGcsService {
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
   rpc ReportActorOutOfScope(ReportActorOutOfScopeRequest)
       returns (ReportActorOutOfScopeReply);
+  // Report that all references to the actor (including lineage refs) are deleted.
+  rpc ReportActorRefDeleted(ReportActorRefDeletedRequest)
+      returns (ReportActorRefDeletedReply);
 }
 
 message GetClusterIdRequest {}

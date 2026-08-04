@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
@@ -115,7 +116,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       ray::observability::MetricInterface &actor_by_state_gauge,
       ray::observability::MetricInterface &gcs_actor_by_state_gauge,
       pubsub::ObservabilityPublisher *observability_publisher,
-      ClockInterface &clock);
+      ClockInterface &clock,
+      std::function<bool(const NodeID &, const WorkerID &)> is_owner_dead);
 
   ~GcsActorManager() override;
 
@@ -154,6 +156,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
 
   void HandleReportActorOutOfScope(rpc::ReportActorOutOfScopeRequest request,
                                    rpc::ReportActorOutOfScopeReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleReportActorRefDeleted(rpc::ReportActorRefDeletedRequest request,
+                                   rpc::ReportActorRefDeletedReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Set actors on the node as preempted and publish the actor information.
@@ -287,18 +293,15 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
       const ray::rpc::ActorTableData *actor_data,
       std::shared_ptr<const rpc::GcsNodeInfo> node);
-  /// A data structure representing an actor's owner.
-  struct Owner {
-    explicit Owner(rpc::Address address) : address_(std::move(address)) {}
-    /// The address of the owner.
-    rpc::Address address_;
-    /// The IDs of actors owned by this worker.
-    absl::flat_hash_set<ActorID> children_actor_ids_;
-  };
+  /// Record the actor in its owner's list of children, so that the actor is
+  /// destroyed when the GCS learns that the owner died. Idempotent. This should
+  /// not be called for detached actors, whose lifetime is not tied to an owner.
+  void AddActorToOwner(const std::shared_ptr<GcsActor> &actor);
 
   /// Poll an actor's owner so that we will receive a notification when the
-  /// actor has no references, or the owner has died. This should not be
-  /// called for detached actors.
+  /// actor has no references, or the owner has died. Only used for actors
+  /// reloaded after a GCS restart; a new registration relies on the owner's
+  /// report instead. This should not be called for detached actors.
   void PollOwnerForActorRefDeleted(const std::shared_ptr<GcsActor> &actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
@@ -493,10 +496,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
-  /// Map from worker ID to a client and the IDs of the actors owned by that
-  /// worker. An owned actor should be destroyed once it has gone out of scope,
+  /// Map from worker ID to the IDs of the actors owned by that worker. An owned
+  /// actor should be destroyed once it has gone out of scope,
   /// according to its owner, or the owner dies.
-  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
+  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
+      owners_;
 
   /// The scheduler to schedule all registered actors.
   std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
@@ -534,6 +538,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ray::observability::MetricInterface &actor_by_state_gauge_;
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
   ClockInterface &clock_;
+  /// Whether the GCS has already processed the death of an actor's owner, either
+  /// the worker itself or its node. A hit is always a real death; a miss is no
+  /// evidence either way.
+  std::function<bool(const NodeID &, const WorkerID &)> is_owner_dead_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t lifetime_num_created_actors_ = 0;
