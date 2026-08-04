@@ -90,7 +90,6 @@ __all__ = [
     "APPLE_M3_PRO",
     "APPLE_M3_MAX",
     "APPLE_SILICON",
-=======
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]
