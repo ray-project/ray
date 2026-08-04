@@ -233,17 +233,29 @@
 #
 # The SF (scale factor) 1000 lineitem table contains ~6B rows.
 
-# TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
+# Fixed-size hash-shuffle runs execute at SF1000 with 500 shuffle partitions.
+# hash_shuffle_v2 tests default to an 8KB object-inlining threshold
+# (RAY_max_direct_call_object_size, matrix var `inline_bytes`; hash_shuffle
+# keeps Ray's 100KB default, stated explicitly so v1/v2 rows differ only in
+# values): v2 returns shuffle shards from streaming generator tasks, and
+# shards below the inlining threshold accumulate in the driver's in-process
+# store instead of the object store, OOMing the head node.
+# sort_shuffle and autoscaling runs keep the original SF100 coverage.
+#
+# map_groups on "column08 column13 column14" (84 groups) stays at SF100: the
+# largest group is ~1.8% of the table (~16GB at SF1000) and hash partitioning
+# can't split a group, so its reduce task doesn't fit on a single node.
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [sort_shuffle_pull_based]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
+
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -260,13 +272,12 @@
       python groupby_benchmark.py --sf 100 --aggregate --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
-
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [sort_shuffle_pull_based]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -280,6 +291,200 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+- name: "aggregate_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      inline_bytes: []
+      columns: []
+    adjustments:
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column02 column14"  # 7M groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      inline_bytes: []
+      columns: []
+    adjustments:
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column02 column14"  # 7M groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      inline_bytes: []
+      columns: []
+    adjustments:
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column08 column13 column14"   # 84 groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+- name: "aggregate_groups_autoscaling_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      inline_bytes: []
+      columns: []
+    adjustments:
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column02 column14"  # 7M groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+- name: "map_groups_autoscaling_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      inline_bytes: []
+      columns: []
+    adjustments:
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+          columns: "column02 column14"  # 7M groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column08 column13 column14"   # 84 groups
+      - with:
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+          columns: "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
 
   run:
     timeout: 3600
@@ -310,8 +515,70 @@
 # Do adjust timeout below based on SF above.
 #
 
-- name: joins_{{dataset}}_{{join_type}}
+# The shuffle strategy is selected via RAY_DATA_DEFAULT_SHUFFLE_STRATEGY
+# because join_benchmark.py has no shuffle-strategy flag. hash_shuffle_v2
+# rows need the 8KB inlining threshold at this scale: with the default
+# 100KB threshold, v2's generator-returned shuffle shards inline into the
+# driver's in-process store and OOM the head node.
+- name: "joins_{{dataset}}_{{join_type}}{{suffix}}"
   python: "3.10"
+  matrix:
+    setup:
+      dataset: []
+      join_type: []
+      suffix: []
+      shuffle_strategy: []
+      inline_bytes: []
+    adjustments:
+      - with:
+          dataset: sf1000
+          join_type: inner
+          suffix: ""
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: inner
+          suffix: _hash_shuffle_v2
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: left_outer
+          suffix: ""
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: left_outer
+          suffix: _hash_shuffle_v2
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: right_outer
+          suffix: ""
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: right_outer
+          suffix: _hash_shuffle_v2
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+      - with:
+          dataset: sf1000
+          join_type: full_outer
+          suffix: ""
+          shuffle_strategy: hash_shuffle
+          inline_bytes: 102400
+      - with:
+          dataset: sf1000
+          join_type: full_outer
+          suffix: _hash_shuffle_v2
+          shuffle_strategy: hash_shuffle_v2
+          inline_bytes: 8192
+
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -320,15 +587,12 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-    cluster_compute: fixed_size_100_cpu_compute.yaml
-
-  matrix:
-    setup:
-      dataset: [sf100]
-      join_type: [inner, left_outer, right_outer, full_outer]
+        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}}
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
 
   run:
-    timeout: 3600
+    timeout: 10800
     script: >
       python join_benchmark.py
       --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
@@ -336,7 +600,7 @@
       --left_join_keys column00
       --right_join_keys column0
       --join_type {{join_type}}
-      --num_partitions 50
+      --num_partitions 500
 
 ###############
 # Wide Schema tests
@@ -1185,44 +1449,77 @@
 # TPCH Queries
 ##############
 
+# All TPC-H queries run at SF1000 for both hash_shuffle (v1) and
+# hash_shuffle_v2. Defs are split v1/v2 only because the object-inlining
+# threshold (inline_bytes) pairs with the strategy: v2 rows use 8KB, v1 rows
+# state Ray's 100KB default explicitly, so each v1/v2 pair differs only in
+# values. q8/q13/q15/q21/q22 keep fixed_size=nightly / autoscaling=manual;
+# q1 keeps default frequency; the rest stay manual.
+
 - name: "tpch_q1_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   matrix:
     setup:
+      query: [q1]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [hash_shuffle]
+      inline_bytes: [102400]
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Same as DEFAULTS (incl. the strict RAYTEST_FAIL_ON_SPILLING=1 that
+        # q1/q2 inherit on master, unlike the other TPC-H queries which relax
+        # it to 0): restated because runtime_env lists replace, not merge.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q1.py --sf 1000
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
 - name: "tpch_q2_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
+      query: [q2]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [hash_shuffle]
+      inline_bytes: [102400]
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Same as DEFAULTS (incl. the strict RAYTEST_FAIL_ON_SPILLING=1 that
+        # q1/q2 inherit on master, unlike the other TPC-H queries which relax
+        # it to 0): restated because runtime_env lists replace, not merge.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q2.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q3_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
+      query: [q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [hash_shuffle]
+      inline_bytes: [102400]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1232,101 +1529,21 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q3.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q4_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
   python: "3.10"
-  frequency: manual
+  frequency: nightly
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q4.py --sf 100
-
-- name: "tpch_q5_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q5.py --sf 100
-
-- name: "tpch_q6_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q6.py --sf 100
-
-- name: "tpch_q7_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q7.py --sf 100
-
-- name: "tpch_q8_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: "{{frequency}}"
-  matrix:
-    setup:
-      scaling: []
-      frequency: []
-      shuffle_strategy: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle_v2
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle_v2
+      query: [q8, q13, q15, q21, q22]
+      shuffle_strategy: [hash_shuffle]
+      inline_bytes: [102400]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1336,19 +1553,21 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q8.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q9_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_autoscaling_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      query: [q8, q13, q15, q21, q22]
+      shuffle_strategy: [hash_shuffle]
+      inline_bytes: [102400]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1358,260 +1577,140 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
+
+- name: "tpch_q1_{{scaling}}_{{shuffle_strategy}}"
+  python: "3.10"
+  matrix:
+    setup:
+      query: [q1]
+      scaling: [fixed_size, autoscaling]
+      shuffle_strategy: [hash_shuffle_v2]
+      inline_bytes: [8192]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Same as DEFAULTS (incl. the strict RAYTEST_FAIL_ON_SPILLING=1 that
+        # q1/q2 inherit on master, unlike the other TPC-H queries which relax
+        # it to 0): restated because runtime_env lists replace, not merge.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q9.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q10_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_q2_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
+      query: [q2]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [hash_shuffle_v2]
+      inline_bytes: [8192]
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Same as DEFAULTS (incl. the strict RAYTEST_FAIL_ON_SPILLING=1 that
+        # q1/q2 inherit on master, unlike the other TPC-H queries which relax
+        # it to 0): restated because runtime_env lists replace, not merge.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q10.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q11_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
+      query: [q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      shuffle_strategy: [hash_shuffle_v2]
+      inline_bytes: [8192]
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q11.py --sf 100
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_q12_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
+  python: "3.10"
+  frequency: nightly
+  matrix:
+    setup:
+      query: [q8, q13, q15, q21, q22]
+      shuffle_strategy: [hash_shuffle_v2]
+      inline_bytes: [8192]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
+
+- name: "tpch_{{query}}_autoscaling_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+      query: [q8, q13, q15, q21, q22]
+      shuffle_strategy: [hash_shuffle_v2]
+      inline_bytes: [8192]
 
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_max_direct_call_object_size={{inline_bytes}}
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q12.py --sf 100
-
-- name: "tpch_q13_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: "{{frequency}}"
-  matrix:
-    setup:
-      scaling: []
-      frequency: []
-      shuffle_strategy: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle_v2
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle_v2
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q13.py --sf 100
-
-- name: "tpch_q14_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q14.py --sf 100
-
-- name: "tpch_q15_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: "{{frequency}}"
-  matrix:
-    setup:
-      scaling: []
-      frequency: []
-      shuffle_strategy: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle_v2
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle_v2
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q15.py --sf 100
-
-- name: "tpch_q17_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q17.py --sf 100
-
-- name: "tpch_q18_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q18.py --sf 100
-
-- name: "tpch_q20_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q20.py --sf 100
-
-- name: "tpch_q21_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: "{{frequency}}"
-  matrix:
-    setup:
-      scaling: []
-      frequency: []
-      shuffle_strategy: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle_v2
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle_v2
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q21.py --sf 100
-
-- name: "tpch_q22_{{scaling}}_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: "{{frequency}}"
-  matrix:
-    setup:
-      scaling: []
-      frequency: []
-      shuffle_strategy: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle_v2
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle
-      - with:
-          scaling: autoscaling
-          frequency: manual
-          shuffle_strategy: hash_shuffle_v2
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q22.py --sf 100
-
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
 #################################################
 # Cross-AZ RPC fault tolerance test
 #################################################
