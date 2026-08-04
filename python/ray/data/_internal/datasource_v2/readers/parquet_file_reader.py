@@ -53,9 +53,8 @@ ARROW_RS_TUNING_KWARGS = frozenset(
         "arrow_rs_k",
         "arrow_rs_split_threshold_bytes",
         "arrow_rs_fetch_window_mb",
-        "arrow_rs_prefetch_windows",
         "arrow_rs_column_fetch_mb",
-        "arrow_rs_column_prefetch_budget_mb",
+        "arrow_rs_prefetch_budget_mb",
     }
 )
 _ARROW_RS_KWARG_PREFIX = "arrow_rs_"

@@ -20,20 +20,20 @@ C-stream (consumed zero-copy via ``pa.RecordBatchReader.from_stream``):
 - ``read_row_groups(path, row_groups, columns, batch_size, ...)`` — local files.
 - ``read_row_groups_s3(bucket, key, region, anonymous, ...creds..., row_groups,
   columns, batch_size, decode_budget_bytes, fetch_window_mb, k,
-  split_threshold_bytes, prefetch_windows, predicate_json, column_fetch_mb,
-  column_prefetch_budget_mb)`` — S3
-  via the Rust ``object_store`` crate, using a **windowed** fetch (only
-  ``fetch_window_mb`` of compressed bytes in flight per stream) so S3 peak RSS is a
-  knob, not a property of the row-group size. ``prefetch_windows`` pipelines
-  consecutive windows (issue window N+1's GET while window N decodes) to hide S3
-  latency without staging the whole row group. ``column_fetch_mb`` is the row axis's
-  dual for **wide** schemas: it reads a wide row group's columns in sequential groups
-  so only ``≈column_fetch_mb`` of compressed column chunks are resident at once,
-  instead of arrow-rs's default whole-row-group column fetch.
+  split_threshold_bytes, predicate_json, column_fetch_mb, prefetch_budget_mb)``
+  — S3 via the Rust ``object_store`` crate. Every read decomposes into
+  prefetchable *units* — row windows of ``≈fetch_window_mb`` compressed bytes
+  for ordinary row groups, column groups of ``≈column_fetch_mb`` for wide ones —
+  and all units flow through one byte-budget prefetcher: concurrent ranged GETs
+  are admitted until ``prefetch_budget_mb`` compressed bytes are in flight ahead
+  of the (single, in-order) decoder, so S3 peak RSS is a knob, not a property of
+  the file layout, and S3 latency hides behind decode without staging whole row
+  groups.
 
 All of the crate's performance knobs (decode budget, K-split, fetch window,
-prefetch depth) are settable per read through ``dataset_kwargs`` under an
-``arrow_rs_`` prefix — see the "Tuning knobs" section below the imports.
+column window, prefetch budget) are settable per read through
+``dataset_kwargs`` under an ``arrow_rs_`` prefix — see the "Tuning knobs"
+section below the imports.
 
 Byte-budgeted decode (no reader-side accumulation)
 --------------------------------------------------
@@ -234,21 +234,6 @@ _ARROW_RS_DEFAULT_SPLIT_THRESHOLD_BYTES = 128 * MiB
 # local reads.
 _ARROW_RS_FETCH_WINDOW_MB = env_integer("RAY_DATA_ARROW_RS_FETCH_WINDOW_MB", 16)
 
-# Knob ``arrow_rs_prefetch_windows`` — crate arg ``prefetch_windows``.
-# S3 window prefetch depth: how many consecutive fetch windows the native reader
-# keeps in flight per stream. With depth 2 the GET for window N+1 is issued while
-# window N decodes, so S3 first-byte latency is hidden behind decode instead of
-# paid serially between windows — the memory-bounded analog of pyarrow's
-# whole-fragment pre_buffer (peak stays `≈ prefetch_windows * fetch_window_mb`
-# compressed in flight, not the whole row group). 1 = strictly serial windows
-# (no prefetch). Only affects the S3 path (local reads have no fetch latency to
-# hide); reserved for and swept on the Linux/S3 run (Agents.md §7.1).
-# Tuning: 2 already overlaps fetch with decode; depth >2 only helps when a
-# single window decodes faster than it fetches (very high-latency stores) and
-# multiplies the compressed bytes held in flight. Drop to 1 to minimize
-# memory at the cost of exposing S3 latency between windows.
-_ARROW_RS_PREFETCH_WINDOWS = env_integer("RAY_DATA_ARROW_RS_PREFETCH_WINDOWS", 2)
-
 # Knob ``arrow_rs_column_fetch_mb`` — crate arg ``column_fetch_mb``.
 # S3 column-fetch budget (MiB of *compressed* bytes per column group). This is the
 # memory knob for WIDE schemas. arrow-rs's async reader fetches every projected
@@ -272,24 +257,24 @@ _ARROW_RS_PREFETCH_WINDOWS = env_integer("RAY_DATA_ARROW_RS_PREFETCH_WINDOWS", 2
 # or set 0 to disable (fetch the whole row group at once -- the pre-fix behavior).
 _ARROW_RS_COLUMN_FETCH_MB = env_integer("RAY_DATA_ARROW_RS_COLUMN_FETCH_MB", 16)
 
-# Knob ``arrow_rs_column_prefetch_budget_mb`` — crate arg ``column_prefetch_budget_mb``.
-# Compressed bytes the column-windowing path may prefetch AHEAD of its (single)
-# decoder — the "bucket" it tries to keep full. DERIVED by default: 4 ×
-# ``column_fetch_mb``, i.e. a bucket of four column-group batches, so tuning the
-# one batch-size knob scales the bucket with it and there is nothing separate to
-# tune. Column groups are fetched concurrently, gated by a byte-denominated
-# semaphore: each in-order fetch acquires permits equal to its compressed size and
-# releases them when the decoder finishes (drops) that group — so fetch concurrency
-# self-adjusts to the fetch:decode speed ratio (a slow network gets ~4 parallel
-# GETs; a slow decoder backpressures fetching to a halt) and peak prefetch memory
-# is the bucket size by construction, never an estimate. Decode itself stays
-# one-group-at-a-time (that bound is the wide-schema memory fix; see
-# ``column_fetch_mb``). Explicitly setting this overrides the 4× derivation
-# (benchmark escape hatch); 0 = strictly sequential fetch->decode->fetch.
-# ``-1`` sentinel = unset -> derive.
-_ARROW_RS_COLUMN_PREFETCH_BUDGET_MB = env_integer(
-    "RAY_DATA_ARROW_RS_COLUMN_PREFETCH_BUDGET_MB", -1
-)
+# Knob ``arrow_rs_prefetch_budget_mb`` — crate arg ``prefetch_budget_mb``.
+# Compressed bytes the S3 path may prefetch AHEAD of its (single) decoder — the
+# "bucket" it tries to keep full. ONE mechanism for every unit kind (row
+# windows and column groups alike). DERIVED by default: 4 × the larger unit-size
+# knob (``max(fetch_window_mb, column_fetch_mb)``), i.e. a bucket of about four
+# units, so tuning a unit-size knob scales the bucket with it and there is
+# nothing separate to tune. Units are fetched concurrently, gated by a
+# byte-denominated semaphore: each in-order fetch acquires permits equal to its
+# compressed size (exact, from the footer) and releases them when the decoder
+# finishes (drops) that unit — so fetch concurrency self-adjusts to the
+# fetch:decode speed ratio (a slow network gets ~4 parallel GETs; a slow decoder
+# backpressures fetching to a halt) and peak prefetch memory is the bucket size
+# by construction, never an estimate. Decode itself stays one-unit-at-a-time
+# (bounds decode scratch; see ``column_fetch_mb`` for why that matters on wide
+# schemas). Explicitly setting this overrides the 4× derivation (benchmark
+# escape hatch); 0 = strictly sequential fetch->decode->fetch. ``-1`` sentinel =
+# unset -> derive.
+_ARROW_RS_PREFETCH_BUDGET_MB = env_integer("RAY_DATA_ARROW_RS_PREFETCH_BUDGET_MB", -1)
 
 # Parquet-format kwargs (``pds.ParquetFileFormat``) that tune PyArrow's I/O
 # strategy only — they cannot change decoded bytes, so the native path (which
@@ -346,10 +331,9 @@ class _ArrowRsTuning(NamedTuple):
     k: int
     split_threshold_bytes: Optional[int]
     fetch_window_mb: int
-    prefetch_windows: int
     column_fetch_mb: int
-    # None means "derive at the call site": 4 x column_fetch_mb.
-    column_prefetch_budget_mb: Optional[int]
+    # None means "derive at the call site": 4 x max(fetch_window_mb, column_fetch_mb).
+    prefetch_budget_mb: Optional[int]
 
 
 # There is deliberately NO per-type support gate: every type Parquet can store
@@ -1168,17 +1152,14 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             fetch_window_mb=resolve(
                 "arrow_rs_fetch_window_mb", _ARROW_RS_FETCH_WINDOW_MB, 0
             ),
-            prefetch_windows=resolve(
-                "arrow_rs_prefetch_windows", _ARROW_RS_PREFETCH_WINDOWS, 1
-            ),
             column_fetch_mb=resolve(
                 "arrow_rs_column_fetch_mb", _ARROW_RS_COLUMN_FETCH_MB, 0
             ),
-            column_prefetch_budget_mb=resolve_optional(
-                "arrow_rs_column_prefetch_budget_mb",
+            prefetch_budget_mb=resolve_optional(
+                "arrow_rs_prefetch_budget_mb",
                 None
-                if _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB < 0
-                else _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB,
+                if _ARROW_RS_PREFETCH_BUDGET_MB < 0
+                else _ARROW_RS_PREFETCH_BUDGET_MB,
                 0,
             ),
         )
@@ -1648,16 +1629,17 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 fetch_window_mb=tuning.fetch_window_mb,
                 k=tuning.k,
                 split_threshold_bytes=split_threshold,
-                prefetch_windows=tuning.prefetch_windows,
                 predicate_json=predicate_json,
                 column_fetch_mb=tuning.column_fetch_mb,
-                # The prefetch bucket defaults to 4 column-group batches: one
-                # decoding + ~3 in flight keeps the (single) decoder fed across
-                # fetch:decode ratios without a second knob to tune.
-                column_prefetch_budget_mb=(
-                    tuning.column_prefetch_budget_mb
-                    if tuning.column_prefetch_budget_mb is not None
-                    else 4 * tuning.column_fetch_mb
+                # The prefetch bucket defaults to ~4 units: one decoding + ~3 in
+                # flight keeps the (single) decoder fed across fetch:decode
+                # ratios without a second knob to tune. Units are row windows
+                # (fetch_window_mb) or column groups (column_fetch_mb), so the
+                # bucket scales with the larger unit-size knob.
+                prefetch_budget_mb=(
+                    tuning.prefetch_budget_mb
+                    if tuning.prefetch_budget_mb is not None
+                    else 4 * max(tuning.fetch_window_mb, tuning.column_fetch_mb)
                 ),
             )
         else:

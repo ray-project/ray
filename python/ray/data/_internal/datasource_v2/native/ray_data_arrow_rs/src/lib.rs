@@ -37,13 +37,18 @@
 //! stream (K=1). Output is order-preserving (per-unit channels drained in order),
 //! and the decode batch is byte-budgeted just like the local path.
 //!
-//! Within a single stream, consecutive fetch windows are pipelined by
-//! `prefetch_windows` (default 2): window N+1's GET is issued while window N
-//! decodes, hiding S3 first-byte latency behind decode without staging the whole
-//! row group. depth=1 restores the strictly-serial windows. This is orthogonal to
-//! K: K adds parallel streams (spatial split), prefetch overlaps fetch/decode
-//! within one stream. Both stay memory-bounded knobs
-//! (`≈ k * prefetch_windows * fetch_window` compressed in flight).
+//! Within a single stream, every read shape decomposes into prefetchable *units*
+//! — row windows (`~fetch_window_mb` compressed of all projected columns) for
+//! ordinary groups, column groups (`~column_fetch_mb` compressed of some columns,
+//! all rows) for wide ones — and all units flow through ONE mechanism (`drive_s3`):
+//! a byte-denominated semaphore ("the bucket", `prefetch_budget_mb`) admits ranged
+//! GETs concurrently until the bucket is full, while a single decoder consumes the
+//! prefetched bytes strictly in order; a decoded unit dropping its bytes releases
+//! its permits and wakes the next fetch. Fetch concurrency thus self-adjusts to
+//! the fetch:decode speed ratio and peak prefetch memory is the bucket size by
+//! construction. This is orthogonal to K: K adds parallel streams (spatial
+//! split), each with its own bucket (`≈ k * prefetch_budget` compressed in
+//! flight).
 //!
 //! Public API (consumed by `ArrowRsParquetFileReader` on the Python side via
 //! `pa.RecordBatchReader.from_stream(...)`):
@@ -54,11 +59,12 @@
 //!   read_row_groups_s3(bucket, key, region, anonymous, endpoint=None, ...creds...,
 //!                      row_groups=None, columns=None, batch_size=131072,
 //!                      decode_budget_bytes=2*1024*1024, fetch_window_mb=16, k=1,
-//!                      split_threshold_bytes=128*1024*1024, prefetch_windows=2)
+//!                      split_threshold_bytes=128*1024*1024, predicate_json=None,
+//!                      column_fetch_mb=16, prefetch_budget_mb=64)
 
 mod predicate;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
@@ -301,10 +307,12 @@ fn projection_mask(
     }
 }
 
-/// Ordered leaf-column indices for a projection (flat schema: leaf index == root
-/// field index == column-chunk index). Mirrors `projection_mask`'s name matching so
-/// the two always agree on which columns are read.
-fn projected_leaf_indices(
+/// Ordered ROOT (top-level field) indices for a projection. Mirrors
+/// `projection_mask`'s name matching so the two always agree on which columns
+/// are read. Note these are root indices, not leaf/column-chunk indices — use
+/// [`leaves_under_roots`] to expand to the chunks a root projection touches
+/// (identity for flat schemas, several leaves per root for structs/lists).
+fn projected_root_indices(
     parquet_schema: &parquet::schema::types::SchemaDescriptor,
     columns: &Option<Vec<String>>,
 ) -> Vec<usize> {
@@ -321,12 +329,36 @@ fn projected_leaf_indices(
     }
 }
 
-/// `(leaf index, compressed size)` for the projected columns of a row group, in
-/// ascending leaf order — the input to `partition_columns_by_budget`.
-fn projected_col_sizes(rgm: &RowGroupMetaData, leaves: &[usize]) -> Vec<(usize, u64)> {
-    leaves
+/// All leaf-column (column-chunk) indices under the given root fields, in
+/// ascending leaf order — exactly the chunks the decoder requests for a root
+/// projection. Flat schemas: identity.
+fn leaves_under_roots(
+    schema: &parquet::schema::types::SchemaDescriptor,
+    roots: &[usize],
+) -> Vec<usize> {
+    (0..schema.num_columns())
+        .filter(|&l| roots.contains(&schema.get_column_root_idx(l)))
+        .collect()
+}
+
+/// `(root index, compressed size)` for the projected top-level columns of a row
+/// group, in ascending root order — the input to `partition_columns_by_budget`.
+/// A root's size is the sum of its leaf chunks, so a struct column is weighed
+/// (and later fetched/hstacked) as one indivisible unit.
+fn projected_root_sizes(
+    schema: &parquet::schema::types::SchemaDescriptor,
+    rgm: &RowGroupMetaData,
+    roots: &[usize],
+) -> Vec<(usize, u64)> {
+    roots
         .iter()
-        .map(|&i| (i, rgm.column(i).compressed_size().max(0) as u64))
+        .map(|&r| {
+            let sz = leaves_under_roots(schema, &[r])
+                .iter()
+                .map(|&l| rgm.column(l).compressed_size().max(0) as u64)
+                .sum();
+            (r, sz)
+        })
         .collect()
 }
 
@@ -886,14 +918,6 @@ fn read_row_groups(
 /// bounds resident memory while still letting a task fetch/decode one batch ahead.
 const S3_CHANNEL_DEPTH: usize = 2;
 
-/// Per-window decoded buffer, used by the `prefetch_windows` pipeline. Kept at 1:
-/// the cross-window prefetch (fetching window N+1 while N decodes) is what hides S3
-/// latency; we do NOT also want each in-flight window buffering several decoded
-/// batches, which would multiply the decode transient. So each window may hold at
-/// most one decoded batch, and `prefetch_windows` controls how many windows are in
-/// flight at once.
-const S3_WINDOW_CHANNEL_DEPTH: usize = 1;
-
 /// A sync `RecordBatchReader` fed by K background tokio tasks (one per row-range
 /// unit), each draining its unit into a bounded async channel. The consumer drains
 /// channels in ascending unit order — so at most `k * S3_CHANNEL_DEPTH` batches are
@@ -986,187 +1010,22 @@ fn effective_window_step(window_rows: usize, max_page_rows: usize, len: usize) -
     window_rows.max(max_page_rows).max(1)
 }
 
-/// Spawn a background task that fetches + decodes ONE fetch window — rows
-/// `[w, w+wlen)` within row group `rg` — streaming its batches into a bounded
-/// channel, and return the receiver. Building the stream is cheap (metadata is
-/// already loaded); the S3 fetch for this window's pages is issued when the task
-/// first polls the stream. So the moment this returns, that fetch is in flight on
-/// the runtime — which is what lets the caller prefetch window N+1 while draining
-/// window N. `S3_WINDOW_CHANNEL_DEPTH` bounds how far ahead a single window decodes.
-fn spawn_window(
-    store: Arc<dyn ObjectStore>,
-    path: ObjPath,
-    meta: ArrowReaderMetadata,
+/// One prefetched unit's compressed bytes, plus the byte-budget permits they
+/// hold. A unit is either a ROW WINDOW (`sel = Some((skip, take))`, all projected
+/// columns) or a COLUMN GROUP (`sel = None`, a slice of the projection over all
+/// rows) — the decode side reassembles accordingly; the fetch side treats both
+/// identically. The permits travel with the bytes (into the decode stream's
+/// `PrefetchedReader`), so dropping the decoded stream frees the bytes AND
+/// releases the permits — which is what wakes the admission loop to launch the
+/// next unit's fetch. That drop-to-wake handoff is the whole backpressure
+/// mechanism: memory pressure stays ~constant at `prefetch_budget` compressed
+/// bytes without any explicit signalling code.
+struct PrefetchedUnit {
     mask: ProjectionMask,
-    rg: usize,
-    w: usize,
-    wlen: usize,
-    batch_rows: usize,
-) -> mpsc::Receiver<Result<RecordBatch, ArrowError>> {
-    let (tx, rx) = mpsc::channel::<Result<RecordBatch, ArrowError>>(S3_WINDOW_CHANNEL_DEPTH);
-    tokio::spawn(async move {
-        // Select rows [w, w+wlen) WITHIN this row group (we restrict to `rg`), so
-        // only this window's pages are fetched (page index skips the rest by byte
-        // range).
-        let sel = RowSelection::from(vec![RowSelector::skip(w), RowSelector::select(wlen)]);
-        let reader = ParquetObjectReader::new(store, path);
-        let built = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta)
-            .with_row_groups(vec![rg])
-            .with_row_selection(sel)
-            .with_batch_size(batch_rows)
-            .with_projection(mask)
-            .build();
-        let mut stream = match built {
-            Ok(s) => s,
-            Err(e) => {
-                let _ = tx.send(Err(ArrowError::ExternalError(Box::new(e)))).await;
-                return;
-            }
-        };
-        while let Some(item) = stream.next().await {
-            let is_err = item.is_err();
-            let msg = item.map_err(|e| ArrowError::ExternalError(Box::new(e)));
-            if tx.send(msg).await.is_err() {
-                return; // consumer dropped
-            }
-            if is_err {
-                return;
-            }
-        }
-    });
-    rx
-}
-
-/// Drive one unit (a list of contiguous `(rg, start, len)` sub-ranges, in order)
-/// over the async object store, sending decoded batches to `tx` in row order.
-///
-/// The unit's rows are sliced into fetch windows, each holding ~`fetch_window_mb`
-/// of compressed bytes (knob 2); the decode batch inside a window is byte-budgeted
-/// (knob 1). `prefetch_windows` (knob 3) is the pipeline depth: we keep that many
-/// window decoders in flight at once via [`spawn_window`], draining their channels
-/// in window order. depth=1 is the old strictly-serial behavior (fetch W0, decode
-/// W0, fetch W1, ...); depth=2 issues window N+1's S3 fetch while window N decodes,
-/// hiding the fetch latency behind the decode. Resident memory stays bounded to
-/// ~`prefetch_windows` windows of compressed bytes (plus one decoded batch each) —
-/// far below a whole-row-group prefetch, and still a knob.
-#[allow(clippy::too_many_arguments)]
-async fn drive_unit(
-    store: Arc<dyn ObjectStore>,
-    path: ObjPath,
-    meta: ArrowReaderMetadata,
-    mask: ProjectionMask,
-    subranges: Vec<(usize, usize, usize)>,
-    budget_bytes: u64,
-    batch_clamp: usize,
-    fetch_window_mb: u64,
-    prefetch_windows: usize,
-    tx: mpsc::Sender<Result<RecordBatch, ArrowError>>,
-) {
-    // Flatten every (row group, window) this unit will read into one ordered list
-    // of specs. We enumerate here only — no fetch happens until a window is spawned.
-    let mut specs: Vec<(usize, usize, usize, usize)> = Vec::new(); // (rg, w, wlen, batch_rows)
-    for (rg, start, len) in subranges {
-        let rgm = meta.metadata().row_group(rg);
-        let batch_rows = byte_budget_rows(
-            rgm.total_byte_size(),
-            rgm.num_rows(),
-            batch_clamp,
-            budget_bytes,
-        );
-        let window_rows = window_rows_for(rgm, fetch_window_mb);
-        let end = start + len;
-        // Never window below the coarsest column's largest page (see max_page_rows):
-        // a sub-page window re-decodes that page in every window it overlaps. This
-        // collapses wide/short row groups (one page per column) to a single window
-        // — parity with no windowing — while tall multi-page groups still split.
-        let step = effective_window_step(window_rows, max_page_rows(meta.metadata(), rg), len);
-        let mut w = start;
-        while w < end {
-            let wlen = step.min(end - w);
-            specs.push((rg, w, wlen, batch_rows));
-            w += wlen;
-        }
-    }
-
-    // Bounded look-ahead: keep at most `depth` window decoders in flight, draining
-    // their channels in spec order so output stays row-ordered while up to `depth`
-    // windows fetch+decode concurrently.
-    let depth = prefetch_windows.max(1);
-    let mut in_flight: VecDeque<mpsc::Receiver<Result<RecordBatch, ArrowError>>> = VecDeque::new();
-    let mut next = 0usize;
-    // Prime the pipeline: start `depth` window fetches concurrently.
-    while next < specs.len() && in_flight.len() < depth {
-        let (rg, w, wlen, br) = specs[next];
-        in_flight.push_back(spawn_window(
-            store.clone(),
-            path.clone(),
-            meta.clone(),
-            mask.clone(),
-            rg,
-            w,
-            wlen,
-            br,
-        ));
-        next += 1;
-    }
-    while let Some(mut rx) = in_flight.pop_front() {
-        while let Some(item) = rx.recv().await {
-            let is_err = item.is_err();
-            if tx.send(item).await.is_err() {
-                return; // consumer dropped
-            }
-            if is_err {
-                return;
-            }
-        }
-        // Front window exhausted — top the pipeline back up to `depth`, so window
-        // N+depth's fetch starts as soon as window N's finishes draining.
-        if next < specs.len() {
-            let (rg, w, wlen, br) = specs[next];
-            in_flight.push_back(spawn_window(
-                store.clone(),
-                path.clone(),
-                meta.clone(),
-                mask.clone(),
-                rg,
-                w,
-                wlen,
-                br,
-            ));
-            next += 1;
-        }
-    }
-}
-
-/// Drive selected row groups for a WIDE projection by **column-windowing**: within
-/// each row group, read the projected columns in sequential groups (each under the
-/// compressed-byte budget), collect every group's batches, then hstack them
-/// position-wise into full-width batches sent in row order.
-///
-/// Why sequential groups: the async reader's `InMemoryRowGroup` fetches *every*
-/// projected column chunk for a row group into memory before decoding and holds them
-/// all resident. For a wide schema that whole-group compressed buffer is the entire
-/// S3 memory regression (PyArrow releases column chunks as it decodes; we didn't).
-/// Reading one column group at a time — dropping its stream before the next fetches —
-/// bounds resident compressed bytes to ~`budget` instead of the whole group. Peak =
-/// `budget` + the fully decoded row group, and the decoded row group is the output we
-/// must produce anyway (PyArrow holds it too), so this asymptotes to PyArrow parity.
-///
-/// Columns are independent, so unlike row-windowing this NEVER re-decodes a page.
-/// All groups read the same rows with the same `batch_size`, so their batches align
-/// 1:1 and hstack by position; ascending-leaf group order reproduces schema order.
-#[allow(clippy::too_many_arguments)]
-/// One column group's compressed bytes, prefetched from S3, plus the
-/// byte-budget permits it holds. Dropping this (after the group is decoded)
-/// frees the bytes AND releases the permits — which is what wakes the
-/// admission loop to launch the next group's fetch. That drop-to-wake handoff
-/// is the whole backpressure mechanism: memory pressure stays ~constant at
-/// `prefetch_budget` compressed bytes without any explicit signalling code.
-struct PrefetchedGroup {
-    mask: ProjectionMask,
+    sel: Option<(usize, usize)>,
     ranges: Vec<Range<u64>>,
     data: Vec<Bytes>,
-    _permit: tokio::sync::OwnedSemaphorePermit,
+    permit: tokio::sync::OwnedSemaphorePermit,
 }
 
 /// Find `want` inside one of the prefetched `ranges` and return the matching
@@ -1183,15 +1042,17 @@ fn slice_prefetched(ranges: &[Range<u64>], data: &[Bytes], want: &Range<u64>) ->
     None
 }
 
-/// `AsyncFileReader` that serves a column group's page reads from its
-/// prefetched buffers instead of S3. The decode stream built on top of this
-/// never touches the network — the fetch already happened, budget-gated, in
-/// the admission loop. Requests are always sub-ranges of whole column chunks
-/// (page reads within a chunk), so containment lookup suffices.
+/// `AsyncFileReader` that serves a unit's page reads from its prefetched
+/// buffers instead of S3. The decode stream built on top of this never touches
+/// the network — the fetch already happened, budget-gated, in the admission
+/// loop. Requests are always sub-ranges of the prefetched ranges (page reads
+/// within a chunk, or within a window's page span), so containment lookup
+/// suffices. Owning the permit ties the budget release to the stream's drop.
 struct PrefetchedReader {
     ranges: Vec<Range<u64>>,
     data: Vec<Bytes>,
     meta: Arc<ParquetMetaData>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
 impl AsyncFileReader for PrefetchedReader {
@@ -1234,89 +1095,328 @@ fn group_fetch_plan(
     (ranges, bytes.div_ceil(1024))
 }
 
-async fn drive_colwindowed(
+/// Exact byte ranges a ROW-WINDOW decode will request from the store: for each
+/// projected leaf column of row group `rg`, the dictionary page (when present)
+/// plus the contiguous span of data pages overlapping rows `[w, w+wlen)` — read
+/// off the same offset index the decoder's `RowSelection` uses to skip pages,
+/// so prefetch and decode always agree on which bytes are needed. A column
+/// without an offset index, or a window covering the whole group, falls back to
+/// the whole column chunk — also exactly what the decoder requests in that
+/// case. Returns the ranges plus their compressed KiB (exact, from the footer)
+/// for budget accounting, like [`group_fetch_plan`].
+fn window_fetch_plan(
+    md: &parquet::file::metadata::ParquetMetaData,
+    rg: usize,
+    leaves: &[usize],
+    w: usize,
+    wlen: usize,
+) -> (Vec<Range<u64>>, u64) {
+    let rgm = md.row_group(rg);
+    let num_rows = rgm.num_rows().max(0);
+    let rg_oi = md.offset_index().and_then(|oi| oi.get(rg));
+    let whole = w == 0 && wlen as i64 >= num_rows;
+    let (w0, w1) = (w as i64, (w + wlen) as i64);
+    let mut ranges = Vec::with_capacity(leaves.len());
+    let mut bytes = 0u64;
+    for &leaf in leaves {
+        let cc = rgm.column(leaf);
+        let (chunk_start, chunk_len) = cc.byte_range();
+        let locs = rg_oi
+            .and_then(|oi| oi.get(leaf))
+            .map(|c| c.page_locations())
+            .filter(|l| !l.is_empty());
+        let locs = match (whole, locs) {
+            (false, Some(l)) => l,
+            _ => {
+                bytes += chunk_len;
+                ranges.push(chunk_start..chunk_start + chunk_len);
+                continue;
+            }
+        };
+        // Dictionary page: sits between the chunk start and the first data
+        // page, and every window of a dictionary-encoded chunk needs it.
+        let first_data = locs[0].offset.max(0) as u64;
+        if cc.dictionary_page_offset().is_some() && first_data > chunk_start {
+            bytes += first_data - chunk_start;
+            ranges.push(chunk_start..first_data);
+        }
+        // Contiguous span of the data pages overlapping [w, w+wlen). Pages are
+        // laid out back-to-back within a chunk, so one range covers the run.
+        let mut span: Option<(u64, u64)> = None;
+        for (i, loc) in locs.iter().enumerate() {
+            let rows_end = locs
+                .get(i + 1)
+                .map(|next| next.first_row_index)
+                .unwrap_or(num_rows);
+            if loc.first_row_index < w1 && rows_end > w0 {
+                let s = loc.offset.max(0) as u64;
+                let e = s + loc.compressed_page_size.max(0) as u64;
+                span = Some(match span {
+                    None => (s, e),
+                    Some((a, _)) => (a, e),
+                });
+            }
+        }
+        if let Some((s, e)) = span {
+            bytes += e - s;
+            ranges.push(s..e);
+        }
+    }
+    (ranges, bytes.div_ceil(1024))
+}
+
+/// How one row group's prefetched units reassemble into output batches.
+enum RgDecode {
+    /// N row-window units: decode each in order, stream every batch straight out.
+    Windows(usize),
+    /// N column-group units: decode all N (row-aligned), then hstack to full width.
+    Hstack(usize),
+}
+
+/// Decode structure of one (row group, sub-range), in output order.
+struct RgPlan {
+    rg: usize,
+    batch_rows: usize,
+    decode: RgDecode,
+}
+
+/// Fetch plan of one unit, in decode order: what to project, which rows
+/// (`None` = all), which bytes, and their compressed KiB for budget accounting.
+struct UnitFetch {
+    mask: ProjectionMask,
+    sel: Option<(usize, usize)>,
+    ranges: Vec<Range<u64>>,
+    kib: u64,
+}
+
+/// Plan every `(row group, start, len)` sub-range into prefetchable units.
+/// The split axis is chosen per row group by its shape:
+///   * WIDE (the projected roots' compressed bytes partition into >1 group under
+///     `colwindow_budget`, whole-group read): COLUMN GROUPS — each unit is a
+///     slice of the projection over all the group's rows. The async reader's
+///     `InMemoryRowGroup` otherwise stages every projected chunk of the group at
+///     once, which for a 5000-column schema was the entire S3 memory regression;
+///     one group at a time bounds that to ~`colwindow_budget`, and columns are
+///     independent so no page is ever decoded twice.
+///   * otherwise: ROW WINDOWS — each unit is ~`fetch_window_mb` compressed bytes
+///     of ALL projected columns, page-aligned via the offset index (see
+///     `effective_window_step`; without an offset index the group collapses to
+///     one window).
+/// Both unit kinds flow through the same byte-budget admission loop in
+/// [`drive_s3`]; only the decode-side reassembly differs. Planning globally
+/// (not per row group) lets the prefetcher run ahead across row-group
+/// boundaries.
+#[allow(clippy::too_many_arguments)]
+fn plan_s3_units(
+    meta: &ArrowReaderMetadata,
+    full_mask: &ProjectionMask,
+    roots: &[usize],
+    subranges: &[(usize, usize, usize)],
+    batch_clamp: usize,
+    decode_budget: u64,
+    fetch_window_mb: u64,
+    colwindow_budget: u64,
+) -> (Vec<RgPlan>, Vec<UnitFetch>) {
+    let md = meta.metadata();
+    let schema_descr = md.file_metadata().schema_descr();
+    let leaves = leaves_under_roots(schema_descr, roots);
+    let mut rg_plans: Vec<RgPlan> = Vec::with_capacity(subranges.len());
+    let mut units: Vec<UnitFetch> = Vec::new();
+    for &(rg, start, len) in subranges {
+        let rgm = md.row_group(rg);
+        let batch_rows = byte_budget_rows(
+            rgm.total_byte_size(),
+            rgm.num_rows(),
+            batch_clamp,
+            decode_budget,
+        );
+        // Column groups only apply to whole-group reads (a K-split sub-range is
+        // by definition a tall group being split by rows, not columns).
+        let whole = start == 0 && len == rgm.num_rows().max(0) as usize;
+        let groups = if whole && colwindow_budget > 0 {
+            partition_columns_by_budget(
+                &projected_root_sizes(schema_descr, rgm, roots),
+                colwindow_budget,
+            )
+        } else {
+            Vec::new()
+        };
+        if groups.len() > 1 {
+            let n = groups.len();
+            for g in groups {
+                let (ranges, kib) = group_fetch_plan(rgm, &leaves_under_roots(schema_descr, &g));
+                units.push(UnitFetch {
+                    mask: ProjectionMask::roots(schema_descr, g),
+                    sel: None,
+                    ranges,
+                    kib,
+                });
+            }
+            rg_plans.push(RgPlan {
+                rg,
+                batch_rows,
+                decode: RgDecode::Hstack(n),
+            });
+        } else {
+            // Never window below the coarsest column's largest page (see
+            // max_page_rows): a sub-page window re-decodes that page in every
+            // window it overlaps. Wide/short groups (one page per column)
+            // collapse to a single window; tall multi-page groups still split.
+            let step = effective_window_step(
+                window_rows_for(rgm, fetch_window_mb),
+                max_page_rows(md, rg),
+                len,
+            );
+            let (mut w, end) = (start, start + len);
+            let mut n = 0usize;
+            while w < end {
+                let wlen = step.min(end - w);
+                let (ranges, kib) = window_fetch_plan(md, rg, &leaves, w, wlen);
+                units.push(UnitFetch {
+                    mask: full_mask.clone(),
+                    sel: Some((w, wlen)),
+                    ranges,
+                    kib,
+                });
+                w += wlen;
+                n += 1;
+            }
+            rg_plans.push(RgPlan {
+                rg,
+                batch_rows,
+                decode: RgDecode::Windows(n),
+            });
+        }
+    }
+    (rg_plans, units)
+}
+
+/// Receive the next prefetched unit (in plan order) and build its decode
+/// stream, which serves every page read from the prefetched bytes — never the
+/// network. The unit's budget permits ride inside the stream's
+/// `PrefetchedReader`, so dropping the stream is what releases them.
+async fn next_unit_stream(
+    hrx: &mut mpsc::Receiver<tokio::task::JoinHandle<Result<PrefetchedUnit, ArrowError>>>,
+    meta: &ArrowReaderMetadata,
+    rg: usize,
+    batch_rows: usize,
+) -> Result<
+    parquet::arrow::async_reader::ParquetRecordBatchStream<PrefetchedReader>,
+    ArrowError,
+> {
+    let handle = hrx.recv().await.ok_or_else(|| {
+        ArrowError::ExternalError(Box::new(ParquetError::General(
+            "prefetch: admission loop ended early".to_string(),
+        )))
+    })?;
+    let unit = match handle.await {
+        Ok(Ok(u)) => u,
+        Ok(Err(e)) => return Err(e),
+        Err(e) => return Err(ArrowError::ExternalError(Box::new(e))), // task panicked
+    };
+    let PrefetchedUnit {
+        mask,
+        sel,
+        ranges,
+        data,
+        permit,
+    } = unit;
+    let reader = PrefetchedReader {
+        ranges,
+        data,
+        meta: Arc::clone(meta.metadata()),
+        _permit: permit,
+    };
+    let mut builder = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
+        .with_row_groups(vec![rg])
+        .with_batch_size(batch_rows)
+        .with_projection(mask);
+    if let Some((skip, take)) = sel {
+        builder = builder.with_row_selection(RowSelection::from(vec![
+            RowSelector::skip(skip),
+            RowSelector::select(take),
+        ]));
+    }
+    builder
+        .build()
+        .map_err(|e| ArrowError::ExternalError(Box::new(e)))
+}
+
+/// THE single S3 decode driver: every read shape — row-windowed streaming,
+/// wide-schema column groups, and each K-split row partition — flows through
+/// here. Two halves, connected by a byte-denominated semaphore ("the bucket"):
+///
+///   * admission loop (spawned): for each planned unit IN ORDER, acquire
+///     permits equal to its compressed size (clamped to the whole budget so an
+///     oversized unit can still run, alone), then spawn its ranged GET. Fetches
+///     whose permits fit run CONCURRENTLY — that's what overlaps S3 latency
+///     with decode — while `acquire` blocks the loop the moment the bucket is
+///     spent.
+///   * decoder (this task): strictly one unit at a time (bounds decode
+///     scratch), served entirely from the prefetched bytes. Dropping a decoded
+///     unit's stream frees its bytes AND releases its permits, waking the
+///     admission loop: constant memory pressure, fetch concurrency
+///     self-adjusting to the fetch:decode speed ratio, no rate estimation
+///     anywhere.
+///
+/// `prefetch_budget_mb == 0` degrades to strict fetch→decode→fetch (every
+/// acquire is for the full 1-permit budget). Output batches are sent to `tx`
+/// in row order.
+#[allow(clippy::too_many_arguments)]
+async fn drive_s3(
     store: Arc<dyn ObjectStore>,
     path: ObjPath,
     meta: ArrowReaderMetadata,
     out_schema: SchemaRef,
-    leaves: Vec<usize>,
-    selected: Vec<usize>,
-    budget_bytes: u64,
+    full_mask: ProjectionMask,
+    roots: Vec<usize>,
+    subranges: Vec<(usize, usize, usize)>,
     batch_clamp: usize,
     decode_budget: u64,
+    fetch_window_mb: u64,
+    colwindow_budget: u64,
     prefetch_budget_mb: u64,
     tx: mpsc::Sender<Result<RecordBatch, ArrowError>>,
 ) {
-    // Send an error downstream and stop (mirrors spawn_window's error contract).
+    // Send an error downstream and stop.
     macro_rules! send_err {
         ($e:expr) => {{
-            let _ = tx.send(Err(ArrowError::ExternalError(Box::new($e)))).await;
+            let _ = tx.send(Err($e)).await;
             return;
         }};
     }
 
-    // --- sync prelude: plan EVERY row group's column partition + fetch ranges
-    // up front (borrows `meta`, so it must finish before the first `.await`).
-    // Planning globally (not per row group) lets the prefetcher run ahead
-    // across row-group boundaries too. ---
-    struct RgPlan {
-        rg: usize,
-        batch_rows: usize,
-        n_groups: usize,
-    }
-    let mut rg_plans: Vec<RgPlan> = Vec::with_capacity(selected.len());
-    // (mask, chunk byte ranges, compressed KiB) per column group, in decode order.
-    let mut fetch_plans: Vec<(ProjectionMask, Vec<Range<u64>>, u64)> = Vec::new();
-    {
-        let schema_descr = meta.metadata().file_metadata().schema_descr();
-        for &rg in &selected {
-            let rgm = meta.metadata().row_group(rg);
-            let batch_rows = byte_budget_rows(
-                rgm.total_byte_size(),
-                rgm.num_rows(),
-                batch_clamp,
-                decode_budget,
-            );
-            let groups =
-                partition_columns_by_budget(&projected_col_sizes(rgm, &leaves), budget_bytes);
-            rg_plans.push(RgPlan {
-                rg,
-                batch_rows,
-                n_groups: groups.len(),
-            });
-            for g in groups {
-                let (ranges, kib) = group_fetch_plan(rgm, &g);
-                fetch_plans.push((ProjectionMask::roots(schema_descr, g), ranges, kib));
-            }
-        }
-    }
+    let (rg_plans, units) = plan_s3_units(
+        &meta,
+        &full_mask,
+        &roots,
+        &subranges,
+        batch_clamp,
+        decode_budget,
+        fetch_window_mb,
+        colwindow_budget,
+    );
 
     // --- admission loop: budget-gated concurrent prefetch ---
-    // A semaphore holds `prefetch_budget` in KiB-denominated permits. For each
-    // column group IN ORDER: acquire permits equal to its compressed size
-    // (clamped to the whole budget so an oversized group can still run, alone),
-    // then spawn its ranged GET. Fetches whose permits fit run CONCURRENTLY —
-    // that's what overlaps S3 latency with decode — while acquire() blocks the
-    // loop the moment the budget is spent. The decoder dropping a finished
-    // group releases its permits and un-blocks the loop: constant memory
-    // pressure with zero idle gaps, no rate estimation anywhere.
-    // `prefetch_budget_mb == 0` degrades to one-group-at-a-time (the old
-    // strictly-sequential behavior) because every acquire is for the full
-    // 1-permit budget.
     let budget_kib = prefetch_budget_mb.saturating_mul(1024).max(1);
     let budget_kib = budget_kib.min(u32::MAX as u64 / 2);
     let sem = Arc::new(Semaphore::new(budget_kib as usize));
     // Handles are tiny; the byte budget is what actually bounds prefetch. The
-    // channel only needs to keep the admission loop from racing unboundedly
-    // far ahead in *task count* when groups are small.
+    // channel only keeps the admission loop from racing unboundedly far ahead
+    // in *task count* when units are small.
     let (htx, mut hrx) =
-        mpsc::channel::<tokio::task::JoinHandle<Result<PrefetchedGroup, ArrowError>>>(64);
+        mpsc::channel::<tokio::task::JoinHandle<Result<PrefetchedUnit, ArrowError>>>(64);
     {
         let store = store.clone();
         let path = path.clone();
-        let plans = std::mem::take(&mut fetch_plans);
         tokio::spawn(async move {
-            for (mask, ranges, kib) in plans {
+            for UnitFetch {
+                mask,
+                sel,
+                ranges,
+                kib,
+            } in units
+            {
                 let want = kib.clamp(1, budget_kib) as u32;
                 let permit = match sem.clone().acquire_many_owned(want).await {
                     Ok(p) => p,
@@ -1326,11 +1426,12 @@ async fn drive_colwindowed(
                 let path = path.clone();
                 let handle = tokio::spawn(async move {
                     match store.get_ranges(&path, &ranges).await {
-                        Ok(data) => Ok(PrefetchedGroup {
+                        Ok(data) => Ok(PrefetchedUnit {
                             mask,
+                            sel,
                             ranges,
                             data,
-                            _permit: permit,
+                            permit,
                         }),
                         Err(e) => Err(ArrowError::ExternalError(Box::new(e))),
                     }
@@ -1342,72 +1443,74 @@ async fn drive_colwindowed(
         });
     }
 
-    // --- decoder: strictly one column group at a time (bounds decode scratch;
+    // --- decoder: strictly one unit at a time (bounds decode scratch;
     // concurrency lives ONLY on the fetch side above) ---
     for plan in rg_plans {
-        let mut group_batches: Vec<Vec<RecordBatch>> = Vec::with_capacity(plan.n_groups);
-        for _ in 0..plan.n_groups {
-            let handle = match hrx.recv().await {
-                Some(h) => h,
-                None => send_err!(ParquetError::General(
-                    "column-prefetch: admission loop ended early".to_string()
-                )),
-            };
-            let group = match handle.await {
-                Ok(Ok(g)) => g,
-                Ok(Err(e)) => send_err!(e),
-                Err(e) => send_err!(e), // task panicked/cancelled
-            };
-            let reader = PrefetchedReader {
-                ranges: group.ranges,
-                data: group.data,
-                meta: Arc::clone(meta.metadata()),
-            };
-            let built = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
-                .with_row_groups(vec![plan.rg])
-                .with_batch_size(plan.batch_rows)
-                .with_projection(group.mask)
-                .build();
-            let mut stream = match built {
-                Ok(s) => s,
-                Err(e) => send_err!(e),
-            };
-            let mut batches = Vec::new();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(b) => batches.push(b),
-                    Err(e) => send_err!(e),
+        match plan.decode {
+            RgDecode::Windows(n) => {
+                for _ in 0..n {
+                    let mut stream =
+                        match next_unit_stream(&mut hrx, &meta, plan.rg, plan.batch_rows).await {
+                            Ok(s) => s,
+                            Err(e) => send_err!(e),
+                        };
+                    while let Some(item) = stream.next().await {
+                        let is_err = item.is_err();
+                        let msg = item.map_err(|e| ArrowError::ExternalError(Box::new(e)));
+                        if tx.send(msg).await.is_err() {
+                            return; // consumer dropped
+                        }
+                        if is_err {
+                            return;
+                        }
+                    }
+                    // `stream` drops here -> window bytes freed, permits
+                    // released, next fetch admitted.
                 }
             }
-            group_batches.push(batches);
-            // `stream` (owning the PrefetchedReader) and `group._permit` drop
-            // here -> this group's compressed bytes are freed and its budget
-            // permits released -> the admission loop's pending acquire wakes
-            // and the next fetch launches. Decoded batches (the output) are
-            // retained for the hstack below, same as before.
-        }
+            RgDecode::Hstack(n) => {
+                let mut group_batches: Vec<Vec<RecordBatch>> = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let mut stream =
+                        match next_unit_stream(&mut hrx, &meta, plan.rg, plan.batch_rows).await {
+                            Ok(s) => s,
+                            Err(e) => send_err!(e),
+                        };
+                    let mut batches = Vec::new();
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(b) => batches.push(b),
+                            Err(e) => send_err!(ArrowError::ExternalError(Box::new(e))),
+                        }
+                    }
+                    group_batches.push(batches);
+                    // Group bytes + permits released here; decoded batches (the
+                    // output) are retained for the hstack below.
+                }
 
-        // --- hstack the row-aligned batches into full-width batches ---
-        let nbatches = group_batches.first().map(|g| g.len()).unwrap_or(0);
-        if group_batches.iter().any(|g| g.len() != nbatches) {
-            send_err!(ArrowError::ComputeError(format!(
-                "column-window batch-count mismatch in row group {}: {:?}",
-                plan.rg,
-                group_batches.iter().map(|g| g.len()).collect::<Vec<_>>()
-            )));
-        }
-        for i in 0..nbatches {
-            let mut cols: Vec<ArrayRef> = Vec::with_capacity(out_schema.fields().len());
-            for g in &group_batches {
-                cols.extend(g[i].columns().iter().cloned());
-            }
-            match RecordBatch::try_new(out_schema.clone(), cols) {
-                Ok(b) => {
-                    if tx.send(Ok(b)).await.is_err() {
-                        return; // consumer dropped
+                // --- hstack the row-aligned batches into full-width batches ---
+                let nbatches = group_batches.first().map(|g| g.len()).unwrap_or(0);
+                if group_batches.iter().any(|g| g.len() != nbatches) {
+                    send_err!(ArrowError::ComputeError(format!(
+                        "column-window batch-count mismatch in row group {}: {:?}",
+                        plan.rg,
+                        group_batches.iter().map(|g| g.len()).collect::<Vec<_>>()
+                    )));
+                }
+                for i in 0..nbatches {
+                    let mut cols: Vec<ArrayRef> = Vec::with_capacity(out_schema.fields().len());
+                    for g in &group_batches {
+                        cols.extend(g[i].columns().iter().cloned());
+                    }
+                    match RecordBatch::try_new(out_schema.clone(), cols) {
+                        Ok(b) => {
+                            if tx.send(Ok(b)).await.is_err() {
+                                return; // consumer dropped
+                            }
+                        }
+                        Err(e) => send_err!(e),
                     }
                 }
-                Err(e) => send_err!(e),
             }
         }
     }
@@ -1465,8 +1568,8 @@ fn build_s3_store(
                     virtual_hosted_style=false, row_groups=None, columns=None,
                     batch_size=131072, decode_budget_bytes=2*1024*1024,
                     fetch_window_mb=16, k=1, split_threshold_bytes=134217728,
-                    prefetch_windows=2, predicate_json=None, column_fetch_mb=256,
-                    column_prefetch_budget_mb=64))]
+                    predicate_json=None, column_fetch_mb=16,
+                    prefetch_budget_mb=64))]
 #[allow(clippy::too_many_arguments)]
 fn read_row_groups_s3(
     py: Python<'_>,
@@ -1490,17 +1593,17 @@ fn read_row_groups_s3(
     fetch_window_mb: u64,
     k: usize,
     split_threshold_bytes: u64,
-    prefetch_windows: usize,
     // See `read_row_groups`: statistics row-group pruning only.
     predicate_json: Option<String>,
     // Compressed-byte budget per column group for the wide-schema column-windowing
-    // path (0 disables it). See `drive_colwindowed`.
+    // split axis (0 disables it). See `plan_s3_units`.
     column_fetch_mb: u64,
-    // Compressed bytes the column-window prefetcher may hold in flight/buffered
-    // ahead of the (single) decoder. Bounds memory by construction while letting
-    // enough GETs run concurrently to keep the decoder fed regardless of the
-    // fetch:decode speed ratio. 0 = strictly sequential (no overlap).
-    column_prefetch_budget_mb: u64,
+    // Compressed bytes the prefetcher may hold in flight/buffered ahead of the
+    // (single) decoder — "the bucket", shared by every unit kind. Bounds memory
+    // by construction while letting enough GETs run concurrently to keep the
+    // decoder fed regardless of the fetch:decode speed ratio. 0 = strictly
+    // sequential (no overlap). See `drive_s3`.
+    prefetch_budget_mb: u64,
 ) -> PyResult<ArrowStream> {
     let store = build_s3_store(
         &bucket,
@@ -1556,69 +1659,34 @@ fn read_row_groups_s3(
 
     // K-split ONLY for a lone row group above the threshold with a page index —
     // the case Ray's fragment pool can't parallelize. Mirrors the local rule so
-    // crate-K and Ray's pool never multiply. Otherwise a single windowed stream
-    // (K=1) over all selected groups in order; Ray's pool parallelizes files.
+    // crate-K and Ray's pool never multiply. Otherwise a single driver (K=1)
+    // over all selected groups in order; Ray's pool parallelizes files. Each of
+    // the K streams gets its own prefetch bucket (decode parallelism is the
+    // point of the split), so ~`k * prefetch_budget` compressed may be in
+    // flight for this one deliberately-parallel shape.
     let split = k > 1
         && selected.len() == 1
         && meta.metadata().row_group(selected[0]).total_byte_size() as u64 >= split_threshold_bytes
         && meta.metadata().offset_index().is_some();
 
-    // Column-windowing (wide-schema S3 memory fix): if any selected group's projected
-    // columns exceed the compressed budget, read them in sequential column groups so
-    // only one group's compressed chunks are resident at a time. Only for the
-    // non-split path (K-split handles the lone-huge-*tall* group); narrow reads
-    // partition to a single group and fall through to the streaming path unchanged.
-    let leaves =
-        projected_leaf_indices(meta.metadata().file_metadata().schema_descr(), &columns);
-    let colwindow_budget = column_fetch_mb.saturating_mul(1024 * 1024);
-    let colwindow = !split
-        && colwindow_budget > 0
-        && selected.iter().any(|&rg| {
-            partition_columns_by_budget(
-                &projected_col_sizes(meta.metadata().row_group(rg), &leaves),
-                colwindow_budget,
-            )
-            .len()
-                > 1
-        });
-    if colwindow {
-        let (tx, rx) = mpsc::channel::<Result<RecordBatch, ArrowError>>(S3_CHANNEL_DEPTH);
-        rt.spawn(drive_colwindowed(
-            store.clone(),
-            obj_path.clone(),
-            meta.clone(),
-            schema.clone(),
-            leaves,
-            selected,
-            colwindow_budget,
-            batch_size,
-            decode_budget_bytes,
-            column_prefetch_budget_mb,
-            tx,
-        ));
-        return Ok(into_py_stream(Box::new(S3ChannelReader {
-            schema,
-            receivers: vec![rx],
-            cur: 0,
-        })));
-    }
-
-    // Build the per-unit sub-range lists (each becomes one task + one channel,
-    // drained in order).
-    let units: Vec<Vec<(usize, usize, usize)>> = if split {
+    // Build the per-stream sub-range lists (each becomes one drive_s3 task +
+    // one channel, drained in order). How a sub-range further splits into
+    // prefetchable units (row windows vs column groups) is decided per row
+    // group inside the driver — see `plan_s3_units`.
+    let stream_ranges: Vec<Vec<(usize, usize, usize)>> = if split {
         let rg = selected[0];
         let total_rows = meta.metadata().row_group(rg).num_rows().max(0) as usize;
         let chunk = total_rows.div_ceil(k.max(1)).max(1);
-        let mut units = Vec::new();
+        let mut ranges = Vec::new();
         let mut start = 0usize;
         while start < total_rows {
             let len = chunk.min(total_rows - start);
-            units.push(vec![(rg, start, len)]);
+            ranges.push(vec![(rg, start, len)]);
             start += len;
         }
-        units
+        ranges
     } else {
-        // One unit: every selected group, whole, in order.
+        // One stream: every selected group, whole, in order.
         let subranges = selected
             .iter()
             .map(|&rg| {
@@ -1632,23 +1700,27 @@ fn read_row_groups_s3(
         vec![subranges]
     };
 
-    // Spawn one task per unit on the shared runtime; collect receivers in order.
-    let mut receivers = Vec::with_capacity(units.len());
-    for subranges in units {
+    let roots = projected_root_indices(meta.metadata().file_metadata().schema_descr(), &columns);
+    let colwindow_budget = column_fetch_mb.saturating_mul(1024 * 1024);
+
+    // Spawn one driver per stream on the shared runtime; collect receivers in order.
+    let mut receivers = Vec::with_capacity(stream_ranges.len());
+    for subranges in stream_ranges {
         let (tx, rx) = mpsc::channel::<Result<RecordBatch, ArrowError>>(S3_CHANNEL_DEPTH);
         receivers.push(rx);
-        let (store, path, meta, mask) =
-            (store.clone(), obj_path.clone(), meta.clone(), mask.clone());
-        rt.spawn(drive_unit(
-            store,
-            path,
-            meta,
-            mask,
+        rt.spawn(drive_s3(
+            store.clone(),
+            obj_path.clone(),
+            meta.clone(),
+            schema.clone(),
+            mask.clone(),
+            roots.clone(),
             subranges,
-            decode_budget_bytes,
             batch_size,
+            decode_budget_bytes,
             fetch_window_mb,
-            prefetch_windows,
+            colwindow_budget,
+            prefetch_budget_mb,
             tx,
         ));
     }
@@ -1913,6 +1985,160 @@ mod tests {
         // regardless of page size.
         assert_eq!(effective_window_step(0, 512, 8192), 8192);
         assert_eq!(effective_window_step(0, 0, 1), 1);
+    }
+
+    /// Write a 2-column, 1000-row parquet (data pages capped at ~100 rows, page
+    /// index on) into memory and load its metadata WITH the page index — the
+    /// fixture for the window/unit planning tests below.
+    fn windowed_fixture() -> (ArrowReaderMetadata, Bytes) {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("b", DataType::Utf8, false),
+        ]));
+        let a = Int64Array::from((0..1000i64).collect::<Vec<_>>());
+        let b = StringArray::from((0..1000).map(|i| format!("row-{i}")).collect::<Vec<_>>());
+        let batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(b)]).unwrap();
+        let props = WriterProperties::builder()
+            .set_data_page_row_count_limit(100)
+            .set_write_batch_size(100)
+            .build();
+        let mut buf = Vec::new();
+        let mut w = ArrowWriter::try_new(&mut buf, schema, Some(props)).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        let buf = Bytes::from(buf);
+        let meta =
+            ArrowReaderMetadata::load(&buf, reader_options(PageIndexPolicy::Required)).unwrap();
+        (meta, buf)
+    }
+
+    #[test]
+    fn window_plan_whole_group_equals_whole_chunks() {
+        let (meta, _buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let (ranges, kib) = window_fetch_plan(md, 0, &leaves, 0, 1000);
+        let (want_ranges, want_kib) = group_fetch_plan(md.row_group(0), &leaves);
+        assert_eq!(ranges, want_ranges);
+        assert_eq!(kib, want_kib);
+    }
+
+    #[test]
+    fn window_plan_subwindow_fetches_less_than_the_chunk() {
+        let (meta, _buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let (_, whole_kib) = window_fetch_plan(md, 0, &leaves, 0, 1000);
+        // A 100-row window out of 1000 (10 pages/column) must fetch strictly
+        // less than the whole chunks...
+        let (ranges, kib) = window_fetch_plan(md, 0, &leaves, 400, 100);
+        assert!(kib < whole_kib, "window kib {kib} >= whole {whole_kib}");
+        // ...and every planned range must sit inside one of the column chunks.
+        for r in &ranges {
+            let contained = leaves.iter().any(|&l| {
+                let (s, len) = md.row_group(0).column(l).byte_range();
+                r.start >= s && r.end <= s + len
+            });
+            assert!(contained, "range {r:?} escapes the column chunks");
+        }
+    }
+
+    /// The load-bearing guarantee: decode served ONLY from a window's planned
+    /// ranges must succeed (a request outside the plan is a hard
+    /// "not prefetched" error) and reproduce exactly the window's rows — for
+    /// windows that tile the group at non-page-aligned offsets.
+    #[test]
+    fn window_plans_serve_every_decoder_request() {
+        use arrow::array::Int64Array;
+
+        let (meta, buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let sem = Arc::new(Semaphore::new(usize::MAX >> 3));
+        let mut next_val = 0i64;
+        for (w, wlen) in [(0usize, 250usize), (250, 250), (500, 400), (900, 100)] {
+            let (ranges, _kib) = window_fetch_plan(md, 0, &leaves, w, wlen);
+            let data: Vec<Bytes> = ranges
+                .iter()
+                .map(|r| buf.slice(r.start as usize..r.end as usize))
+                .collect();
+            let permit = rt
+                .block_on(sem.clone().acquire_many_owned(1))
+                .unwrap();
+            let reader = PrefetchedReader {
+                ranges,
+                data,
+                meta: Arc::clone(meta.metadata()),
+                _permit: permit,
+            };
+            let batches: Vec<RecordBatch> = rt.block_on(async {
+                let mut stream =
+                    ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
+                        .with_row_groups(vec![0])
+                        .with_batch_size(97)
+                        .with_projection(ProjectionMask::all())
+                        .with_row_selection(RowSelection::from(vec![
+                            RowSelector::skip(w),
+                            RowSelector::select(wlen),
+                        ]))
+                        .build()
+                        .unwrap();
+                let mut out = Vec::new();
+                while let Some(b) = stream.next().await {
+                    out.push(b.unwrap());
+                }
+                out
+            });
+            let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+            assert_eq!(rows, wlen, "window ({w},{wlen}) yielded {rows} rows");
+            for b in &batches {
+                let col = b.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
+                for i in 0..col.len() {
+                    assert_eq!(col.value(i), next_val);
+                    next_val += 1;
+                }
+            }
+        }
+        assert_eq!(next_val, 1000);
+    }
+
+    #[test]
+    fn plan_chooses_windows_for_narrow_and_hstack_for_wide() {
+        let (meta, _buf) = windowed_fixture();
+        let roots = vec![0usize, 1];
+        let mask = ProjectionMask::all();
+        // Generous column budget -> not wide -> row windows (single window here:
+        // the fixture is tiny, so the byte-budget window covers all rows).
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1 << 30,
+        );
+        assert_eq!(plans.len(), 1);
+        assert!(matches!(plans[0].decode, RgDecode::Windows(1)));
+        assert_eq!(units[0].sel, Some((0, 1000)));
+        // 1-byte column budget -> every root its own group -> hstack of 2.
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1,
+        );
+        assert!(matches!(plans[0].decode, RgDecode::Hstack(2)));
+        assert_eq!(units.len(), 2);
+        assert!(units.iter().all(|u| u.sel.is_none() && u.kib > 0));
+        // A K-split style partial sub-range must NEVER column-window (it is a
+        // tall group split by rows), even under a tiny budget.
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 500, 500)], 131072, 2 << 20, 16, 1,
+        );
+        assert!(matches!(plans[0].decode, RgDecode::Windows(_)));
+        assert_eq!(units[0].sel, Some((500, 500)));
     }
 
     #[test]
