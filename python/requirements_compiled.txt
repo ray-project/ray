@@ -1102,7 +1102,7 @@ microsoft-security-utilities-secret-masker==1.0.0b4
     # via azure-cli-core
 minigrid==2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
-mistune==3.2.0
+mistune==3.3.0
     # via nbconvert
 ml-collections==1.1.0
     # via open-spiel
