@@ -85,7 +85,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--consume", choices=["iter_bundles", "count"], default="iter_bundles"
     )
-    p.add_argument("--sample-hz", type=float, default=10.0)
+    # 50 Hz (20 ms): a 5000-column decode's builder-flush spike is short; at the
+    # old 10 Hz it was caught on some runs and missed on others, giving ~1.5 GB of
+    # run-to-run variance in peak_uss. The deterministic metric of record is Ray's
+    # own per-task max USS (``read_avg_max_uss_gb``); this sampler is the backup.
+    p.add_argument("--sample-hz", type=float, default=50.0)
     args = p.parse_args()
     if args.preset:
         args.path = args.path or PRESETS[args.preset]["path"]
@@ -104,18 +108,36 @@ class WorkerMemSampler:
     peak of their *summed* RSS (and USS on Linux) plus total CPU consumed while sampling.
     """
 
-    def __init__(self, interval_s: float):
+    def __init__(self, interval_s: float, root_pid: Optional[int] = None):
         self._interval_s = interval_s
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.peak_rss = 0
         self.peak_uss = 0  # stays 0 if USS is unavailable (macOS)
         self._uss_ok = True
+        # PID of OUR node's raylet. When set, we sum only its descendant workers,
+        # not every ``ray::`` process on the box — otherwise the workspace's managed
+        # Ray (:6379) workers get summed in, polluting the peak. None => fall back to
+        # the cmdline heuristic (macOS / when the raylet pid can't be found).
+        self._root_pid = root_pid
+        self.matched_workers = 0
         # Track CPU as (last_seen_total) per pid, summed into cpu_seconds on exit.
         self._cpu_last: Dict[int, float] = {}
         self.cpu_seconds = 0.0
 
     def _ray_workers(self) -> List[psutil.Process]:
+        # Preferred: OUR raylet + its descendant workers only. A private local Ray
+        # instance owns exactly its read workers here, so this isolates us from the
+        # workspace's :6379 node cleanly (ray:: proctitles can't be matched by
+        # session dir — setproctitle overwrites the cmdline).
+        if self._root_pid is not None:
+            try:
+                root = psutil.Process(self._root_pid)
+                procs = [root] + root.children(recursive=True)
+                self.matched_workers = len(procs)
+                return procs
+            except psutil.NoSuchProcess:
+                return []
         out = []
         for proc in psutil.process_iter(["name", "cmdline"]):
             try:
@@ -124,6 +146,7 @@ class WorkerMemSampler:
                     out.append(proc)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        self.matched_workers = len(out)
         return out
 
     def _sample(self):
@@ -211,6 +234,29 @@ def main():
 
     ray.init(ignore_reinit_error=True)
 
+    # Pin subsequent Ray/GCS resolution to THIS instance's address. With
+    # RAY_ADDRESS=local next to the workspace's managed Ray (:6379), the stats
+    # collection re-resolves "local", finds two running instances, and errors —
+    # which is why read_avg_max_uss_gb (the deterministic per-task USS) has been
+    # empty every run. Pinning the explicit gcs address disambiguates it.
+    try:
+        gcs = ray.get_runtime_context().gcs_address
+        if gcs:
+            os.environ["RAY_ADDRESS"] = gcs
+    except Exception:
+        pass
+
+    # Find OUR raylet's pid so the sampler sums only our node's workers.
+    root_pid: Optional[int] = None
+    try:
+        node = ray._private.worker._global_node  # noqa: SLF001
+        for name, procs in (node.all_processes or {}).items():
+            if "raylet" in name.lower() and procs:
+                root_pid = procs[0].process.pid
+                break
+    except Exception:
+        pass
+
     read_kwargs: Dict[str, Any] = {}
     if args.columns:
         read_kwargs["columns"] = args.columns
@@ -221,11 +267,12 @@ def main():
     print(
         f"reader={args.reader} path={args.path} columns={args.columns} "
         f"concurrency={args.concurrency} arena_max={os.environ.get('MALLOC_ARENA_MAX')} "
-        f"ld_preload={os.environ.get('LD_PRELOAD')}"
+        f"ld_preload={os.environ.get('LD_PRELOAD')} "
+        f"raylet_pid={root_pid} sample_hz={args.sample_hz}"
     )
 
     try:
-        with WorkerMemSampler(1.0 / args.sample_hz) as sampler:
+        with WorkerMemSampler(1.0 / args.sample_hz, root_pid=root_pid) as sampler:
             t0 = time.perf_counter()
             ds = ray.data.read_parquet(args.path, **read_kwargs)
             if args.consume == "count":
@@ -242,6 +289,7 @@ def main():
             "cpu_over_wall": round(sampler.cpu_seconds / wall, 3) if wall else None,
             "peak_rss_gb": _gb(sampler.peak_rss),
             "peak_uss_gb": _gb(sampler.peak_uss) if sampler.peak_uss else None,
+            "sampled_workers": sampler.matched_workers,
             **collect_read_op_metrics(ds),
         }
         print("\n=== RESULT ===")
