@@ -1379,11 +1379,13 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
-        # These make list_nodes, list_workers, list_actors never return in 20secs
+        # These make list_nodes, list_workers, list_actors never return in 20secs.
+        # list_tasks is served by the dashboard head, which the asio delay hook (GCS
+        # gRPC only) can't slow down, so it can't hold an HTTP slot here.
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "TaskInfoGcsService.grpc_server.GetTaskEvents=20000000:20000000,"
+                "NodeInfoGcsService.grpc_server.GetAllNodeInfo=20000000:20000000,"
                 "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
                 "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
@@ -1425,7 +1427,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             threading.Thread(
                 target=_try_state_query_expect_rate_limit,
                 args=(
-                    list_tasks,
+                    list_nodes,
                     res_q,
                     start_q,
                 ),
