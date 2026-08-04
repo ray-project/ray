@@ -3765,7 +3765,7 @@ class TestSchedulerPerformanceOptimizations:
             ),
             "type_gpu": NodeTypeConfig(
                 name="type_gpu",
-                resources={"CPU": 4, "GPU": 1, "memory": 500},
+                resources={"CPU": 1, "GPU": 1, "memory": 500},
                 min_worker_nodes=0,
                 max_worker_nodes=100,
             ),
@@ -3807,7 +3807,7 @@ class TestSchedulerPerformanceOptimizations:
         to_launch, _ = _launch_and_terminate(reply)
         # All existing nodes are rejected (can't fit shape A or B).
         # Shape A: 3 × {CPU:2, memory:100}. type_1 has 4 CPU, 500 mem → fits 2/node → need 2.
-        # Shape B: 2 × {GPU:1}. type_gpu has 1 GPU each → need 2.
+        # Shape B: 2 × {GPU:1}. type_gpu has 1 GPU each (CPU=1 can't fit shape A) → need 2.
         assert to_launch == {"type_1": 2, "type_gpu": 2}
 
 

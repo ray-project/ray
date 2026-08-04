@@ -167,8 +167,14 @@ def _can_fit_any_request(
     """
     if not resource_shapes:
         return True
+    from ray._raylet import IMPLICIT_RESOURCE_PREFIX
+
     for shape in resource_shapes:
-        if all(available.get(k, 0.0) >= v for k, v in shape.items()):
+        if all(
+            available.get(k, 1.0 if k.startswith(IMPLICIT_RESOURCE_PREFIX) else 0.0)
+            >= v
+            for k, v in shape.items()
+        ):
             return True
     return False
 
