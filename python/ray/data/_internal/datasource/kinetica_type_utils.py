@@ -530,6 +530,25 @@ def _is_date_time_column(col_def: Any) -> Optional[str]:
     return None
 
 
+def _is_uuid_column(col_def: Any) -> bool:
+    """Check if a column is a UUID type.
+
+    Args:
+        col_def: The column definition to check.
+
+    Returns:
+        True if the column has the UUID property, False otherwise.
+    """
+    gpudb = _check_gpudb()
+    GPUdbColumnProperty = gpudb.GPUdbColumnProperty
+
+    if col_def is None:
+        return False
+
+    prop_set = {p.lower() for p in col_def.column_properties}
+    return GPUdbColumnProperty.UUID.lower() in prop_set
+
+
 def convert_arrow_batch_to_records(
     batch: "pa.RecordBatch",
     columns: List,
@@ -547,7 +566,8 @@ def convert_arrow_batch_to_records(
     _check_pyarrow()
     import json
     import struct
-    from datetime import date, datetime, time
+    import uuid
+    from datetime import date, datetime, time, timezone
 
     # Handle None columns - create empty map if no column definitions provided
     column_map = {col.name: col for col in columns} if columns else {}
@@ -556,8 +576,8 @@ def convert_arrow_batch_to_records(
 
     # Pre-process columns: convert to Python lists and identify special columns
     col_data = {}
-    # col_types values: 'json', 'array', 'vector', 'decimal', 'date', 'time',
-    # 'datetime', 'timestamp', or None for normal columns
+    # col_types values: 'json', 'array', 'vector', 'decimal', 'uuid', 'date',
+    # 'time', 'datetime', 'timestamp', or None for normal columns
     col_types = {}
     for col_name in col_names:
         col_def = column_map.get(col_name)
@@ -585,6 +605,8 @@ def convert_arrow_batch_to_records(
                         )
             elif col_def.is_decimal:
                 col_types[col_name] = "decimal"
+            elif _is_uuid_column(col_def):
+                col_types[col_name] = "uuid"
             else:
                 # Check for date/time types
                 dt_type = _is_date_time_column(col_def)
@@ -649,18 +671,28 @@ def convert_arrow_batch_to_records(
                     # value is not None here (handled by if block at line 569)
                     record[col_name] = str(value)
             elif col_type == "datetime":
-                # Convert datetime to ISO format string (YYYY-MM-DDTHH:MM:SS.ffffff)
-                # Kinetica DATETIME is a STRING column with datetime property
+                # Convert datetime to Kinetica format (YYYY-MM-DD HH:MM:SS.ffffff)
+                # Kinetica DATETIME is a STRING column with datetime property.
+                # Kinetica expects space-separated format, not ISO 'T' separator,
+                # and does not support timezone offsets.
                 if isinstance(value, datetime):
-                    record[col_name] = value.isoformat()
+                    # Strip timezone info (Kinetica doesn't store it) and use
+                    # space separator instead of 'T'
+                    record[col_name] = value.strftime("%Y-%m-%d %H:%M:%S.%f")
                 else:
                     # value is not None here (handled by if block at line 604)
                     record[col_name] = str(value)
             elif col_type == "timestamp":
                 # Convert datetime to epoch milliseconds (long integer)
-                # Kinetica TIMESTAMP is a LONG column with timestamp property
+                # Kinetica TIMESTAMP is a LONG column with timestamp property.
+                # Arrow timestamps are UTC-based, so we must interpret them as
+                # UTC to avoid local timezone offset errors.
                 if isinstance(value, datetime):
-                    # Convert to epoch milliseconds
+                    # If the datetime is naive (no timezone), assume it's UTC
+                    # since Arrow timestamps are UTC-based
+                    if value.tzinfo is None:
+                        value = value.replace(tzinfo=timezone.utc)
+                    # Convert to epoch milliseconds using UTC timestamp
                     record[col_name] = int(value.timestamp() * 1000)
                 elif isinstance(value, (int, float)):
                     # Already numeric - assume it's already epoch ms or can be used as-is
@@ -669,11 +701,26 @@ def convert_arrow_batch_to_records(
                     # value is not None here (handled by if block at line 604)
                     # Try to convert string to int if possible
                     record[col_name] = int(value)
+            elif col_type == "uuid":
+                # Convert UUID bytes or UUID object to standard string format
+                # Kinetica UUID columns expect: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+                if isinstance(value, bytes) and len(value) == 16:
+                    # Convert 16-byte binary to UUID string
+                    record[col_name] = str(uuid.UUID(bytes=value))
+                elif isinstance(value, uuid.UUID):
+                    record[col_name] = str(value)
+                elif isinstance(value, str):
+                    # Already a string - validate and normalize format
+                    record[col_name] = str(uuid.UUID(value))
+                else:
+                    # Fallback - try to convert to string
+                    record[col_name] = str(value)
             else:
                 # Handle any remaining date/time types that weren't detected
-                # by column properties
+                # by column properties. Use Kinetica-compatible formats.
                 if isinstance(value, datetime):
-                    record[col_name] = value.isoformat()
+                    # Use space separator for Kinetica compatibility
+                    record[col_name] = value.strftime("%Y-%m-%d %H:%M:%S.%f")
                 elif isinstance(value, date):
                     record[col_name] = value.isoformat()
                 elif isinstance(value, time):
