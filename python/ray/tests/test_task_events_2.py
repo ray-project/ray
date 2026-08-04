@@ -288,7 +288,7 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     )
 
 
-def test_fault_tolerance_job_failed(shutdown_only):
+def test_fault_tolerance_job_failed(shutdown_only, monkeypatch):
     sys_config = _SYSTEM_CONFIG.copy()
     config = {
         "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
@@ -296,6 +296,13 @@ def test_fault_tolerance_job_failed(shutdown_only):
         "gcs_mark_task_failed_on_worker_dead_delay_ms": 30000,
     }
     sys_config.update(config)
+    # The dashboard-head task event store reads these reconciliation delays from its own
+    # env vars (in seconds), not from _system_config, so mirror them for the
+    # read-from-dashboard-head path.
+    monkeypatch.setenv(
+        "RAY_DASHBOARD_TASK_EVENTS_MARK_FAILED_ON_WORKER_DEAD_DELAY_S", "30"
+    )
+    monkeypatch.setenv("RAY_DASHBOARD_TASK_EVENTS_MARK_FAILED_ON_JOB_DONE_DELAY_S", "1")
     ray.init(num_cpus=8, _system_config=sys_config)
     script = """
 import ray
@@ -451,7 +458,7 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     )
 
 
-def test_ray_intentional_errors(shutdown_only):
+def test_ray_intentional_errors(shutdown_only, monkeypatch):
     """
     Test in the below cases, ray task should not be marked as failure:
     1. ray.actor_exit_actor()
@@ -475,6 +482,9 @@ def test_ray_intentional_errors(shutdown_only):
     # Avoid worker-dead marking racing with max_calls task completion.
     sys_config = _SYSTEM_CONFIG.copy()
     sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
+    monkeypatch.setenv(
+        "RAY_DASHBOARD_TASK_EVENTS_MARK_FAILED_ON_WORKER_DEAD_DELAY_S", "30"
+    )
     ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
@@ -996,7 +1006,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
         )
 
 
-def test_task_events_gc_default_policy(shutdown_only):
+def test_task_events_gc_default_policy(shutdown_only, monkeypatch):
     @ray.remote
     def finish_task():
         pass
@@ -1020,6 +1030,8 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
+    # The dashboard-head store caps itself from its own env var, not _system_config.
+    monkeypatch.setenv("RAY_DASHBOARD_TASK_EVENTS_MAX_NUM_TASK_EVENTS", "5")
     ray_context = ray.init(
         num_cpus=8,
         _system_config={
