@@ -452,6 +452,11 @@ class ServeController:
             deployment_id
         )
 
+    def _dump_all_autoscaling_metrics_for_testing(self):
+        return (
+            self.autoscaling_state_manager._dump_all_autoscaling_metrics_for_testing()
+        )
+
     def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._stop_one_running_replica_for_testing(
             deployment_id

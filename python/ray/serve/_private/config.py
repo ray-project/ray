@@ -50,6 +50,8 @@ from ray.serve.generated.serve_pb2 import (
     GangRuntimeFailurePolicy as GangRuntimeFailurePolicyProto,
     GangSchedulingConfig as GangSchedulingConfigProto,
     LoggingConfig as LoggingConfigProto,
+    PrometheusCustomMetrics as PrometheusCustomMetricsProto,
+    PrometheusMetric as PrometheusMetricProto,
     ReplicaConfig as ReplicaConfigProto,
     RequestRouterConfig as RequestRouterConfigProto,
 )
@@ -337,6 +339,20 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
+            ac = data["autoscaling_config"]
+            if "prometheus_metrics" in ac:
+                prom = ac["prometheus_metrics"]
+                if prom is None:
+                    ac.pop("prometheus_metrics")
+                elif isinstance(prom, list):
+                    ac["prometheus_metrics"] = PrometheusCustomMetricsProto(
+                        metrics=[PrometheusMetricProto(metric_name=n) for n in prom]
+                    )
+                else:
+                    raise TypeError(
+                        "prometheus_metrics must be None or List[str], "
+                        f"got {type(prom).__name__}"
+                    )
             # By setting the serialized policy def, on the protobuf level, AutoscalingConfig constructor will not
             # try to import the policy from the string import path when the protobuf is deserialized on the controller side
             data["autoscaling_config"]["policy"]["_serialized_policy_def"] = (
@@ -508,6 +524,19 @@ class DeploymentConfig(BaseModel):
                         )
                     else:
                         policy_data["policy_kwargs"] = {}
+            prom = data["autoscaling_config"].get("prometheus_metrics", None)
+            if prom is None:
+                data["autoscaling_config"]["prometheus_metrics"] = None
+            elif isinstance(prom, dict):
+                data["autoscaling_config"]["prometheus_metrics"] = [
+                    (m.get("metric_name") if isinstance(m, dict) else m.metric_name)
+                    for m in (prom.get("metrics") or [])
+                ]
+            else:
+                data["autoscaling_config"]["prometheus_metrics"] = [
+                    getattr(m, "metric_name", m)
+                    for m in (getattr(prom, "metrics", []) or [])
+                ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":

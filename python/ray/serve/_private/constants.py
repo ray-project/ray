@@ -463,6 +463,13 @@ RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
     "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
+#: Prometheus host:port for replica autoscaling metrics (empty = unset).
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST = get_env_str(
+    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST", ""
+)
+# Cache TTL for co-located PromQL: env RAY_SERVE_PROMETHEUS_QUERY_CACHE_TTL_S
+# (read in ray._common.prometheus_utils.DEFAULT_PROMETHEUS_QUERY_CACHE_TTL_S).
+
 # Factor of look_back_period_s for autoscaling metric record interval.
 # Record interval = look_back_period_s * factor. Used by both router and replica.
 RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(

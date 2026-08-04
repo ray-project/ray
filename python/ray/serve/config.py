@@ -661,6 +661,14 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
+    prometheus_metrics: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Optional Prometheus metric names / PromQL expressions collected by "
+            "each replica (see RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST)."
+        ),
+    )
+
     aggregation_function: Union[str, AggregationFunction] = Field(
         default=AggregationFunction.MEAN,
         description="Function used to aggregate metrics across a time window.",

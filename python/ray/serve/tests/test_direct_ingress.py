@@ -2569,6 +2569,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "downscale_delay_s": 600.0,
                                     "downscale_to_zero_delay_s": None,
                                     "upscale_delay_s": 30.0,
+                                    "prometheus_metrics": None,
                                     "aggregation_function": "mean",
                                     "policy": {
                                         "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",

@@ -1274,3 +1274,26 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def _dump_all_autoscaling_metrics_for_testing(
+        self,
+    ) -> Dict[DeploymentID, Dict[str, float]]:
+        """Flatten aggregated custom metrics for tests."""
+        all_metrics: Dict[DeploymentID, Dict[str, float]] = {}
+        for app_state in self._app_autoscaling_states.values():
+            for (
+                dep_id,
+                dep_state,
+            ) in app_state._deployment_autoscaling_states.items():
+                flat: Dict[str, float] = {}
+                for (
+                    name,
+                    replica_vals,
+                ) in dep_state._get_aggregated_custom_metrics().items():
+                    if replica_vals:
+                        flat[name] = sum(replica_vals.values()) / len(replica_vals)
+                total = dep_state.get_total_num_requests()
+                if total > 0:
+                    flat["num_ongoing_requests"] = total
+                all_metrics[dep_id] = flat
+        return all_metrics

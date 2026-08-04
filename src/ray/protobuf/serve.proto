@@ -89,6 +89,17 @@ message AutoscalingConfig {
 
   // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
   string aggregation_function = 16;
+
+  // Optional Prometheus metrics for autoscaling (preserves None vs empty list).
+  optional PrometheusCustomMetrics prometheus_metrics = 17;
+}
+
+message PrometheusMetric {
+  string metric_name = 1;
+}
+
+message PrometheusCustomMetrics {
+  repeated PrometheusMetric metrics = 1;
 }
 
 //[Begin] LOGGING CONFIG
