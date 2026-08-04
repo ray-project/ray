@@ -80,7 +80,6 @@ py_test_module_list(
         "test_state_api_2.py",
         "test_state_api_summary.py",
         "test_task_events_3.py",
-        "test_tpu.py",
         "test_unavailable_actors.py",
         "test_util_helpers.py",
     ],
@@ -928,6 +927,7 @@ py_test_module_list(
         "test_streaming_generator_backpressure.py",
         "test_task_events.py",
         "test_task_events_2.py",
+        "test_tpu.py",
     ],
     tags = [
         "exclusive",

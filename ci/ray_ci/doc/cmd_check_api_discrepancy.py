@@ -9,7 +9,7 @@ import click
 
 from ci.ray_ci.doc.api import API
 from ci.ray_ci.doc.autodoc import Autodoc
-from ci.ray_ci.doc.module import Module
+from ci.ray_ci.doc.module import Module, _is_directly_annotated
 
 # Each team config carries two exemption lists. Both feed the "every
 # @PublicAPI symbol must be documented" check identically (they're unioned at
@@ -357,7 +357,7 @@ def _import_status(module: str) -> Tuple[bool, bool]:
             origin = getattr(obj, "__module__", None)
             if not origin or (origin != module and not origin.startswith(f"{module}.")):
                 continue
-            if hasattr(obj, "_annotated"):
+            if _is_directly_annotated(obj):
                 return (True, True)
         except Exception:  # noqa: BLE001 - lazy attribute access blew up
             continue
