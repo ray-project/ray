@@ -213,9 +213,7 @@ class TestDeploymentConfig:
         # None (the default) means no `Retry-After` header.
         assert DeploymentConfig().backpressure_retry_after_s is None
         assert (
-            DeploymentConfig(
-                backpressure_retry_after_s=None
-            ).backpressure_retry_after_s
+            DeploymentConfig(backpressure_retry_after_s=None).backpressure_retry_after_s
             is None
         )
         # 0 is legal: "retry immediately."
@@ -224,9 +222,7 @@ class TestDeploymentConfig:
             == 0
         )
         assert (
-            DeploymentConfig(
-                backpressure_retry_after_s=7.5
-            ).backpressure_retry_after_s
+            DeploymentConfig(backpressure_retry_after_s=7.5).backpressure_retry_after_s
             == 7.5
         )
 
