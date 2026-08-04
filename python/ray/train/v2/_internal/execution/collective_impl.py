@@ -1,11 +1,8 @@
 import logging
-from typing import Any, List, Optional, TypeVar
+from typing import Any
 
 import ray
 import ray.cloudpickle as pickle
-from ray.train.v2._internal.execution.checkpoint.sync_actor import (
-    SynchronizationBarrierResetError,
-)
 from ray.train.v2._internal.execution.context import get_train_context
 
 # For reference, {1:1} is 19 bytes, {"1":"1"} is 21 bytes,
@@ -14,7 +11,6 @@ _MAX_BROADCAST_SIZE_BYTES = 1000
 
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
 
 
 def barrier() -> None:
@@ -33,7 +29,11 @@ def barrier() -> None:
     )
 
 
-def broadcast_from_rank_zero(data: Any) -> Any:
+def broadcast_from_rank_zero(
+    data: Any,
+    *,
+    caller_method_name: str = "ray.train.collective.broadcast_from_rank_zero",
+) -> Any:
     """Broadcast data from the rank 0 worker to all other workers.
 
     This method is used by the public API function :func:`ray.train.collective.broadcast_from_rank_zero`.
@@ -55,35 +55,6 @@ def broadcast_from_rank_zero(data: Any) -> Any:
             world_rank=train_context.get_world_rank(),
             world_size=train_context.get_world_size(),
             data=data,
-            caller_method_name="ray.train.collective.broadcast_from_rank_zero",
+            caller_method_name=caller_method_name,
         )
     )
-
-
-def collective_all_gather(data: T, *, caller_method_name: str) -> Optional[List[T]]:
-    """Gather one value from every training worker, ordered by world rank.
-
-    Returns ``None`` if the barrier was reset while waiting, which happens when a
-    worker dies and the replica group is replaced. Callers should fall back to
-    their local value in that case rather than failing the training function.
-    """
-    train_context = get_train_context()
-    sync_actor = train_context.get_synchronization_actor()
-    try:
-        return ray.get(
-            sync_actor.collective_all_gather.remote(
-                world_rank=train_context.get_world_rank(),
-                world_size=train_context.get_world_size(),
-                data=data,
-                caller_method_name=caller_method_name,
-            )
-        )
-    except ray.exceptions.RayTaskError as e:
-        if not isinstance(e.cause, SynchronizationBarrierResetError):
-            raise
-        logger.warning(
-            f"Synchronization barrier was reset during {caller_method_name} "
-            "(likely due to a worker failure). Falling back to this worker's "
-            "local value."
-        )
-        return None

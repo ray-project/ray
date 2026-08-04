@@ -72,43 +72,54 @@ def test_preemption_clean_finish(tmp_path):
     assert result.metrics["step"] == 1
 
 
-def test_preemption_info_is_consistent_across_ranks(tmp_path):
-    """A notice reaching only one rank is visible, identically, on every rank.
+@pytest.mark.parametrize("notified_rank", [0, 1])
+def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
+    """Every rank reads the same value, whichever rank received the notice.
 
-    This is what makes the return value safe to use as the condition for another
-    collective. A local read would be non-None on rank 1 and None on rank 0, so
-    rank 1 would enter `report()` while rank 0 ran another training step, and the
-    two would deadlock against each other.
+    That consistency is what makes the return value safe to use as the condition
+    for another collective. With a local read, a notice that had reached only one
+    rank would make that rank enter `report()` while its peer ran another training
+    step, and the two would deadlock against each other.
+
+    The value is rank 0's view, so a notice that has only reached a nonzero rank
+    reads as "no preemption" on every rank -- consistently, and only until the
+    watcher's fan-out reaches rank 0 too.
     """
 
-    def train_fn():
+    def train_fn(config):
         import ray.train
         from ray.train.tests.util import create_dict_checkpoint
         from ray.train.v2._internal.execution.context import get_train_context
         from ray.train.v2.api.preemption import PreemptionInfo
 
         rank = ray.train.get_context().get_world_rank()
-        # Deliver the notice to exactly one rank, which is the skew the watcher's
-        # independent fan-out RPCs can produce.
-        if rank == 1:
+        if rank == config["notified_rank"]:
             get_train_context().preemption_context.preemption_info = PreemptionInfo(
                 deadline_ms=1234,
-                preempted_node_to_ranks={"mock-node": [1]},
+                preempted_node_to_ranks={"mock-node": [config["notified_rank"]]},
             )
 
         info = ray.train.get_preemption_info()
-        # Every rank sees the same merged value, not just the notified one.
-        assert info is not None, f"rank {rank} did not observe the preemption"
-        assert info.preempted_ranks == [1]
-        assert info.preempted_node_ids == ["mock-node"]
-        assert info.deadline_ms == 1234
+        rank_zero_was_notified = config["notified_rank"] == 0
+        assert (info is not None) == rank_zero_was_notified, (
+            f"rank {rank} read {info!r}; every rank should agree on "
+            f"{'the notice' if rank_zero_was_notified else 'None'}"
+        )
+        if info is not None:
+            assert info.preempted_ranks == [0]
+            assert info.preempted_node_ids == ["mock-node"]
+            assert info.deadline_ms == 1234
 
-        # Safe to branch into a collective on it, from every rank.
-        with create_dict_checkpoint({"emergency": True}) as checkpoint:
-            ray.train.report({"emergency": True}, checkpoint=checkpoint)
+        # Whatever the answer, it is the same on every rank, so branching into
+        # another collective on it is safe. Report a checkpoint so the metrics
+        # reach the driver -- Train V2 does not persist metrics on their own.
+        metrics = {"observed_preemption": info is not None}
+        with create_dict_checkpoint(metrics) as checkpoint:
+            ray.train.report(metrics, checkpoint=checkpoint)
 
     trainer = DataParallelTrainer(
         train_fn,
+        train_loop_config={"notified_rank": notified_rank},
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -118,7 +129,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path):
     result = trainer.fit()
 
     assert result.error is None
-    assert result.metrics["emergency"] is True
+    assert result.metrics["observed_preemption"] is (notified_rank == 0)
 
 
 def test_preemption_info_falls_back_when_barrier_is_reset(tmp_path):

@@ -3,12 +3,15 @@ import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+import ray
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
+from ray.train.v2._internal.execution.checkpoint.sync_actor import (
+    SynchronizationBarrierResetError,
+)
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
-from ray.train.v2._internal.execution.preemption import merge_preemption_info
 from ray.train.v2.api.context import (
     DistributedTrainContext,
     LocalTrainContext,
@@ -191,22 +194,19 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def get_preemption_info(self) -> Optional["PreemptionInfo"]:
         local_info = get_internal_train_context().preemption_context.preemption_info
-        all_info = collective_impl.collective_all_gather(
-            local_info, caller_method_name="ray.train.get_preemption_info"
-        )
-        if all_info is None:
-            # Barrier was reset mid-call; the group is being torn down anyway.
-            return local_info
-        merged_info = None
-        for info in all_info:
-            if info is None:
-                continue
-            merged_info = (
-                info
-                if merged_info is None
-                else merge_preemption_info(merged_info, info)
+        try:
+            return collective_impl.broadcast_from_rank_zero(
+                local_info, caller_method_name="ray.train.get_preemption_info"
             )
-        return merged_info
+        except ray.exceptions.RayTaskError as e:
+            if not isinstance(e.cause, SynchronizationBarrierResetError):
+                raise
+            logger.warning(
+                "Synchronization barrier was reset during "
+                "`ray.train.get_preemption_info` (likely due to a worker "
+                "failure). Falling back to this worker's local value."
+            )
+            return local_info
 
     def is_distributed(self) -> bool:
         return True

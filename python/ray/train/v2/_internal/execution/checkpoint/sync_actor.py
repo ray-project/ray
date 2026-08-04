@@ -47,7 +47,6 @@ class SynchronizationActor:
     ):
         self._counter: int = 0
         self._world_size: int = 0
-        self._reduce_op: Optional[str] = None
         self._condition = asyncio.Condition()
         self._reduced_data = None
         self._reset = False
@@ -79,13 +78,10 @@ class SynchronizationActor:
         if self._counter == 0:
             self._reduced_data = None
             self._world_size = 0
-            self._reduce_op = None
             self._reset = False
             self._condition.notify_all()
 
-    async def _setup_or_validate_collective_op(
-        self, world_size: int, reduce_op: str
-    ) -> None:
+    async def _setup_or_validate_collective_op(self, world_size: int):
         """The setup method for the synchronization actor if it is not setup yet.
         It initializes the world size and the start times for the
         synchronization barrier.
@@ -94,49 +90,29 @@ class SynchronizationActor:
         await self._condition.wait_for(lambda: not self._reset)
         if self._world_size == 0:
             self._world_size = world_size
-            self._reduce_op = reduce_op
             self._sync_start_times = [None] * world_size
-            if reduce_op == "all_gather":
-                # Pre-sized so a rank contributing None is still distinguishable
-                # from a rank that has not contributed.
-                self._reduced_data = [None] * world_size
         elif world_size != self._world_size:
             raise ValueError(
                 f"Expected all callers to provide the same world size. \
                 Got {world_size} and expected {self._world_size}."
             )
-        elif reduce_op != self._reduce_op:
-            raise ValueError(
-                "Expected all callers to use the same collective operation. "
-                f"Got {reduce_op!r} and expected {self._reduce_op!r}."
-            )
 
     @asynccontextmanager
-    async def _collective_context_manager(
-        self, world_rank: int, world_size: int, data: T, reduce_op: str
+    async def _broadcast_collective_context_manager(
+        self, world_rank: int, world_size: int, data: T
     ):
         """A context manager that ensures the synchronization barrier is lifted
         after the block of code is executed.
         """
-        joined = False
         try:
-            await self._setup_or_validate_collective_op(world_size, reduce_op)
-            if reduce_op == "broadcast":
-                if world_rank == 0:
-                    self._reduced_data = data
-            elif reduce_op == "all_gather":
-                self._reduced_data[world_rank] = data
-            else:
-                raise ValueError(f"Unknown reduction operation: {reduce_op}.")
+            await self._setup_or_validate_collective_op(world_size)
+            if world_rank == 0:
+                self._reduced_data = data
             if self._counter < self._world_size:
                 self._counter += 1
-                joined = True
             yield
         finally:
-            # A caller that never joined must not decrement the counter, which
-            # would corrupt the barrier for the callers that did.
-            if joined:
-                self._clear_states()
+            self._clear_states()
 
     def _get_time_elapsed(self) -> Optional[float]:
         """Return the time elapsed since the first worker entered the barrier.
@@ -199,42 +175,6 @@ class SynchronizationActor:
         Returns:
             The data broadcasted from the worker with rank 0.
         """
-        return await self._collective(
-            world_rank=world_rank,
-            world_size=world_size,
-            data=data,
-            caller_method_name=caller_method_name,
-            reduce_op="broadcast",
-        )
-
-    async def collective_all_gather(
-        self,
-        world_rank: int,
-        world_size: int,
-        data: T,
-        caller_method_name: str,
-    ) -> List[T]:
-        """Return every worker's value, ordered by world rank.
-
-        The values stay opaque to this actor, so any combining logic lives with
-        the caller rather than here.
-        """
-        return await self._collective(
-            world_rank=world_rank,
-            world_size=world_size,
-            data=data,
-            caller_method_name=caller_method_name,
-            reduce_op="all_gather",
-        )
-
-    async def _collective(
-        self,
-        world_rank: int,
-        world_size: int,
-        data: T,
-        caller_method_name: str,
-        reduce_op: str,
-    ):
         # TODO: resolve https://github.com/ray-project/ray/pull/54066#discussion_r2180657435
         # We couldn't reproduce the issue but the asyncio docs don't say it can't happen.
 
@@ -242,17 +182,17 @@ class SynchronizationActor:
         # manager which makes the condition variable awaiting and the counter
         # incrementing an atomic operation.
         async with self._condition:
-            async with self._collective_context_manager(
-                world_rank, world_size, data, reduce_op
+            async with self._broadcast_collective_context_manager(
+                world_rank, world_size, data
             ):
                 # If the counter is equal to the world size, it means the last worker
-                # has joined the collective. The actor notifies all the workers to
-                # continue.
+                # has called the broadcast_from_rank_zero method. The actor notifies
+                # all the workers to continue.
                 if self._counter == self._world_size:
                     self._condition.notify_all()
                     return self._reduced_data
-                # If the counter is less than the world size, the actor waits for
-                # the other workers to join the collective.
+                # If the counter is less than the world size, the actor waits for the
+                # other workers to call the broadcast_from_rank_zero method.
                 try:
                     current_time = asyncio.get_event_loop().time()
                     self._sync_start_times[world_rank] = current_time
