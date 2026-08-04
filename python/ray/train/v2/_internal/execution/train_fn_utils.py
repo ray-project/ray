@@ -3,12 +3,8 @@ import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-import ray
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
-from ray.train.v2._internal.execution.checkpoint.sync_actor import (
-    SynchronizationBarrierResetError,
-)
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
@@ -194,19 +190,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def get_preemption_info(self) -> Optional["PreemptionInfo"]:
         local_info = get_internal_train_context().preemption_context.preemption_info
-        try:
-            return collective_impl.broadcast_from_rank_zero(
-                local_info, caller_method_name="ray.train.get_preemption_info"
-            )
-        except ray.exceptions.RayTaskError as e:
-            if not isinstance(e.cause, SynchronizationBarrierResetError):
-                raise
-            logger.warning(
-                "Synchronization barrier was reset during "
-                "`ray.train.get_preemption_info` (likely due to a worker "
-                "failure). Falling back to this worker's local value."
-            )
-            return local_info
+        return collective_impl.broadcast_from_rank_zero(
+            local_info, caller_method_name="ray.train.get_preemption_info"
+        )
 
     def is_distributed(self) -> bool:
         return True

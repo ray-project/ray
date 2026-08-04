@@ -80,10 +80,6 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
     for another collective. With a local read, a notice that had reached only one
     rank would make that rank enter `report()` while its peer ran another training
     step, and the two would deadlock against each other.
-
-    The value is rank 0's view, so a notice that has only reached a nonzero rank
-    reads as "no preemption" on every rank -- consistently, and only until the
-    watcher's fan-out reaches rank 0 too.
     """
 
     def train_fn(config):
@@ -111,8 +107,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
             assert info.deadline_ms == 1234
 
         # Whatever the answer, it is the same on every rank, so branching into
-        # another collective on it is safe. Report a checkpoint so the metrics
-        # reach the driver -- Train V2 does not persist metrics on their own.
+        # another collective on it is safe.
         metrics = {"observed_preemption": info is not None}
         with create_dict_checkpoint(metrics) as checkpoint:
             ray.train.report(metrics, checkpoint=checkpoint)
@@ -130,57 +125,6 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
 
     assert result.error is None
     assert result.metrics["observed_preemption"] is (notified_rank == 0)
-
-
-def test_preemption_info_falls_back_when_barrier_is_reset(tmp_path):
-    """A barrier reset mid-call degrades to the local value instead of raising.
-
-    `get_preemption_info()` is a collective, so it is exposed to the same barrier
-    reset that `report()` already tolerates -- and it is called precisely when
-    workers are dying and the controller resets the barrier. It must not surface
-    an internal Ray error to the training function.
-    """
-
-    def train_fn():
-        import time
-
-        import ray
-        import ray.train
-        from ray.train.v2._internal.execution.context import get_train_context
-        from ray.train.v2.api.preemption import PreemptionInfo
-
-        rank = ray.train.get_context().get_world_rank()
-        get_train_context().preemption_context.preemption_info = PreemptionInfo(
-            deadline_ms=None, preempted_node_to_ranks={"mock-node": [rank]}
-        )
-        sync_actor = get_train_context().get_synchronization_actor()
-
-        if rank == 1:
-            # Stand in for a worker that dies before joining: wait until rank 0 is
-            # inside the collective, then reset the barrier the way the controller
-            # does on replica group replacement.
-            deadline = time.time() + 30
-            while ray.get(sync_actor.get_counter.remote()) < 1:
-                assert time.time() < deadline, "rank 0 never joined the collective"
-                time.sleep(0.05)
-            ray.get(sync_actor.reset.remote())
-            return
-
-        # Rank 0 is the one caught in the reset.
-        info = ray.train.get_preemption_info()
-        assert info is not None, "expected a fallback to the local value"
-        assert info.preempted_ranks == [0], info
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-            failure_config=FailureConfig(max_failures=0, max_preemption_failures=0),
-        ),
-    )
-    result = trainer.fit()
-    assert result.error is None
 
 
 def test_preemption_deadline_restart_and_resume(tmp_path):
