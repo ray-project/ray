@@ -499,6 +499,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         @staticmethod
         CCoreWorker &GetCoreWorker()
 
+        # Null when the core worker is uninitialized or already shut down, where
+        # GetCoreWorker() exits the process instead.
+        @staticmethod
+        shared_ptr[CCoreWorker] TryGetWorker()
+
         @staticmethod
         void Shutdown()
 

@@ -1,5 +1,6 @@
 # coding: utf-8
 import logging
+import os
 import pickle
 import sys
 import time
@@ -13,6 +14,7 @@ import ray
 import ray.cluster_utils
 import ray.exceptions
 import ray.experimental.channel as ray_channel
+from ray._common.test_utils import run_string_as_driver
 from ray._private.test_utils import get_actor_node_id
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
@@ -1207,6 +1209,69 @@ def test_payload_resize_large(ray_start_cluster):
     val = b"x" * size
     ch.write(val)
     ray.get(a.read.remote(ch, val))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_shutdown_with_remote_reader_does_not_kill_driver(ray_start_cluster):
+    """ray.shutdown() must not kill a driver that holds a cross-node channel.
+
+    A channel with a remote reader waits for the next value on a worker.channel_io thread,
+    checking for signals as it waits. Only the CoreWorker destructor joins that thread, so
+    it outlives the process-wide CoreWorker pointer, and a check landing in that window
+    reaches CoreWorkerProcess::GetCoreWorker(), which exits the process.
+
+    The interval has to be set on a subprocess because RayConfig reads it once per
+    process. At 1ms a check lands in that window on nearly every run, against roughly one
+    run in two at the 1000ms default.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    driver_script = """
+import ray
+import ray.experimental.channel as ray_channel
+
+ray.init(address="{address}")
+
+
+@ray.remote(num_cpus=1)
+class Reader:
+    def get_node_id(self):
+        return ray.get_runtime_context().get_node_id()
+
+
+driver_node = ray.get_runtime_context().get_node_id()
+reader_node = next(
+    node["NodeID"]
+    for node in ray.nodes()
+    if node["Alive"] and node["NodeID"] != driver_node
+)
+reader = Reader.options(
+    label_selector={{ray._raylet.RAY_NODE_ID_KEY: reader_node}}
+).remote()
+assert ray.get(reader.get_node_id.remote()) == reader_node
+
+channel = ray_channel.Channel(None, [(reader, reader_node)], 1000)
+channel.write(b"x")
+
+# The reader never reads, so the polling thread is still waiting at shutdown.
+ray.shutdown()
+print("DRIVER_EXITED_CLEANLY")
+""".format(
+        address=cluster.address
+    )
+
+    # run_string_as_driver hands env to Popen, which replaces rather than extends it.
+    output = run_string_as_driver(
+        driver_script,
+        env={**os.environ, "RAY_get_check_signal_interval_milliseconds": "1"},
+    )
+    assert "DRIVER_EXITED_CLEANLY" in output, output
 
 
 @pytest.mark.skipif(

@@ -158,6 +158,7 @@ from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
     CActorCreationOptions,
     CPlacementGroupCreationOptions,
+    CCoreWorker,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
     CTaskOptions,
@@ -2806,6 +2807,7 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 
 cdef CRayStatus check_signals() nogil:
+    cdef shared_ptr[CCoreWorker] worker
     with gil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
@@ -2839,7 +2841,14 @@ cdef CRayStatus check_signals() nogil:
         # signal to worker threads (CancelActorTaskOnExecutor for non-async actors).
         # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
-        if CCoreWorkerProcess.GetCoreWorker().ShouldInterruptTaskForCancellation():
+        #
+        # GetCoreWorker() exits the process once the core worker is gone, and background
+        # threads keep polling for signals while ray.shutdown() tears it down. A
+        # compiled-graph channel's worker.channel_io thread is one of those pollers; the
+        # CoreWorker destructor is what joins it, so it outlives the global pointer.
+        worker = CCoreWorkerProcess.TryGetWorker()
+        if (worker.get() != NULL
+                and worker.get().ShouldInterruptTaskForCancellation()):
             return CRayStatus.Interrupted(b"")
 
     return CRayStatus.OK()
