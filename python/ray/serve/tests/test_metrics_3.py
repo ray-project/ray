@@ -84,10 +84,11 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
 
         return True
 
-    wait_for_condition(check_status_metrics, timeout=30)
+    wait_for_condition(check_status_metrics, timeout=60)
 
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_deployment_status",
         expected=3,  # UPDATING
         expected_tags={"deployment": "deployment_a", "application": "app1"},
@@ -95,6 +96,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     )
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_application_status",
         expected=5,  # DEPLOYING
         expected_tags={"application": "app1"},
@@ -103,6 +105,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
 
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_deployment_status",
         expected=6,
         expected_tags={"deployment": "deployment_b", "application": "app2"},
@@ -110,6 +113,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     )
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_application_status",
         expected=6,
         expected_tags={"application": "app2"},
@@ -120,6 +124,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
 
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_deployment_status",
         expected=6,
         expected_tags={"deployment": "deployment_a", "application": "app1"},
@@ -127,6 +132,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     )
     wait_for_condition(
         check_metric_float_eq,
+        timeout=40,
         metric="ray_serve_application_status",
         expected=6,
         expected_tags={"application": "app1"},
@@ -152,7 +158,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
     # Verify startup latency: two replicas aggregate into one time series (_count == 2).
     wait_for_condition(
         check_metric_float_eq,
-        timeout=20,
+        timeout=40,
         metric="ray_serve_replica_startup_latency_ms_count",
         expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
@@ -161,7 +167,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
     # Verify initialization latency _count matches (one observation per replica).
     wait_for_condition(
         check_metric_float_eq,
-        timeout=20,
+        timeout=40,
         metric="ray_serve_replica_initialization_latency_ms_count",
         expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
@@ -178,7 +184,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
         ), f"Initialization latency value is {value}, expected to be greater than 500ms"
         return True
 
-    wait_for_condition(check_initialization_latency_value, timeout=20)
+    wait_for_condition(check_initialization_latency_value, timeout=40)
 
     # One aggregated time series per deployment (no per-replica label).
     def check_single_series_no_replica_label():
@@ -192,7 +198,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
         assert "replica" not in metrics[0]
         return True
 
-    wait_for_condition(check_single_series_no_replica_label, timeout=20)
+    wait_for_condition(check_single_series_no_replica_label, timeout=40)
 
 
 def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
@@ -236,7 +242,7 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
     # Verify reconfigure latency metric count is exactly 1 (one reconfigure happened)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=20,
+        timeout=40,
         metric="ray_serve_replica_reconfigure_latency_ms_count",
         expected=1,
         expected_tags={"deployment": "Configurable", "application": "app"},
@@ -251,7 +257,7 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
         assert value > 500, f"Reconfigure latency value is {value}, expected > 500ms"
         return True
 
-    wait_for_condition(check_reconfigure_latency_value, timeout=20)
+    wait_for_condition(check_reconfigure_latency_value, timeout=40)
 
 
 def test_health_check_latency_metrics(metrics_start_shutdown):
@@ -422,7 +428,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
     # Check batch_wait_time_ms histogram was recorded for 2 batches
@@ -433,7 +439,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
     # Check batch_execution_time_ms histogram was recorded for 2 batches
@@ -444,7 +450,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
     # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
@@ -455,7 +461,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
     # Check actual_batch_size histogram: 2 batches of 4 requests each = 8 sum
@@ -466,7 +472,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
     # Check batch_queue_length gauge exists (should be 0 after processing)
@@ -477,7 +483,7 @@ def test_batching_metrics(metrics_start_shutdown):
             expected_tags=expected_tags,
             timeseries=timeseries,
         ),
-        timeout=10,
+        timeout=40,
     )
 
 
@@ -535,7 +541,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_replicas",
         expected=5,
         expected_tags=base_tags,
@@ -546,7 +552,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 2: Check that autoscaling decision metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_desired_replicas",
         expected=5,
         expected_tags=base_tags,
@@ -557,7 +563,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 3: Check that total requests metric is 10
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_total_requests",
         expected=10,
         expected_tags=base_tags,
@@ -575,13 +581,13 @@ def test_autoscaling_metrics(metrics_start_shutdown):
         assert value >= 0
         return True
 
-    wait_for_condition(check_policy_execution_time_metric, timeout=15)
+    wait_for_condition(check_policy_execution_time_metric, timeout=30)
     print("Policy execution time metric verified.")
 
     # Test 5: Check that target_ongoing_requests metric is 2 (matches config)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_ongoing_requests",
         expected=2,
         expected_tags=base_tags,
@@ -614,7 +620,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                     found = True
         return found
 
-    wait_for_condition(check_metrics_delay_metrics, timeout=15)
+    wait_for_condition(check_metrics_delay_metrics, timeout=60)
     print("Metrics delay metrics verified.")
 
     # Release signal to complete requests
@@ -702,7 +708,7 @@ def test_async_inference_task_queue_metrics_delay(
                     return True
             return False
 
-        wait_for_condition(check_metrics_delay_metric, timeout=30)
+        wait_for_condition(check_metrics_delay_metric, timeout=60)
 
     finally:
         # Cleanup
@@ -746,11 +752,12 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
 
     serve.run(DeploymentWithCustomStats.bind(), name="custom_stats_app")
 
-    # Make a request to ensure the deployment is running
+    # Make a request to ensure the deployment is running. Bound the wait: an
+    # unbounded .result() can hang the whole test target past its timeout.
     handle = serve.get_deployment_handle(
         "DeploymentWithCustomStats", "custom_stats_app"
     )
-    handle.remote().result()
+    handle.remote().result(timeout_s=60)
 
     timeseries = PrometheusTimeseries()
     base_tags = {
@@ -785,7 +792,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
                     return True
         return False
 
-    wait_for_condition(check_user_stats_latency_metric, timeout=15)
+    wait_for_condition(check_user_stats_latency_metric, timeout=60)
     print("User autoscaling stats latency metric verified.")
 
 
@@ -810,11 +817,12 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
 
     serve.run(DeploymentWithFailingStats.bind(), name="failing_stats_app")
 
-    # Make a request to ensure the deployment is running
+    # Make a request to ensure the deployment is running. Bound the wait: an
+    # unbounded .result() can hang the whole test target past its timeout.
     handle = serve.get_deployment_handle(
         "DeploymentWithFailingStats", "failing_stats_app"
     )
-    handle.remote().result()
+    handle.remote().result(timeout_s=60)
 
     timeseries = PrometheusTimeseries()
 
@@ -839,7 +847,7 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_stats_failure_metric, timeout=15)
+    wait_for_condition(check_stats_failure_metric, timeout=30)
     print("User autoscaling stats failure metric verified.")
 
 
@@ -871,7 +879,7 @@ def test_long_poll_pending_clients_metric(metrics_start_shutdown):
     # (wait_for_condition will retry until the metric is available)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_pending_clients",
         expected=1,
         expected_tags={"namespace": "key_1"},
@@ -879,7 +887,7 @@ def test_long_poll_pending_clients_metric(metrics_start_shutdown):
     )
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_pending_clients",
         expected=1,
         expected_tags={"namespace": "key_2"},
@@ -895,7 +903,7 @@ def test_long_poll_pending_clients_metric(metrics_start_shutdown):
     # After update, pending clients for key_1 should be 0
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_pending_clients",
         expected=0,
         expected_tags={"namespace": "key_1"},
@@ -971,7 +979,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         # Should have at least 2 observations
         return metric_value == 2
 
-    wait_for_condition(check_latency_metric_exists, timeout=15)
+    wait_for_condition(check_latency_metric_exists, timeout=40)
 
     # Verify the latency sum is positive (latency > 0)
     latency_sum = get_metric_float(
@@ -998,7 +1006,7 @@ def test_long_poll_host_sends_counted(metrics_start_shutdown):
     result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "key_1"},
@@ -1016,7 +1024,7 @@ def test_long_poll_host_sends_counted(metrics_start_shutdown):
     result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "key_2"},
@@ -1024,7 +1032,7 @@ def test_long_poll_host_sends_counted(metrics_start_shutdown):
     )
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=2,
         expected_tags={"namespace_or_state": "key_1"},
@@ -1036,7 +1044,7 @@ def test_long_poll_host_sends_counted(metrics_start_shutdown):
     _ = ray.get(object_ref)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=40,
         metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "TIMEOUT"},

@@ -128,7 +128,9 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
 
     def verify_metrics(do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -167,7 +169,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
         return True
 
     try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
+        wait_for_condition(verify_metrics, timeout=40, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics(do_assert=True)
 
@@ -185,7 +187,7 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     _ = handle.remote()
 
     processing_requests = get_metric_dictionaries(
-        "ray_serve_replica_processing_queries", timeout=5
+        "ray_serve_replica_processing_queries"
     )
     assert len(processing_requests) == 1
     assert processing_requests[0]["deployment"] == "A"
@@ -193,7 +195,9 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     print("serve_replica_processing_queries exists.")
 
     def ensure_request_processing():
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -202,7 +206,7 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
                 assert "1.0" in metrics
         return True
 
-    wait_for_condition(ensure_request_processing, timeout=5)
+    wait_for_condition(ensure_request_processing, timeout=40)
 
 
 @skip_if_haproxy(
@@ -226,7 +230,9 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -261,14 +267,16 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         wait_for_condition(
             verify_metrics,
             retry_interval_ms=1000,
-            timeout=10,
+            timeout=40,
             expected_metrics=expected_metrics,
         )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -301,7 +309,7 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=40)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
@@ -331,7 +339,9 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -367,14 +377,16 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         wait_for_condition(
             verify_metrics,
             retry_interval_ms=1000,
-            timeout=10,
+            timeout=40,
             expected_metrics=expected_metrics,
         )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -407,7 +419,7 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=40)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
@@ -684,7 +696,9 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        ).text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -711,6 +725,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     assert r.status_code == 200
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=0,
         expected_success_count=1,
     )
@@ -720,6 +735,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     assert r.status_code == 250
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=0,
         expected_success_count=2,
     )
@@ -729,6 +745,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=0,
         expected_success_count=3,
     )
@@ -738,6 +755,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=1,
         expected_success_count=4,
     )
@@ -747,6 +765,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=2,
         expected_success_count=5,
     )
@@ -763,7 +782,9 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        ).text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -797,6 +818,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=0,
         expected_success_count=1,
     )
@@ -809,6 +831,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=0,
         expected_success_count=2,
     )
@@ -821,6 +844,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=1,
         expected_success_count=3,
     )
@@ -833,6 +857,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     wait_for_condition(
         check_request_count_metrics,
+        timeout=40,
         expected_error_count=2,
         expected_success_count=4,
     )
@@ -1043,7 +1068,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_queue_wait_time_metric, timeout=10)
+    wait_for_condition(check_queue_wait_time_metric, timeout=40)
 
     def check_queue_wait_time_metric_value():
         value = get_metric_float(
@@ -1054,7 +1079,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
         assert value > 400, f"Queue wait time should be greater than 500ms, got {value}"
         return True
 
-    wait_for_condition(check_queue_wait_time_metric_value, timeout=10)
+    wait_for_condition(check_queue_wait_time_metric_value, timeout=40)
 
     wait_for_condition(
         lambda: ray.get(signal.cur_num_waiters.remote()) == 0, timeout=10
@@ -1112,7 +1137,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
 
         wait_for_condition(
             check_metric_float_eq,
-            timeout=15,
+            timeout=40,
             metric="ray_serve_request_router_queue_len",
             expected=1,
             expected_tags={"deployment": "TestDeployment", "application": "app1"},
@@ -1165,7 +1190,9 @@ def test_multiplexed_metrics(metrics_start_shutdown):
 
     def verify_metrics():
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -1258,7 +1285,7 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
         api_metrics = [m for m in metrics if m.get("application") == "api_app"]
         return len(api_metrics) >= 3
 
-    wait_for_condition(metrics_available, timeout=20)
+    wait_for_condition(metrics_available, timeout=40)
 
     # Verify metrics use route patterns, not individual paths
     metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
@@ -1311,7 +1338,9 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), "Multiple metrics entries for same route pattern - should be grouped!"
 
     # Optionally verify the counter value if we can parse it from the metrics endpoint
-    metrics_text = httpx.get("http://127.0.0.1:9999").text
+    metrics_text = httpx.get(
+        "http://127.0.0.1:9999", timeout=PROMETHEUS_METRICS_TIMEOUT_S
+    ).text
     for line in metrics_text.split("\n"):
         if "serve_num_http_requests" in line and "/api/users/{user_id}" in line:
             # Extract the value from the prometheus format line

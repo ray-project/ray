@@ -65,7 +65,10 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
-PROMETHEUS_METRICS_TIMEOUT_S = 5
+# Per-scrape HTTP timeout. Generous on purpose: under CI load a scrape can
+# take >5s while the agent is perfectly healthy, and fetch_raw_prometheus
+# swallows Timeout and returns nothing -- indistinguishable from "no metrics".
+PROMETHEUS_METRICS_TIMEOUT_S = 20
 
 
 def skip_if_haproxy(reason: str):
@@ -1706,9 +1709,11 @@ def get_metric_dictionaries(
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
-        assert (
-            name in prom_timeseries
-        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
+        assert name in prom_timeseries, f"Metric {name} not found. " + (
+            f"Available metrics: {list(prom_timeseries.keys())}"
+            if prom_timeseries
+            else "The scrape returned no samples at all (metrics agent down?)."
+        )
         return True
 
     if wait:

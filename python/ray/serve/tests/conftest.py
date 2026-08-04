@@ -19,6 +19,7 @@ from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT_S,
     TELEMETRY_ROUTE_PREFIX,
     TEST_METRICS_EXPORT_PORT,
     check_ray_started,
@@ -160,6 +161,10 @@ def _shared_serve_instance():
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
+        # Cap the object store so it fits in /dev/shm on memory-constrained CI
+        # runners (~2.6GB); the default sizing falls back to disk-backed /tmp
+        # there. Tests using this fixture only move tiny payloads.
+        object_store_memory=500 * 1024**2,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
@@ -382,6 +387,43 @@ def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeo
         )
 
 
+def wait_for_serve_controller_metrics(
+    session_name, port=TEST_METRICS_EXPORT_PORT, timeout=60
+):
+    """Best-effort wait for a Serve controller metric from this session to
+    appear in a scrape. The controller sets its control-loop gauge every
+    iteration, so seeing it proves the whole export pipeline (Serve actor ->
+    dashboard agent -> Prometheus endpoint) is live before the test body
+    asserts on metrics. On timeout, warn and proceed: the test's own metric
+    waits are authoritative.
+    """
+
+    def ready():
+        try:
+            resp = httpx.get(
+                f"http://localhost:{port}/metrics",
+                timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+            )
+        except Exception:
+            return False
+        if resp.status_code != 200:
+            return False
+        return any(
+            line.startswith("ray_serve_controller_num_control_loops")
+            and f'SessionName="{session_name}"' in line
+            for line in resp.text.splitlines()
+        )
+
+    try:
+        wait_for_condition(ready, timeout=timeout, retry_interval_ms=200)
+    except RuntimeError:
+        print(
+            f"WARNING: no Serve controller metric for session {session_name} "
+            f"scraped from :{port} within {timeout}s; proceeding (the test's "
+            "own metric waits are authoritative)."
+        )
+
+
 @pytest.fixture
 def metrics_start_shutdown(request):
     param = request.param if hasattr(request, "param") else None
@@ -390,9 +432,22 @@ def metrics_start_shutdown(request):
     wait_for_metrics_port_free()
     ray.init(
         address="local",
+        # Fixed logical CPU count so scheduling doesn't depend on the runner's
+        # core count (like _shared_serve_instance); these tests are IO-bound.
+        num_cpus=16,
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
+        # The default object store sizing (30% of RAM) overflows /dev/shm on
+        # memory-constrained CI runners, silently falling back to disk-backed
+        # /tmp and slowing the cluster enough to blow the tests' metric waits.
+        # These tests only move tiny payloads, so cap it.
+        object_store_memory=500 * 1024**2,
         _system_config={
-            "metrics_report_interval_ms": 100,
+            # Keep the Ray default (1s): at 100ms every process pushes full
+            # metric snapshots 10x/s and the dashboard agent saturates on
+            # loaded runners -- scrapes time out and newly-registered metrics
+            # take tens of seconds to surface. The tests' metric waits are
+            # 20s+, so 1s visibility latency is negligible.
+            "metrics_report_interval_ms": 1000,
             "task_retry_delay_ms": 50,
         },
     )
@@ -406,7 +461,7 @@ def metrics_start_shutdown(request):
             "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
             "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
         ]
-        yield serve.start(
+        client = serve.start(
             grpc_options=gRPCOptions(
                 port=grpc_port,
                 grpc_servicer_functions=grpc_servicer_functions,
@@ -417,6 +472,10 @@ def metrics_start_shutdown(request):
                 request_timeout_s=request_timeout_s,
             ),
         )
+        # Serve just started; wait until its metrics actually flow through the
+        # agent so per-test asserts don't race a cold export pipeline.
+        wait_for_serve_controller_metrics(session_name)
+        yield client
     finally:
         serve.shutdown()
         ray.shutdown()
