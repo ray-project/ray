@@ -267,8 +267,10 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     for _ in range(5):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
-    # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23, 24}
+    # increasing these numbers should be scrutinized.
+    # +1 vs. the previous range: every core worker now runs a dedicated
+    # thread for object-info pubsub publishing.
+    assert ray.get(actor.get_thread_count.remote()) in {22, 23, 24, 25}
 
 
 # https://github.com/ray-project/ray/issues/7287

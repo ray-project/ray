@@ -175,6 +175,20 @@ class CoreWorkerProcessImpl {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       object_freed_callback_service_work_;
 
+  /// Dedicated io_context for posting object-info pubsub publishes (object location /
+  /// ref-removed) off the main IO thread (io_service_). These publishes are
+  /// fire-and-forget and, under heavy object churn, would otherwise flood io_service_'s
+  /// queue and delay critical callbacks. Posting them to io_service_ (#63983) is what
+  /// regressed the serve microbenchmark (#64347). Kept separate from
+  /// object_freed_callback_service_ (which runs user Python callbacks) so the two never
+  /// interfere.
+  instrumented_io_context object_info_publish_service_{/*enable_lag_probe=*/false,
+                                                       /*running_on_single_thread=*/true};
+
+  /// Keeps object_info_publish_service_ alive until explicitly stopped.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_info_publish_service_work_;
+
   /// Shared client call manager across all gRPC clients in the core worker process.
   /// This is used by the CoreWorker and the MetricsAgentClient.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -194,6 +208,9 @@ class CoreWorkerProcessImpl {
 
   /// Thread that drains object_freed_callback_service_.
   boost::thread object_freed_callback_thread_;
+
+  /// Thread that drains object_info_publish_service_.
+  boost::thread object_info_publish_thread_;
 
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;

@@ -75,6 +75,21 @@ class PublisherInterface {
   virtual void Publish(rpc::PubMessage pub_message) = 0;
 
   /**
+   * @brief Returns whether any subscriber is registered on the channel.
+   *
+   * This is a fast-path hint that lets publishers skip building and publishing
+   * messages nobody would receive. Publishing to a channel with no subscribers
+   * is always safe (the message is dropped), so implementations may
+   * conservatively return true; the default does exactly that.
+   *
+   * @param channel_type The type of the channel.
+   * @return true if the channel may have subscribers.
+   */
+  virtual bool ChannelHasSubscribers(const rpc::ChannelType channel_type) const {
+    return true;
+  }
+
+  /**
    * @brief Publish to the subscriber that the given key id is not available anymore.
    *
    * This will invoke the failure callback on the subscriber side.

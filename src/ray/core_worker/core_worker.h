@@ -189,6 +189,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
              instrumented_io_context &object_freed_callback_service,
+             instrumented_io_context &object_info_publish_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -199,6 +200,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
              boost::thread &object_freed_callback_thread,
+             boost::thread &object_info_publish_thread,
              std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -1932,6 +1934,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
   instrumented_io_context &object_freed_callback_service_;
 
+  /// Dedicated event loop for object-info pubsub publishes, keeping them off io_service_.
+  instrumented_io_context &object_info_publish_service_;
+
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
@@ -1960,6 +1965,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Dedicated thread for user-registered object-freed callbacks.
   boost::thread &object_freed_callback_thread_;
+
+  /// Dedicated thread for object-info pubsub publishes.
+  boost::thread &object_info_publish_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;

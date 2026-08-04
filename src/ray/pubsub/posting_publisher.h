@@ -52,6 +52,10 @@ class PostingPublisher : public PublisherInterface {
         PublishFailureEventName(channel_type));
   }
 
+  bool ChannelHasSubscribers(const rpc::ChannelType channel_type) const override {
+    return inner_->ChannelHasSubscribers(channel_type);
+  }
+
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
       std::string *publisher_id,

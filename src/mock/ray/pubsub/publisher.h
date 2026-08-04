@@ -22,6 +22,15 @@ namespace pubsub {
 
 class MockPublisher : public PublisherInterface {
  public:
+  MockPublisher() {
+    // Match the conservative default of PublisherInterface::ChannelHasSubscribers so
+    // that existing tests keep exercising the publish path.
+    ON_CALL(*this, ChannelHasSubscribers).WillByDefault(::testing::Return(true));
+  }
+  MOCK_METHOD(bool,
+              ChannelHasSubscribers,
+              (const rpc::ChannelType channel_type),
+              (const, override));
   MOCK_METHOD(void,
               ConnectToSubscriber,
               (const rpc::PubsubLongPollingRequest &request,

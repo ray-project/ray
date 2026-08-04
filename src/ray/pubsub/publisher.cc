@@ -118,6 +118,11 @@ int64_t SubscriptionIndex::GetNumBufferedBytes() const {
   return num_bytes_buffered;
 }
 
+int64_t SubscriptionIndex::NumSubscriberEntries() const {
+  return static_cast<int64_t>(subscribers_to_all_->Subscribers().size() +
+                              subscribers_to_key_id_.size());
+}
+
 bool SubscriptionIndex::Publish(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                 size_t msg_size) {
   const bool publish_to_all = subscribers_to_all_->Publish(pub_message, msg_size);
@@ -415,7 +420,18 @@ StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
   }
   SubscriberState *subscriber = it->second.get();
   subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
+  channel_subscriber_counts_.at(channel_type)
+      ->store(subscription_index_it->second.NumSubscriberEntries());
   return StatusT::OK();
+}
+
+bool Publisher::ChannelHasSubscribers(const rpc::ChannelType channel_type) const {
+  auto it = channel_subscriber_counts_.find(channel_type);
+  if (it == channel_subscriber_counts_.end()) {
+    // Unknown channel: be conservative and let Publish handle it.
+    return true;
+  }
+  return it->second->load() > 0;
 }
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
@@ -449,6 +465,8 @@ void Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   if (subscription_index_it != subscription_index_map_.end()) {
     subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
+    channel_subscriber_counts_.at(channel_type)
+        ->store(subscription_index_it->second.NumSubscriberEntries());
   }
 }
 
@@ -461,6 +479,8 @@ void Publisher::UnregisterSubscriberInternal(const UniqueID &subscriber_id) {
   RAY_LOG(DEBUG) << "Unregistering subscriber " << subscriber_id.Hex();
   for (auto &index : subscription_index_map_) {
     index.second.EraseSubscriber(subscriber_id);
+    channel_subscriber_counts_.at(index.first)
+        ->store(index.second.NumSubscriberEntries());
   }
 
   auto it = subscribers_.find(subscriber_id);
