@@ -266,7 +266,10 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "grpcio >= 1.42.0",
             "opencensus",
-            "opentelemetry-sdk >= 1.30.0",
+            # OpenTelemetry 1.28+ requires protobuf>=5. Preserve the
+            # protobuf 4.25.8 compatibility pin for Python 3.10–3.12.
+            "opentelemetry-sdk == 1.27.0; python_version < '3.13'",
+            "opentelemetry-sdk >= 1.30.0; python_version >= '3.13'",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
             *pydantic_deps,

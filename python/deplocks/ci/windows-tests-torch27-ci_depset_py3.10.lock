@@ -240,7 +240,7 @@ asttokens==3.0.1 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   stack-data
-astunparse==1.6.3 \
+astunparse==1.6.3 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
@@ -600,9 +600,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.4.2 \
+    --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
+    --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   celery
@@ -838,9 +838,9 @@ cython==0.29.37 \
     --hash=sha256:fa5b6a0f69bf1823c9fd038fa77a2568b78fda2de045a95b48a71dee4d0d578f \
     --hash=sha256:fe0eaf6b1e9ee97c5ee7bfc943f00e36cf59d929db16886cb018352bff8208da
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-databricks-sdk==0.103.0 \
-    --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
-    --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
+databricks-sdk==0.123.0 \
+    --hash=sha256:55ed566c48dcd25d8ea4ffec3f78236f63258078477e440529389c4bee95d80f \
+    --hash=sha256:787068ccf1c537736bc6387486c15d2ac02937c876c980b5b2b43230a98e4d35
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   mlflow-skinny
@@ -1051,7 +1051,7 @@ flask-cors==6.0.2 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   mlflow
-flatbuffers==25.12.19 \
+flatbuffers==25.12.19 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
@@ -1355,7 +1355,7 @@ google-crc32c==1.8.0 \
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   google-cloud-storage
     #   google-resumable-media
-google-pasta==0.2.0 \
+google-pasta==0.2.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
@@ -1521,11 +1521,11 @@ grpcio==1.75.0 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.75.0 ; python_full_version < '3.14' \
+grpcio-status==1.75.0 ; (python_full_version >= '3.11' and python_full_version < '3.14') or sys_platform != 'linux' \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-grpcio-tools==1.75.0 ; python_full_version < '3.14' \
+grpcio-tools==1.75.0 ; (python_full_version >= '3.11' and python_full_version < '3.14') or sys_platform != 'linux' \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
     --hash=sha256:0a0c899175dd23e96f61b3ab8153642e0ae0182b9c9a582cd0cc4702a056d845 \
@@ -1589,7 +1589,7 @@ h11==0.16.0 \
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   httpcore
     #   uvicorn
-h5py==3.12.1 \
+h5py==3.12.1 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
     --hash=sha256:050a4f2c9126054515169c49cb900949814987f0c7ae74c341b0c9f9b5056834 \
     --hash=sha256:06a903a4e4e9e3ebbc8b548959c3c2552ca2d70dac14fcfa650d9261c66939ed \
@@ -1815,9 +1815,9 @@ jupytext==1.19.3 \
     --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
     --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-keras==3.12.3 \
-    --hash=sha256:02a3c57d1019f67f1c006fe3333cd5f0c2d38c3f82321b8ebe5929f23b1734cf \
-    --hash=sha256:145585ef980f443b298f720afa0c2c432949f519a27088fea51396748eb74ac3
+keras==3.12.1 ; python_full_version >= '3.11' or sys_platform != 'linux' \
+    --hash=sha256:3cb760b3fec105db4d893dd717daafdd0e35457a8201502c1ba8bedfaf334a71 \
+    --hash=sha256:c340f8a25362398b20500c64e290f6ee280c6aeec51e1044eb8d759b32dc272a
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   tensorflow
@@ -2006,7 +2006,7 @@ lazy-object-proxy==1.12.0 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   openapi-spec-validator
-libclang==18.1.1 \
+libclang==18.1.1 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
     --hash=sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb \
@@ -2811,7 +2811,7 @@ mypy-extensions==1.0.0 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   mypy
-namex==0.1.0 \
+namex==0.1.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
     # via
@@ -3048,34 +3048,34 @@ opentelemetry-api==1.39.0 \
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0 \
+opentelemetry-exporter-otlp-proto-common==1.39.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
     --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0 \
+opentelemetry-exporter-otlp-proto-grpc==1.39.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:758641278050de9bb895738f35ff8840e4a47685b7e6ef4a201fe83196ba7a05 \
     --hash=sha256:7e7bb3f436006836c0e0a42ac619097746ad5553ad7128a5bd4d3e727f37fc06
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-opentelemetry-exporter-prometheus==0.60b0 \
+opentelemetry-exporter-prometheus==0.60b0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-opentelemetry-instrumentation==0.60b0 \
+opentelemetry-instrumentation==0.60b0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:4e9fec930f283a2677a2217754b40aaf9ef76edae40499c165bc7f1d15366a74 \
     --hash=sha256:aaafa1483543a402819f1bdfb06af721c87d60dd109501f9997332862a35c76a
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0 \
+opentelemetry-instrumentation-asgi==0.60b0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:928731218050089dca69f0fe980b8bfe109f384be8b89802d7337372ddb67b91 \
     --hash=sha256:9d76a541269452c718a0384478f3291feb650c5a3f29e578fdc6613ea3729cf3
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0 \
+opentelemetry-instrumentation-fastapi==0.60b0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:415c6602db01ee339276ea4cabe3e80177c9e955631c087f2ef60a75e31bfaee \
     --hash=sha256:5d34d67eb634a08bfe9e530680d6177521cd9da79285144e6d5a8f42683ed1b3
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
@@ -3106,7 +3106,7 @@ opentelemetry-semantic-conventions==0.60b0 \
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0 \
+opentelemetry-util-http==0.60b0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:4f366f1a48adb74ffa6f80aee26f96882e767e01b03cd1cfb948b6e1020341fe \
     --hash=sha256:e42b7bb49bba43b6f34390327d97e5016eb1c47949ceaf37c4795472a4e3a82d
     # via
@@ -3120,7 +3120,7 @@ opt-einsum==3.4.0 \
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   jax
     #   tensorflow
-optree==0.19.0 \
+optree==0.19.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:0230ed9ba60fbe97ee23c000850c54308009ba51a129a1060137f329f460e42e \
     --hash=sha256:045cf112adaebc76c9c7cabde857c01babfc9fae8aa0a28d48f7c565fadf0cb9 \
     --hash=sha256:0461f796b4ade3fab519d821b0fa521f07e2af70206b76aac75fcfdc2e051fca \
@@ -3351,9 +3351,9 @@ ormsgpack==1.12.2 \
     --hash=sha256:f3601f19afdbea273ed70b06495e5794606a8b690a568d6c996a90d7255e51c1 \
     --hash=sha256:fcd55e5f6ba0dbce624942adf9f152062135f991a0126064889f68eb850de0dd
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-packaging==26.1 \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
+    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   azure-cli-core
@@ -3830,15 +3830,15 @@ py-partiql-parser==0.6.3 \
     --hash=sha256:09cecf916ce6e3da2c050f0cb6106166de42c33d34a078ec2eb19377ea70389a \
     --hash=sha256:deb0769c3346179d2f590dcbde556f708cdb929059fb654bad75f4cf6e07f582
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-py-spy==0.4.1 ; python_full_version < '3.12' \
-    --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
-    --hash=sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a \
-    --hash=sha256:532d3525538254d1859b49de1fbe9744df6b8865657c9f0e444bf36ce3f19226 \
-    --hash=sha256:6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29 \
-    --hash=sha256:809094208c6256c8f4ccadd31e9a513fe2429253f48e20066879239ba12cd8cc \
-    --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
-    --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
-    --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
+py-spy==0.4.2 ; python_full_version < '3.12' \
+    --hash=sha256:142887e984a4e541071c99a4401ff8c3770f255d329dbd0f64e8c1dd51882cce \
+    --hash=sha256:1ccf688393105111684435f035bc14ec3f22117dd2b85b2414612cf27a22755a \
+    --hash=sha256:24720573f95230653b457671a1dcc3c5a381fcf4e92677761e328a430ad251b2 \
+    --hash=sha256:7f1c6d9b0e2379ead5bf792df43f4cf36153aa79e6dda4fb8ac7740cf8017110 \
+    --hash=sha256:8b06a353c177677e4e1701b288d8c58e2f8d4208ee81a8048d9f72ba800918f8 \
+    --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
+    --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
+    --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
 py4j==0.10.9.7 \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
@@ -5199,7 +5199,7 @@ tensordict==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:d8c07ea8d7e539eefc284ea2fba4cc8dfc48a6504815bef191f6f1e28a1269d2 \
     --hash=sha256:dfde2a8753e97c012edc51e7541d139ee7eca89aac7c7891c3493f36e6c650ac
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-tensorflow==2.20.0 \
+tensorflow==2.20.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:02a0293d94f5c8b7125b66abf622cc4854a33ae9d618a0d41309f95e091bbaea \
     --hash=sha256:0deb5c583dfc53b54fd158a194ce0087b406bb6518af400ca3809735e4548ec3 \
     --hash=sha256:1590cbf87b6bcbd34d8e9ad70d0c696135e0aa71be31803b27358cf7ed63f8fc \
@@ -5269,7 +5269,7 @@ testfixtures==7.0.0 \
     --hash=sha256:8ecac5a308793451640594d9ca42ce89b987711e1e4c9312855321ec21f6ccb4 \
     --hash=sha256:ae95a0522f181686204fc816e817c4725516cf5bc43360160390aad54b1dfd00
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-tf-keras==2.20.0 \
+tf-keras==2.20.0 ; python_full_version >= '3.11' or sys_platform != 'linux' \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
@@ -5487,6 +5487,7 @@ urllib3==1.26.20 \
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   botocore
+    #   databricks-sdk
     #   docker
     #   kubernetes
     #   requests

@@ -815,9 +815,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.4.2 \
+    --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
+    --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements/cloud-requirements.txt
@@ -3690,9 +3690,9 @@ outlines-core==0.2.14 \
     --hash=sha256:f753edd430ac27e6dcde5a614665888db72b78c666aa160c478afd1eb986fb8b \
     --hash=sha256:fd7d432817978ea474de428ed6ca5ed3195812f8cfb787b85fb5ec0a51a440d2
     # via vllm
-packaging==26.1 \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
+    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements/cloud-requirements.txt

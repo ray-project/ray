@@ -31,10 +31,16 @@ aiorwlock
 scipy
 colorful
 rich
-opentelemetry-sdk>=1.30.0
-opentelemetry-api
-opentelemetry-exporter-prometheus
-opentelemetry-proto
+# OpenTelemetry 1.28+ requires protobuf>=5. Keep the Python 3.10–3.12
+# environments on the final protobuf 4-compatible family.
+opentelemetry-sdk==1.27.0; python_version < '3.13'
+opentelemetry-api==1.27.0; python_version < '3.13'
+opentelemetry-exporter-prometheus==0.48b0; python_version < '3.13'
+opentelemetry-proto==1.27.0; python_version < '3.13'
+opentelemetry-sdk>=1.30.0; python_version >= '3.13'
+opentelemetry-api; python_version >= '3.13'
+opentelemetry-exporter-prometheus; python_version >= '3.13'
+opentelemetry-proto; python_version >= '3.13'
 fastapi>=0.133.0
 ormsgpack>=1.7.0
 gymnasium==1.2.2
