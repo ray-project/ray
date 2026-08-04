@@ -170,7 +170,12 @@ dataset without prior repartitioning you could potentially get an N number of fi
 partition (where N is the number of blocks in your dataset) with very limited ability to
 control the number of files and their sizes, since every block could potentially carry
 the rows corresponding to any partition.
-``min_rows_per_file`` is not supported when writing with ``partition_cols``.
+
+.. note::
+    ``min_rows_per_file`` isn't supported together with ``partition_cols``: each
+    block can be split across partition directories, so a minimum row count per
+    file can't be guaranteed. Use ``repartition()`` and ``max_rows_per_file`` to
+    control file sizes instead.
 
 .. testcode::
     import ray
