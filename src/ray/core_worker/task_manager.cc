@@ -179,25 +179,15 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items,
         generator_id_.Hex()));
   }
 
-  // Backpressure tracks generated items, not cursor distance. Before EOF every
-  // advanced index is a generated item (even if reports arrived out of order).
-  // After EOF, later EOF-region refs are synthetic errors, so only indexes
-  // before the sentinel count — except when cancellation sets EOF at an index
-  // that a generator report also wrote a real value into; that real value must
-  // still count. Therefore num_generated_items_consumed may be less than
-  // num_items when this call advances past EOF.
+  // Backpressure counts only indexes before end_of_stream_index_. If cancel
+  // lands EOF on a previously written value, bulk-consuming that index will
+  // not send a consumption update; executor unblock is delayed until
+  // cancel/signals, stream deletion, or owner death.
   int64_t num_generated_items_consumed = num_items;
   if (end_of_stream_index_ != -1) {
     const int64_t remaining_generated_items =
         std::max<int64_t>(0, end_of_stream_index_ - start_index);
     num_generated_items_consumed = std::min(num_items, remaining_generated_items);
-
-    const bool consumes_eof_index = start_index <= end_of_stream_index_ &&
-                                    end_of_stream_index_ <= last_requested_index;
-    if (consumes_eof_index &&
-        refs_written_to_stream_.contains(GetObjectRefAtIndex(end_of_stream_index_))) {
-      num_generated_items_consumed += 1;
-    }
   }
 
   consumed_object_ids->reserve(num_items);

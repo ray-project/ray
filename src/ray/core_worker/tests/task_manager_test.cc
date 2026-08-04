@@ -3166,12 +3166,12 @@ TEST_F(TaskManagerTest,
   manager_.TryDelObjectRefStream(generator_id);
 }
 
-TEST_F(TaskManagerTest,
-       TestObjectRefStreamBulkReadCountsProducedRefAtEofForBackpressure) {
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadDoesNotCountEofIndexForBackpressure) {
   // Cancellation can set EOF at an index that already holds a produced value.
-  // Bulk-consuming that value must still count it as consumed and notify the
-  // executor for backpressure; otherwise deriving the count from
-  // end_of_stream_index_ - start_index reports zero and skips the notification.
+  // Bulk consume advances the cursor past that index, but we do not count
+  // end_of_stream_index_ as consumed for backpressure. Executor release then
+  // relies on cancel/signals, stream deletion, or owner death — not a
+  // consumption update from this read.
   TaskSpecification spec = CreateTaskHelper(1,
                                             {},
                                             /*dynamic_returns=*/true,
@@ -3184,12 +3184,10 @@ TEST_F(TaskManagerTest,
   const ObjectID value_id = ObjectID::FromIndex(spec.TaskId(), 2);
 
   int consumption_updates = 0;
-  int64_t last_consumed = -1;
   ConsumptionUpdateCallback consumption_update = [&](Status status,
-                                                     int64_t num_objects_consumed) {
+                                                     int64_t /*num_objects_consumed*/) {
     if (status.ok()) {
       consumption_updates++;
-      last_consumed = num_objects_consumed;
     } else {
       EXPECT_TRUE(status.IsNotFound()) << status;
     }
@@ -3215,12 +3213,10 @@ TEST_F(TaskManagerTest,
   ASSERT_FALSE(
       manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED));
 
-  // Bulk-consume the produced value plus a synthetic EOF ref. Only the
-  // produced value counts toward backpressure, so the executor receives the
-  // one-object consumption update needed to release it.
+  // Bulk-consume the produced-at-EOF value plus a synthetic past-EOF ref. The
+  // EOF index is not counted, so consumed stays 0 and no update is sent.
   ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
-  ASSERT_EQ(consumption_updates, 1);
-  ASSERT_EQ(last_consumed, 1);
+  ASSERT_EQ(consumption_updates, 0);
 
   manager_.TryDelObjectRefStream(generator_id);
 }
