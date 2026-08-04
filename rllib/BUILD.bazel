@@ -1847,6 +1847,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# IQL
+py_test(
+    name = "test_iql_rl_module",
+    size = "small",
+    srcs = ["algorithms/iql/tests/test_iql_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # MARWIL
 py_test(
     name = "test_marwil",
@@ -2311,6 +2323,17 @@ py_test(
     tags = [
         "core",
         "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_torch_squashed_gaussian",
+    size = "small",
+    srcs = ["core/distribution/torch/tests/test_torch_squashed_gaussian.py"],
+    tags = [
+        "core",
         "team:rllib",
     ],
     deps = [":conftest"],

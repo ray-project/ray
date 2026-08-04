@@ -21,7 +21,7 @@
 /python/ray/ @ray-project/ray-core
 
 # Java worker.
-/java/ @kfstorm @raulchen @WangTaoTheTonic @SongGuyang @ray-project/ray-core
+/java/ @ray-project/ray-core
 
 # C++ worker
 /cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
@@ -32,7 +32,7 @@
 /doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core @ray-project/ray-docs
 
 # Public protobuf files.
-/src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
+/src/ray/protobuf/public/ @edoakes @MengjinYan
 
 # Azure autoscaler
 /python/ray/autoscaler/azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
@@ -45,7 +45,7 @@
 
 # Common directory shared by core and the libraries.
 # Stricter enforcement because this defines the public boundary supported by core.
-/python/ray/_common/ @edoakes @dayshah @MengjinYan
+/python/ray/_common/ @edoakes @MengjinYan
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
@@ -78,8 +78,8 @@
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
 /python/ray/data/llm.py @ray-project/ray-llm
-/python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
-/python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/serve_llm* @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/data_llm* @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
 /doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
 /doc/source/data/working-with-llms.rst @ray-project/ray-llm @ray-project/ray-docs

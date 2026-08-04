@@ -583,17 +583,17 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
 --------------------------------
 
 Within a :ref:`namespace <namespaces-guide>`, you can *name* a placement group.
-You can use the name of a placement group to retrieve the placement group from any job 
+You can use the name of a placement group to retrieve the placement group from any job
 in the Ray cluster, as long as the job is within the same namespace.
 This is useful if you can't directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
-access a placement group launched by another driver. 
+access a placement group launched by another driver.
 
-The placement group is destroyed when the original creation job completes if its 
+The placement group is destroyed when the original creation job completes if its
 lifetime isn't `detached`. You can avoid this by using a :ref:`detached placement group <placement-group-detached>`
 
-Note that this feature requires that you specify a 
-:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the 
+Note that this feature requires that you specify a
+:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the
 placement group across jobs.
 
 .. tab-set::
@@ -731,18 +731,18 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 
 .. _pgroup-topology-strategy:
 
-[Alpha] Topology aware scheduling
----------------------------------
+[Alpha] Topology strategy scheduling
+------------------------------------
 
 .. warning::
 
-  Topology aware scheduling is an **alpha** feature. It's actively being iterated on and
-  the API surface may change. Ray currently only supports defining one topology label and 
-  one node level strategy (described below). For topology labels, Ray currently supports 
+  Topology strategy scheduling is an **alpha** feature. It's actively being iterated on and
+  the API surface may change. Ray currently only supports defining one topology label and
+  one node level strategy (described below). For topology labels, Ray currently supports
   only ``STRICT_PACK``. Support for additional strategies and multi-level topologies is planned.
 
-Why topology aware scheduling?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Why topology strategy scheduling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The placement strategies above (PACK, STRICT_PACK, SPREAD, STRICT_SPREAD) operate purely on a
 per-node basis. For multi-node GPU domains such as GB200 or GB300 NVL racks where nodes share
@@ -763,15 +763,15 @@ fault tolerance. If all nodes in ``rack-1`` go down, the placement group can't a
 to a different rack. Furthermore, you have to manually specify a domain when you really just want
 any domain and this becomes cumbersome if you have many GPU domains.
 
-Topology aware scheduling currently solves this by letting you express a topology strategy for the placement 
+Topology strategy scheduling currently solves this by letting you express a topology strategy for the placement
 group, which allows specifying a topology label within the cluster. Ray picks a value for this topology label
-that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy 
+that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy
 within that value.
 
 How it works
 ~~~~~~~~~~~~
 
-Pass ``topology_strategy=`` to :func:`ray.util.placement_group` to enable topology-aware
+Pass ``topology_strategy=`` to :func:`ray.util.placement_group` to enable topology strategy
 placement. The argument is a dict that maps a label key to the placement strategy used at that level.
 
 Currently, ``topology_strategy`` is a dictionary that may contain up to two keys:
@@ -802,7 +802,7 @@ With this, Ray accomplishes the following:
 2. Selects a value for that label that can satisfy all bundles.
 3. Applies the node-level scheduling strategy within the selected value.
 
-Here is a following example to STRICT_SPREAD bundles across distinct nodes while still 
+Here is a following example to STRICT_SPREAD bundles across distinct nodes while still
 STRICT_PACKing them onto a single rack (``ray.io/gpu-domain`` is each rack's **topology label**):
 
 .. code-block:: python
@@ -853,7 +853,7 @@ put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown 
 Fault tolerance
 ~~~~~~~~~~~~~~~
 
-Topology aware scheduling improves on static label selectors by providing automatic
+Topology strategy scheduling improves on static label selectors by providing automatic
 fault tolerance at the topology-label level:
 
 - **Partial failure** (some nodes within the selected value of the topology label die):
@@ -872,7 +872,7 @@ fault tolerance at the topology-label level:
 Observability
 ~~~~~~~~~~~~~
 
-You can inspect topology-aware placement groups using the existing placement group
+You can inspect topology strategy placement groups using the existing placement group
 observability tools:
 
 - **Dashboard**: The placement group table shows a ``Topology`` column, which displays the
@@ -911,7 +911,7 @@ packs onto a single ``ray.io/gpu-domain``:
     - assignments:
         ray.io/gpu-domain: rack-2
 
-For placement groups that don't use topology-aware scheduling, ``topology_strategy`` and
+For placement groups that don't use a topology strategy, ``topology_strategy`` and
 ``topology_assignments`` are both empty lists. Both fields appear only when you pass
 ``--detail``.
 

@@ -52,10 +52,9 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_use_hash_shuffle_v2(restore_data_context):
+def data_context_hash_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_hash_shuffle_v2 = True
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -234,6 +233,31 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
+    op = ShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
+
+
 def test_shuffle_map_task_uses_operator_name():
     ctx = DataContext.get_current()
     name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
@@ -242,7 +266,6 @@ def test_shuffle_map_task_uses_operator_name():
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
-        pre_map_merge_threshold=0,
         name=name,
     )
     op.start(ExecutionOptions(), noop_counter())

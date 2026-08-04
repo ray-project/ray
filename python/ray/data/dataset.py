@@ -41,6 +41,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta_datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -139,7 +140,12 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 from ray.util.debug import log_once
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -198,6 +204,17 @@ IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
 EXPRESSION_API_GROUP = "Expressions"
+
+
+def _warn_on_ray_remote_args_fn(
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+) -> None:
+    if ray_remote_args_fn is not None:
+        warnings.warn(
+            "`ray_remote_args_fn` is deprecated and will be removed in Ray 2.64.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
 
 @PublicAPI
@@ -457,7 +474,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -474,6 +492,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each row.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -735,7 +755,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -773,6 +794,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
@@ -786,7 +809,7 @@ class Dataset:
         if isinstance(batch_size, int) and batch_size < 1:
             raise ValueError("Batch size can't be negative or 0")
 
-        return self._map_batches_without_batch_size_validation(
+        return self.map_batches_internal(
             fn,
             batch_size=batch_size,
             compute=compute,
@@ -805,26 +828,28 @@ class Dataset:
             **ray_remote_args,
         )
 
-    def _map_batches_without_batch_size_validation(
+    @DeveloperAPI
+    def map_batches_internal(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["auto"]],
-        compute: Optional[ComputeStrategy],
-        batch_format: Optional[str],
-        zero_copy_batch: bool,
-        fn_args: Optional[Iterable[Any]],
-        fn_kwargs: Optional[Dict[str, Any]],
-        fn_constructor_args: Optional[Iterable[Any]],
-        fn_constructor_kwargs: Optional[Dict[str, Any]],
-        num_cpus: Optional[float],
-        num_gpus: Optional[float],
-        memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
-        udf_modifying_row_count: bool,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        batch_size: Union[int, None, Literal["auto"]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
+        """Apply a function to batches without public ``map_batches`` validation."""
         # NOTE: The `map_groups` implementation calls `map_batches` with
         # `batch_size=None`. The issue is that if you request GPUs with
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
@@ -870,6 +895,65 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset._from_parent(self, logical_plan)
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_columns(
+        self,
+        exprs: Mapping[str, "Expr"],
+        *,
+        compute: Optional[ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Add or overwrite multiple columns via expressions in a single projection.
+
+        This is the multi-column counterpart of :meth:`with_column`. All
+        expressions are evaluated within one projection over the existing
+        columns, which avoids the repeated work of chaining several
+        ``with_column`` calls.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.range(100)
+            >>> ds.with_columns({
+            ...     "id_2": col("id") * 2,
+            ...     "id_3": col("id") * 3,
+            ... }).show(2)
+            {'id': 0, 'id_2': 0, 'id_3': 0}
+            {'id': 1, 'id_2': 2, 'id_3': 3}
+
+        Args:
+            exprs: A mapping from new column name to the expression that
+                defines its values. Column order follows the mapping's
+                insertion order.
+            compute: The compute strategy to use for the projection operation.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for the map tasks (e.g., ``num_gpus=1``).
+
+        Returns:
+            A new dataset with the added or overwritten columns.
+        """
+        from ray.data.expressions import DownloadExpr
+
+        if not exprs:
+            return self
+        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
+            raise ValueError(
+                "`with_columns` does not support DownloadExpr. "
+                "Use `with_column` for download expressions instead."
+            )
+
+        from ray.data._internal.logical.operators import Project
+
+        project_op = Project(
+            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
+            input_dependencies=[self._logical_plan.dag],
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(project_op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
@@ -947,7 +1031,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators import Download, Project
+        from ray.data._internal.logical.operators import Download
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -961,15 +1045,11 @@ class Dataset:
                 filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
-        else:
-            project_op = Project(
-                exprs=[StarExpr(), expr.alias(column_name)],
-                input_dependencies=[self._logical_plan.dag],
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset._from_parent(self, logical_plan)
+            return Dataset._from_parent(self, logical_plan)
+
+        return self.with_columns(
+            {column_name: expr}, compute=compute, **ray_remote_args
+        )
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1507,7 +1587,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1522,6 +1603,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing the flattened results of applying the function to each row.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -1640,7 +1723,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1648,6 +1732,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing only the rows that satisfy the predicate.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         # Ensure exactly one of fn or expr is provided
         provided_params = sum([fn is not None, expr is not None])
         if provided_params != 1:
@@ -3824,7 +3910,14 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
-    @PublicAPI(api_group=SMJ_API_GROUP)
+    @Deprecated(
+        message=(
+            "`Dataset.zip` is deprecated and will be removed in Ray 2.64. Use `join` "
+            "on a shared key instead. `zip` relies on deterministic ordering for "
+            "correctness, which Ray Data doesn't guarantee by default."
+        ),
+        warning=True,
+    )
     def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
@@ -4733,6 +4826,168 @@ class Dataset:
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        catalog: Optional["Catalog"] = None,
+        mode: "SaveMode" = SaveMode.APPEND,
+        partition_by: Optional[List[str]] = None,
+        storage_options: Optional[Dict[str, str]] = None,
+        schema_mode: str = "merge",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to a Delta Lake table.
+
+        This is a prototype that supports ``APPEND`` and ``OVERWRITE`` modes. Each
+        write task writes Parquet data files to the table location, and the driver
+        performs a single atomic commit to the Delta transaction log using the
+        ``deltalake`` library. If the table doesn't exist, it's created.
+
+        .. tip::
+            For more details on Delta Lake, see https://delta.io/ and the
+            ``deltalake`` Python library.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+                from ray.data import SaveMode
+
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+
+                # Append (default) - creates the table if it doesn't exist.
+                ds.write_delta("/tmp/my_delta_table")
+
+                # Overwrite the table contents.
+                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+
+                # Partitioned write.
+                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+
+                # A later append with an extra column adds it to the table
+                # automatically (the default schema_mode="merge") -- existing
+                # rows read back with None for it.
+                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table"
+                )
+
+                # Reject that same write instead, leaving the table untouched.
+                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+                    "/tmp/my_delta_table", schema_mode="error"
+                )
+
+        Args:
+            path: URI of the Delta table (e.g. ``/tmp/my_table`` or
+                ``s3://bucket/my_table``). If ``catalog`` is set, this is instead
+                the table identifier the catalog resolves (e.g.
+                ``"main.schema.table"``).
+            catalog: Optional catalog (e.g. a Unity Catalog connector) that
+                resolves ``path`` to its physical location and vends
+                credentials for it. See :class:`~ray.data.catalog.Catalog`.
+                Cannot be combined with ``filesystem``.
+            mode: Write mode using the :class:`~ray.data.SaveMode` enum. Options:
+
+                * ``SaveMode.APPEND`` (default): Add new data to the table.
+                * ``SaveMode.OVERWRITE``: Replace all existing data in the table.
+
+            partition_by: Optional list of columns to partition the table by.
+            storage_options: A dictionary of storage options passed to the
+                ``deltalake`` library for authentication and configuration (e.g.
+                cloud credentials).
+            schema_mode: How an ``APPEND`` handles a column present in the
+                data being written but absent from the table's current
+                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                replaces the table's schema wholesale) or when the table
+                doesn't exist yet (there's no existing schema to compare
+                against). One of:
+
+                * ``"merge"`` (default): Add the new column to the table
+                  before committing the write, like SQL's
+                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  added as nullable, and every row written before this
+                  reads back with ``None`` for it.
+                * ``"error"``: Reject the write with a ``ValueError``
+                  instead, leaving the table's schema unchanged.
+
+                A column present in *both* the data and the table, but with
+                an incompatible type (for example, writing a string into a
+                column the table has as an integer), always raises a
+                ``ValueError`` -- regardless of ``schema_mode``. Only adding
+                a brand-new column is supported; changing an existing
+                column's type is not.
+            filesystem: Optional PyArrow filesystem used for worker Parquet
+                writes, instead of one built from ``storage_options`` or ambient
+                credentials. Cannot be combined with ``catalog``.
+            name: Optional table name recorded in the Delta metadata when a new
+                table is created.
+            description: Optional table description recorded in the Delta metadata
+                when a new table is created.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set
+                this to control number of tasks to run concurrently. This doesn't
+                change the total number of tasks run. By default, concurrency is
+                dynamically decided based on the available resources.
+        """
+        # Only meaningful with a catalog: it's the identifier the catalog
+        # resolves, captured before ``path`` is rewritten to the physical
+        # location below, so a later refresh can re-resolve the same table.
+        table_identifier = path if catalog is not None else None
+        # Preserved before any catalog merge below, so a later credential
+        # refresh can re-merge fresh catalog values with these (which should
+        # always win) instead of with a since-stale merged dict.
+        user_storage_options = storage_options
+        if catalog is not None:
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            if filesystem is not None:
+                raise ValueError(
+                    "`filesystem` cannot be specified with `catalog`. The "
+                    "`catalog` will resolve the `filesystem` with appropriate "
+                    "credentials automatically."
+                )
+            resolved = catalog.resolve(
+                path, reader=ReaderFormat.DELTA, mode=CatalogAccessMode.WRITE
+            )
+            path = resolved.path
+            if resolved.storage_options:
+                storage_options = {
+                    **resolved.storage_options,
+                    **(user_storage_options or {}),
+                }
+            if resolved.filesystem is not None:
+                filesystem = resolved.filesystem
+
+        datasink = DeltaDatasink(
+            path=path,
+            mode=mode,
+            partition_by=partition_by,
+            storage_options=storage_options,
+            schema_mode=schema_mode,
+            user_storage_options=user_storage_options,
+            filesystem=filesystem,
+            catalog=catalog,
+            table_identifier=table_identifier,
+            name=name,
+            description=description,
         )
 
         self.write_datasink(
@@ -6298,7 +6553,9 @@ class Dataset:
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Union[TorchDeviceType, Literal["auto"]] = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], CollatedData], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -6356,12 +6613,14 @@ class Dataset:
                 ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
-                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. You can't use this parameter with
-                ``collate_fn``.
+                Dataset is passed to Ray Train, and to CPU otherwise. When used
+                together with ``collate_fn``, the device transfer only applies if
+                the ``collate_fn`` output is a `TensorBatchType`; for other output
+                types, you must handle the device transfer manually.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of collate_fn.
+                If the output of ``collate_fn`` is a `TensorBatchType`, it is
+                automatically moved to the target device (see ``device``);
+                otherwise, you must handle the device transfer manually.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
@@ -6369,7 +6628,7 @@ class Dataset:
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
                 experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+                conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
