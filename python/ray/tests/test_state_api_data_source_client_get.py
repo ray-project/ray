@@ -1143,7 +1143,13 @@ def test_get_id_not_found(shutdown_only):
 @patch.object(
     StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
-async def test_state_data_source_client_get_all_task_info_no_early_return():
+async def test_state_data_source_client_get_all_task_info_no_early_return(monkeypatch):
+    # Force the GCS read path: get_all_task_info routes on
+    # ray._config.enable_task_events_to_dashboard_head().
+    monkeypatch.setattr(
+        ray._config, "enable_task_events_to_dashboard_head", lambda: False
+    )
+
     #  Setup
     mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
 
