@@ -65,17 +65,20 @@ def serve_instance_with_token_auth():
         set_env_auth_token(token)
         reset_auth_token_state()
 
-        ray.init(
-            address="local",
-            num_cpus=8,
-            namespace="test_replica_grpc_auth",
-        )
-        serve.start()
         try:
+            ray.init(
+                address="local",
+                num_cpus=8,
+                namespace="test_replica_grpc_auth",
+            )
+            serve.start()
             yield token
         finally:
-            serve.shutdown()
-            ray.shutdown()
+            # Gate on `is_initialized`: `serve.shutdown()` connects lazily and
+            # would start a fresh cluster if `ray.init` above was what failed.
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
             reset_auth_token_state()
 
 
