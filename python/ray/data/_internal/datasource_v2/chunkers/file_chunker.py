@@ -19,7 +19,7 @@ from typing import (
     get_type_hints,
 )
 
-from ray.data._internal.util import GiB, MiB, infer_compression
+from ray.data._internal.util import MiB, infer_compression
 from ray.util.annotations import DeveloperAPI
 
 
@@ -54,16 +54,25 @@ class LineDelimitedFileChunkMetadata(ChunkMetadata):
     chunk_byte_end_idx: int
 
 
-class ParquetFileChunkMetadata(ChunkMetadata):
-    """Metadata for Parquet file chunks.
+class ParquetRowGroupChunkMetadata(ChunkMetadata):
+    """Metadata for a Parquet chunk described by explicit row-group indices.
 
-    For a parquet file, the chunks are based on the total size of the file, not on the
-    underlying row groups. We will split a file into potentially many chunks of the
-    target chunk size. This may correspond to 0, 1, or more row groups per chunk.
+    Produced by the footer-based chunking path (``ListFiles`` reads each file's
+    footer, prunes/bin-packs its row groups, and emits one manifest row per file
+    per bin), so it carries the exact physical row groups the reader should scan
+    for the file in that bin -- no size-based reconciliation needed.
+
+    ``row_group_ids`` are physical row-group indices into the file; any
+    coalescing/splitting the bin packer applied is already expanded away here.
+    ``num_rows`` is the summed footer row count of those groups (for sizing /
+    limit accounting). ``uncompressed_size`` is their summed, projection-scoped
+    uncompressed byte size, carried so the reader can size batches without
+    re-reading the footer ``ListFiles`` already read.
     """
 
-    chunk_idx: int
-    total_num_chunks: int
+    row_group_ids: Tuple[int, ...]
+    num_rows: int
+    uncompressed_size: int
 
 
 @DeveloperAPI
@@ -146,64 +155,3 @@ class LineDelimitedFileChunker(FileChunker):
                     ),
                     chunk_size,
                 )
-
-
-@DeveloperAPI
-class ParquetFileChunker(FileChunker):
-    """File chunker for Parquet files.
-
-    This chunker splits Parquet files into an estimated number of chunks. We do not
-    fetch the metadata for the file, so we may overestimate the number of chunks
-    compared to the actual number of underlying row groups. The partitioner creates
-    groupings based on these estimates, and the reader fetches the metadata and
-    ensures that all row groups are read / any overestimated row groups are ignored.
-    """
-
-    # Chosen so that we can effectively chunk files but will not result in OOMs if
-    # the compression ratio is high.
-    #
-    # If the compression ratio is high and this chunk size is large, we end up with
-    # larger chunks than we need and reading can OOM. Reducing the chunk size gives
-    # better memory performance by reading a smaller fraction of row groups at a time.
-    #
-    # We also want to keep this large enough such that we do not end up reading too
-    # much data if we underestimate the number of chunks. If row groups are larger
-    # than the chunk size and we place many of them in the same read task, the total
-    # amount of data read might be larger than expected. By increasing the chunk
-    # size we are less likely to put many such row groups in the same task.
-    _DEFAULT_TARGET_CHUNK_SIZE = 1 * GiB
-
-    def __init__(self, target_chunk_size: Optional[int] = None):
-        from ray.data.context import DataContext
-
-        ctx = DataContext.get_current()
-        if target_chunk_size is not None:
-            self._target_chunk_size = target_chunk_size
-        elif ctx.parquet_chunker_target_chunk_size is not None:
-            self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
-        else:
-            self._target_chunk_size = self._DEFAULT_TARGET_CHUNK_SIZE
-
-    def generate_chunk_metadatas(
-        self, path: str, file_size: int
-    ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
-        if file_size <= self._target_chunk_size:
-            # Do not chunk if the file is smaller than the target chunk size; when
-            # we read the file, this prevents additional metadata fetching since we
-            # want to read the entire file.
-            yield None, file_size
-            return
-
-        num_chunks = math.ceil(file_size / self._target_chunk_size)
-        for i in range(num_chunks):
-            chunk_start = self._target_chunk_size * i
-            chunk_end = min(self._target_chunk_size * (i + 1), file_size)
-            chunk_size = chunk_end - chunk_start
-            yield (
-                create_chunk_metadata(
-                    ParquetFileChunkMetadata,
-                    chunk_idx=i,
-                    total_num_chunks=num_chunks,
-                ),
-                chunk_size,
-            )

@@ -14,22 +14,16 @@ from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     check_for_legacy_tensor_type,
-)
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    FileChunker,
-    ParquetFileChunker,
 )
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileIndexer,
-    NonSamplingFileIndexer,
-)
+from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
@@ -80,7 +74,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[dict] = None,
-        file_chunker: Optional[FileChunker] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -111,14 +104,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # footers, and the scanner pins it on the pyarrow dataset so files
         # are cast to these types at scan time.
         self._user_schema = schema
-        # Chunker that splits each listed Parquet file into one or more
-        # row-group-aligned read units. Defaults to ``ParquetFileChunker``
-        # (1 GiB target chunk size, or whatever ``DataContext`` configures).
-        # Callers can inject an alternative for tests or shuffle-aware
-        # planning code that wants whole-file reads.
-        self._file_chunker: FileChunker = (
-            file_chunker if file_chunker is not None else ParquetFileChunker()
-        )
 
     @property
     def paths(self) -> List[str]:
@@ -149,9 +134,18 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._shuffle
 
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(
+        # Parquet V2 reads always use the footer-based indexer: it reads each
+        # file's footer on a ``FooterReader`` actor pool and packs row groups
+        # with the online bin packer (predicate/limit push-down + row-group
+        # skipping), producing accurate row-group-aligned read units.
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
-            file_chunker=self._file_chunker,
+            coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            split_coalesced=env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False),
         )
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:

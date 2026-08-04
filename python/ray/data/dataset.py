@@ -6070,10 +6070,11 @@ class Dataset:
              .. testcode::
                 import ray
                 import pandas as pd
+                from ray.data import SaveMode
 
                 docs = [{"title": "Lance data sink test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_lance("/tmp/data/")
+                ds.write_lance("/tmp/lance_data/", mode=SaveMode.OVERWRITE)
 
         Args:
             path: The path to the destination Lance dataset. Ignored when namespace

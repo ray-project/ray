@@ -6,6 +6,13 @@
   team: data
 
   cluster:
+    # WARNING: a test that declares its own ``byod.runtime_env`` REPLACES this
+    # list rather than extending it -- ``deep_update`` (release/ray_release/
+    # util.py) merges dicts but overwrites lists. A test that sets one env var
+    # here silently loses every RAYTEST_FAIL_ON_* below, i.e. it stops failing
+    # on OOM / dead nodes / spilling. Re-list the four entries verbatim in any
+    # test that needs its own runtime_env, or deliberately override them (as
+    # ``heterogeneous_memory_batch_inference_multitenancy`` does).
     byod:
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
@@ -29,6 +36,16 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: both scaling variants regressed when the fallback default
+        # moved 64 -> 128 MiB (autoscaling -20.9% -> +3.1%, fixed_size -6.1% ->
+        # -3.8% vs master). Pinned to hold the 64 MiB behaviour.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -42,15 +59,26 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
-- name: "read_large_parquet_{{scaling}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because they want opposite bin budgets, and a matrix would take the cartesian
+# product. Files here are ~3.9 GiB uncompressed with ~69 MiB row groups, so the
+# default budget can't fit two row groups and every one becomes its own read
+# task (~5.8k tasks for 103 files). On a fixed cluster that task explosion
+# dominates and a larger budget wins; on an autoscaling cluster the extra tasks
+# give the autoscaler demand to act on earlier and the default wins.
+- name: "read_large_parquet_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 1 GiB packs ~14 row groups per bin, cutting the task count ~14x.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: "fixed_size_cpu_compute.yaml"
 
   run:
     timeout: 3600
@@ -64,10 +92,40 @@
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles --memory 3650722201
 
+- name: "read_large_parquet_autoscaling"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -8.1% vs master at 64 MiB, +32.9% once the fallback default
+        # moved to 128 MiB. The largest Parquet-path regression from that change.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    # Default budget: -25% vs master here, against +2% at 4 GiB.
+    cluster_compute: "autoscaling_cpu_compute.yaml"
+
+  run:
+    timeout: 3600
+    # See the fixed_size variant for why --memory is pinned.
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles --memory 3650722201
+
 - name: "read_images_{{scaling}}"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -84,6 +142,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: pinned for parity. NOTE: inert -- tfrecords, not Parquet.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 3600
     script: >
@@ -91,15 +157,34 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: "read_from_uris_{{scaling}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one wants a pinned bin budget. Leaving
+# fixed_size unpinned keeps it following the fallback default.
+- name: "read_from_uris_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+    cluster_compute: "fixed_size_cpu_compute.yaml"
 
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+
+- name: "read_from_uris_autoscaling"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -17.4% vs master at 64 MiB, +0.3% once the fallback default
+        # moved to 128 MiB. fixed_size was unaffected (-0.4% -> -2.1%), hence
+        # the split above.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: "autoscaling_cpu_compute.yaml"
 
   run:
     timeout: 5400
@@ -113,6 +198,18 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # sf1000 lineitem is read with its full 17-column schema: ~1.16 GiB
+        # uncompressed per file over 1000 files. 1.25 GiB packs ~one file per
+        # bin (~943 read tasks vs the ~1000 blocks master's round-robin
+        # partitioner produced); the default budget
+        # would produce ~18k tasks.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
   run:
     timeout: 3600
     script: >
@@ -184,11 +281,33 @@
 
   matrix:
     setup:
-      mode: [append, upsert, overwrite]
+      mode: [append, upsert]
 
   run:
     timeout: 4800
     script: python iceberg_benchmark.py --mode {{mode}}
+
+# Split out of the matrix above: only ``overwrite`` wants a pinned bin budget,
+# so ``append``/``upsert`` keep following the fallback default.
+- name: "iceberg_benchmark_overwrite"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_pyiceberg.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: +0.2% vs master at 64 MiB, +5.4% at 128 MiB. append/upsert
+        # were flat or improved, hence the split.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: iceberg_benchmark_compute.yaml
+
+  run:
+    timeout: 4800
+    script: python iceberg_benchmark.py --mode overwrite
 
 ###################
 # Aggregation tests
@@ -198,6 +317,15 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: autoscaling went -15.4% -> -1.7% and fixed_size +2.6% -> +3.9%
+        # when the fallback default moved 64 -> 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -237,13 +365,113 @@
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
+  # The bin budget is per-variant rather than per-block: only
+  # fixed_size/sort_shuffle/84-groups needed retuning, and the other seven were
+  # measured healthy at 32 MiB, so they stay there rather than move onto an
+  # unmeasured value. ``setup`` is left empty and every combination is
+  # enumerated in ``adjustments`` so each can carry its own budget.
+  #
+  # Baseline for the eight sort_shuffle/hash_shuffle variants is release build
+  # #102329 (32 MiB everywhere) against master build #102323. The four
+  # hash_shuffle_v2 variants came from master after that build and have no
+  # measurement here yet.
+  #
+  # | variant                          | 32 MiB | master |      delta |
+  # |----------------------------------|--------|--------|------------|
+  # | fixed_size / sort / 84 groups    | 215.7s | 145.0s |     +48.8% |
+  # | autoscaling / sort / 84 groups   | 463.6s | 420.7s |     +10.2% |
+  # | autoscaling / hash / 84 groups   | 208.8s | 201.9s |      +3.4% |
+  # | autoscaling / hash / 7M groups   | 2216.7s| 2208.7s|      +0.4% |
+  # | fixed_size / hash / 84 groups    |  19.3s |  19.8s |      -2.7% |
+  # | fixed_size / hash / 7M groups    | 663.5s | 771.2s |     -14.0% |
+  # | fixed_size / sort / 7M groups    | 550.7s | 651.7s |     -15.5% |
+  # | autoscaling / sort / 7M groups   | 716.6s |1033.8s |     -30.7% |
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle, hash_shuffle_v2]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      scaling: []
+      shuffle_strategy: []
+      columns: []
+      bin_packing_bytes: []
+    adjustments:
+      # 256 MiB (4x the default): the one variant that needed retuning. It sat
+      # at 211s in #102329 on 32 MiB and 220-259s on smaller budgets, against
+      # master's ~145s; 256 MiB brings it to 137s, at or just under master.
+      #
+      # What's being tuned away is per-block sort-shuffle overhead, not bytes.
+      # At 32 MiB the scan emitted 4x the ``ListFiles`` outputs and ~1.5x the
+      # blocks into the shuffle (Sort Sample 3050 vs master's 2000) for an
+      # identical 20.8GB object-store peak and identical row count. With only
+      # 84 reduce partitions, block count is what dominates -- so this variant
+      # wants the same direction as ``map_groups`` (1.25 GiB on this same
+      # dataset), just less far.
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 268435456
+      # The remaining seven stay at 32 MiB, where they were measured. None is a
+      # tuned optimum -- they are a known-acceptable state, and 256 MiB is
+      # unmeasured for all of them. Worth a sweep given how far it moved the
+      # variant above, but not worth assuming.
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"   # 7M groups
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 33554432
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"
+          bin_packing_bytes: 33554432
+      # ``hash_shuffle_v2`` arrived from master and has never run on this
+      # branch, so there is no measurement to carry over. Left at the 64 MiB
+      # branch default rather than inheriting the 32 MiB above, which was a
+      # deliberate pin for the variants that had been measured at it.
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 67108864
+      - with:
+          scaling: fixed_size
+          shuffle_strategy: hash_shuffle_v2
+          columns: "column02 column14"
+          bin_packing_bytes: 67108864
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          columns: "column08 column13 column14"
+          bin_packing_bytes: 67108864
+      - with:
+          scaling: autoscaling
+          shuffle_strategy: hash_shuffle_v2
+          columns: "column02 column14"
+          bin_packing_bytes: 67108864
   cluster:
     anyscale_sdk_2026: true
     byod:
@@ -252,6 +480,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -279,6 +508,9 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # Same sf100 lineitem full-schema read as the aggregate variants; see
+        # the note there for why 1.25 GiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -320,6 +552,10 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # Both sides are read with their full schema: ~1.17 GiB uncompressed
+        # per lineitem file. 1.25 GiB packs ~one file per bin (~95 read tasks
+        # vs the 100 blocks master's round-robin partitioner produced).
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
   matrix:
@@ -342,7 +578,18 @@
 # Wide Schema tests
 ###############
 
-- name: wide_schema_pipeline_{{data_type}}
+# NOTE: `primitives` and `tensors` are spelled out rather than folded into the
+# matrix below because each wants its own bin budget, and a matrix takes the
+# cartesian product of its lists (see the read_large_parquet NOTE above). Their
+# names match the matrix-generated ones exactly so baseline history is unbroken.
+#
+# The bin budget is compared against row-group `total_byte_size` -- data-page
+# bytes only, post-encoding. For these 5000-column datasets that is a poor proxy
+# for the work a read task does: `primitives` files are 21.4 MiB on S3 but
+# report only 0.45 MiB, because dictionary + RLE collapses the repeated 500-char
+# values and the real weight is dictionary pages plus a 5000-column footer
+# carrying per-chunk min/max statistics.
+- name: wide_schema_pipeline_primitives
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -355,17 +602,128 @@
         - RAYTEST_FAIL_ON_SPILLING=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 27 single-row-group files reporting 0.45 MiB each: at the 64 MiB
+        # default all 27 land in one shared bin, so the whole 579 MiB dataset
+        # reads as a single task. 256 KiB is below one row group, so each gets
+        # its own bin (indivisible-oversize relaxation in OnlineBinPacker._place)
+        # -> 27 tasks, the ceiling while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=262144
+        #
+        # 27 actors x batch size 1 == one footer read per actor, so all 27
+        # footers are read in a single concurrent wave. Worth the extra actor
+        # startup here because these footers are unusually expensive: 5000
+        # column chunks each carrying 500-char min/max statistics.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=27
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
     cluster_compute: fixed_size_cpu_compute.yaml
-
-  matrix:
-    setup:
-      data_type: [primitives, tensors, objects, nested_structs]
 
   run:
     timeout: 300
     script: >
       python wide_schema_pipeline_benchmark.py
-      --data-type {{data_type}}
+      --data-type primitives
+
+- name: wide_schema_pipeline_tensors
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 39 MiB sits just above these 37.25 MiB row groups, so one fills a bin
+        # and the next cannot join it -- one row group per read task, same
+        # placement the 64 MiB default already produced via its two-per-bin
+        # threshold, but pinned so it survives a change to the default.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=40894464
+        #
+        # These datasets are small enough that the footer-reader pool is pure
+        # startup cost; keep it narrow and spread the few files across it.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=22
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type tensors
+
+- name: wide_schema_pipeline_nested_structs
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 21 single-row-group files reporting 1.30 MiB each: at the 64 MiB
+        # default all 21 land in one shared bin and the dataset reads as a
+        # single task. 2 MiB is the widest budget that still keeps one file per
+        # bin -- two would need 2.6 MiB -- so this is 21 tasks, the ceiling
+        # while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=2097152
+        #
+        # 21 actors x batch size 1 == one footer read per actor, so all 21
+        # footers are read in a single concurrent wave -- same shape as
+        # `primitives`. Worth the extra actor startup here because these
+        # footers are unusually expensive: 15000 column chunks each carrying
+        # min/max statistics.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=21
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type nested_structs
+
+- name: wide_schema_pipeline_objects
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # 9 single-row-group files of 4.23 MiB: at the 64 MiB default all 9 land
+        # in one shared bin and the dataset reads as a single task. 4.20 MiB sits
+        # just under one row group, so each is oversized and gets its own bin;
+        # the smallest possible pair (2 x 2.71 MiB) also exceeds it, so no two
+        # files ever share -> 9 tasks, the ceiling while row groups stay atomic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=4404020
+        #
+        # 9 actors x batch size 1 == one footer read per actor, so all 9 footers
+        # are read in a single concurrent wave -- same shape as the other three.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=9
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type objects
 
 #######################
 # Streaming split tests
@@ -375,6 +733,27 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # imagenet parquet: 7416 single-row-group files of ~8.15 MiB, listed on
+        # one task. ListFiles dominates this test, and its cost tracks the number
+        # of results the driver pulls back rather than the footer IO itself: at
+        # the default result batch of 1 the listing task pays one object-store
+        # fetch per file (7.4k of them). Batching 50 files per actor call and per
+        # streamed result cuts that to ~149 fetches.
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50
+        - RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50
+        # imagenet does not compress (uncompressed/on-disk = 1.00), so master's
+        # round-robin partitioner over-counted by 5x -- it sizes on-disk bytes
+        # through a fixed 5x encoding estimate -- and it landed on
+        # ~4 files (~31 MB) per block. Matching that granularity was tried at
+        # 36 MiB and made things worse -- it doubles the block count, and block
+        # generation is ~4 ms per manifest block. Left at the default.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 300
     wait_for_nodes:
@@ -406,6 +785,22 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # No bin budget override: at the default this dataset (513 single-row-
+        # group files of ~88 MB) already packs ~one file per bin, matching the
+        # granularity master's round-robin partitioner produced.
+        #
+        # This benchmark opens 8 datasets over the same path, so the footer
+        # path costs 8 x 513 footer reads and 8 x 32 reader actors -- work
+        # master never did, and enough to dominate the ~40s `random_mix`
+        # variants.
+        # Narrow the pool; the per-actor IO concurrency still covers 513 files.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
     timeout: 600
@@ -414,12 +809,36 @@
 
   variations:
     - __suffix__: 8ds_equal
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
+            # 64 MiB pin. NOTE: likely inert -- this dataset is 513
+            # single-row-group files of ~88 MB, which pack one file per
+            # bin at both 64 and 128 MiB, so the granularity the block
+            # comment above describes is unchanged either way. Pinned
+            # because this variant moved (+17.0pp / +0.5pp) when the
+            # default changed; the cause is probably elsewhere.
+            - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
           --max-rows-per-worker 100000
 
     - __suffix__: 8ds_power_law
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
+            - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         script: >
           python dataset_mixing/mix_benchmark.py --num-datasets 8
@@ -451,6 +870,15 @@
     anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # This benchmark hands in 200 explicit parquet paths, listed on a single
+        # task. At the default footer batch size of 10 that is 20 batches, so
+        # actors past the 20th are provisioned and never dispatched to.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=20
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -469,6 +897,12 @@
             - RAYTEST_FAIL_ON_WORKER_OOM=1
             - RAYTEST_FAIL_ON_DEAD_NODES=0
             - RAYTEST_FAIL_ON_SPILLING=1
+            # 64 MiB: +5.3% vs master at 64 MiB, +23.0% at 128 MiB. The
+            # ``regular`` variant went the other way, so only chaos is
+            # pinned. NOTE: this list replaces the parent's, so it also
+            # drops RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=20 -- pre-existing
+            # behaviour, left unchanged here.
+            - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -480,6 +914,17 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: five of the six variants regressed when the fallback
+        # default moved 64 -> 128 MiB. s3_read_images_gpu improved and is
+        # exempted below. NOTE: the s3_url_image_* and s3_read_images_*
+        # variants read images, not Parquet, so the pin is inert for them.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -531,6 +976,15 @@
 
     - __suffix__: s3_read_images_gpu
       cluster:
+        byod:
+          runtime_env:
+            # Exempt from the block-level 64 MiB pin: this variant improved
+            # at the 128 MiB default (-1.5% -> -2.4%), so it keeps following
+            # the default.
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=1
+            - RAYTEST_FAIL_ON_SPILLING=1
         cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
       run:
         timeout: 4800
@@ -606,7 +1060,7 @@
     anyscale_sdk_2026: true
   matrix:
     setup:
-      format: [numpy, pandas, pyarrow]
+      format: [numpy, pandas]
 
   run:
     timeout: 2400
@@ -615,10 +1069,44 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches {{format}}
 
+# Split out of the matrix above: only the pyarrow format wants a pinned bin
+# budget, so numpy/pandas keep following the fallback default.
+- name: "iter_batches_pyarrow"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -2.2% vs master at 64 MiB, -0.0% at 128 MiB. numpy and pandas
+        # both improved at 128 MiB, hence the split.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    # No cluster_compute: inherit DEFAULTS (fixed_size_cpu_compute.yaml), which
+    # is what this test ran on inside the matrix. Pinning the same value here
+    # would only make this variant stop tracking numpy/pandas if DEFAULTS moves.
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pyarrow
+
 - name: to_tf
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: +1.1% -> +4.4% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 2400
     script: >
@@ -630,6 +1118,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -0.1% -> +1.1% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -647,6 +1143,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -17.1% -> -14.1% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
@@ -655,6 +1159,14 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: -23.2% -> -15.5% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -690,6 +1202,21 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # sf1000 lineitem, full 17-column schema: 1000 files x 49 row groups of
+        # 24.36 MiB uncompressed = 1.16 GiB per file, and the distribution is
+        # flat (p0 24.35 MiB, p100 24.78 MiB). 1 GiB packs 42 row groups per bin
+        # at 99% fill -> ~1170 read tasks, close to the ~1000 one-task-per-file
+        # that DSv1 runs on master. The 64 MiB default is the worst case here:
+        # three row groups exceed it, so bins take two and sit 24% empty, giving
+        # 24.5k read tasks (measured 24,432).
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+        - RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD=0.6
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -793,6 +1320,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
+        # 64 MiB: -2.4% -> +4.0% vs master when the default moved to 128 MiB.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1185,16 +1714,65 @@
 # TPCH Queries
 ##############
 
-- name: "tpch_q1_{{scaling}}_{{shuffle_strategy}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one lowers the scale-up threshold, and a matrix
+# cannot vary ``byod.runtime_env`` per setup value. The rendered test names are
+# unchanged. Both variants keep the same 192 MiB bin budget.
+- name: "tpch_q1_fixed_size_{{shuffle_strategy}}"
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # sf1000 lineitem: 1000 files x 49 row groups, 24.36 MiB uncompressed
+        # per row group at the full 17-column schema. q1 projects 7 of those
+        # columns and pre-filters on l_shipdate, so the packer sizes on a
+        # fraction of that -- which is why this lands well below the 1 GiB the
+        # full-schema readers of the same table (map_batches, write_parquet)
+        # want. 192 MiB measured best here, matching q20 on the same table.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q1.py --sf 1000
+
+- name: "tpch_q1_autoscaling_{{shuffle_strategy}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # Same 192 MiB budget as the fixed_size variants; see the block above
+        # for how it was sized.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
+        # Scale up at 60% logical utilization instead of the 0.75 default, as
+        # for map_batches.
+        #
+        # hash_shuffle read +53.9% vs master in #102732 and +55.5% in #102650
+        # against the same master build. The gap is in the baseline, not the
+        # branch: both autoscaling variants land at 364-385s here, while master
+        # runs hash_shuffle in 249s and hash_shuffle_v2 in 367s. A branch floor
+        # that ignores the shuffle strategy points at scale-up latency rather
+        # than shuffle cost, which is what this threshold targets.
+        - RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD=0.6
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
@@ -1496,33 +2074,97 @@
     timeout: 5400
     script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q15.py --sf 100
 
-- name: "tpch_q17_{{scaling}}_{{shuffle_strategy}}"
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one pins a bin budget, and a matrix cannot vary
+# ``byod.runtime_env`` per setup value. The rendered test names are unchanged.
+- name: "tpch_q17_fixed_size_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
     script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q17.py --sf 100
 
-- name: "tpch_q18_{{scaling}}_{{shuffle_strategy}}"
+- name: "tpch_q17_autoscaling_{{shuffle_strategy}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB: smaller bins mean more read tasks, which give the autoscaler
+        # demand to act on earlier. The fixed_size variant runs ~5x faster on
+        # the same query at the default budget, so this is scaling-specific.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q17.py --sf 100
+
+# NOTE: the two scaling variants are spelled out rather than driven by a matrix
+# because only the autoscaling one pins a bin budget, and a matrix cannot vary
+# ``byod.runtime_env`` per setup value. The rendered test names are unchanged.
+- name: "tpch_q18_fixed_size_{{shuffle_strategy}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q18.py --sf 100
+
+- name: "tpch_q18_autoscaling_{{shuffle_strategy}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle_strategy: [hash_shuffle, hash_shuffle_v2]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 64 MiB, half the default, matching the q17 autoscaling pin. Smaller
+        # bins mean more and smaller read tasks, which both give the autoscaler
+        # demand to act on earlier and cut the peak block size feeding the
+        # shuffle.
+        #
+        # hash_shuffle_v2 has failed two builds running -- in #102732 the
+        # workload completed in 2075.9s and was then failed by
+        # RAYTEST_FAIL_ON_SPILLING on 4.62 GiB spilled against a 17.75 GiB
+        # object-store peak (61.6% utilization). That is spill under moderate
+        # pressure, not a cluster out of memory, which is the shape a smaller
+        # bin budget is most likely to help. Its sibling
+        # tpch_q21_autoscaling_hash_shuffle_v2 fails the same way and is left
+        # at the default for now as a control.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: "autoscaling_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
@@ -1538,6 +2180,20 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # q20 projects 4 of lineitem's 17 columns -> ~160 MiB uncompressed per
+        # file. At the default budget that splits each file ~4 ways (400 blocks
+        # vs the 100 master's round-robin partitioner produced), and the extra
+        # blocks become
+        # extra shuffle-map tasks feeding HashAggregate. 192 MiB packs one file
+        # per bin. Per-query value: the same table under q21's 2-column
+        # projection is only ~92 MiB per file.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1578,6 +2234,40 @@
     timeout: 5400
     script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q21.py --sf 100
 
+# NOTE: fixed_size/hash_shuffle is spelled out separately because it is the one
+# variant that pins a bin budget, and a matrix cannot vary ``byod.runtime_env``
+# per setup value. The other three keep tracking the default. The rendered test
+# names are unchanged.
+- name: tpch_q22_fixed_size_hash_shuffle
+  python: "3.10"
+  frequency: nightly
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # 16 MiB, an eighth of the 128 MiB default. This was the worst
+        # regression in release build #102732 at +76.7% vs master (23.5s vs
+        # 13.3s), and it reproduced at +72.0% in #102650 against the same
+        # master build with only +2.7% drift between the two, so the size of
+        # the gap is measured rather than inferred from one run.
+        #
+        # q22 is sf100 customer/orders, far smaller than the sf1000 lineitem
+        # tables that want 192 MiB (q1, q20) or 1 GiB (map_batches). At the
+        # 128 MiB default the whole scan collapses into a handful of bins,
+        # which starves a 23-second query of read parallelism; 16 MiB trades
+        # per-task overhead for enough tasks to fill the cluster.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=16777216
+    cluster_compute: "fixed_size_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle python tpch/tpch_q22.py --sf 100
+
 - name: "tpch_q22_{{scaling}}_{{shuffle_strategy}}"
   python: "3.10"
   frequency: "{{frequency}}"
@@ -1587,10 +2277,6 @@
       frequency: []
       shuffle_strategy: []
     adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-          shuffle_strategy: hash_shuffle
       - with:
           scaling: fixed_size
           frequency: nightly
@@ -1670,6 +2356,17 @@
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
         - RAYTEST_FAIL_ON_SPILLING=1
+        # 1 GiB: 16x the default, so the scan yields far fewer, larger read
+        # tasks. ``map_batches`` wants this direction -- same as ``map_groups``
+        # at 1.25 GiB, and the opposite of ``aggregate_groups`` at 32 MiB.
+        #
+        # This test read via V1 until the ``use_datasource_v2 = False`` pin came
+        # out of ``map_benchmark.py``. On V2 at the 64 MiB default it doubled
+        # object-store peak (310GB on V1 -> 616GB on V2, release build #101536
+        # vs #102329) and ran 725s against 304s on V1. The larger budget cuts
+        # the block count to bring that peak back down; ``RAYTEST_FAIL_ON_
+        # SPILLING=1`` above will fail the test if it moves the wrong way.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
