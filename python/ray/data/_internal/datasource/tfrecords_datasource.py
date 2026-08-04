@@ -26,11 +26,14 @@ class TFRecordDatasource(FileBasedDatasource):
         tf_schema: Optional["schema_pb2.Schema"] = None,
         **file_based_datasource_kwargs,
     ):
-        """
+        """Initialize the TFRecord datasource.
+
         Args:
+            paths: One or more file paths to read TFRecord data from.
             tf_schema: Optional TensorFlow Schema which is used to explicitly set
                 the schema of the underlying Dataset.
-
+            **file_based_datasource_kwargs: Additional keyword arguments forwarded
+                to the underlying :class:`FileBasedDatasource`.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
 

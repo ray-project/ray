@@ -37,17 +37,10 @@ def _check_valid_plan_and_result(
 
 
 class _DummyLogicalOperator(LogicalOperator):
-    def __init__(self, input_dependencies, name=None, num_outputs=None):
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
+    def __init__(self, input_dependencies, name=None):
         object.__setattr__(self, "_input_dependencies", input_dependencies)
         if name is not None:
             object.__setattr__(self, "_name", name)
-
-    @property
-    def num_outputs(self):
-        return self._num_outputs
 
 
 def test_limit_pushdown_recreates_frozen_download():

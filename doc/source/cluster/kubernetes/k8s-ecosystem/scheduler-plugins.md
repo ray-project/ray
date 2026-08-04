@@ -19,8 +19,7 @@ Follow the [installation guide](https://scheduler-plugins.sigs.k8s.io/docs/user-
 
 There are two modes for installing the scheduler plugins: *single scheduler mode* and *second scheduler mode*.
 
-KubeRay v1.4.0 only supports the *single scheduler mode*.
-You need to have the access to configure Kubernetes control plane to replace the default scheduler with the scheduler plugins.
+KubeRay v1.4.0 only supports the *single scheduler mode*. You need to have the access to configure Kubernetes control plane to replace the default scheduler with the scheduler plugins.
 
 :::
 
@@ -42,9 +41,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-1
 
 ## Step 5: Verify Ray Pods and PodGroup
 
-Note that if you use "second scheduler mode," which KubeRay currently doesn't support, the following commands still show similar results.
-However, the Ray Pods don't get scheduled in a gang scheduling manner.
-Make sure to use "single scheduler mode" to enable gang scheduling.
+Note that if you use "second scheduler mode," which KubeRay currently doesn't support, the following commands still show similar results. However, the Ray Pods don't get scheduled in a gang scheduling manner. Make sure to use "single scheduler mode" to enable gang scheduling.
 
 ```sh
 kubectl get podgroups.scheduling.x-k8s.io

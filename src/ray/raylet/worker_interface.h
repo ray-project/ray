@@ -87,7 +87,8 @@ class WorkerInterface {
   virtual std::optional<pid_t> GetSavedProcessGroupId() const = 0;
   virtual void SetSavedProcessGroupId(pid_t pgid) = 0;
 
-  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(const TaskID &task_id,
+                                        int32_t attempt_number) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -112,11 +113,11 @@ class WorkerInterface {
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
-  /// Return True if the worker is available for scheduling a task or actor.
-  virtual bool IsAvailableForScheduling() const = 0;
-
-  /// Time when the last task was assigned to this worker.
-  virtual absl::Time GetGrantedLeaseTime() const = 0;
+  /**
+   * @return The time when the last task was assigned to this worker, or std::nullopt if
+   * the worker has never been granted a lease.
+   */
+  virtual std::optional<absl::Time> GetLastGrantedLeaseTime() const = 0;
 
   virtual void SetJobId(const JobID &job_id) = 0;
 

@@ -74,6 +74,11 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
       ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) override {}
 
+  void UpdateGeneratorBackpressureConsumed(
+      UpdateGeneratorBackpressureConsumedRequest &&request,
+      const ClientCallback<UpdateGeneratorBackpressureConsumedReply> &callback) override {
+  }
+
   void KillActor(const KillActorRequest &request,
                  const ClientCallback<KillActorReply> &callback) override {
     num_kill_actor_requests++;
@@ -121,10 +126,6 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
 
   void Exit(const ExitRequest &request,
             const ClientCallback<ExitReply> &callback) override {}
-
-  void AssignObjectOwner(
-      const AssignObjectOwnerRequest &request,
-      const ClientCallback<AssignObjectOwnerReply> &callback) override {}
 
   // SubscriberClientInterface methods
   void PubsubLongPolling(

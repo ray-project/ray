@@ -119,6 +119,9 @@ class Searcher:
             config: Tune config dict.
             **spec: Any kwargs for forward compatibility.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
+
+        Returns:
+            True if the search properties were set successfully, False otherwise.
         """
         return False
 
@@ -357,6 +360,10 @@ class Searcher:
 
         Args:
             max_concurrent: Number of maximum concurrent trials.
+
+        Returns:
+            True if the searcher handles max concurrency internally,
+            False otherwise.
         """
         return False
 

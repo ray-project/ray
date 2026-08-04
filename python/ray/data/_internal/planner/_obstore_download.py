@@ -2,9 +2,13 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from urllib.parse import urlparse
+
+from ray.util import log_once
 
 if TYPE_CHECKING:
     import s3fs  # noqa: F401
@@ -96,6 +100,45 @@ def _log_fallback_warning() -> None:
             "slower for large or numerous files. "
             "Install it with: pip install obstore"
         )
+
+
+# Path-style AWS S3 host: ``s3.amazonaws.com`` (legacy global) or
+# ``s3.<region>.amazonaws.com`` (regional). Virtual-host hosts like
+# ``<bucket>.s3.<region>.amazonaws.com`` already carry the bucket in the
+# netloc and route correctly through obstore without rewriting.
+_AWS_PATH_STYLE_HOST_RE = re.compile(
+    r"^s3(?:\.[a-z0-9-]+)?\.amazonaws\.com$", re.IGNORECASE
+)
+
+
+def _split_obstore_uri(uri: str) -> Tuple[str, str]:
+    """Split a URI into ``(store_url, path)`` for ``obstore.store.from_url``.
+
+    Wraps :func:`_split_uri` to rewrite AWS path-style HTTPS URLs of the
+    form ``https://s3.<region>.amazonaws.com/<bucket>/<key>`` into
+    ``store_url='s3://<bucket>'`` / ``path='<key>'``. Without this, obstore
+    constructs an ``S3Store`` keyed by the regional host endpoint, which
+    pins region from the URL and bails with ``BareRedirect`` whenever the
+    bucket actually lives in a different region (AWS's PermanentRedirect
+    omits the ``Location`` header, so generic redirect-following fails).
+    Rewriting to ``s3://<bucket>`` lets ``S3Store`` discover the bucket's
+    real region once and cache it for the store's lifetime.
+
+    Pre-signed HTTPS URLs (any URI with a query string) are passed through
+    unchanged because their signature is bound to host + path + query, so
+    rewriting would invalidate the signature.
+    """
+    parsed = urlparse(uri, allow_fragments=False)
+    if (
+        parsed.scheme in ("http", "https")
+        and not parsed.query
+        and _AWS_PATH_STYLE_HOST_RE.match(parsed.netloc)
+    ):
+        raw_path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
+        bucket, _, key = raw_path.partition("/")
+        if bucket:
+            return f"s3://{bucket}", key
+    return _split_uri(uri)
 
 
 def _is_obstore_supported_url(path: str) -> bool:
@@ -212,6 +255,67 @@ class _S3FSSessionCredentialProvider:
         return True
 
 
+def _native_s3_obstore_kwargs(
+    filesystem: "pyarrow.fs.S3FileSystem",
+) -> Optional[Dict[str, Any]]:
+    """Translate a native PyArrow ``S3FileSystem`` into ``obstore.store.from_url``
+    kwargs, or ``None`` to route to the threaded path.
+
+    PyArrow exposes only ``region`` as a Python attribute, but the full
+    construction config (credential kind, keys, region, endpoint) is preserved in
+    the filesystem's pickle state -- PyArrow round-trips it to ship filesystems to
+    worker processes. Read it from there so obstore can be configured to match,
+    keeping the fast obstore download path instead of falling back to the slower
+    threaded one.
+
+    Returns ``None`` (caller uses the threaded path, applying the filesystem
+    verbatim) when the config can't be represented as *static* obstore options:
+    assume-role credentials, which PyArrow refreshes but a one-time obstore
+    snapshot would let go stale; or an unrecognized pickle shape (e.g. a future
+    PyArrow), which is caught and treated conservatively.
+    """
+    try:
+        # __reduce__() -> (reconstruct_fn, (state_dict,)); the state dict holds
+        # every constructor argument. PyArrow derives ``anonymous`` and the keys
+        # from the underlying credentials kind, so this is the authoritative view.
+        state = filesystem.__reduce__()[1][0]
+    except Exception as e:
+        if log_once("ray-data-obstore-filesystem-reduce-error"):
+            logger.warning(
+                "Unable to fetch PyArrow filesystem state from %s. Ray Data is unable to use obstore for this filesystem for faster downloads.",
+                filesystem,
+                exc_info=e,
+            )
+        return None
+
+    kwargs: Dict[str, Any] = {}
+    if state.get("region"):
+        kwargs["region"] = state["region"]
+    if state.get("endpoint_override"):
+        kwargs["endpoint"] = state["endpoint_override"]
+
+    if state.get("anonymous"):
+        kwargs["skip_signature"] = True
+        return kwargs
+
+    if state.get("role_arn"):
+        # Assume-role creds are refreshed periodically by PyArrow; a static
+        # obstore snapshot would go stale. Let the threaded path use the FS.
+        return None
+
+    if state.get("access_key"):
+        kwargs["access_key_id"] = state["access_key"]
+        if state.get("secret_key"):
+            kwargs["secret_access_key"] = state["secret_key"]
+        if state.get("session_token"):
+            kwargs["session_token"] = state["session_token"]
+        return kwargs
+
+    # Default credential chain: obstore resolves ambient credentials itself,
+    # matching the filesystem's default chain. Region (if any) is enough.
+    return kwargs
+
+
 def _extract_credentials_from_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> Optional[Dict[str, Any]]:
@@ -220,13 +324,13 @@ def _extract_credentials_from_filesystem(
     Maps PyArrow filesystem configuration to obstore keyword arguments.
     See obstore docs for available options per store type.
 
-    **Native S3 (``S3FileSystem``):** PyArrow's implementation is backed by the
-    AWS C++ SDK; Python only exposes a subset of options. ``region`` is typically
-    readable, while ``access_key``, ``secret_key``, ``session_token``, and
-    ``anonymous`` may not appear as Python attributes even when configured at
-    construction. Unavailable attributes are skipped silently, so forwarding to
-    obstore can degrade to the default AWS credential chain (env, IMDS, etc.)
-    without raising.
+    **Native S3 (``S3FileSystem``):** PyArrow exposes only ``region`` on the
+    Python object, but the full credential config is recoverable from the
+    filesystem's pickle state, so :func:`_native_s3_obstore_kwargs` translates it
+    into obstore options (``skip_signature`` for anonymous, static keys, region,
+    endpoint) to keep the fast obstore path. Configs that can't be represented as
+    static options -- assume-role (rotating creds) or an unrecognized pickle
+    shape -- return ``None`` there and route to the threaded path instead.
 
     **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
     (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
@@ -264,21 +368,7 @@ def _extract_credentials_from_filesystem(
     FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
 
     if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
-        # NOTE: See docstring — many credential fields are not exposed on the
-        # Python S3FileSystem object; hasattr/getattr only forwards what exists.
-        for pa_attr, ob_key in [
-            ("region", "region"),
-            ("access_key", "access_key_id"),
-            ("secret_key", "secret_access_key"),
-            ("session_token", "session_token"),
-            ("endpoint_override", "endpoint"),
-        ]:
-            val = getattr(filesystem, pa_attr, None)
-            if val:
-                kwargs[ob_key] = val
-        if getattr(filesystem, "anonymous", False):
-            kwargs["skip_signature"] = True
-        return kwargs
+        return _native_s3_obstore_kwargs(filesystem)
 
     if GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
         # obstore GCSConfig does not have a project_id field. The only useful
@@ -484,6 +574,54 @@ def _plan_obstore_routing(
     return True, fs_kwargs
 
 
+# Per-process cache: AWS bucket name -> region (``None`` if discovery failed).
+# Buckets do not change region, so caching for the process lifetime is safe.
+_BUCKET_REGION_CACHE: Dict[str, Optional[str]] = {}
+_BUCKET_REGION_CACHE_LOCK = threading.Lock()
+
+
+def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
+    """Discover an AWS S3 bucket's region, cached per-process.
+
+    Delegates to :func:`pyarrow.fs.resolve_s3_region`, which issues a HEAD
+    probe and reads ``x-amz-bucket-region`` (AWS returns it for both 200 OK
+    and 301 PermanentRedirect responses). PyArrow is already a required Ray
+    Data dependency and caches region lookups in its C++ S3 layer; the extra
+    per-process dict here also caches negative results, so a bucket that can't
+    be resolved (network error, non-AWS endpoint, or a PyArrow build without
+    S3 support) is probed at most once.
+
+    Returns ``None`` when the region cannot be determined. Callers fall back
+    to obstore's default region handling, which preserves prior behavior for
+    non-AWS S3-compatible backends (MinIO, R2, etc.).
+    """
+    with _BUCKET_REGION_CACHE_LOCK:
+        if bucket in _BUCKET_REGION_CACHE:
+            return _BUCKET_REGION_CACHE[bucket]
+
+    # Probe outside the lock so concurrent first-time lookups don't serialize
+    # on a network round-trip.
+    region: Optional[str] = None
+    try:
+        region = pyarrow.fs.resolve_s3_region(bucket)
+    except Exception as e:
+        # Includes AttributeError on PyArrow builds compiled without S3
+        # support, where ``resolve_s3_region`` is absent.
+        logger.debug("Failed to discover region for bucket %r: %s", bucket, e)
+
+    with _BUCKET_REGION_CACHE_LOCK:
+        # Another thread may have resolved the same bucket while we probed.
+        # A real region must win over a ``None`` result: never let a failed
+        # probe overwrite a region a concurrent thread already cached, or
+        # later ``StoreRegistry.get`` calls would skip region injection and
+        # cross-region downloads could fail intermittently.
+        cached = _BUCKET_REGION_CACHE.get(bucket)
+        if cached is not None:
+            return cached
+        _BUCKET_REGION_CACHE[bucket] = region
+        return region
+
+
 class StoreRegistry:
     """Cache of store_url -> ObjectStore instances.
 
@@ -506,6 +644,23 @@ class StoreRegistry:
     def get(self, store_url: str) -> Any:
         if store_url not in self._cache:
             kwargs = dict(self._filesystem_kwargs)
+            # obstore's S3Store defaults ``region`` to ``us-east-1`` and does
+            # not auto-discover the bucket's real region, so cross-region
+            # buckets fail with ``BareRedirect`` (AWS's PermanentRedirect
+            # omits the ``Location`` header, defeating generic redirect
+            # following). Probe ``x-amz-bucket-region`` once per bucket and
+            # supply the discovered region explicitly. Skip when the caller
+            # already provided a region or a custom endpoint (MinIO/R2/etc.).
+            if (
+                store_url.startswith(("s3://", "s3a://"))
+                and "region" not in kwargs
+                and "endpoint" not in kwargs
+            ):
+                bucket = store_url.split("://", 1)[1].split("/", 1)[0]
+                if bucket:
+                    region = _discover_aws_bucket_region(bucket)
+                    if region:
+                        kwargs["region"] = region
             if store_url.startswith("http://"):
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
@@ -521,11 +676,11 @@ class StoreRegistry:
                         "Downloading over unencrypted HTTP. "
                         "Consider using https:// instead."
                     )
-            self._cache[store_url] = self._from_url(
-                store_url,
-                retry_config=self._retry_config,
+            from_url_kwargs: Any = {
+                "retry_config": self._retry_config,
                 **kwargs,
-            )
+            }
+            self._cache[store_url] = self._from_url(store_url, **from_url_kwargs)
         return self._cache[store_url]
 
 
@@ -800,11 +955,11 @@ async def _resolve_size(
     import obstore as obs
 
     try:
-        store_url, path = _split_uri(uri)
+        store_url, path = _split_obstore_uri(uri)
         store = registry.get(store_url)
         async with semaphore:
             meta = await obs.head_async(store, path)
-        return meta["size"] if isinstance(meta, dict) else meta.size
+        return meta["size"]
     except Exception:
         return 0
 
@@ -851,7 +1006,7 @@ async def _fetch_ranged(
     pipeline never loses a file due to a transient range error.
     """
     try:
-        store_url, path = _split_uri(uri)
+        store_url, path = _split_obstore_uri(uri)
         store = registry.get(store_url)
         result = bytearray(size)
 
@@ -907,13 +1062,13 @@ async def _fetch_chunk(
                 f"Range request for {uri!r} returned {len(chunk)} "
                 f"bytes, expected {expected}"
             )
-        result[start:end] = chunk
+        result[start:end] = bytes(chunk)
 
 
 async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
     """Download a single URI as a whole-file GET and return raw bytes."""
     import obstore as obs
 
-    store_url, path = _split_uri(uri)
+    store_url, path = _split_obstore_uri(uri)
     result = await obs.get_async(registry.get(store_url), path)
     return bytes(await result.bytes_async())

@@ -26,6 +26,8 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -58,9 +60,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.path_util import (
-    _resolve_paths_and_filesystem,
-)
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
@@ -701,9 +701,9 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,
@@ -817,7 +817,6 @@ class ParquetDatasource(Datasource):
                 block_udf,
                 to_batches_kwargs,
                 data_columns,
-                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
@@ -827,7 +826,6 @@ class ParquetDatasource(Datasource):
                 self._block_udf,
                 self._scanner_kwargs,
                 self._get_data_columns(),
-                self.get_column_renames(),
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
@@ -841,7 +839,6 @@ class ParquetDatasource(Datasource):
                         block_udf,
                         to_batches_kwargs,
                         data_columns,
-                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
@@ -1120,7 +1117,6 @@ def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
@@ -1147,7 +1143,6 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
-                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
@@ -1161,6 +1156,10 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
+                # When you unpickle untrusted data, attackers can execute arbitrary
+                # code. To avoid exposing our users, raise unless the user has
+                # explicitly opted in.
+                raise_on_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
@@ -1427,9 +1426,7 @@ def _iter_batches_fallback(
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from ray.data._internal.arrow_ops.transform_pyarrow import (
-        _align_struct_fields,
-    )
+    from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
 
     if log_once("parquet_nested_fallback"):
         logger.warning(
@@ -1509,7 +1506,6 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -1526,8 +1522,6 @@ def _read_batches_from(
     """
 
     import pyarrow as pa
-
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
@@ -1559,7 +1553,6 @@ def _read_batches_from(
     row_offset = 0
 
     def _generate_tables() -> "pa.Table":
-        """Inner generator that yields tables without renaming."""
         nonlocal row_offset
 
         def _postprocess_table(table):
@@ -1627,10 +1620,7 @@ def _read_batches_from(
                 )
             raise
 
-    # Apply renames to all tables from the generator
-    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
-        _generate_tables(), data_columns_rename_map
-    )
+    yield from _generate_tables()
 
 
 def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
@@ -1801,13 +1791,17 @@ def _fetch_file_infos(
     futures = []
 
     # Retry in case of transient errors during sampling.
-    task_options = {"retry_exceptions": [OSError]}
+    # Cap retries to avoid hanging indefinitely on permanent errors
+    # (e.g., permission denied, invalid credentials).
+    task_options = {"retry_exceptions": [OSError], "max_retries": 3}
+    ctx = DataContext.get_current()
     if local_scheduling:
         task_options["label_selector"] = local_scheduling
     else:
-        task_options[
-            "scheduling_strategy"
-        ] = DataContext.get_current().scheduling_strategy
+        task_options["scheduling_strategy"] = ctx.scheduling_strategy
+    task_options = merge_label_selector(
+        task_options, ctx.execution_options.label_selector
+    )
 
     for fragment in sampled_fragments:
         # Sample the first rows batch in i-th file.
@@ -1822,8 +1816,18 @@ def _fetch_file_infos(
         )
 
     sample_bar = ProgressBar("Parquet dataset sampling", len(futures), unit="file")
-    file_infos = sample_bar.fetch_until_complete(futures)
-    sample_bar.close()
+    try:
+        file_infos = sample_bar.fetch_until_complete(futures)
+    except ray.exceptions.RayTaskError as e:
+        logger.warning(
+            "Parquet dataset sampling failed. "
+            "If this is a credentials or permissions issue, "
+            "check your cloud storage access configuration. "
+            f"Underlying error: {e.cause}"
+        )
+        raise
+    finally:
+        sample_bar.close()
 
     return file_infos
 

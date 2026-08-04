@@ -26,8 +26,14 @@ export type PlacementGroup = {
     [key: string]: number | string;
   } | null;
   bundles: Bundle[];
-  label_domain_key?: string | null;
-  label_domain_assignments?: {
+  // Topology strategy: map from label key (e.g. "ray.io/gpu-domain") to
+  // corresponding placement strategy.
+  topology_strategy?: {
+    [key: string]: string;
+  } | null;
+  // Topology assignments: map from topology label key to the value the
+  // scheduler selected for this PG (e.g. {"ray.io/gpu-domain": "rack-1"}).
+  topology_assignments?: {
     [key: string]: string;
   } | null;
 };

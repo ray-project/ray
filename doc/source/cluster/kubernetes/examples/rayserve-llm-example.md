@@ -161,5 +161,4 @@ The output should be in the following format:
 kubectl port-forward svc/ray-serve-llm-head-svc 8265
 ```
 
-Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
-![LLM Serve Application](../images/ray_dashboard_llm_application.png)
+Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features. ![LLM Serve Application](../images/ray_dashboard_llm_application.png)

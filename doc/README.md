@@ -2,6 +2,12 @@
 
 Repository for documentation of the Ray project, hosted at [docs.ray.io](https://docs.ray.io).
 
+## Contributing new documentation pages
+
+Author new documentation files under `doc/source/` as MyST Markdown (`.md`), not reStructuredText (`.rst`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files continue to work. `git mv` is not flagged for any rename, which covers file renames and directory reorganization.
+
+MyST is a Markdown superset that supports the Sphinx directives used throughout the docs. See the [MyST Parser documentation](https://myst-parser.readthedocs.io/) for syntax reference.
+
 ## Installation
 
 To build the documentation, make sure you have `ray` installed first.

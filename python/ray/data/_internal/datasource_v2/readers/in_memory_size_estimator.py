@@ -85,9 +85,12 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
         if not file_size:
             return None
 
+        # Use ``None`` chunk metadata: the size estimator reads the file whole
+        # to estimate the encoding ratio; chunk-level splitting is irrelevant here.
         manifest = FileManifest.construct_manifest(
             [path],
             [file_size],
+            [None],
         )
         batches = self._reader.read(manifest)
 

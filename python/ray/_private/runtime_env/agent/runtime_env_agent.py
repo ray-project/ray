@@ -171,13 +171,25 @@ class RuntimeEnvAgent:
 
     def __init__(
         self,
-        runtime_env_dir,
-        logging_params,
+        runtime_env_dir: str,
+        logging_params: dict,
         gcs_client: GcsClient,
-        temp_dir,
-        address,
-        runtime_env_agent_port,
+        temp_dir: str,
+        address: str,
+        runtime_env_agent_port: int,
     ):
+        """Initialize the runtime env agent.
+
+        Args:
+            runtime_env_dir: Directory used to store runtime env resources.
+            logging_params: Keyword arguments forwarded to
+                :func:`setup_component_logger` to configure the agent logger.
+            gcs_client: GCS client used to fetch package data.
+            temp_dir: Temporary directory used by plugins (e.g. container plugin).
+            address: IP address that the agent is listening on, used for logging.
+            runtime_env_agent_port: Port that the agent is listening on, used for
+                logging.
+        """
         super().__init__()
 
         self._logger = default_logger
@@ -357,8 +369,8 @@ class RuntimeEnvAgent:
             return context
 
         async def _create_runtime_env_with_retry(
-            runtime_env,
-            setup_timeout_seconds,
+            runtime_env: RuntimeEnv,
+            setup_timeout_seconds: int,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
             """Create runtime env with retry times. This function won't raise exceptions.

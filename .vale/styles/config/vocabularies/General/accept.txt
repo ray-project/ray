@@ -99,7 +99,7 @@ NumPy
 NVIDIA
 NVLink
 NVMe
-OOM
+OOM(s)?
 open-source
 Palo
 [Pp][Aa][Cc][Kk]

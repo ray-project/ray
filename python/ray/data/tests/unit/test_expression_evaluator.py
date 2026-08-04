@@ -5,9 +5,12 @@ import pyarrow.parquet as pq
 import pytest
 from pkg_resources import parse_version
 
+from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
     ExpressionEvaluator,
+    eval_projection,
 )
+from ray.data.expressions import col, star
 from ray.data.tests.conftest import get_pyarrow_version
 
 
@@ -348,6 +351,76 @@ def test_filter_bad_expression(sample_data):
     sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
         pq.read_table(sample_data_path, filters=filters)
+
+
+def test_eval_projection_star_rename_missing_source_raises():
+    """A rename targeting a column not present in the block must raise rather
+    than be silently dropped during star expansion."""
+    block = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
+    projection = [star(), col("nonexistent")._rename("x")]
+
+    with pytest.raises(KeyError):
+        eval_projection(projection, block)
+
+
+def test_eval_projection_with_common_sub_exprs_arrow():
+    block = pa.table({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(
+        projection,
+        block,
+        common_sub_exprs=[common],
+    )
+
+    assert out.column_names == ["y"]
+    assert out["y"].to_pylist() == [4, 6, 8]
+
+
+def test_eval_projection_cse_temp_columns_do_not_leak_with_star():
+    block = pa.table({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+
+    out = eval_projection(
+        [star(), col(f"{CSE_TEMP_COLUMN_PREFIX}test_0").alias("y")],
+        block,
+        common_sub_exprs=[common],
+    )
+
+    assert out.column_names == ["a", "y"]
+    assert out["y"].to_pylist() == [2, 3, 4]
+
+
+def test_eval_projection_preserves_reserved_prefix_without_cse():
+    block = pa.table({f"{CSE_TEMP_COLUMN_PREFIX}user": [1, 2]})
+    out = eval_projection([star()], block)
+    assert out.column_names == [f"{CSE_TEMP_COLUMN_PREFIX}user"]
+
+
+def test_eval_projection_with_common_sub_exprs_pandas():
+    block = pd.DataFrame({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(
+        projection,
+        block,
+        common_sub_exprs=[common],
+    )
+
+    assert out.columns.tolist() == ["y"]
+    assert out["y"].tolist() == [4, 6, 8]
 
 
 if __name__ == "__main__":

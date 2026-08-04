@@ -77,12 +77,13 @@ class ActorGroup:
             actor. Fractional values are allowed. Defaults to 1.
         num_gpus_per_actor: The number of GPUs to reserve for each
             actor. Fractional values are allowed. Defaults to 0.
-        resources_per_actor (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_actor: Dictionary specifying the resources that will be
             requested for each actor in addition to ``num_cpus_per_actor``
             and ``num_gpus_per_actor``.
-        init_args, init_kwargs: If ``actor_cls`` is provided,
-            these args will be used for the actor initialization.
+        init_args: Positional arguments forwarded to ``actor_cls`` when each
+            actor is created.
+        init_kwargs: Keyword arguments forwarded to ``actor_cls`` when each
+            actor is created.
 
     """
 
@@ -192,7 +193,7 @@ class ActorGroup:
         """Removes the actors with the specified indexes.
 
         Args:
-            actor_indexes (List[int]): The indexes of the actors to remove.
+            actor_indexes: The indexes of the actors to remove.
         """
         new_actors = []
         for i in range(len(self.actors)):

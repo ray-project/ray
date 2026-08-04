@@ -245,8 +245,7 @@ Notice the `--proxy-server-url` parameter that points to the port-forwarded hist
 
 ### Configure RayCluster for the Ray Dashboard
 
-The Ray Dashboard uses cookies to identify which RayCluster to look at.
-To select a historical cluster, first get the list of all Ray clusters and their sessions.
+The Ray Dashboard uses cookies to identify which RayCluster to look at. To select a historical cluster, first get the list of all Ray clusters and their sessions.
 
 In your browser, list your Ray cluster sessions by navigating to the following URL:
 ```text

@@ -1,5 +1,6 @@
 import time
 from typing import Iterable
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,7 @@ from ray.data.block import Block
 from ray.data.context import (
     DataContext,
 )
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import (
     _get_blocks,
     _mul2_transform,
@@ -74,7 +76,7 @@ def _run_map_operator_test(
     )
 
     # Feed data and block on exec.
-    op.start(ExecutionOptions(preserve_order=preserve_order))
+    op.start(ExecutionOptions(preserve_order=preserve_order), noop_counter())
     if use_actors:
         # Wait for actors to be ready before adding inputs.
         run_op_tasks_sync(op, only_existing=True)
@@ -115,7 +117,10 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     output = []
     # Use preserve_order so output order matches input order (required for
     # actor pool, which otherwise returns results in completion order).
-    op.start(ExecutionOptions(actor_locality_enabled=True, preserve_order=True))
+    op.start(
+        ExecutionOptions(actor_locality_enabled=True, preserve_order=True),
+        noop_counter(),
+    )
 
     if use_actors:
         # Wait for actors to be ready before adding inputs.
@@ -179,7 +184,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     options = ExecutionOptions()
     options.preserve_order = True
     options.actor_locality_enabled = True
-    op.start(options)
+    op.start(options, noop_counter())
     # Wait for actors to be ready before adding inputs.
     run_op_tasks_sync(op, only_existing=True)
 
@@ -241,7 +246,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     if use_actors:
         # Wait for actors to be ready before adding inputs.
         run_op_tasks_sync(op, only_existing=True)
@@ -394,7 +399,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     )
 
     # Feed data and block on exec.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     if use_actors:
         # Wait for the actor to start.
         run_op_tasks_sync(op)
@@ -442,7 +447,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     )
 
     # Start one task and then cancel.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     if use_actors:
         # Wait for the actor to start.
         run_op_tasks_sync(op)
@@ -512,7 +517,7 @@ def test_map_kwargs(ray_start_regular_shared, use_actors):
         compute_strategy=compute_strategy,
     )
     op.add_map_task_kwargs_fn(lambda: kwargs)
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     if use_actors:
         # Wait for the actor to start.
         run_op_tasks_sync(op)
@@ -575,7 +580,7 @@ def test_map_estimated_num_output_bundles(
         min_rows_per_bundle=min_rows_per_bundle,
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
@@ -620,7 +625,7 @@ def test_map_estimated_blocks_split():
     )
     op.set_additional_split_factor(2)
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
@@ -658,7 +663,7 @@ def test_operator_metrics():
         min_rows_per_bundle=MIN_ROWS_PER_BUNDLE,
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     num_outputs_taken = 0
     bytes_outputs_taken = 0
     for i in range(len(inputs)):
@@ -704,6 +709,55 @@ def test_operator_metrics():
 
         # Check object store metrics
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
+
+
+@pytest.mark.parametrize(
+    "ray_remote_args", [{}, {"num_cpus": 0}, {"num_cpus": 0.5}, {"num_cpus": 1}]
+)
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_specifies_default_memory(
+    ray_start_regular_shared, ray_remote_args, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    data_context.default_map_logical_memory_enabled = True
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args=ray_remote_args,
+    )
+
+    # If Ray Data doesn't specify a default memory, then the system can oversubscribe
+    # tasks and actors even if the user has correctly specified memory for some UDFs.
+    #
+    # This assertion just checks that map operators default to *something*, without
+    # making assumptions about the actual heuristic.
+    assert op.min_scheduling_resources().memory > 0
+
+
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_no_default_memory_when_disabled(
+    ray_start_regular_shared, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args={},
+    )
+
+    # When the flag is disabled (the default), map operators shouldn't assign a default
+    # logical memory unless the user explicitly requested it.
+    assert not op.min_scheduling_resources().memory
 
 
 if __name__ == "__main__":

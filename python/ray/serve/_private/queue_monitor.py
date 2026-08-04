@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -49,7 +50,7 @@ class QueueMonitorActor:
 
     PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 
-    async def __init__(
+    async def __init__(  # type: ignore[misc]
         self,
         broker_url: str,
         queue_name: str,
@@ -63,19 +64,22 @@ class QueueMonitorActor:
         self._controller_handle = controller_handle
         self._rabbitmq_http_url = rabbitmq_http_url
 
-        self._broker = Broker(self._broker_url, http_api=self._rabbitmq_http_url)
+        self._broker: Optional[Broker] = Broker(
+            self._broker_url, http_api=self._rabbitmq_http_url
+        )
 
-        self._metrics_pusher = MetricsPusher()
+        self._metrics_pusher: Optional[MetricsPusher] = MetricsPusher()
         self._start_metrics_pusher()
 
     def _start_metrics_pusher(self):
         """Start the metrics pusher to periodically push metrics to the controller."""
-        self._metrics_pusher.register_or_update_task(
+        # Only None after `__ray_shutdown__`; never called after shutdown.
+        self._metrics_pusher.register_or_update_task(  # pyrefly: ignore[missing-attribute]
             self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
             self._push_metrics_to_controller,
             RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S,
         )
-        self._metrics_pusher.start()
+        self._metrics_pusher.start()  # pyrefly: ignore[missing-attribute]
 
     def __ray_shutdown__(self):
         # Note: This must be synchronous (not async) because Ray's core code
@@ -84,7 +88,9 @@ class QueueMonitorActor:
             self._metrics_pusher.stop_tasks()
             self._metrics_pusher = None
         if self._broker is not None:
-            self._broker.close()
+            # `Broker.__new__` returns `BrokerBase` subclasses, which all
+            # define `close()`; the factory class itself does not.
+            self._broker.close()  # pyrefly: ignore[missing-attribute]
             self._broker = None
 
     async def get_queue_length(self) -> int:
@@ -98,7 +104,10 @@ class QueueMonitorActor:
             ValueError: If queue is not found in broker response or
                 if queue data is missing the 'messages' field.
         """
-        queues = await self._broker.queues([self._queue_name])
+        # Only None after `__ray_shutdown__`; never called after shutdown.
+        queues = await self._broker.queues(  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
+            [self._queue_name]
+        )
         if queues is not None:
             for q in queues:
                 if q.get("name") == self._queue_name:
@@ -127,7 +136,9 @@ class QueueMonitorActor:
             timestamp_s=time.time(),
         )
         # Fire-and-forget push to controller
-        self._controller_handle.record_autoscaling_metrics_from_async_inference_task_queue.remote(
+        # `ActorHandle.__getattr__` is annotated `Never`; per-method attributes
+        # exist on real handles at runtime.
+        self._controller_handle.record_autoscaling_metrics_from_async_inference_task_queue.remote(  # type: ignore[attr-defined]
             report
         )
 
@@ -162,7 +173,7 @@ def create_queue_monitor_actor(
         return existing
     except ValueError:
         actor_name = get_queue_monitor_actor_name(deployment_id)
-        actor = QueueMonitorActor.options(
+        actor = QueueMonitorActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=namespace,
             max_restarts=-1,

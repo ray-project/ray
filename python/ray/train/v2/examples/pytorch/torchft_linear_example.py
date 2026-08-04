@@ -59,11 +59,16 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
-    # torchft process group and checkpoint transport
-    pg = ProcessGroupGloo(timeout=timedelta(seconds=5))
+    # torchft process group and checkpoint transport.
+    # Timeouts must be generous enough to re-form the gloo process group after a
+    # replica fails. On loaded CI machines a 5s gloo store wait is too short, which
+    # makes the post-failure reconfigure time out (DistStoreError) and breaks
+    # recovery. Keep these <= the Manager timeout so the PG wait isn't cancelled
+    # by the outer quorum timeout first.
+    pg = ProcessGroupGloo(timeout=timedelta(seconds=30))
     transport = PGTransport(
         pg,
-        timeout=timedelta(seconds=10),
+        timeout=timedelta(seconds=30),
         device=torch.device("cpu"),
     )
 
@@ -86,7 +91,7 @@ def train_func(config):
         world_size=1,
         rank=0,
         replica_id=f"train_ddp_{world_rank}",
-        timeout=timedelta(seconds=30),
+        timeout=timedelta(seconds=60),
         checkpoint_transport=transport,
     )
 
@@ -147,17 +152,22 @@ def train_func(config):
             weight = model.module.weight.detach().flatten().tolist()
             bias = model.module.bias.detach().flatten().tolist()
             result = {"loss": avg_loss, "weight": weight, "bias": bias, "step": step}
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                ray.train.report(
-                    result,
-                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-                )
+            # TODO(tseah): remove this check once we support reporting with 1/2 workers.
+            if config.get("training_requires_all_workers", True):
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    ray.train.report(
+                        result,
+                        checkpoint=ray.train.Checkpoint.from_directory(
+                            temp_checkpoint_dir
+                        ),
+                    )
             results.append(result)
             running_loss = 0.0
             num_batches = 0
 
     # Needed to avoid "split brain" where worker X dies, worker Y finishes, worker X resumes,
     # and worker X gets stuck in loss.backward()
+    print(f"Shutting down manager on rank {world_rank}")
     manager.shutdown()
 
     return results

@@ -2,17 +2,18 @@
 
 # Ingress
 
-Four examples show how to use ingress to access your Ray cluster:
+The following examples show how to use Ingress or Gateway to access your Ray clusters:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
+  * [GKE Gateway API support](kuberay-gke-gateway)
   * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
   * [Azure Application Gateway for Containers Gateway API support on AKS](kuberay-aks-agc)
 
 
 ```{admonition} Warning
 :class: warning
-**Only expose Ingresses to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress can execute arbitrary code on the Ray Cluster.
+**Only expose Ingresses or Gateways to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
 ```
 
 
@@ -90,9 +91,9 @@ kubectl delete ingress ray-cluster-ingress
 
 * Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.  See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs are not necessary for this section.)
 
-* If you are using a `gce-internal` ingress, create a [Proxy-Only subnet](https://cloud.google.com/load-balancing/docs/proxy-only-subnets#proxy_only_subnet_create) in the same region as your GKE cluster.
+* If you are using a `gce-internal` ingress, create a [Proxy-Only subnet](https://docs.cloud.google.com/load-balancing/docs/proxy-only-subnets#proxy_only_subnet_create) in the same region as your GKE cluster.
 
-* It may be helpful to understand the concepts at <https://cloud.google.com/kubernetes-engine/docs/concepts/ingress>.
+* It may be helpful to understand the concepts at <https://docs.cloud.google.com/kubernetes-engine/docs/concepts/ingress>.
 
 ### Instructions
 Save the following file as `ray-cluster-gclb-ingress.yaml`:
@@ -125,8 +126,8 @@ helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
 
-# Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+# Step 2: Install a RayCluster. GKE Ingress requires the backend service to be of type NodePort.
+helm install raycluster kuberay/ray-cluster --version 1.6.0 --set service.type=NodePort
 
 # Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
@@ -136,17 +137,102 @@ kubectl apply -f ray-cluster-gclb-ingress.yaml
 # Step 5: Check ingress created by Step 4.
 kubectl describe ingress ray-cluster-ingress
 
-# Step 6: After a few minutes, GKE allocates an external IP for the ingress. Check it using:
+# Step 6: After a few minutes, GKE allocates an internal IP for the ingress. Check it using:
 kubectl get ingress ray-cluster-ingress
 
 # Example output:
-# NAME                  CLASS    HOSTS   ADDRESS         PORTS   AGE
-# ray-cluster-ingress   <none>   *       34.160.82.156   80      54m
+# NAME                  CLASS          HOSTS   ADDRESS     PORTS   AGE
+# ray-cluster-ingress   gce-internal   *       10.0.1.15   80      54m
 
-# Step 7: Check Ray Dashboard by visiting the allocated external IP in your browser. (In this example, it is 34.160.82.156)
+# Step 7: Check Ray Dashboard. Since this is an internal Ingress, the IP is only accessible from within the VPC. To access the Ingress from your local machine, you must use a VPN, a proxy, or a VM inside the same VPC network.
 
 # Step 8: Delete the ingress.
 kubectl delete ingress ray-cluster-ingress
+```
+
+(kuberay-gke-gateway)=
+## GKE Gateway API support
+
+### Prerequisites
+
+* Create a [GKE cluster with Gateway API enabled](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#enable-gateway). Ensure that you have the `kubectl` tool installed and authenticated to communicate with your GKE cluster.
+  * Gateway API is enabled by default for GKE Autopilot. For GKE Standard, you may need to enable it. See [Enabling Gateway API](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways#enable-gateway) for instructions.
+
+* If you are using the `gke-l7-rilb` Gateway Class for a private internal-only Gateway, create a [Proxy-Only subnet](https://cloud.google.com/load-balancing/docs/proxy-only-subnets#proxy_only_subnet_create) in the same region as your GKE cluster in the VPC network.
+
+* It may be helpful to understand the concepts at <https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api>.
+
+### Instructions
+Save the following file as `ray-cluster-gke-gateway.yaml`:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ray-cluster-gateway
+spec:
+  gatewayClassName: gke-l7-rilb # Use "gke-l7-global-external-managed" instead if you want to create a public, external Gateway.
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ray-cluster-http-route
+spec:
+  parentRefs:
+  - name: ray-cluster-gateway
+  rules:
+  - backendRefs:
+    - name: raycluster-kuberay-head-svc # Update this line with your head service in Step 3 below.
+      port: 8265
+```
+
+```{admonition} Warning
+:class: warning
+Exposing the Ray Dashboard provides cluster access, which allows executing arbitrary code. If you configure a public, external Gateway (using `gke-l7-global-external-managed`), ensure that you configure proper authentication and authorization. For details on setting up SSL/TLS, Google Cloud Armor, and Identity-Aware Proxy (IAP), see the Google Cloud guide on [Securing a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway).
+```
+
+Now run the following commands:
+
+```bash
+# Step 1: Install KubeRay operator and CRD
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+
+# Step 2: Install a RayCluster
+helm install raycluster kuberay/ray-cluster --version 1.6.0
+
+# Step 3: Edit ray-cluster-gke-gateway.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
+
+# Step 4: Apply the Gateway and HTTPRoute configuration
+kubectl apply -f ray-cluster-gke-gateway.yaml
+
+# Step 5: Check Gateway created by Step 4.
+kubectl describe gateway ray-cluster-gateway
+
+# Step 6: Wait for GKE to allocate an internal IP and program the Gateway.
+kubectl wait --for=condition=Programmed gateway/ray-cluster-gateway --timeout=5m
+kubectl get gateway ray-cluster-gateway
+
+# Example output:
+# NAME                  CLASS         ADDRESS      PROGRAMMED   AGE
+# ray-cluster-gateway   gke-l7-rilb   10.0.1.15    True         54m
+
+# Step 7: Check Ray Dashboard. Since this is an internal Gateway, the IP is only accessible from within the VPC. To access the Gateway from your local machine, you must use a VPN, a proxy, or a VM inside the same VPC network.
+
+# Step 8: Delete the gateway and HTTPRoute.
+kubectl delete -f ray-cluster-gke-gateway.yaml
+```
+
+```{note}
+This guide focuses on exposing the Ray Dashboard and API on a single GKE cluster. For deploying multi-cluster Ray serving architectures, see the Google Cloud guide on [serving multi-cluster Ray inference using a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/serve-multi-cluster-ray-inference-gateway).
 ```
 
 (kuberay-nginx)=

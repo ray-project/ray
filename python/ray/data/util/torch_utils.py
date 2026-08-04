@@ -1,6 +1,6 @@
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -352,6 +352,30 @@ def arrow_batch_to_tensors(
 
 
 @torch.no_grad()
+def pin_tensors_to_memory(batch: TensorBatchType) -> TensorBatchType:
+    """Recursively pin CPU tensors in a TensorBatchType. Preserves structure.
+
+    No-op for tensors that are already pinned or not on CPU (e.g. CUDA tensors).
+
+    Args:
+        batch: A tensor or collection of tensors to pin. Can be any
+            TensorBatchType variant.
+
+    Returns:
+        The batch with the same structure, with CPU tensors pinned.
+    """
+    if _is_tensor(batch):
+        if batch.device.type == "cpu" and not batch.is_pinned():
+            return batch.pin_memory()
+        return batch
+    elif isinstance(batch, Mapping):
+        return {k: pin_tensors_to_memory(v) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(pin_tensors_to_memory(v) for v in batch)
+    return batch
+
+
+@torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
@@ -495,3 +519,23 @@ def move_tensors_to_device(
             "Dict[str, torch.Tensor], "
             "Mapping[str, List/Tuple[torch.Tensor]]"
         )
+
+
+def convert_tensors_to_numpy(batch: TensorBatchType) -> Any:
+    """Recursively convert every Torch tensor in ``batch`` to a NumPy array,
+    preserving the surrounding dict/sequence structure.
+
+    Raises ``TypeError`` on non-tensor leaves (the default
+    ``TorchInference.finalize`` error path).
+    """
+    if _is_tensor(batch):
+        return batch.detach().cpu().numpy()
+    elif isinstance(batch, Mapping):
+        return {k: convert_tensors_to_numpy(v) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(convert_tensors_to_numpy(v) for v in batch)
+    raise TypeError(
+        "The default `finalize` only supports Torch tensors nested in "
+        f"dicts/sequences; got {_get_type_str(batch)}. Override `finalize` "
+        "to convert the output yourself."
+    )

@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import sys
+from typing import Any, Dict, Generator
 
 import httpx
 import pytest
@@ -12,7 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
@@ -67,12 +68,17 @@ NOT_CALLABLE_OBJECT = 1
 
 
 @pytest.fixture()
-def ray_instance(request):
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
     """Starts and stops a Ray instance for this test.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+
+    Yields:
+        Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
     """
 
     original_env_vars = os.environ.copy()
@@ -90,7 +96,10 @@ def ray_instance(request):
     yield ray.init()
 
     serve.shutdown()
-    ray.shutdown()
+    # wait_for_processes=True blocks until the raylet/GCS/etc. subprocesses
+    # have fully exited. Without it, this teardown races the next test's
+    # ray.init() and the new raylet can fail to register the driver.
+    ray.shutdown(wait_for_processes=True)
 
     os.environ.clear()
     os.environ.update(original_env_vars)
@@ -228,6 +237,11 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         },
     ],
     indirect=True,
+)
+@skip_if_haproxy(
+    "under direct ingress the http_proxy_callback middleware runs on the replica "
+    "HTTP server, not a native proxy, so a failing callback restarts the replica "
+    "and this test's assertion that the proxy keeps restarting no longer applies"
 )
 def test_http_proxy_callback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""

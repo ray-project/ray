@@ -1,0 +1,20 @@
+# config.yaml
+applications:
+- args:
+    llm_configs:
+        - model_loading_config:
+            model_id: qwen3-reward
+            model_source: Qwen/Qwen3-0.6B
+          # Register the plugin architecture in the Ray Serve LLM processes.
+          server_cls: qwen3_reward_plugin.serve_hook:RewardModelServer
+          engine_kwargs:
+            runner: pooling
+            hf_overrides:
+                architectures:
+                    - Qwen3CustomRewardModel
+                num_labels: 1
+                problem_type: regression
+            max_model_len: 4096
+  import_path: ray.serve.llm:build_openai_app
+  name: custom_vllm_app
+  route_prefix: "/"
