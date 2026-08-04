@@ -14,7 +14,11 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     GangMasterInfoRegistry,
 )
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.llm import (
     build_dp_deployment,
     build_dp_openai_app,
@@ -28,13 +32,14 @@ from ray.serve.schema import ApplicationStatus
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
 CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
+_SHUTDOWN_TIMEOUT_S = 60 if RAY_SERVE_ENABLE_DIRECT_INGRESS else 30
 
 
 @pytest.fixture(autouse=True)
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
     ray.shutdown()
 
 
@@ -276,7 +281,7 @@ def test_llm_serve_data_parallelism_cleanup():
     master_keys = _internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX)
     assert len(master_keys) > 0
 
-    serve.shutdown(_timeout_s=60)
+    serve.shutdown(_timeout_s=_SHUTDOWN_TIMEOUT_S)
 
 
 def test_llm_serve_data_parallelism_declarative():
