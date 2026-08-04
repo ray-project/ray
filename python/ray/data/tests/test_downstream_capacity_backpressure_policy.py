@@ -205,15 +205,13 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._mock_get_utilized_budget_fraction.return_value = fraction
         return fraction
 
-    def _set_backpressure_ratio(
-        self, op, op_state, rm, output_size, downstream_capacity
-    ):
-        """Helper to set backpressure ratio via mocks.
+    def _set_output_pressure(self, op, op_state, rm, output_size, downstream_capacity):
+        """Helper to set output pressure via mocks.
 
-        Matches _get_backpressure_ratio logic:
+        Matches _get_output_pressure logic:
         - output_size = get_mem_op_outputs(op, include_ineligible_downstream=True)
         - downstream_capacity = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
-        - ratio = (output_size / downstream_capacity) - 1
+        - pressure = (output_size / downstream_capacity) - 1
         """
         # Set output size via get_mem_op_outputs
         rm.get_mem_op_outputs.return_value = output_size
@@ -284,10 +282,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        backpressure_ratio = self._set_backpressure_ratio(
+        output_pressure = self._set_output_pressure(
             op, op_state, rm, output_size=1100, downstream_capacity=100
         )
-        assert backpressure_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -316,10 +314,10 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        backpressure_ratio = self._set_backpressure_ratio(
+        output_pressure = self._set_output_pressure(
             op, op_state, rm, output_size=1100, downstream_capacity=100
         )
-        assert backpressure_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -380,19 +378,19 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Backpressure ratio > 2.0: (1200 / 200) - 1 = 5
-        backpressure_ratio = self._set_backpressure_ratio(
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        output_pressure = self._set_output_pressure(
             op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert backpressure_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is False
 
-    def test_backpressure_triggered_high_backpressure_ratio(self):
-        """Test backpressure triggered when backpressure ratio is high."""
+    def test_backpressure_triggered_high_output_pressure(self):
+        """Test backpressure triggered when output pressure is high."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -400,25 +398,25 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # Utilized budget fraction above threshold = check backpressure ratio
+        # Utilized budget fraction above threshold = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Backpressure ratio > 2.0: (1200 / 200) - 1 = 5
-        backpressure_ratio = self._set_backpressure_ratio(
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        output_pressure = self._set_output_pressure(
             op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert backpressure_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is False
 
-    def test_no_backpressure_low_backpressure_ratio(self):
-        """Test no backpressure when backpressure ratio is acceptable."""
+    def test_no_backpressure_low_output_pressure(self):
+        """Test no backpressure when output pressure is low."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -432,11 +430,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.4
 
-        # Backpressure ratio < 2.0: (1500 / 1000) - 1 = 0.5
-        backpressure_ratio = self._set_backpressure_ratio(
+        # Output pressure < 2.0: (1500 / 1000) - 1 = 0.5
+        output_pressure = self._set_output_pressure(
             op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
-        assert backpressure_ratio < 2.0
+        assert output_pressure < 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -518,8 +516,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Backpressure ratio > 2.0: (1200 / 200) - 1 = 5
-        self._set_backpressure_ratio(
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        self._set_output_pressure(
             op, op_state, rm, output_size=1200, downstream_capacity=200
         )
 
@@ -528,8 +526,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.max_task_output_bytes_to_read(op) == 0
 
-    def test_max_bytes_returns_zero_for_high_backpressure_ratio(self):
-        """Test max_task_output_bytes_to_read returns 0 for high backpressure ratio."""
+    def test_max_bytes_returns_zero_for_high_output_pressure(self):
+        """Test max_task_output_bytes_to_read returns 0 for high output pressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -537,14 +535,14 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # High utilized budget fraction = check backpressure ratio
+        # High utilized budget fraction = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Backpressure ratio > 2.0: (1200 / 200) - 1 = 5
-        self._set_backpressure_ratio(
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        self._set_output_pressure(
             op, op_state, rm, output_size=1200, downstream_capacity=200
         )
 
@@ -562,14 +560,14 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # High utilized budget fraction = check backpressure ratio
+        # High utilized budget fraction = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Backpressure ratio < 2.0: (1500 / 1000) - 1 = 0.5
-        self._set_backpressure_ratio(
+        # Output pressure < 2.0: (1500 / 1000) - 1 = 0.5
+        self._set_output_pressure(
             op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
 
@@ -614,15 +612,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
 
         # Fast producer scenario: large output, low downstream capacity
-        # Backpressure ratio = (2200 / 200) - 1 = 10 (well above 2.0 threshold)
-        backpressure_ratio = self._set_backpressure_ratio(
+        # Output pressure = (2200 / 200) - 1 = 10 (well above 2.0 threshold)
+        output_pressure = self._set_output_pressure(
             producer_op,
             producer_state,
             rm,
             output_size=2200,  # Large output (producer outputting fast)
             downstream_capacity=200,  # Low capacity (slow consumer)
         )
-        assert backpressure_ratio > 2.0  # Verify ratio exceeds backpressure threshold
+        assert output_pressure > 2.0  # Verify ratio exceeds pressure threshold
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm

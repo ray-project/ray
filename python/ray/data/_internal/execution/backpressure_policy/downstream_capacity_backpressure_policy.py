@@ -110,8 +110,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
-                "DownstreamCapacityBackpressurePolicy enabled with backpressure "
-                f"Backpressure ratio: {self._backpressure_capacity_ratio}"
+                "DownstreamCapacityBackpressurePolicy enabled with "
+                f"ratio threshold: {self._backpressure_capacity_ratio}"
             )
 
     def _get_downstream_capacity_size_bytes(self, op: "PhysicalOperator") -> int:
@@ -163,8 +163,18 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         return False
 
-    def _get_backpressure_ratio(self, op: "PhysicalOperator") -> float:
-        """Ratio of buffered output bytes to downstream capacity."""
+    def _get_output_pressure(self, op: "PhysicalOperator") -> float:
+        """Calculate the output pressure of the current operator on the
+        downstream operator.
+
+        We estimate this with: `op_output_bytes / downstream_bytes_in_flight`
+
+        If output_pressure == 0, the consumer may be starving for inputs.
+        If output_pressure == 1, we have exactly one "batch" of prefetched
+        outputs, and the pipeline should be flowing smoothly.
+        If output_pressure > THRESHOLD, the producer is outpacing the consumer
+        significantly. Apply backpressure.
+        """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             # No downstream capacity to backpressure against, so no backpressure.
@@ -173,6 +183,11 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         output_size_bytes = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
+        # output_size_bytes includes both buffered outputs and downstream
+        # in-flight inputs. Subtract 1 to isolate the buffered portion:
+        #   output_pressure = op_outqueue_bytes / downstream_in_flight_bytes
+        #   output_size_bytes = op_outqueue_bytes + downstream_in_flight_bytes
+        #   output_pressure = output_size_bytes / downstream_in_flight_bytes - 1
         return (output_size_bytes / downstream_capacity_size_bytes) - 1
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
@@ -186,7 +201,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
-        backpressure_ratio = self._get_backpressure_ratio(op)
+        output_pressure = self._get_output_pressure(op)
 
         if (
             utilized_budget_fraction is not None
@@ -195,8 +210,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            # Apply backpressure if backpressure ratio exceeds the threshold.
-            result = backpressure_ratio > self._backpressure_capacity_ratio
+            # Apply backpressure if output pressure exceeds the threshold.
+            result = output_pressure > self._backpressure_capacity_ratio
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
@@ -206,7 +221,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             )
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"({backpressure_ratio=}, {output_size_bytes=}, "
+                f"({output_pressure=}, {output_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result
