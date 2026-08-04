@@ -27,7 +27,7 @@ from ray.serve.llm import (
 from ray.serve.schema import ApplicationStatus
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
-from shutdown_utils import shutdown_serve_and_wait_for_controller
+from utils import shutdown_serve_and_wait_for_controller
 
 CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
 

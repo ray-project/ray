@@ -15,7 +15,7 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
 
-from shutdown_utils import shutdown_serve_and_wait_for_controller
+from utils import shutdown_serve_and_wait_for_controller
 
 # Pooling models (classify/reward) are only served through vLLM's native ASGI
 # app, which is used when direct streaming is enabled. The default OpenAiIngress
