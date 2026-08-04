@@ -400,15 +400,22 @@ def _external_shuffle_reduce_task(
                 end = base + size
                 region_tables: List[pa.Table] = []
                 while pos < end:
-                    length = struct.unpack(">I", os.pread(fd, 4, pos))[0]
-                    ipc_buf = os.pread(fd, length, pos + 4)
-                    pos += 4 + length
+                    length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
+                    ipc_buf = os.pread(fd, length, pos + 8)
+                    pos += 8 + length
                     table = _read_ipc(ipc_buf, _compression)
                     accum_bytes += table.nbytes
                     region_tables.append(table)
-                # Coalesce a region's shards into one chunk so the write sees
-                # O(num_nodes) chunks, not O(num_maps).
-                if len(region_tables) > 1:
+                # Default: DO NOT coalesce (like v2) — keep shards as separate
+                # chunks and let the write control row-group size (write_parquet
+                # row_group_size). The old per-region combine was a workaround for
+                # write_dataset defaulting to one row group per chunk; it costs a
+                # full copy and is only worth it on slow disks at very high chunk
+                # counts. Set RAY_SHUFFLE_REDUCE_COMBINE=1 to re-enable.
+                if (
+                    len(region_tables) > 1
+                    and os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE") == "1"
+                ):
                     accum_tables.append(
                         transform_pyarrow.combine_chunks(
                             pa.concat_tables(region_tables)
