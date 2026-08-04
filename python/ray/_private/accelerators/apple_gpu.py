@@ -30,18 +30,17 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        """Detect if MPS is available on Apple Silicon."""
+        """Detect the number of Apple Silicon GPUs on the current node.
+
+        Apple Silicon has one unified GPU. We detect it via the macOS `system_profiler`
+        tool (the analog of NVIDIA's pynvml) rather than importing a framework like
+        PyTorch. Gating on PyTorch would make `pip install ray` setups and non-PyTorch
+        frameworks (JAX, MLX, ...) advertise GPU=0 despite the hardware being present.
+        """
         try:
-            # Check if we're on macOS with Apple Silicon
             if not AppleGPUAcceleratorManager._is_apple_silicon():
                 return 0
-
-            # Check if PyTorch with MPS support is available
-            if not AppleGPUAcceleratorManager._is_mps_available():
-                return 0
-
-            # Apple Silicon has one unified GPU
-            return 1
+            return 1 if AppleGPUAcceleratorManager._is_metal_gpu_available() else 0
         except Exception as e:
             logger.debug(f"Error detecting Apple Silicon GPU: {e}")
             return 0
@@ -67,26 +66,23 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        """Validate GPU resource request quantity."""
-        if quantity < 0:
-            return False, "GPU resource quantity cannot be negative."
-
-        # For Apple Silicon, we typically have one unified GPU
-        # But allow fractional usage for sharing
-        if quantity > 1:
-            return False, "Apple Silicon GPU resource quantity cannot exceed 1.0."
-
-        return True, None
+        # Like other GPU managers, accept any quantity and leave capacity checks to
+        # the scheduler. The accelerator manager is selected based on the driver node,
+        # so rejecting quantity > 1 here would wrongly fail multi-GPU requests (e.g.
+        # for NVIDIA workers) submitted from an Apple Silicon driver.
+        return (True, None)
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        """Get visible MPS device IDs.
+        """Get visible GPU device IDs.
 
         Apple Silicon has a single unified GPU, so the only visible id is ever "0".
-        Returns ["0"] if MPS is available, otherwise None.
+        Returns ["0"] on Apple Silicon, otherwise None. Like the node accelerator
+        count, this is a hardware property and does not depend on a framework being
+        installed.
         """
         try:
-            if AppleGPUAcceleratorManager._is_mps_available():
+            if AppleGPUAcceleratorManager._is_apple_silicon():
                 return ["0"]
             return None
         except Exception:
@@ -125,14 +121,22 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
             return False
 
     @staticmethod
-    def _is_mps_available() -> bool:
-        """Check if PyTorch MPS backend is available."""
-        try:
-            import torch
+    def _is_metal_gpu_available() -> bool:
+        """Detect a Metal-capable GPU via the macOS `system_profiler` tool.
 
-            return torch.mps.is_available()
-        except (ImportError, AttributeError):
-            # torch not available or MPS not supported
+        Uses `system_profiler` (always present on macOS) instead of importing a
+        framework like PyTorch, so detection works for `pip install ray` and for
+        non-PyTorch frameworks (JAX, MLX, ...).
+        """
+        try:
+            result = subprocess.run(
+                ["system_profiler", "SPDisplaysDataType"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0 and "metal" in result.stdout.lower()
+        except Exception:
             return False
 
     @staticmethod

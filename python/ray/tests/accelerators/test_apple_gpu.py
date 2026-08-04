@@ -24,34 +24,14 @@ class TestAppleGPUAcceleratorManager:
             AppleGPUAcceleratorManager.get_current_node_additional_resources() is None
         )
 
-    def test_validate_resource_request_quantity_valid(self):
-        """Test validation of valid resource quantities."""
-        assert AppleGPUAcceleratorManager.validate_resource_request_quantity(0.0) == (
-            True,
-            None,
-        )
-        assert AppleGPUAcceleratorManager.validate_resource_request_quantity(0.5) == (
-            True,
-            None,
-        )
-        assert AppleGPUAcceleratorManager.validate_resource_request_quantity(1.0) == (
-            True,
-            None,
-        )
-
-    def test_validate_resource_request_quantity_invalid(self):
-        """Test validation of invalid resource quantities."""
-        valid, error = AppleGPUAcceleratorManager.validate_resource_request_quantity(
-            -1.0
-        )
-        assert not valid
-        assert "cannot be negative" in error
-
-        valid, error = AppleGPUAcceleratorManager.validate_resource_request_quantity(
-            2.0
-        )
-        assert not valid
-        assert "cannot exceed 1.0" in error
+    def test_validate_resource_request_quantity_accepts_any(self):
+        """Like other GPU managers, any quantity is accepted (scheduler enforces
+        capacity). In particular, quantity > 1 must not be rejected, since the manager
+        is chosen by the driver node and may front multi-GPU NVIDIA workers."""
+        for quantity in (0.0, 0.5, 1.0, 2.0, 8.0):
+            assert AppleGPUAcceleratorManager.validate_resource_request_quantity(
+                quantity
+            ) == (True, None)
 
     def test_ec2_instance_methods(self):
         """Test that EC2 methods return None (Apple Silicon not available on EC2)."""
@@ -83,24 +63,24 @@ class TestAppleGPUAcceleratorManager:
         "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_apple_silicon"
     )
     @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_mps_available"
+        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_metal_gpu_available"
     )
     def test_get_current_node_num_accelerators(
-        self, mock_is_mps_available, mock_is_apple_silicon
+        self, mock_is_metal_gpu_available, mock_is_apple_silicon
     ):
-        """Test accelerator count detection."""
+        """Accelerator count is detected from hardware, not from PyTorch."""
         # Not Apple Silicon
         mock_is_apple_silicon.return_value = False
         assert AppleGPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
-        # Apple Silicon but no MPS
+        # Apple Silicon but system_profiler reports no Metal GPU
         mock_is_apple_silicon.return_value = True
-        mock_is_mps_available.return_value = False
+        mock_is_metal_gpu_available.return_value = False
         assert AppleGPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
-        # Apple Silicon with MPS
+        # Apple Silicon with a Metal GPU (no PyTorch involved)
         mock_is_apple_silicon.return_value = True
-        mock_is_mps_available.return_value = True
+        mock_is_metal_gpu_available.return_value = True
         assert AppleGPUAcceleratorManager.get_current_node_num_accelerators() == 1
 
     @patch(
@@ -132,13 +112,13 @@ class TestAppleGPUAcceleratorManager:
         )
 
     @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_mps_available"
+        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_apple_silicon"
     )
-    def test_get_current_process_visible_accelerator_ids_mps_available(
-        self, mock_is_mps_available
+    def test_get_current_process_visible_accelerator_ids_apple_silicon(
+        self, mock_is_apple_silicon
     ):
-        """The only visible id on Apple Silicon is ever "0" when MPS is available."""
-        mock_is_mps_available.return_value = True
+        """The only visible id on Apple Silicon is ever "0"."""
+        mock_is_apple_silicon.return_value = True
 
         assert (
             AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
@@ -146,13 +126,13 @@ class TestAppleGPUAcceleratorManager:
         )
 
     @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_mps_available"
+        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_apple_silicon"
     )
-    def test_get_current_process_visible_accelerator_ids_mps_not_available(
-        self, mock_is_mps_available
+    def test_get_current_process_visible_accelerator_ids_not_apple_silicon(
+        self, mock_is_apple_silicon
     ):
-        """Test getting visible accelerator IDs when MPS is not available."""
-        mock_is_mps_available.return_value = False
+        """Non-Apple-Silicon hosts report no visible Apple GPU."""
+        mock_is_apple_silicon.return_value = False
 
         assert (
             AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
@@ -167,18 +147,26 @@ class TestAppleGPUAcceleratorManager:
             )
             assert os.environ == {}
 
-    def test_is_mps_available(self):
-        """Test MPS availability detection."""
-        # Mock torch with MPS available
-        mock_torch = MagicMock()
-        mock_torch.mps.is_available.return_value = True
+    @patch("subprocess.run")
+    def test_is_metal_gpu_available(self, mock_run):
+        """Metal GPU detection via system_profiler (no framework dependency)."""
+        # A Metal-capable GPU is reported.
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = (
+            "Graphics/Displays:\n    Apple M3 Pro:\n"
+            "      Type: GPU\n      Metal Support: Metal 3\n"
+        )
+        mock_run.return_value = mock_result
+        assert AppleGPUAcceleratorManager._is_metal_gpu_available() is True
 
-        with patch.dict("sys.modules", {"torch": mock_torch}):
-            assert AppleGPUAcceleratorManager._is_mps_available() is True
+        # No Metal GPU in the output.
+        mock_result.stdout = "Graphics/Displays:\n"
+        assert AppleGPUAcceleratorManager._is_metal_gpu_available() is False
 
-        # Test without torch
-        with patch.dict("sys.modules", {"torch": None}):
-            assert AppleGPUAcceleratorManager._is_mps_available() is False
+        # system_profiler failing must not raise.
+        mock_run.side_effect = Exception("Command failed")
+        assert AppleGPUAcceleratorManager._is_metal_gpu_available() is False
 
     @patch("subprocess.run")
     def test_get_apple_chip_type(self, mock_run):
