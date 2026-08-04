@@ -34,6 +34,38 @@ if [[ "${ARCH}" == "x86_64" ]]; then
     devtoolset-8-libasan-devel.x86_64
 fi
 
+# Expose a C/C++ compiler on the strict-action PATH for rules_foreign_cc.
+# RocksDB (REP-64) is built via rules_foreign_cc's cmake()/ninja bootstrap,
+# which invokes a bare `c++`/`cc` resolved through PATH. Ray's .bazelrc sets
+# --incompatible_strict_action_env, which pins the build action PATH to
+# /bin:/usr/bin:/usr/local/bin and hides the devtoolset compiler under
+# /opt/rh. The x86_64 base ships a system compiler at /usr/bin, but the
+# aarch64 base does not, so symlink the toolchain compiler into
+# /usr/local/bin (which is on the strict action PATH) there.
+if [[ "${ARCH}" == "aarch64" ]]; then
+  CXX_BIN="$(command -v c++ || command -v g++ || true)"
+  CC_BIN="$(command -v cc || command -v gcc || true)"
+  if [[ -z "${CXX_BIN}" || -z "${CC_BIN}" ]]; then
+    echo "Unable to locate a C/C++ compiler for rules_foreign_cc" >&2
+    exit 1
+  fi
+  # Idempotent symlink: skip if src and dest already resolve to the same path.
+  # Re-running otherwise risks `command -v` returning the /usr/local/bin symlink
+  # itself, turning `ln -sf X X` into a self-referential loop that breaks the
+  # compiler with "Too many levels of symbolic links".
+  safe_ln() {
+    local src="$1"
+    local dest="$2"
+    if [[ "$(readlink -f "${src}")" != "$(readlink -f "${dest}" 2>/dev/null)" ]]; then
+      sudo ln -sf "${src}" "${dest}"
+    fi
+  }
+  safe_ln "${CXX_BIN}" /usr/local/bin/c++
+  safe_ln "${CXX_BIN}" /usr/local/bin/g++
+  safe_ln "${CC_BIN}" /usr/local/bin/cc
+  safe_ln "${CC_BIN}" /usr/local/bin/gcc
+fi
+
 # Install ray java dependencies.
 if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1" ]]; then
   sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
