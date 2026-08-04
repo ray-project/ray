@@ -169,6 +169,27 @@ class TestAppleGPUAcceleratorManager:
         assert AppleGPUAcceleratorManager._is_metal_gpu_available() is False
 
     @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("Apple M1", "M1"),
+            ("Apple M1 Pro", "M1-Pro"),
+            ("Apple M2 Max", "M2-Max"),
+            ("Apple M1 Ultra", "M1-Ultra"),
+            ("Apple M3", "M3"),
+            ("Apple M4 Pro", "M4-Pro"),
+            # Leading/trailing whitespace (as produced by line.split("Chip:")[1]).
+            ("   Apple M4 Pro  ", "M4-Pro"),
+            # No Apple / no M-series designation -> None.
+            ("Intel(R) Core(TM) i9", None),
+            ("Apple", None),
+            ("", None),
+        ],
+    )
+    def test_parse_apple_chip(self, text, expected):
+        """Chip-name parsing, independent of any subprocess."""
+        assert AppleGPUAcceleratorManager._parse_apple_chip(text) == expected
+
+    @pytest.mark.parametrize(
         "chip,expected",
         [
             ("Apple M1", "M1"),

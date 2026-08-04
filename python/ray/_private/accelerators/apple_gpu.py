@@ -140,63 +140,54 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
             return False
 
     @staticmethod
+    def _parse_apple_chip(text: str) -> Optional[str]:
+        """Parse an Apple M-series chip name (e.g. "M1-Pro") from a string.
+
+        Returns the normalized chip name, joining any suffix with a dash
+        (e.g. "Apple M1 Pro" -> "M1-Pro"), or None if `text` contains no Apple
+        M-series designation.
+        """
+        if "Apple" not in text:
+            return None
+        parts = text.split()
+        for i, part in enumerate(parts):
+            if part.startswith("M") and len(part) >= 2:
+                if i + 1 < len(parts) and parts[i + 1] in ("Pro", "Max", "Ultra"):
+                    return f"{part}-{parts[i + 1]}"
+                return part
+        return None
+
+    @staticmethod
     def _get_apple_chip_type() -> Optional[str]:
-        """Get the specific Apple Silicon chip type."""
+        """Get the specific Apple Silicon chip type (e.g. "M1-Pro"), or None."""
         try:
-            # Use system_profiler to get chip information
+            # Prefer the "Chip:" line from system_profiler.
             result = subprocess.run(
                 ["system_profiler", "SPHardwareDataType"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-
             if result.returncode == 0:
-                output = result.stdout
-                # Look for chip name in the output
-                for line in output.split("\n"):
-                    line = line.strip()
+                for line in result.stdout.split("\n"):
                     if "Chip:" in line:
-                        # Extract chip name (e.g., "Apple M1 Pro", "Apple M2", etc.)
-                        chip_info = line.split("Chip:")[1].strip()
-                        if "Apple" in chip_info:
-                            # Extract the M-series designation
-                            parts = chip_info.split()
-                            for i, part in enumerate(parts):
-                                if part.startswith("M") and len(part) >= 2:
-                                    # Include any suffix (Pro, Max, Ultra)
-                                    chip_parts = [part]
-                                    if i + 1 < len(parts) and parts[i + 1] in [
-                                        "Pro",
-                                        "Max",
-                                        "Ultra",
-                                    ]:
-                                        chip_parts.append(parts[i + 1])
-                                    return "-".join(chip_parts)
+                        chip = AppleGPUAcceleratorManager._parse_apple_chip(
+                            line.split("Chip:")[1]
+                        )
+                        if chip is not None:
+                            return chip
 
-            # Fallback: try using sysctl
+            # Fall back to the sysctl CPU brand string.
             result = subprocess.run(
                 ["sysctl", "-n", "machdep.cpu.brand_string"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-
             if result.returncode == 0:
-                brand_string = result.stdout.strip()
-                if "Apple" in brand_string:
-                    # Try to extract M-series chip from brand string
-                    parts = brand_string.split()
-                    for i, part in enumerate(parts):
-                        if part.startswith("M") and len(part) >= 2:
-                            chip_parts = [part]
-                            if i + 1 < len(parts) and parts[i + 1] in [
-                                "Pro",
-                                "Max",
-                                "Ultra",
-                            ]:
-                                chip_parts.append(parts[i + 1])
-                            return "-".join(chip_parts)
+                chip = AppleGPUAcceleratorManager._parse_apple_chip(result.stdout)
+                if chip is not None:
+                    return chip
 
             # Couldn't determine the specific chip.
             return None
