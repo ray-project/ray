@@ -588,10 +588,14 @@ class KineticaDatasource(Datasource):
 
             if use_hash_partitioning:
                 # Hash-based partitioning: each task reads rows where
-                # MOD(HASH(partition_column), total_tasks) = task_id
+                # ABS(MOD(HASH(partition_column), total_tasks)) = task_id
                 # This guarantees each row is read by exactly one task.
+                # Note: We use ABS() because HASH() can return negative values,
+                # and MOD preserves the sign of the dividend. Without ABS(),
+                # negative hash values would produce negative remainders that
+                # never match any non-negative task_id.
                 hash_filter = (
-                    f"MOD(HASH({partition_column}), {total_tasks}) = {task_id}"
+                    f"ABS(MOD(HASH({partition_column}), {total_tasks})) = {task_id}"
                 )
                 if effective_filter:
                     # Combine user filter with hash filter

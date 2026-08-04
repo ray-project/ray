@@ -81,7 +81,9 @@ def create_gpudb_client(
     return GPUdb(host=url, options=gpudb_options)
 
 
-def _column_type_to_array_inner(column_type: Any) -> str:
+def _column_type_to_array_inner(
+    column_type: Any, properties: Optional[List[str]] = None
+) -> str:
     """
     Convert a GPUdbRecordColumn type constant to its array inner type string.
 
@@ -90,17 +92,33 @@ def _column_type_to_array_inner(column_type: Any) -> str:
 
     Args:
         column_type: A GPUdbRecordColumn._ColumnType constant.
+        properties: Optional list of column properties (e.g., BOOLEAN, ULONG).
+            These are checked first to handle special types like boolean
+            (stored as INT with BOOLEAN property) and ulong (stored as
+            STRING with ULONG property).
 
     Returns:
         The lowercase string representation for use in array() properties.
+        For example: "int", "long", "boolean", "ulong", etc.
 
     Raises:
         TypeError: If the column type is not supported as an array element type.
-            Kinetica only supports int, long, float, double, and string as
-            array inner types.
+            Kinetica arrays support: int, long, float, double, string, boolean,
+            and ulong.
     """
     gpudb = _check_gpudb()
     GPUdbRecordColumn = gpudb.GPUdbRecordColumn
+    GPUdbColumnProperty = gpudb.GPUdbColumnProperty
+
+    # Check properties first for special types that map to a base type
+    # with a property (e.g., boolean is INT+BOOLEAN, ulong is STRING+ULONG)
+    if properties:
+        for prop in properties:
+            prop_lower = prop.lower() if isinstance(prop, str) else str(prop).lower()
+            if prop_lower == GPUdbColumnProperty.BOOLEAN.lower():
+                return "boolean"
+            if prop_lower == GPUdbColumnProperty.ULONG.lower():
+                return "ulong"
 
     type_map = {
         GPUdbRecordColumn._ColumnType.INT: "int",
@@ -115,7 +133,8 @@ def _column_type_to_array_inner(column_type: Any) -> str:
         type_name = getattr(column_type, "name", str(column_type))
         raise TypeError(
             f"Unsupported array element type: {type_name}. "
-            f"Kinetica arrays only support: int, long, float, double, string. "
+            f"Kinetica arrays only support: int, long, float, double, string, "
+            f"boolean, ulong. "
             f"Consider converting binary/bytes data to base64-encoded strings."
         )
     return result
@@ -217,8 +236,8 @@ def arrow_to_kinetica_type(
     # List/Array types
     if pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
         value_type = arrow_type.value_type
-        inner_type, _ = arrow_to_kinetica_type(value_type)
-        array_inner = _column_type_to_array_inner(inner_type)
+        inner_type, inner_props = arrow_to_kinetica_type(value_type)
+        array_inner = _column_type_to_array_inner(inner_type, inner_props)
         return GPUdbRecordColumn._ColumnType.STRING, [f"array({array_inner})"]
 
     # Fixed-size list (vector)
@@ -228,8 +247,8 @@ def arrow_to_kinetica_type(
         if pa.types.is_float32(value_type) or pa.types.is_float64(value_type):
             return GPUdbRecordColumn._ColumnType.BYTES, [f"vector({list_size})"]
         else:
-            inner_type, _ = arrow_to_kinetica_type(value_type)
-            array_inner = _column_type_to_array_inner(inner_type)
+            inner_type, inner_props = arrow_to_kinetica_type(value_type)
+            array_inner = _column_type_to_array_inner(inner_type, inner_props)
             return GPUdbRecordColumn._ColumnType.STRING, [
                 f"array({array_inner},{list_size})"
             ]
