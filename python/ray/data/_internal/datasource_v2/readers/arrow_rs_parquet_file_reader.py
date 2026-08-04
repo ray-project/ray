@@ -274,20 +274,21 @@ _ARROW_RS_COLUMN_FETCH_MB = env_integer("RAY_DATA_ARROW_RS_COLUMN_FETCH_MB", 16)
 
 # Knob ``arrow_rs_column_prefetch_budget_mb`` — crate arg ``column_prefetch_budget_mb``.
 # Compressed bytes the column-windowing path may prefetch AHEAD of its (single)
-# decoder. Column groups are fetched concurrently, gated by a byte-denominated
+# decoder — the "bucket" it tries to keep full. DERIVED by default: 4 ×
+# ``column_fetch_mb``, i.e. a bucket of four column-group batches, so tuning the
+# one batch-size knob scales the bucket with it and there is nothing separate to
+# tune. Column groups are fetched concurrently, gated by a byte-denominated
 # semaphore: each in-order fetch acquires permits equal to its compressed size and
 # releases them when the decoder finishes (drops) that group — so fetch concurrency
-# self-adjusts to the fetch:decode speed ratio (a slow network gets budget/group_size
-# parallel GETs; a slow decoder backpressures fetching to a halt) and peak prefetch
-# memory is the budget by construction, never an estimate. Decode itself stays
+# self-adjusts to the fetch:decode speed ratio (a slow network gets ~4 parallel
+# GETs; a slow decoder backpressures fetching to a halt) and peak prefetch memory
+# is the bucket size by construction, never an estimate. Decode itself stays
 # one-group-at-a-time (that bound is the wide-schema memory fix; see
-# ``column_fetch_mb``). Adds at most ``budget`` MB of compressed bytes to the
-# working set (64 MB default — noise next to the decoded output) in exchange for
-# overlapping S3 latency with decode. 0 = strictly sequential fetch->decode->fetch
-# (the pre-prefetch behavior). Tuning: raise if ``cpu_over_wall`` on a wide S3 read
-# stays well under 1 (decoder starving); lower/zero only to chase a memory ceiling.
+# ``column_fetch_mb``). Explicitly setting this overrides the 4× derivation
+# (benchmark escape hatch); 0 = strictly sequential fetch->decode->fetch.
+# ``-1`` sentinel = unset -> derive.
 _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB = env_integer(
-    "RAY_DATA_ARROW_RS_COLUMN_PREFETCH_BUDGET_MB", 64
+    "RAY_DATA_ARROW_RS_COLUMN_PREFETCH_BUDGET_MB", -1
 )
 
 # Parquet-format kwargs (``pds.ParquetFileFormat``) that tune PyArrow's I/O
@@ -347,7 +348,8 @@ class _ArrowRsTuning(NamedTuple):
     fetch_window_mb: int
     prefetch_windows: int
     column_fetch_mb: int
-    column_prefetch_budget_mb: int
+    # None means "derive at the call site": 4 x column_fetch_mb.
+    column_prefetch_budget_mb: Optional[int]
 
 
 # There is deliberately NO per-type support gate: every type Parquet can store
@@ -1172,9 +1174,11 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             column_fetch_mb=resolve(
                 "arrow_rs_column_fetch_mb", _ARROW_RS_COLUMN_FETCH_MB, 0
             ),
-            column_prefetch_budget_mb=resolve(
+            column_prefetch_budget_mb=resolve_optional(
                 "arrow_rs_column_prefetch_budget_mb",
-                _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB,
+                None
+                if _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB < 0
+                else _ARROW_RS_COLUMN_PREFETCH_BUDGET_MB,
                 0,
             ),
         )
@@ -1647,7 +1651,14 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 prefetch_windows=tuning.prefetch_windows,
                 predicate_json=predicate_json,
                 column_fetch_mb=tuning.column_fetch_mb,
-                column_prefetch_budget_mb=tuning.column_prefetch_budget_mb,
+                # The prefetch bucket defaults to 4 column-group batches: one
+                # decoding + ~3 in flight keeps the (single) decoder fed across
+                # fetch:decode ratios without a second knob to tune.
+                column_prefetch_budget_mb=(
+                    tuning.column_prefetch_budget_mb
+                    if tuning.column_prefetch_budget_mb is not None
+                    else 4 * tuning.column_fetch_mb
+                ),
             )
         else:
             reader = ray_data_arrow_rs.read_row_groups(
