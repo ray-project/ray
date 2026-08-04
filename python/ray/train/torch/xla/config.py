@@ -2,12 +2,15 @@ import logging
 import os
 import re
 import shutil
+import socket
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import ray
+from ray._common.network_utils import build_address, is_ipv6
 from ray.train._internal.base_worker_group import BaseWorkerGroup
-from ray.train._internal.utils import get_address_and_port
 from ray.train.backend import Backend
 from ray.train.torch import TorchConfig
 from ray.util import PublicAPI
@@ -23,9 +26,19 @@ class TorchXLAConfig(TorchConfig):
     See https://pytorch.org/xla/release/1.13/index.html for more info.
     Currently, only "neuron_cores" accelerator (AwsNeuronXLABackend)
     is supported with xrt runtime.
+
+    Args:
+        neuron_parallel_compile: Whether to extract and compile Neuron graphs
+            before running the training function.
+        socket_ifname: Name of the network interface to bind the Neuron
+            collectives bootstrap to, for example "eth0". Unset by default, in
+            which case the Neuron runtime selects an interface itself. An
+            interface name already present in the environment as
+            ``NCCL_SOCKET_IFNAME`` or ``CCOM_SOCKET_IFNAME`` takes precedence.
     """
 
     neuron_parallel_compile: bool = False
+    socket_ifname: Optional[str] = None
 
     @property
     def backend_cls(self):
@@ -117,6 +130,22 @@ def _neuron_compile_extracted_graphs():
         )
 
 
+def _get_address_and_ports() -> Tuple[str, int, int]:
+    """Returns this node's address and two distinct free ports.
+
+    Both sockets stay bound until both port numbers have been read, so the
+    ports cannot come back equal. Two ``get_address_and_port`` calls can, since
+    each one releases its port before the next one probes.
+    """
+    addr = ray.util.get_node_ip_address()
+    family = socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET
+    with closing(socket.socket(family, socket.SOCK_STREAM)) as master_sock:
+        with closing(socket.socket(family, socket.SOCK_STREAM)) as comm_sock:
+            master_sock.bind(("", 0))
+            comm_sock.bind(("", 0))
+            return addr, master_sock.getsockname()[1], comm_sock.getsockname()[1]
+
+
 class _TorchAwsNeuronXLABackend(Backend):
     unique_run_id: str = str(uuid.uuid4())
 
@@ -127,17 +156,38 @@ class _TorchAwsNeuronXLABackend(Backend):
         # This would leak any running xrt server.
         worker_group.execute(_kill_xrt_server)
 
-        # Get master address and port from the first worker.
-        master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
+        # Get the master address and two ports from the first worker. The Neuron
+        # runtime rendezvous cannot share MASTER_PORT with torch.distributed, and
+        # both ports come from one call so that they cannot collide.
+        master_addr, master_port, root_comm_port = worker_group.execute_single(
+            0, _get_address_and_ports
+        )
 
-        def set_env_vars(addr, port):
+        def set_env_vars(addr, port, root_comm_port, socket_ifname):
             os.environ["MASTER_ADDR"] = addr
             os.environ["MASTER_PORT"] = str(port)
             # To trigger the xrt server
             os.environ["TORCHELASTIC_RUN_ID"] = self.unique_run_id
+            # Endpoint the Neuron runtime uses to build a communicator spanning
+            # instances. Unset, each rank builds its own local communicator and
+            # a multi-instance collective never forms.
+            os.environ["NEURON_RT_ROOT_COMM_ID"] = build_address(addr, root_comm_port)
+            if socket_ifname:
+                # CCOM chooses its bootstrap socket by looking for a local
+                # interface whose subnet contains the peer address. That search
+                # cannot succeed where hosts carry a /32, so allow the interface
+                # to be named outright.
+                os.environ.setdefault("NCCL_SOCKET_IFNAME", socket_ifname)
+                os.environ.setdefault("CCOM_SOCKET_IFNAME", socket_ifname)
 
         # Set the env vars on all workers.
-        worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
+        worker_group.execute(
+            set_env_vars,
+            addr=master_addr,
+            port=master_port,
+            root_comm_port=root_comm_port,
+            socket_ifname=backend_config.socket_ifname,
+        )
 
         # Set up env vars for neuron parallel compilation graph extraction
         if backend_config.neuron_parallel_compile:
