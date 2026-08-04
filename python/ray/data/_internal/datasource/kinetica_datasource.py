@@ -619,21 +619,22 @@ class KineticaDatasource(Datasource):
 
             # When sort_by is not provided and we need to paginate (limit > batch_size),
             # offset-based pagination without a stable sort order can produce
-            # duplicate or missing rows. To avoid this, fetch all records in one
-            # request when sort_by is not specified.
-            effective_batch_size = batch_size
-            if not sort_by and limit > batch_size:
-                logger.info(
-                    f"Fetching all {limit} records in a single request because "
-                    "sort_by is not specified (pagination without sort_by can "
-                    "produce inconsistent results). Specify sort_by to enable "
-                    "batched fetching."
+            # duplicate or missing rows. We still need to paginate to avoid
+            # silent data loss from Kinetica's max_get_records_size limit.
+            # Track whether we're in "unsorted pagination" mode to warn about
+            # potential inconsistency.
+            unsorted_pagination = not sort_by and limit > batch_size
+            if unsorted_pagination:
+                logger.warning(
+                    f"Reading {limit} records without sort_by specified. "
+                    "Offset-based pagination without a stable sort order may "
+                    "produce duplicate or missing rows if data is modified "
+                    "during the read. Specify sort_by for consistent results."
                 )
-                effective_batch_size = limit
 
             try:
                 while records_remaining > 0:
-                    fetch_count = min(effective_batch_size, records_remaining)
+                    fetch_count = min(batch_size, records_remaining)
 
                     # Use appropriate method based on column selection
                     if columns:
@@ -675,6 +676,7 @@ class KineticaDatasource(Datasource):
                     current_offset += fetched_count
 
                     # If we got fewer records than requested, we're done
+                    # This is the natural end-of-data condition
                     if fetched_count < fetch_count:
                         break
 
