@@ -16,6 +16,10 @@ from ray.tune.result_grid import ResultGrid
 
 _RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 
+# How long to wait for a signalled/terminated run to actually exit before
+# escalating to SIGKILL, so that reaping it can never block the test.
+_PROCESS_EXIT_TIMEOUT_S = 30
+
 
 def _kill_process_if_needed(
     process: subprocess.Popen, timeout_s: float = 10, poll_interval_s: float = 1.0
@@ -135,37 +139,48 @@ def test_experiment_restore(tmp_path, runner_type):
         while run.poll() is None and run_started_marker.exists():
             time.sleep(poll_interval_s)
 
-        # If the run already finished, then exit immediately.
-        if run.poll() is not None:
-            return_code = run.poll()
-            break
+        # Only interrupt the run if it's still going. If it already finished on
+        # its own, fall through to the progress check below -- the experiment may
+        # have just been completed by this run.
+        interrupted = False
+        if run.poll() is None:
+            timeout_s = np.random.uniform(6 * time_per_iter_s, 10 * time_per_iter_s)
 
-        timeout_s = np.random.uniform(6 * time_per_iter_s, 10 * time_per_iter_s)
+            _print_message(
+                "Training has started...\n"
+                f"Interrupting after {timeout_s:.2f} seconds\n"
+                f"Currently at {total_runtime:.2f} seconds"
+            )
 
-        _print_message(
-            "Training has started...\n"
-            f"Interrupting after {timeout_s:.2f} seconds\n"
-            f"Currently at {total_runtime:.2f} seconds"
-        )
+            # Sleep for a random amount of time, then stop the run.
+            start_time = time.monotonic()
+            time.sleep(timeout_s)
+            total_runtime += time.monotonic() - start_time
 
-        # Sleep for a random amount of time, then stop the run.
-        start_time = time.monotonic()
-        time.sleep(timeout_s)
-        total_runtime += time.monotonic() - start_time
+            if run.poll() is None:
+                # Send "SIGINT" to stop the run
+                _print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
+                run.send_signal(signal.SIGUSR1)
+                interrupted = True
 
-        return_code = run.poll()
-        if return_code is None:
-            # Send "SIGINT" to stop the run
-            _print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
-            run.send_signal(signal.SIGUSR1)
+                # Make sure the process is stopped forcefully after a timeout.
+                _kill_process_if_needed(run)
+            else:
+                _print_message("Run has already terminated!")
 
-            # Make sure the process is stopped forcefully after a timeout.
-            _kill_process_if_needed(run)
-        else:
-            _print_message("Run has already terminated!")
-            break
+        # Wait for the process to fully exit so that `return_code` is meaningful.
+        # `poll()` can still be None immediately after signalling the process.
+        try:
+            return_code = run.wait(timeout=_PROCESS_EXIT_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            _print_message(f"Run #{run_iter} ignored SIGTERM -- killing it.")
+            run.kill()
+            return_code = run.wait()
 
-        # Check up on the results.
+        # Check up on the results. This must happen on every exit path: if the
+        # run that completes the experiment shuts down on its own, breaking out
+        # before this point would leave `progress` at the previous iteration's
+        # (incomplete) value.
         results = ResultGrid(ExperimentAnalysis(str(storage_path / exp_name)))
         iters = [result.metrics.get("training_iteration", 0) for result in results]
         progress = sum(iters) / total_iters
@@ -175,6 +190,23 @@ def test_experiment_restore(tmp_path, runner_type):
             f"% completion = {progress} ({sum(iters)} iters / {total_iters})\n"
             f"Currently at {total_runtime:.2f} seconds"
         )
+
+        # Exit based on measured progress rather than on whether the subprocess
+        # happened to exit within the random sleep window above. Looping past
+        # 100% just burns another full `ray.init()` cycle per iteration, which
+        # is what pushes this test over its pytest timeout.
+        if progress >= 1.0:
+            break
+
+        # A run that we never interrupted, yet which exited before finishing the
+        # experiment, means the script itself is broken. Stop and let the
+        # assertions below report it instead of relaunching forever.
+        if not interrupted:
+            _print_message(
+                f"Run #{run_iter} exited on its own without completing the "
+                f"experiment (return code {return_code})."
+            )
+            break
 
     _print_message(
         f"Total number of restorations = {run_iter}\n"
