@@ -104,7 +104,7 @@ def _external_shuffle_map_task(
 
     Args:
         blocks: Input blocks to partition.
-        partition_fn: Hash partitioner returning ``Dict[pid, Table]``.
+        partition_fn: Hash partitioner returning ``Dict[partition_id, Table]``.
         num_partitions: Total downstream partitions M.
         out_dir: Directory to write ``map_{i}.shf`` into.
         map_id: This map task's index.
@@ -150,8 +150,8 @@ def _external_shuffle_map_task(
                     output_schema = getattr(blk, "schema", None)
                 if blk.num_rows == 0:
                     continue
-                for pid, shard in partition_fn(blk).items():
-                    writer.add_shard(pid, shard)
+                for partition_id, shard in partition_fn(blk).items():
+                    writer.add_shard(partition_id, shard)
             writer.flush_all()
 
             # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
@@ -202,7 +202,7 @@ def _external_shuffle_map_task(
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,
-        # Dense per-partition decoded bytes (was a Dict[pid,int]).
+        # Dense per-partition decoded bytes (was a Dict[partition_id,int]).
         "decoded_bytes": _decoded_to_array(
             writer.decoded_bytes_per_partition, num_partitions
         ),
