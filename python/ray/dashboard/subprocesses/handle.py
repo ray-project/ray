@@ -104,7 +104,8 @@ class SubprocessModuleHandle:
     # -- CPython only defines that class on POSIX, and a class-body annotation is
     # evaluated at import time, so naming it raises AttributeError on Windows.
     if sys.platform == "win32" or (
-        os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD") == "spawn"
+        os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD", "").strip().lower()
+        == "spawn"
     ):
         mp_context = multiprocessing.get_context("spawn")
     else:

@@ -1,10 +1,28 @@
+import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
+import ray._private.ray_constants as ray_constants
 from ray._common import utils as common_utils
 from ray._private import utils
+from ray._private.node import Node
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+
+import psutil
+
+
+def _fake_process_entry(pid: int):
+    """Mimics the shape Node.all_processes holds: [ProcessInfo] with .process.pid."""
+    return [SimpleNamespace(process=SimpleNamespace(pid=pid))]
+
+
+def _all_processes_with_dashboard(dashboard_pid: int):
+    return {
+        ray_constants.PROCESS_TYPE_GCS_SERVER: _fake_process_entry(dashboard_pid + 1),
+        ray_constants.PROCESS_TYPE_DASHBOARD: _fake_process_entry(dashboard_pid),
+    }
 
 
 def test_resource_isolation_is_disabled_by_default():
@@ -308,6 +326,37 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
     # int(5/32 * 10000)
     assert override_config.system_reserved_cpu_weight == 1562
     assert override_config.system_reserved_memory == 15 * (1024**3)
+
+
+def test_system_processes_collected_when_dashboard_already_exited():
+    """A dead api server must not fail node startup.
+
+    The api server is started with raise_on_api_server_failure=False by default, so it
+    can be gone by the time its descendants are enumerated for the system cgroup.
+    psutil.Process() raises NoSuchProcess for an exited pid.
+    """
+    dead = subprocess.Popen([sys.executable, "-c", ""])
+    dead.wait()
+
+    node = SimpleNamespace(all_processes=_all_processes_with_dashboard(dead.pid))
+    pids = Node._get_system_processes_for_resource_isolation(node)
+
+    # The other system processes are still reported, just not the dashboard's children.
+    assert str(dead.pid + 1) in pids.split(",")
+
+
+def test_system_processes_collected_when_dashboard_access_denied(monkeypatch):
+    """Same for AccessDenied, which psutil can raise instead on some platforms."""
+
+    def raise_access_denied(pid):
+        raise psutil.AccessDenied(pid)
+
+    monkeypatch.setattr(psutil, "Process", raise_access_denied)
+
+    node = SimpleNamespace(all_processes=_all_processes_with_dashboard(1234))
+    pids = Node._get_system_processes_for_resource_isolation(node)
+
+    assert str(1235) in pids.split(",")
 
 
 if __name__ == "__main__":

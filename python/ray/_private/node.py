@@ -1790,10 +1790,21 @@ class Node:
             dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
                 0
             ].process.pid
-            dashboard_process = psutil.Process(dashboard_pid)
-            system_process_pids += [
-                str(p.pid) for p in dashboard_process.children(recursive=True)
-            ]
+            # The api server is allowed to fail without failing node startup, so it may
+            # already be gone by the time we look it up. Losing isolation for its
+            # modules is much better than failing to start the node over it.
+            try:
+                dashboard_process = psutil.Process(dashboard_pid)
+                system_process_pids += [
+                    str(p.pid) for p in dashboard_process.children(recursive=True)
+                ]
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.warning(
+                    "Could not enumerate the descendants of the dashboard process "
+                    f"(pid {dashboard_pid}), so they will not be moved into the system "
+                    "cgroup and will run without resource isolation.",
+                    exc_info=True,
+                )
 
         return ",".join(system_process_pids)
 
