@@ -1572,6 +1572,7 @@ name = "ray_data_arrow_rs"
 version = "0.1.0"
 dependencies = [
  "arrow",
+ "bytes",
  "futures",
  "object_store",
  "parquet",

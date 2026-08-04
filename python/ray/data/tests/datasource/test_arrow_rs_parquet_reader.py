@@ -1788,16 +1788,17 @@ def test_arrow_rs_s3_kspilt_windowed_order(s3_fs, s3_path, k):
     assert got["id"].to_pylist() == list(range(n))
 
 
-@pytest.mark.parametrize("prefetch_windows", [1, 2, 4])
-def test_arrow_rs_s3_window_prefetch_order(s3_fs, s3_path, prefetch_windows):
-    """The window-prefetch pipeline (K=1 single stream, many fetch windows) must
-    return rows in EXACT file order at every prefetch depth. This is the common S3
-    path the knob targets: one row group sliced into many small windows, with up to
-    ``prefetch_windows`` of them fetching+decoding concurrently. depth=1 is the old
-    strictly-serial behavior; depth>1 overlaps window N+1's fetch with window N's
-    decode. A monotone ``id`` makes any window mis-ordering a hard failure, so this
-    guards that the concurrent look-ahead never lets a later window's rows overtake
-    an earlier one's.
+@pytest.mark.parametrize("prefetch_budget_mb", [0, 1, 64])
+def test_arrow_rs_s3_window_prefetch_order(s3_fs, s3_path, prefetch_budget_mb):
+    """The budget-gated prefetch pipeline (K=1 single stream, many row-window
+    units) must return rows in EXACT file order at every bucket size. This is
+    the common S3 path: one row group sliced into many small windows, fetched
+    concurrently under the byte-budget semaphore while a single decoder drains
+    them in order. budget=0 is strictly-serial fetch→decode→fetch; a budget
+    smaller than one window still admits that window alone (clamped); a large
+    budget lets many window fetches run concurrently. A monotone ``id`` makes
+    any window mis-ordering a hard failure, so this guards that concurrent
+    fetches never let a later window's rows overtake an earlier one's.
     """
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
         _s3_config,
@@ -1827,7 +1828,7 @@ def test_arrow_rs_s3_window_prefetch_order(s3_fs, s3_path, prefetch_windows):
         batch_size=4096,
         fetch_window_mb=1,  # force many sub-windows within the single stream
         k=1,  # single stream: isolate the prefetch pipeline from K-split
-        prefetch_windows=prefetch_windows,
+        prefetch_budget_mb=prefetch_budget_mb,
     )
     got = pa.RecordBatchReader.from_stream(stream).read_all()
     assert got.num_rows == n
