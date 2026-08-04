@@ -51,10 +51,9 @@ Compression = Optional[
 # SHARED: shard codec, ShuffleFileServer identity/lookup, the
 # ShuffleHandle type, and the error hierarchy, which are used by both map and reduce.
 # =============================================================================
-# Each range's payload length is framed as a u32 in the sink, so no single
-# range/IPC frame may exceed 4 GiB - 1. Checked at mapper write time so an
-# oversized IPC buffer fails at the mapper task.
-_MAX_RANGE_BYTES: int = (1 << 32) - 1
+# Each range's payload length is framed as a u64 in the sink, so a single
+# range/IPC frame may be up to 16 EiB. Checked at mapper write time.
+_MAX_RANGE_BYTES: int = (1 << 64) - 1
 
 
 # ----------------------------------------------------------------- Arrow IPC
@@ -267,11 +266,11 @@ class _PartitionWriter:
         buf = _encode_shard(  # whole-frame codec (see _encode_shard)
             tbl, self._compression, self._combine_native_ok
         )
-        # Refuse frames the u32 response-wire encoding can't represent.
+        # Refuse frames the u64 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
                 f"map_{self._map_id}.shf partition {pid}: IPC frame is "
-                f"{buf.size} bytes, exceeding the u32 wire-protocol "
+                f"{buf.size} bytes, exceeding the u64 wire-protocol "
                 f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
                 f"``num_partitions`` or reduce the upstream block size."
             )
@@ -319,7 +318,7 @@ def _grpc_location(host: str, port) -> str:
 
 def _make_flight_server(host: str, base_dir: str, token: str):
     """Build (not start) an Arrow Flight server serving shuffle byte-ranges via
-    DoAction. Each range is framed as ``[u32 length][frame bytes]``."""
+    DoAction. Each range is framed as ``[u64 length][frame bytes]``."""
     import pyarrow.flight as flight
 
     class _ShuffleFlightServer(flight.FlightServerBase):
@@ -333,13 +332,13 @@ def _make_flight_server(host: str, base_dir: str, token: str):
                 with open(fpath, "rb") as f:
                     for off, length in ranges:
                         f.seek(off)
-                        # Pack the u32 length header into the first chunk: a
-                        # 4-byte header in its own Result would pay a whole gRPC
+                        # Pack the u64 length header into the first chunk: an
+                        # 8-byte header in its own Result would pay a whole gRPC
                         # message's overhead (protobuf tag, HTTP/2 frame, flow
-                        # control) for a 4-byte payload.
+                        # control) for an 8-byte payload.
                         first = f.read(min(length, _FLIGHT_CHUNK))
                         yield flight.Result(
-                            pa.py_buffer(struct.pack(">I", length) + first)
+                            pa.py_buffer(struct.pack(">Q", length) + first)
                         )
                         remaining = length - len(first)
                         while remaining:
@@ -506,7 +505,7 @@ def _stream_members_flight(
     sink: _PwriteSink,
 ) -> None:
     """Arrow Flight DoAction: one client, batched fetch requests. Response
-    ``Result`` bodies carry ``[u32 len][frame]`` framing, so they stream
+    ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream
     verbatim into the sink. Transport failures map to
     ``ConnectionError`` (so _prefetch_node_into's resolve+retry handles them);
     auth failure maps to ``PermissionError`` (terminal); disk ``OSError`` from
@@ -803,12 +802,12 @@ def _compute_prefetch_layout(
     """Assign each group a contiguous byte region in the reducer's prefetch file.
 
     Returns ``(total_size, base_offsets, per_group_sizes)`` where sizes are the
-    ``4 + length`` framed byte totals (u32 len prefix + IPC bytes per range),
+    ``8 + length`` framed byte totals (u64 len prefix + IPC bytes per range),
     base offsets are running cumulative sums. Fetch threads then pwrite each
     group's fetched frames at DISJOINT offsets.
     """
     sizes = [
-        sum(4 + length for m in g.members for (_off, length) in m.ranges)
+        sum(8 + length for m in g.members for (_off, length) in m.ranges)
         for g in groups
     ]
     base_offsets: List[int] = []
