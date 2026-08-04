@@ -18,6 +18,7 @@ from ray.llm._internal.common.patches.vllm.tokenize_once import (
     install as _install_tokenize_once,
     reuse_prompt_token_ids as _reuse_prompt_token_ids,
 )
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -39,7 +40,6 @@ from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
