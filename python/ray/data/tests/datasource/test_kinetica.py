@@ -400,13 +400,14 @@ class TestKineticaDatasink:
         assert datasink.get_name() == "Kinetica(test_table)"
 
     def test_supports_distributed_writes(self, datasink):
-        """Test datasink reports distributed write support based on table readiness."""
-        # Before on_write_start is called, _table_ready is False
-        # so distributed writes should be disabled to prevent race conditions
-        assert datasink.supports_distributed_writes is False
+        """Test that distributed writes are always supported.
 
-        # After table is ready, distributed writes should be enabled
-        datasink._table_ready = True
+        Table DDL (CREATE/DROP) is performed in on_write_start() before any
+        writes begin, so all modes have a known table structure by the time
+        distributed writes start.
+        """
+        # Distributed writes are always supported since on_write_start
+        # runs before any write() calls
         assert datasink.supports_distributed_writes is True
 
     def test_min_rows_per_write(self, datasink):
@@ -1570,24 +1571,6 @@ class TestKineticaDatasinkTableCreation:
         # Should raise the real error when on_write_start tries to create the table
         with pytest.raises(Exception, match="Connection refused"):
             ds.on_write_start()
-
-    def test_supports_distributed_writes_always_true(self):
-        """Test that distributed writes are always supported.
-
-        Table DDL (CREATE/DROP) is performed in on_write_start() before any
-        writes begin, so all modes have a known table structure by the time
-        distributed writes start.
-        """
-        ds = KineticaDatasink(
-            url="http://localhost:9191",
-            table_name="test_table",
-            mode=KineticaSinkMode.APPEND,
-        )
-        # Table initialization is deferred to on_write_start
-        assert ds._table_initialized is False
-        # But distributed writes are always supported since on_write_start
-        # runs before any write() calls
-        assert ds.supports_distributed_writes is True
 
 
 # ============================================================================

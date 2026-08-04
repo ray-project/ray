@@ -19,6 +19,7 @@ from ray.data.dataset import (
     Schema,
     SinkMode,
     ClickHouseTableSettings,
+    KineticaTableSettings,
     SaveMode,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
@@ -140,6 +141,7 @@ __all__ = [
     "ActorPoolStrategy",
     "BlockBasedFileDatasink",
     "ClickHouseTableSettings",
+    "KineticaTableSettings",
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.

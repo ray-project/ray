@@ -40,6 +40,9 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseTableSettings,
     SinkMode,
 )
+from ray.data._internal.datasource.kinetica_datasink import (
+    KineticaTableSettings,
+)
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.delta_datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
