@@ -1,1 +1,4 @@
-torchft-nightly==2026.5.15
+# torchft-nightly 2026.5.15 requires opentelemetry-sdk>=1.39.0, incompatible
+# with the protobuf 4.25.8 compatibility environment used by Python 3.10–3.12.
+torchft-nightly==2025.1.1; python_version < '3.13'
+torchft-nightly==2026.5.15; python_version >= '3.13'
