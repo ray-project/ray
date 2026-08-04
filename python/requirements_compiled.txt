@@ -1704,7 +1704,7 @@ pyarrow==23.0.1
     #   triad
 pyarrow-hotfix==0.7
     # via hudi
-pyasn1==0.6.3
+pyasn1==0.6.4
     # via
     #   oauth2client
     #   pyasn1-modules
